@@ -1,6 +1,6 @@
 {
     "name": "Gifting Theme",
-    "version": "1.0.1.0.0",
+    "version": "21.0.1.0.0",
     "category": "Theme/Corporate",
     "depends": [
         "website", 
@@ -13,8 +13,8 @@
     ],
     "data": [
         #"views/assets.xml",
-        #'views/layout.xml',
-        'views/theme.xml',
+        'views/layout.xml',
+        #'views/theme.xml',
         "views/header.xml",
         "views/hero.xml",
     ],
@@ -26,5 +26,4 @@
     },
     "theme": True,
     "installable": True,
-    "application": False,
 }
