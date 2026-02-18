@@ -36,20 +36,19 @@
                 </form>
               </div>
 
-
             <!-- ACTION ICONS -->
-            <div class="gifting-icons">
+              <div class="gifting-icons">
 
-              <!-- Wishlist -->
-              <t t-call="website_sale.wishlist"/>
+                <!-- Wishlist -->
+                <a href="/shop/wishlist" class="icon">❤️</a>
 
-              <!-- Cart -->
-              <t t-call="website_sale.cart"/>
+                <!-- Cart -->
+                <a href="/shop/cart" class="icon">🛒</a>
 
-              <!-- Account -->
-              <t t-call="website.user_navbar"/>
+                <!-- Account -->
+                <a href="/web/login" class="icon">👤</a>
 
-            </div>
+              </div>
 
           </div>
 

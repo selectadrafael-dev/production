@@ -97,3 +97,15 @@
     background: transparent;
     cursor: pointer;
 }
+
+.gifting-icons {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.gifting-icons .icon {
+    font-size: 20px;
+    text-decoration: none;
+    color: #333;
+}
