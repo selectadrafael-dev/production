@@ -1,0 +1,29 @@
+.atk-hero {
+  background: radial-gradient(circle at right, #0a1c3a, #020412);
+  padding: 120px 24px;
+}
+
+.atk-hero-inner {
+  max-width: 1300px;
+  margin: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  align-items: center;
+}
+
+.atk-hero h1 {
+  font-size: 52px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.atk-hero p {
+  color: #cfd8e3;
+  font-size: 18px;
+  margin: 18px 0;
+}
+
+.atk-hero-media img {
+  max-width: 100%;
+}

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="atk_booking_page" model="website.page">
+        <field name="name">ATK Booking</field>
+        <field name="url">/atk-booking</field>
+        <field name="is_published" eval="True"/>
+        <!-- The key must be unique; using module_name.id is best practice -->
+        <field name="key">theme_atk_navy.atk_booking_page</field>
+        <field name="type">qweb</field>
+        <field name="arch" type="xml">
+            <t t-name="theme_atk_navy.atk_booking_page">
+                <t t-call="website.layout">
+                    <div id="wrap" class="oe_structure">
+                        <!-- Prefilled Content Starts Here -->
+                        <section class="s_title pt48 pb48 bg-200">
+                            <div class="container">
+                                <h1 class="text-center">Welcome to ATK Booking</h1>
+                                <p class="lead text-center">Secure your slot with our advanced booking system.</p>
+                            </div>
+                        </section>
+                        
+                        <section class="atk-booking-billing">
+                            <div class="container">
+
+                                <div class="row g-4">
+
+                                    <!--LEFT COLUMN: BOOKING TYPES-->
+                                    <!--div class="col-lg-6" data-atk-booking-page='1' hidden="hidden"-->
+                                    <div class="col-lg-6" data-atk-booking-page='1'>
+                                        <h3 class="atk-column-title">Booking Type</h3>
+
+                                        <!-- Expanded Booking (Dark) -->
+                                        <div class="atk-card atk-card-dark">
+                                            <h4>Standard Booking</h4>
+                                             <span class="atk-track-badge">Weekend Access</span>
+                                            <ul class="atk-feature-list">
+                                                <li>✅ Bookable only on Sunday from 12:00pm-6:00pm</li>
+                                                <li>✅ Services is provided on weekends (Friday, Saturday and Sunday)</li>
+                                                <li>✅ Select from available weekend time slot</li>
+                                                <li>✅ Ideal for flexible schedules</li>
+                                                <li>✅ Served in standard service order</li>
+                                                <li>✅ $5 non-refundable donation at checkout</li>                            
+                                            </ul>
+                                        </div>
+
+                                        <!-- Expanded Skip The Line -->
+                                        <div class="atk-card atk-card-dark">
+                                            <h4>Skip-The-Line</h4>
+                                             <span class="atk-track-badge premium">Priority Access</span>
+
+                                            <ul class="atk-feature-list">
+                                                 <li>✅ Bookable on weekend (Friday, Saturday and Sunday)</li>
+                                                <li>✅ Booking guaranteed 30 minutes time blocks</li>
+                                                <li>✅ Priority handling with a dedicated booking track</li>
+                                                <li>✅ Designed for urgent or time sensitive needs</li>
+                                                <li>✅ Services is provided during normal business hours</li>
+                                                <li>✅ $120 additional fee applied</li>
+                                                <li>✅ May still require up to a 30-minute wait on arrival due to on site services flow</li>
+                                            </ul>
+                                         </div>
+                                    </div>
+
+                                    <!-- RIGHT COLUMN: BILLING -->
+                                    <div class="col-lg-6">
+                                        <h3 class="atk-column-title">Billing</h3>
+
+                                        <!-- Premium Smart Keys -->
+                                        <div class="atk-card atk-card-dark atk-card-premium">
+                                            <span class="atk-tag">Premium</span>
+                                            <h4>Smart Keys</h4>
+                                            <div class="atk-price-list">
+                                                <span>$195</span>
+                                                <span>$245</span>
+                                                <span>$295</span>
+                                            </div>
+                                            <p class="atk-card-desc">
+                                                Advanced smart key solutions for luxury and performance vehicles.
+                                            </p>
+<button class="atk-service-logic"
+                    data-open-booking-track="1">
+                    Select Service →
+                    </button>
+                                        </div>
+
+                                        <!-- Premium Transponder -->
+                                        <div class="atk-card atk-card-dark">
+                                            <span class="atk-tag">Premium</span>
+                                            <h4>Transponder Keys</h4>
+                                            <div class="atk-price">$85</div>
+                                            <p class="atk-card-desc">
+                                                Secure replacement services for supported vehicles.
+                                            </p>
+<button class="atk-service-logic"
+                    data-open-booking-track="1">
+                    Select Service →
+                    </button>
+                                        </div>
+
+                                    </div>
+
+                                </div>
+                            </div>
+                        </section>
+                        <!-- Editable Area for Website Builder -->
+                        <div class="oe_structure"/>
+                    </div>
+                </t>
+            </t>
+        </field>
+    </record>
+</odoo>
+

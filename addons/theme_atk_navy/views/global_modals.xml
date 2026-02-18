@@ -1,0 +1,244 @@
+<odoo>
+  <template id="atk_global_modals" inherit_id="website.layout">
+    <xpath expr="//body" position="inside">
+
+      <!-- ATK Booking Track Modal -->
+        <section class="atk-cust-bk-trk">
+            <div class="atk-track-modal" data-atk-track-modal='1'  hidden="hidden">
+                <div class="atk-track-backdrop"></div>
+
+                    <div class="atk-track-panel">
+                        <button
+                        class="atk-track-close"
+                        data-atk-track-close="1">
+                        ← Back
+                        </button>
+
+
+                        <h2 class="atk-track-title">SELECT BOOKING TRACK</h2>
+                        <p class="atk-track-subtitle">
+                        Choose your priority level for this appointment.
+                        </p>
+
+                        <div class="atk-track-grid">
+
+                        <!-- Standard Booking -->
+                        <div class="atk-track-card">
+                            <h3>Standard Booking</h3>
+                            <span class="atk-track-badge">Weekend Access</span>
+                            <p>Standard appointment scheduling shared capacity slots</p>
+
+                            <ul>
+                                <li>Services is provided on weekends (Friday, Saturday and Sunday)</li>
+                                <li>Select from available weekend time slot</li>
+                                <li>Ideal for flexible schedules</li>
+                                <li>Served in standard service order</li>
+                                <li>$5 non-refundable donation at checkout</li>
+                            </ul>
+
+                            <button class="atk-track-btn btn-standard-service" 
+                            data-track="standard" data-open-vehicle-modal="1"> 
+                                Get Started →
+                            </button>
+                        </div>
+
+                    <!-- Skip The Line-->
+                    <div class="atk-track-card highlight">
+                        <h3>Skip-The-Line</h3>
+                        <span class="atk-track-badge premium">Priority Access</span>
+
+                        <ul>
+                            <li>Bookable on weekend (Friday, Saturday and Sunday)</li>
+                            <li>Booking guaranteed 30 minutes time blocks</li>
+                            <li>Priority handling with a dedicated booking track</li>
+                            <li>Designed for urgent or time sensitive needs</li>
+                            <li>Services is provided during normal business hours</li>
+                            <li>$120 additional fee applied</li>
+                            <li>May still require up to a 30-minute wait on arrival due to on site services flow</li>
+                        </ul>
+
+                        <span class="my-2 d-block text-white">
+                          This plan is active weekend only.
+                        </span>
+
+                        <button class="atk-track-btn btn-skip-the-line"
+                        data-track="priority" data-open-vehicle-modal="1">
+                        Get Started →
+                        </button>
+
+                    </div>
+                </div>
+              </div>
+            </div>
+        </section>
+
+       <!-- ===============================
+        VEHICLE IDENTIFICATION MODAL
+        =============================== -->
+        
+            <t t-if="
+                not request.httprequest.path.startswith('/web')
+                and not request.httprequest.path.startswith('/my')
+                and request.httprequest.path in ('/', '/atk-booking', '/appointment/1', '/payment_cart')
+            ">
+
+            <section class="atk-vehicle-modal-flow">
+                    <div id="atk-vehicle-modal-main" class="atk-modal" hidden="hidden" data-atk-vehicle-modal="1">
+                    <div class="atk-modal-backdrop atk-vehicle-backdrop"></div>
+
+                    <div class="atk-modal-panel atk-vehicle-panel">
+                    <div class="d-flex justify-content-between vehicle-id-top-btn-wrapper"> 
+                        <button class="atk-back-btn" type="button" data-atk-vehicle-close="1">
+                        ← Back
+                        </button>
+
+                        <button type="button" id="vehicle_reset_btn" class="btn btn-secondary atk-reset-btn">
+                            Reset Vehicle Info
+                        </button>
+                    </div>
+
+                        <h2 class="atk-modal-title">VEHICLE IDENTIFICATION</h2>
+
+                        <p class="atk-modal-note">
+                        We currently do not service European vehicles. Please select your vehicle
+                        details to see accurate pricing.
+                        </p>
+
+                        <div class="atk-track-indicator">
+                        <span class="dot"></span>
+                        Standard Booking (Weekend Access)
+                        </div>
+
+                        <form class="atk-form" id="atk_vehicle_form">
+
+                        <!-- KEY TYPE -->
+                        <label>Key Type</label>
+                        <select id="key_type">
+                            <option>Don't know</option>
+                            <option value="smart_key">Smart Key</option>
+                            <option value="transponder">Transponder</option>
+                        </select>
+
+                        <!-- VEHICLE MAKE -->
+                        <label>Vehicle Make</label>
+                        <select id="vehicle_make">
+                            <option>Select a make</option>
+                        </select>
+
+                        <!--VEHICLE MODEL-->
+                        <label>Vehicle Model</label>
+                        <select id="vehicle_model_wrapper">
+                            <option id="vehicle_model">Choose a model</option>
+                        </select>
+
+                        <!-- VEHICLE YEAR -->
+                        <label>Vehicle Year</label>
+                        <select id="vehicle_year_wrapper">
+                            <option id="vehicle_year">Choose model year</option>
+                        </select>
+
+                        <!-- ===============================
+                            HIDDEN CONTENTS (REQUIRED)
+                            =============================== -->
+                        <div id="hidden-contents" class="hidden-contents">        
+
+                            <!-- PRICE (READONLY) -->
+                            <label  id="price_label">Price(Service fee)</label>
+                            <input
+                            type="text"
+                            name="price"
+                            id="price"
+                            value=""
+                            placeholder="Price"
+                            readonly="readonly"
+                            />
+
+                            <!-- VEHICLE TYPE (READONLY) -->
+                            <label id="vehicle_type_label">Vehicle Type</label>
+                            <input
+                            type="text"
+                            name="vehicle_type"
+                            id="vehicle_type"
+                            value=""
+                            placeholder="Vehicle Type"
+                            readonly="readonly"
+                            />
+
+                            <!-- INFO BOX -->
+                            <div class="atk-info-box">
+                            <p>
+                                Booking fee (paid before confirming): <strong>$5</strong>
+                            </p>
+                            </div>
+
+                            <!-- CHECKBOXES -->
+                            <label class="atk-checkbox">
+                            <input type="checkbox" id="battery" />
+                            I acknowledge that my vehicle battery must be healthy (12.4V or
+                            higher).
+                            </label>
+
+                            <label class="atk-checkbox">
+                            <input type="checkbox" id="vehicle_info" />
+                            Appointment delays may occur if incorrect vehicle info is selected.
+                            </label>
+
+                            <div class="others_wrapper" id="others_wrapper">
+                                </div>
+
+                                    <t t-if="request.env.user.has_group('base.group_user') or request.env.user.has_group('base.group_portal')">
+                                        <button type="button" class="atk-primary-btn" id="atk_continue_btn">
+                                            Continue To Booking
+                                        </button>
+                                    </t>
+
+                                    <!--LOGIN / CREATE ACCOUNT (PUBLIC ONLY) -->
+                                    <t t-else="">
+                                        <div class="atk-login-link">
+                                            <a t-att-href="'/web/login?' + request.httprequest.query_string.decode()"
+                                            title="Login or create an account" data-atk-login-redirect="1">
+                                                Login / Create an Account
+                                            </a>
+                                        </div>
+                                    </t>    
+                                </div>
+                    </form>
+                    </div>
+                    </div>
+            </section>
+       </t>
+
+        <!--Vehicle Report/Invoice-->
+        <section>
+            <div id="atk_report_overlay" class="atk-modal-overlay hidden">
+                <div id="atk_report_modal" class="atk-report-modal">
+                    <h3>Vehicle Report Summary</h3>
+
+                    <!-- Wrap content in a FORM -->
+                    <form id="atk_report_form" action="/atk/report/submit" method="POST">
+                        <!-- Odoo Security Token -->
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        
+                        <!-- Visible list for user -->
+                        <div id="atk_report_body"></div>
+                        
+                        <!-- Hidden inputs for the Server (appended via JS) -->
+                        <div id="atk_report_hidden_inputs"></div>
+
+                        <div class="atk-report-actions">
+                            <button type="button" id="atk_report_cancel" class="atk-secondary-btn">
+                                Cancel
+                            </button>
+                            <!-- Type MUST be submit -->
+                            <button type="submit" id="atk_report_proceed" class="atk-primary-btn text-center">
+                                Proceed
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+    </xpath>
+  </template>
+</odoo>

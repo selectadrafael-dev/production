@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--Override default Odoo homepage once-->
+    <template id="atk_homepage" inherit_id="website.homepage" name="ATK Homepage">
+
+        <xpath expr="//div[@id='wrap']" position="replace">
+            <div id="wrap" class="oe_structure">
+
+                    <!--HERO/HOME-->
+                    <t t-call="theme_atk_navy.atk_hero"/>
+
+                    <!--PLACEHOLDER FOR FUTURE SECTIONS-->
+                    <!--services, about, calendar, etc-->
+                    <div class="oe_structure"/>
+            </div>
+        </xpath>
+    </template>
+</odoo>

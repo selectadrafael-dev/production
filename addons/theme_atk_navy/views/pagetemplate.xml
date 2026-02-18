@@ -1,0 +1,310 @@
+<odoo>
+    <!-- Sub-page 1: Services -->
+    <template id="template_services" name="Our Services">
+        <section class="s_text_block pb32 pt32">
+            <div class="container">
+                <h2>Our Services</h2>
+                <p>We provide world-class consulting and development.</p>
+            </div>
+        </section>
+    </template>
+
+    <!-- Sub-page 2: About Us -->
+    <template id="template_about" name="About Us">
+        <section class="s_image_text pb32 pt32 bg-200">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-lg-6">
+                        <img src="/web/image/website.s_banner_default_image" class="img-fluid"/>
+                    </div>
+                    <div class="col-lg-6">
+                        <h2>Who We Are</h2>
+                        <p>A team of dedicated Odoo experts since 2010.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </template>
+
+    <!-- Sub-page 3: Contact Info -->
+    <template id="template_contact_info" name="Contact Simple">
+        <section class="s_text_block pb32 pt32">
+            <div class="container">
+                <h3>Get In Touch</h3>
+                <p>Email: info@yourtheme.com</p>
+            </div>
+        </section>
+    </template>
+
+    <!-- Hero/home section-->
+    <!-- ========================= -->
+    <template id="atk_hero" name="Hero Section">
+
+        <!-- HERO -->
+        <section class="atk-hero-admin atk-hero-bg">
+            <div class="atk-hero-overlay"></div>
+
+            <div class="container position-relative">
+                <div class="row align-items-center">
+
+                    <!-- LEFT -->
+                    <div class="col-lg-6">
+                        <span class="atk-badge">TrustedKey.US</span>
+
+                        <h1 class="atk-title">
+                            ATK — America's trusted key company for your next key.
+                        </h1>
+
+                        <p class="atk-subtitle">
+                            Advanced identity, security, and access solutions.
+                        </p>
+                        
+                <div class="atk-hero-actions">
+
+                    <!-- OUTLINE / MODAL BUTTON -->
+                    <button
+                        type="button"
+                        class="atk-hero-btn atk-hero-btn-outline" data-open-booking-track="1">
+                        Check Vehicle Availability
+                    </button>
+
+                    <!-- PRIMARY CTA -->
+                    <a href="/atk-booking" class="atk-hero-btn atk-hero-btn-filled">
+                        Book Your Replacement
+                    </a>
+
+                </div>
+
+                        <div class="atk-metric my-3 text-white">
+                            <span>We currently do not service European Vehicles</span>
+                        </div>
+                        <div class="atk-metric">
+                            <strong>1,000+</strong>
+                            <span>Drivers</span>
+                        </div>
+                    </div>
+
+                    <!--RIGHT-->
+                    <div class="col-lg-6 text-center">
+                        <div class="atk-product-mock"></div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+
+        <!-- TRUSTED BY -->
+        <section class="atk-trust">
+            <div class="container text-center">
+                <p class="atk-trust-title">Trusted by industry leaders</p>
+
+                <div class="atk-trust-logos">
+                    <!--span>RANKEN</span>
+                    <span>HILCO</span>
+                    <span>METRO</span-->
+                </div>
+            </div>
+        </section>
+
+        <!-- VALUE SECTION -->
+        <section class="atk-value">
+            <div class="container">
+                <h2 class="atk-section-title">
+                    Security is not optional. It is engineered.
+                </h2>
+
+                <div class="row align-items-center mt-4">
+                    <div class="col-lg-6 atk-image-placeholder-wrapper">
+                        <div class="atk-image-placeholder"></div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <p>
+                            We specialize in high-security automotive keys that
+                            require advanced identity verification, specialized
+                            programming, and strict scheduling controls.
+                        </p>
+
+                        <a href="/contactus" class="atk-link">
+                            Book your replacement →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SERVICES -->
+        <section class="atk-services-entry" id="serviceId">
+          <div class="container">
+            <div class="atk-services-inner">
+
+                <h2 class="atk-services-title">Services Overview</h2>
+                <p class="atk-services-subtitle">
+                We specialize in high-security automotive keys that require advanced
+                inventory, specialized programming, and strict scheduling controls.
+                </p>
+
+                <div class="atk-services-grid">
+
+                <!-- Card 1 -->
+                <div class="atk-service-card">
+                    <h3>Transponder Keys</h3>
+                    <div class="atk-price">✅ $85 <span>Flat Rate</span></div>
+
+                    <p class="atk-desc">
+                    Reliable transponder key replacements for supported vehicles.
+                    Chip-based security programming included.
+                    </p>
+
+                    <button
+                    class="atk-service-btn"
+                    data-open-booking-track="1">
+                    Select Service →
+                    </button>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="atk-service-card">
+                    
+                    <h3>Smart Keys</h3>
+
+                    <ul class="atk-price-list">
+                    <li>$195 <span>Cars &amp; Most SUVs</span></li>
+                    <li>$245 <span>Work Horse/Trucks</span></li>
+                    <li>$295 <span>Luxury / Performance Vehicles</span></li>
+                    </ul>
+
+                    <p class="atk-desc">
+                    OEM-grade smart keys programmed to match your vehicle’s
+                    factory security system.
+                    </p>
+
+                    <button
+                    class="atk-service-btn"
+                    data-open-booking-track="1">
+                    Select Service →
+                    </button>
+                </div>
+
+                </div>
+                <p class="atk-services-note">
+                There is a <strong>$5 non-refundable charge</strong> to reserve your
+                appointment. This fee goes toward a local charity of our choosing.
+                </p>
+            </div>
+           </div>
+        </section>
+
+        <!-- ================= TESTIMONIALS ================= -->
+            <section>
+                <div id="atk_testimonials" class="atk-testimonials">
+                <div class="container text-center">
+
+                    <span class="atk-section-eyebrow">
+                        Trusted by industry leaders and institutions
+                    </span>
+
+                    <h2 class="atk-section-title">
+                        What our customers are saying
+                    </h2>
+
+                    <div class="row justify-content-center mt-5">
+
+                        <!-- Testimonial Card -->
+                        <div class="col-lg-4 col-md-6 mb-4">
+                            <div class="atk-testimonial-card">
+                                <div class="atk-quote">“</div>
+                                <p class="atk-testimonial-text">
+                                    Reliable, fast, and secure. The booking process was seamless
+                                    and the service exceeded expectations.
+                                </p>
+                                <div class="atk-user">
+                                    <img src="/theme_atk_navy/static/src/img/custom1.PNG"
+                                        alt="Customer"
+                                        class="atk-avatar"/>
+                                    <div>
+                                        <strong>Tim Tom</strong>
+                                        <span>Car Holder</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Testimonial Card -->
+                        <div class="col-lg-4 col-md-6 mb-4">
+                            <div class="atk-testimonial-card">
+                                <div class="atk-quote">“</div>
+                                <p class="atk-testimonial-text">
+                                    Professional service with attention to detail.
+                                    I felt confident throughout the entire process.
+                                </p>
+                                <div class="atk-user">
+                                    <img src="/theme_atk_navy/static/src/img/custom2.PNG"
+                                        alt="Customer"
+                                        class="atk-avatar"/>
+                                    <div>
+                                        <strong>Jane</strong>
+                                        <span>Car Holder</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Testimonial Card -->
+                        <div class="col-lg-4 col-md-6 mb-4">
+                            <div class="atk-testimonial-card">
+                                <div class="atk-quote">“</div>
+                                <p class="atk-testimonial-text">
+                                    Smooth experience from booking to delivery.
+                                    Highly recommended for secure key services.
+                                </p>
+                                <div class="atk-user">
+                                    <img src="/theme_atk_navy/static/src/img/custom3.PNG"
+                                        alt="Customer"
+                                        class="atk-avatar"/>
+                                    <div>
+                                        <strong>Amanda</strong>
+                                        <span>Car Holder</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </section>
+    </template>
+
+    <!--Date countdown-->
+     <template id="atk_countdown" name="Launch Countdown">
+        <section class="atk-countdown">
+            <div class="container atk-center">
+
+                <h2 class="atk-countdown-title">
+                    Launching Soon
+                </h2>
+
+                <div id="atk-countdown-timer" class="atk-timer">
+                    <div class="atk-time-box">
+                        <span class="atk-time" id="atk-days">00</span>
+                        <span class="atk-label">Days</span>
+                    </div>
+                    <div class="atk-time-box">
+                        <span class="atk-time" id="atk-hours">00</span>
+                        <span class="atk-label">Hours</span>
+                    </div>
+                    <div class="atk-time-box">
+                        <span class="atk-time" id="atk-minutes">00</span>
+                        <span class="atk-label">Minutes</span>
+                    </div>
+                    <div class="atk-time-box">
+                        <span class="atk-time" id="atk-seconds">00</span>
+                        <span class="atk-label">Seconds</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </template>
+</odoo>

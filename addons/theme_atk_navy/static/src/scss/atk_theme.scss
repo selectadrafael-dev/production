@@ -1,0 +1,1001 @@
+/* =====================================================
+   ATK NAVY — HOMEPAGE (FIGMA-LOCKED)
+   Authoritative CSS — no conflicts
+===================================================== */
+
+/* ---------- GLOBAL SAFETY ---------- */
+#wrap,
+#wrapwrap,
+.atk-homepage {
+    background: #ffffff;
+    color: #050b12;
+}
+
+.atk-homepage * {
+    box-sizing: border-box;
+}
+
+/* ---------- HERO SECTION ---------- */
+.atk-hero-bg {
+    position: relative;
+    min-height: 90vh;
+
+    /* Background image anchor */
+    background-image: url('/theme_atk_navy/static/src/img/hero_img.png');
+    background-size: cover;
+    background-position: center right;
+    background-repeat: no-repeat;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+/* Gradient overlay (FIGMA ACCURATE) */
+.atk-hero-overlay {
+    position: absolute;
+    inset: 0;
+}
+
+/* Hero content container */
+.atk-hero-admin {
+    padding: 120px 0;
+    color: #ffffff;
+}
+
+.atk-hero-admin .container {
+    position: relative;
+    z-index: 2;
+}
+
+/* Badge */
+.atk-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.12);
+    color: #e6f0ff;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+/* Hero Title */
+.atk-title {
+    font-size: clamp(2.5rem, 5vw, 3.4rem);
+    font-weight: 800;
+    line-height: 1.15;
+    margin: 22px 0 16px;
+    color: #ffffff;
+}
+
+/* Hero subtitle */
+.atk-subtitle {
+    font-size: 1.05rem;
+    max-width: 460px;
+    color: rgba(255,255,255,0.85);
+}
+
+/* Metric */
+.atk-metric {
+    margin-top: 28px;
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+}
+
+/* Product mock (right side) */
+/* ---------- TRUST STRIP ---------- */
+.atk-trust {
+    padding: 48px 0;
+    background: #f8f9fb;
+    text-align: center;
+}
+
+.atk-trust-title {
+    font-size: 14px;
+    font-weight: 600;
+    opacity: 0.7;
+    margin-bottom: 20px;
+}
+
+.atk-trust-logos {
+    width: 60%;
+    margin: 0 auto;
+    min-height: 60px;
+     background-image: url('/theme_atk_navy/static/src/img/trusted_by.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/*TANKE*/
+.atk-image-placeholder {
+    width: 100%;
+    height: 260px;
+    border-radius: 16px;
+    background-image: url('/theme_atk_navy/static/src/img/atk_security.png');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+}
+
+/* ---------- VALUE SECTION ---------- */
+.atk-value {
+    padding: 100px 0;
+}
+
+.atk-section-title {
+    font-weight: 700;
+    font-size: 2rem;
+    margin-bottom: 18px;
+}
+
+.atk-section-text {
+    max-width: 520px;
+    color: #5b6775;
+}
+
+/* ---------- SERVICES SECTION ---------- */
+.atk-services-entry {
+  background: #0B0B0B;
+  color: #FFFFFF;
+  padding: 80px 0;
+}
+
+.atk-services-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.atk-services-title {
+  font-size: 28px;
+  margin-bottom: 12px;
+}
+
+.atk-services-subtitle {
+  color: #9CA3AF;
+  max-width: 720px;
+  margin: 0 auto 50px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Grid */
+.atk-services-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 30px;
+}
+
+/* Cards */
+.atk-service-card {
+  background: #111111;
+  border-radius: 16px;
+  padding: 30px;
+  text-align: left;
+  position: relative;
+  border: 1px solid #1F1F1F;
+}
+
+/* Badges */
+.atk-service-badges {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.badge.k {
+  background: #EC4899;
+}
+
+.badge.o {
+  background: #8B5CF6;
+}
+
+/* Titles & pricing */
+.atk-service-card h3 {
+  margin-bottom: 10px;
+  font-size: 20px;
+}
+
+.atk-price {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.atk-price span {
+  font-size: 13px;
+  color: #9CA3AF;
+  margin-left: 6px;
+}
+
+.atk-price-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+}
+
+.atk-price-list li {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.atk-price-list span {
+  color: #9CA3AF;
+  font-size: 13px;
+  margin-left: 6px;
+}
+
+/* Description */
+.atk-desc {
+  color: #D1D5DB;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 16px 0 24px;
+}
+
+/*CTA*/
+.atk-service-btn {
+  background: transparent;
+  border: 1px solid #6B7280;
+  color: #FFFFFF;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn-track-standard, .btn-track-priority, .atk-service-logic
+ {
+ background: #2563EB;
+  border-color: #2563EB;
+  color: #FFFFFF;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.btn-track-standard:hover, .btn-track-priority:hover, .atk-track-btn-logic:hover
+ {
+  background: transparent;
+  border: #6B7280;
+  color: #FFFFFF;
+}
+
+.atk-service-btn:hover {
+  background: #2563EB;
+  border-color: #2563EB;
+}
+
+/* Note */
+.atk-services-note {
+  margin-top: 40px;
+  font-size: 13px;
+  color: #9CA3AF;
+}
+
+/* ---------- COUNTDOWN SECTION ---------- */
+.atk-countdown {
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at center, #10273f, #050b12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #ffffff;
+}
+
+.atk-countdown h2 {
+    font-size: 2.4rem;
+    margin-bottom: 40px;
+}
+
+.atk-countdown-boxes {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+}
+
+.atk-countdown-box {
+    background: rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 24px 28px;
+    min-width: 110px;
+}
+
+.atk-countdown-box span {
+    font-size: 2.4rem;
+    font-weight: 700;
+    display: block;
+}
+
+.atk-countdown-box label {
+    font-size: 12px;
+    opacity: 0.7;
+    letter-spacing: 1px;
+}
+
+/* ================= TESTIMONIALS ================= */
+.atk-testimonials {
+    padding: 110px 0;
+    background: #ffffff;
+}
+
+.atk-section-eyebrow {
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #6c757d;
+    display: inline-block;
+    margin-bottom: 12px;
+}
+
+.atk-section-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #0b1622;
+}
+
+/* CARD */
+.atk-testimonial-card {
+    background: #f8f9fb;
+    border-radius: 18px;
+    padding: 36px 28px;
+    height: 100%;
+    position: relative;
+    text-align: left;
+    transition: transform .3s ease, box-shadow .3s ease;
+}
+
+.atk-testimonial-card:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+}
+
+/* QUOTE */
+.atk-quote {
+    font-size: 56px;
+    line-height: 1;
+    color: #e1e4e8;
+    margin-bottom: 10px;
+}
+
+/* TEXT */
+.atk-testimonial-text {
+    font-size: 15px;
+    color: #343a40;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+/* USER */
+.atk-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.atk-user strong {
+    display: block;
+    font-size: 14px;
+    color: #0b1622;
+}
+
+.atk-user span {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+/* AVATAR */
+.atk-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #dee2e6;
+}
+
+/* ================= BOOKING & BILLING ================= */
+
+.atk-booking-billing {
+    padding: 120px 0;
+    background: #ffffff;
+}
+
+.atk-column-title {
+    font-weight: 700;
+    margin-bottom: 24px;
+}
+
+/* CARD BASE */
+.atk-card {
+    border-radius: 18px;
+    padding: 28px;
+    margin-bottom: 24px;
+    position: relative;
+    transition: transform .3s ease, box-shadow .3s ease;
+}
+
+.atk-card:hover {
+    transform: translateY(-6px);
+}
+
+/* LIGHT CARD */
+.atk-card-light {
+    background: #ffffff;
+    border: 1px solid #e6e9ee;
+}
+
+/* DARK CARD */
+.atk-card-dark {
+    background: #0b1622;
+    color: #ffffff;
+}
+
+.atk-card-dark p,
+.atk-card-dark li {
+    color: rgba(255,255,255,0.8);
+}
+
+/* PREMIUM */
+.atk-card-premium {
+    border: 1px solid #0d6efd;
+    box-shadow: 0 20px 50px rgba(13,110,253,0.25);
+}
+
+/* ICON */
+.atk-card-icon {
+    font-size: 22px;
+    margin-bottom: 12px;
+    display: inline-block;
+}
+
+/* TAG */
+.atk-tag {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(13,110,253,0.15);
+    color: #0d6efd;
+}
+
+/* TEXT */
+.atk-card h4 {
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.atk-card-desc {
+    font-size: 14px;
+    margin-bottom: 20px;
+}
+
+/* FOOTER BRAND */
+.o_footer_copyright {
+    display: none !important;
+}
+
+
+/* PRICES */
+.atk-price {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.atk-price-list span {
+    display: inline-block;
+    margin-right: 12px;
+    font-weight: 700;
+}
+
+/*Modal Box*/
+/* SELECT BOOKING TRACK 1*/
+.atk-booking-track {
+    background: radial-gradient(circle at center, #0f1e2e, #050b12);
+    padding: 80px 20px;
+    color: #ffffff;
+}
+
+.atk-booking-header {
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+.atk-booking-header h2 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.atk-booking-header p {
+    opacity: 0.8;
+    font-size: 14px;
+}
+
+.atk-back-link {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: #9bb7ff;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.atk-booking-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 30px;
+    max-width: 1100px;
+    margin: auto;
+}
+
+.atk-booking-card {
+    background: linear-gradient(145deg, #141b24, #0b1017);
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.atk-booking-card.featured {
+    border: 1px solid #2f7cff;
+}
+
+.atk-booking-card h3 {
+    font-size: 20px;
+    margin-bottom: 8px;
+}
+
+.atk-badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    margin-bottom: 15px;
+}
+
+.atk-badge.muted {
+    background: rgba(255,255,255,0.1);
+}
+
+.atk-badge.premium {
+    background: #2f7cff;
+}
+
+.atk-desc {
+    font-size: 13px;
+    opacity: 0.85;
+    margin-bottom: 20px;
+}
+
+.atk-feature-list {
+    list-style: none;
+    padding: 0;
+    margin-bottom: 25px;
+}
+
+.atk-feature-list li {
+    font-size: 13px;
+    opacity: 0.85;
+    margin-bottom: 8px;
+}
+
+/*vehicle identification number*/
+/* MODAL BASE */
+.atk-modal-dark {
+    background: radial-gradient(circle at top, #0f1e2e, #050b12);
+    border-radius: 20px;
+    color: #ffffff;
+    border: none;
+}
+
+/* HEADER */
+.atk-modal-header {
+    padding: 40px 30px 20px;
+}
+
+.atk-modal-header h2 {
+    font-size: 26px;
+    font-weight: 800;
+}
+
+.atk-modal-header p {
+    font-size: 14px;
+    opacity: 0.8;
+    margin-bottom: 20px;
+}
+
+.atk-booking-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 20px;
+    font-size: 12px;
+}
+
+
+/* BODY */
+.atk-modal-body {
+    padding: 20px 30px;
+}
+
+.atk-form-group {
+    margin-bottom: 18px;
+}
+
+.atk-form-group label {
+    font-size: 13px;
+    opacity: 0.7;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.atk-select {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(145deg, #141b24, #0b1017);
+    border: none;
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 14px;
+}
+
+.atk-select:focus {
+    outline: 1px solid #2f7cff;
+}
+
+/* FOOTER */
+.atk-modal-footer {
+    padding: 20px 30px 30px;
+}
+
+/*about us*/
+/* =========================
+   ABOUT US SECTION
+========================= */
+
+.atk-about-section {
+   /* background: linear-gradient(180deg, #0c1118, #0f1724);*/
+    padding: 80px 20px;
+   /* color: #ffffff;*/
+   color: #030303;
+}
+
+.atk-about-container {
+    max-width: 1200px;
+    margin: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 60px;
+    align-items: center;
+}
+
+/* TEXT SIDE */
+.atk-about-text h2 {
+    font-size: 40px;
+    margin-bottom: 20px;
+    font-weight: 700;
+}
+
+.atk-about-text p {
+    font-size: 16px;
+    line-height: 1.8;
+     color: #030303;
+    margin-bottom: 16px;
+}
+
+.atk-about-text strong {
+    color: #030303;
+}
+
+/* BADGE */
+.atk-about-badge {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.08);
+    color: #93c5fd;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 16px;
+}
+
+/* IMAGE SIDE */
+.atk-about-visual img {
+    width: 100%;
+    border-radius: 18px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+/* =========================
+   MOBILE RESPONSIVE
+========================= */
+@media (max-width: 992px) {
+
+    .atk-nav-toggle {
+        display: block;
+    }
+
+    .atk-nav-links {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+
+        background: #050b12;
+        flex-direction: column;
+        gap: 20px;
+        padding: 24px;
+
+        display: none;
+    }
+
+    body.atk-nav-open .atk-nav-links {
+        display: flex;
+    }
+
+    .atk-nav-links a {
+        font-size: 16px;
+    }
+}
+
+
+@media (max-width: 991px) {
+    .atk-hero-bg {
+        background-position: center;
+        min-height: auto;
+    }
+
+    .atk-product-mock {
+        margin-top: 40px;
+    }
+
+    .atk-countdown-boxes {
+        flex-wrap: wrap;
+    }
+
+    /*======services======*/
+    .atk-trust-logos {
+        width: 100%;
+    }
+
+    /* ================= TESTIMONIALS – RESPONSIVE ================= */
+    .atk-testimonials {
+        padding: 80px 0;
+    }
+
+    .atk-section-title {
+        font-size: 26px;
+    }
+
+    .atk-testimonial-card {
+        padding: 30px 24px;
+    }
+
+  /* =====================================================
+   BOOKING & BILLING — RESPONSIVE
+   ===================================================== */
+ .atk-booking-billing {
+        padding: 80px 0;
+    }
+
+    .atk-booking-column,
+    .atk-billing-column {
+        margin-bottom: 48px;
+    }
+
+    .atk-card {
+        padding: 28px;
+    }
+
+    .atk-card-title {
+        font-size: 18px;
+    }
+
+    .atk-card-price {
+        font-size: 28px;
+    }
+}
+
+/* =====================
+   RESPONSIVE
+   ===================== */
+
+@media (max-width: 900px) {
+  .atk-services-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .atk-service-card {
+    text-align: center;
+  }
+
+  .atk-service-badges {
+    justify-content: center;
+  }
+
+  /*about us*/
+    .atk-about-container {
+        grid-template-columns: 1fr;
+        gap: 40px;
+    }
+
+    .atk-about-text h2 {
+        font-size: 32px;
+    }
+}
+
+/* ================= TESTIMONIALS – RESPONSIVE ================= */
+/* Mobile (≤ 767px) */
+@media (max-width: 767px) {
+
+    .atk-testimonials {
+        padding: 64px 0;
+    }
+
+    .atk-section-eyebrow {
+        font-size: 11px;
+        margin-bottom: 8px;
+    }
+
+    .atk-section-title {
+        font-size: 22px;
+        line-height: 1.3;
+    }
+
+    .atk-testimonial-card {
+        padding: 26px 22px;
+        border-radius: 16px;
+    }
+
+    .atk-quote {
+        font-size: 46px;
+    }
+
+    .atk-testimonial-text {
+        font-size: 14px;
+        line-height: 1.55;
+    }
+
+    .atk-user {
+        gap: 10px;
+    }
+
+    .atk-avatar {
+        width: 40px;
+        height: 40px;
+    }
+
+    /* =====================================================
+   BOOKING & BILLING — RESPONSIVE
+   ===================================================== */
+.atk-booking-billing {
+        padding: 64px 0;
+    }
+
+    /* Stack all cards vertically */
+    .atk-booking-grid,
+    .atk-billing-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .atk-card {
+        padding: 26px 22px;
+        border-radius: 18px;
+    }
+
+    .atk-card-badge {
+        font-size: 11px;
+        padding: 4px 10px;
+    }
+
+    .atk-card-title {
+        font-size: 17px;
+        line-height: 1.3;
+    }
+
+    .atk-card-price {
+        font-size: 26px;
+    }
+
+    .atk-card-subtext {
+        font-size: 13.5px;
+        line-height: 1.5;
+    }
+
+    .atk-card-features li {
+        font-size: 13px;
+    }
+
+    .atk-card-btn {
+        width: 100%;
+        padding: 12px 18px;
+        text-align: center;
+    }
+
+     /*Select Booking Track 1*/
+    .atk-booking-track {
+        padding: 50px 15px;
+    }
+
+    /*vehicle identification*/
+     .atk-modal-header h2 {
+        font-size: 22px;
+    }
+
+     /*affliate brands*/
+    .atk-trust-logos {
+        width: 100%;
+        background-size: contain!important;
+        background-position: center!important;
+    }
+
+    .atk-image-placeholder-wrapper{
+        margin-bottom: 22px!important;
+    }
+}
+
+
+/* Small Mobile (≤ 480px) */
+@media (max-width: 480px) {
+    /*testimonial*/
+    .atk-testimonials {
+        padding: 56px 0;
+    }
+
+    .atk-section-title {
+        font-size: 20px;
+    }
+
+    .atk-testimonial-card {
+        padding: 24px 20px;
+    }
+
+    .atk-testimonial-text {
+        font-size: 13.5px;
+    }
+
+    /* =====================================================
+   BOOKING & BILLING — RESPONSIVE
+   ===================================================== */
+.atk-booking-billing {
+        padding: 56px 0;
+    }
+
+    .atk-card {
+        padding: 24px 20px;
+        border-radius: 16px;
+    }
+
+    .atk-card-title {
+        font-size: 16px;
+    }
+
+    .atk-card-price {
+        font-size: 24px;
+    }
+
+    .atk-card-features li {
+        font-size: 12.5px;
+    }
+
+    .atk-card-btn {
+        font-size: 14px;
+    }
+}
+

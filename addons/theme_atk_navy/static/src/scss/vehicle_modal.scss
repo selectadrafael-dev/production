@@ -1,0 +1,127 @@
+/* Enhanced styling to match a clean Figma aesthetic */
+
+// Use your theme's primary color variables if available
+$primary-color: #007bff; // Adjust to your theme's primary color
+$text-color: #333;
+$input-bg: #f8f9fa;
+$border-radius: 8px;
+
+.modal-header {
+    background-color: $primary-color;
+    border-bottom: none;
+    .modal-title {
+        font-weight: 600; // Semi-bold title
+    }
+}
+
+.modal-body {
+    padding: 30px; // More breathing room
+    color: $text-color;
+}
+
+.form-select, .form-control {
+    border-radius: $border-radius;
+    background-color: $input-bg;
+    border: 1px solid #e9ecef;
+    padding: 10px 15px;
+    box-shadow: none;
+    &:focus {
+        border-color: $primary-color;
+        box-shadow: 0 0 0 0.25rem rgba($primary-color, 0.25);
+    }
+}
+
+label {
+    font-weight: 500; // Medium weight labels
+    margin-bottom: 8px;
+    display: block;
+}
+
+/*.btn-primary {
+    background-color: $primary-color;
+    border-color: $primary-color;
+    border-radius: $border-radius;
+    font-weight: 600;
+    padding: 12px 0; // Taller buttons
+    transition: background-color 0.3s;
+    &:hover {
+        background-color: darken($primary-color, 10%);
+        border-color: darken($primary-color, 10%);
+    }
+}*/
+
+/* Ensure spacing between form elements is consistent with your design */
+.g-3 > .col-md-6 {
+    padding-top: 15px;
+    padding-bottom: 15px;
+}
+
+/* Styling for the sign-up link beneath the button */
+p.mt-2 a {
+    color: $primary-color;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+/*Vehicle Identification Report*/
+/* ===== MODAL OVERLAY ===== */
+.atk-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== MODAL BOX ===== */
+.atk-report-modal {
+  background: #ffffff;
+  width: 90%;
+  max-width: 720px;
+  max-height: 85vh;
+  overflow-y: auto;
+  border-radius: 12px;
+  padding: 24px;
+  z-index: 9999;
+}
+
+/* ===== ACTION BUTTONS ===== */
+.atk-report-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+/* ===== REPORT LIST ===== */
+.atk-report-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.atk-report-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+/* ===== VISIBILITY ===== */
+.hidden {
+  display: none !important;
+}
+
+/* ===== PREVENT BACKGROUND SCROLL ===== */
+body.atk-modal-open {
+  overflow: hidden;
+}
+
+@media (max-width: 992px) {
+.atk-vehicle-panel{
+    min-height: 0!important;
+    max-height: 85vh!important;
+    overflow-y: auto!important;
+}
+}
+

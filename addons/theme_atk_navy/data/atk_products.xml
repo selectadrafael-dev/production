@@ -1,0 +1,12 @@
+<odoo>
+  <record id="atk_processing_fee" model="product.product">
+    <field name="name">ATK Vehicle Processing Donation</field>
+    <field name="type">service</field>
+    <field name="list_price">5.0</field>
+    <field name="sale_ok">True</field>
+    <field name="purchase_ok">False</field>
+    <!--Product image -->
+    <field name="image_1920" type="base64"
+           file="theme_atk_navy/static/src/img/donation.png"/>
+  </record>
+</odoo>
