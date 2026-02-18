@@ -21,9 +21,20 @@
             </a>
 
             <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
-           <div class="gifting-search">
-              <t t-call="website_sale.searchbar"/>
-          </div>
+            <div class="gifting-search">
+                <form action="/shop"
+                      method="get"
+                      class="o_wsale_products_search_form">
+
+                  <input type="text"
+                        name="search"
+                        placeholder="Search gifts..."
+                        class="form-control"/>
+
+                  <button type="submit">🔍</button>
+
+                </form>
+              </div>
 
 
             <!-- ACTION ICONS -->

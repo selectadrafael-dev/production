@@ -75,3 +75,25 @@
     text-decoration: none;
     color: #333;
 }
+
+.gifting-search form {
+    display: flex;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.gifting-search input {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    outline: none;
+}
+
+.gifting-search button {
+    padding: 0 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+}
