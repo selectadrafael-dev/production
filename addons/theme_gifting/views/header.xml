@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+  <template id="gifting_navbar"
+            inherit_id="website.navbar"
+            name="Gifting Custom Navbar">
+
+    <xpath expr="//nav" position="replace">
+
+      <nav class="gifting-navbar">
+
+        <div class="gifting-nav-container">
+
+          <!-- ===== TOP ROW ===== -->
+          <div class="gifting-nav-top">
+
+            <!-- LOGO -->
+            <a href="/" class="gifting-logo">
+              <img src="/theme_gifting/static/src/img/logo.png"
+                   alt="Logo"/>
+            </a>
+
+            <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
+            <div class="gifting-search">
+              <t t-call="website_sale.search"/>
+            </div>
+
+            <!-- ACTION ICONS -->
+            <div class="gifting-icons">
+
+              <!-- Wishlist -->
+              <t t-call="website_sale.wishlist"/>
+
+              <!-- Cart -->
+              <t t-call="website_sale.cart"/>
+
+              <!-- Account -->
+              <t t-call="website.user_navbar"/>
+
+            </div>
+
+          </div>
+
+          <!-- ===== SECOND ROW ===== -->
+          <div class="gifting-nav-bottom">
+
+            <div class="gifting-categories">
+              ☰ Kategoriler
+            </div>
+
+            <div class="gifting-links">
+
+              <a href="#">Yeni gelenler</a>
+              <a href="#">Promolar</a>
+              <a href="#">Çok satanlar</a>
+              <a href="#">Xüsusi teklifler</a>
+              <a href="#">Eco friendly</a>
+              <a href="#">Political products</a>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </nav>
+
+    </xpath>
+
+  </template>
+
+</odoo>
