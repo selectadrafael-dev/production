@@ -15,7 +15,8 @@
     ],
     "data": [
         #"views/assets.xml",
-        'views/layout.xml',
+        #'views/layout.xml',
+        'views/theme.xml',
         "views/header.xml",
         "views/hero.xml",
     ],
