@@ -89,11 +89,16 @@
     </section>
   </template>
 
-  <template id="insert_gifting_hero" inherit_id="website.homepage">
-  <xpath expr="//div[@id='wrap']" position="inside">
-    <t t-call="theme_gifting.gifting_hero"/>
+<template id="homepage" inherit_id="website.homepage">
+  <xpath expr="//div[@id='wrap']" position="replace">
+
+    <div id="wrap">
+      <t t-call="theme_gifting.gifting_hero"/>
+    </div>
+
   </xpath>
 </template>
+
 </odoo>
 
 
