@@ -21,9 +21,10 @@
             </a>
 
             <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
-            <div class="gifting-search">
-              <t t-call="website_sale.search"/>
-            </div>
+           <div class="gifting-search">
+              <t t-call="website_sale.searchbar"/>
+          </div>
+
 
             <!-- ACTION ICONS -->
             <div class="gifting-icons">
