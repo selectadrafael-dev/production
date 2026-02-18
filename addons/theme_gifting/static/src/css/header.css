@@ -1,0 +1,77 @@
+.gifting-header {
+    background: #fff;
+    border-bottom: 1px solid #eee;
+}
+
+/* TOP ROW */
+
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+}
+
+.logo img {
+    height: 40px;
+}
+
+/* SEARCH */
+
+.search-box {
+    flex: 1;
+    margin: 0 40px;
+}
+
+.search-box form {
+    display: flex;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.search-box input {
+    flex: 1;
+    padding: 10px;
+    border: none;
+    outline: none;
+}
+
+.search-box button {
+    padding: 0 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+/* ICONS */
+
+.header-icons .icon {
+    margin-left: 18px;
+    font-size: 20px;
+    text-decoration: none;
+}
+
+/* SECOND ROW */
+
+.header-nav {
+    border-top: 1px solid #eee;
+    background: #fff;
+}
+
+.nav-inner {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+}
+
+.categories-btn {
+    font-weight: 600;
+    margin-right: 24px;
+}
+
+.category-links a {
+    margin-right: 20px;
+    text-decoration: none;
+    color: #333;
+}

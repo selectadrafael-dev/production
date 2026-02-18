@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <!-- REPLACE DEFAULT HEADER -->
+  <template id="custom_header" inherit_id="website.layout">
+
+    <xpath expr="//header" position="replace">
+
+      <header class="gifting-header">
+
+        <!-- ===== TOP ROW ===== -->
+        <div class="header-top container">
+
+          <!-- LOGO -->
+          <div class="logo">
+            <a href="/">
+              <img src="/theme_gifting/static/src/img/logo.png"/>
+            </a>
+          </div>
+
+          <!-- CENTER SEARCH -->
+          <div class="search-box">
+            <form action="/shop" method="get">
+              <input type="text" name="search"
+                     placeholder="Ne arıyorsunuz?" />
+              <button type="submit">🔍</button>
+            </form>
+          </div>
+
+          <!-- ACTION ICONS -->
+          <div class="header-icons">
+
+            <!-- Wishlist -->
+            <a href="/shop/wishlist" class="icon">❤️</a>
+
+            <!-- Cart -->
+            <a href="/shop/cart" class="icon">🛒</a>
+
+            <!-- Account -->
+            <a href="/web/login" class="icon">👤</a>
+
+          </div>
+
+        </div>
+
+        <!-- ===== SECOND ROW ===== -->
+        <div class="header-nav">
+
+          <div class="container nav-inner">
+
+            <div class="categories-btn">
+              ☰ Kategoriler
+            </div>
+
+            <nav class="category-links">
+
+              <a href="#">Yeni gelenler</a>
+              <a href="#">Promolar</a>
+              <a href="#">Çok satanlar</a>
+              <a href="#">Xüsusi teklifler</a>
+              <a href="#">Eco friendly</a>
+              <a href="#">Political products</a>
+
+            </nav>
+
+          </div>
+
+        </div>
+
+      </header>
+
+    </xpath>
+
+  </template>
+
+</odoo>
