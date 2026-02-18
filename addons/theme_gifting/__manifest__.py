@@ -12,7 +12,6 @@
         "website_sale_wishlist", 
     ],
     "data": [
-        #"views/assets.xml",
         'views/layout.xml',
         #'views/theme.xml',
         "views/header.xml",
