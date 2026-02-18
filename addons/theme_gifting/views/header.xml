@@ -1,58 +1,54 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-  <!-- REPLACE DEFAULT HEADER -->
-  <template id="custom_header" inherit_id="website.layout">
+  <template id="gifting_navbar"
+            inherit_id="website.navbar"
+            name="Gifting Custom Navbar">
 
-    <xpath expr="//header" position="replace">
+    <xpath expr="//nav" position="replace">
 
-      <header class="gifting-header">
+      <nav class="gifting-navbar">
 
-        <!-- ===== TOP ROW ===== -->
-        <div class="header-top container">
+        <div class="gifting-nav-container">
 
-          <!-- LOGO -->
-          <div class="logo">
-            <a href="/">
-              <img src="/theme_gifting/static/src/img/logo.png"/>
+          <!-- ===== TOP ROW ===== -->
+          <div class="gifting-nav-top">
+
+            <!-- LOGO -->
+            <a href="/" class="gifting-logo">
+              <img src="/theme_gifting/static/src/img/logo.png"
+                   alt="Logo"/>
             </a>
-          </div>
 
-          <!-- CENTER SEARCH -->
-          <div class="search-box">
-            <form action="/shop" method="get">
-              <input type="text" name="search"
-                     placeholder="Ne arıyorsunuz?" />
-              <button type="submit">🔍</button>
-            </form>
-          </div>
+            <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
+            <div class="gifting-search">
+              <t t-call="website_sale.search"/>
+            </div>
 
-          <!-- ACTION ICONS -->
-          <div class="header-icons">
+            <!-- ACTION ICONS -->
+            <div class="gifting-icons">
 
-            <!-- Wishlist -->
-            <a href="/shop/wishlist" class="icon">❤️</a>
+              <!-- Wishlist -->
+              <t t-call="website_sale.wishlist"/>
 
-            <!-- Cart -->
-            <a href="/shop/cart" class="icon">🛒</a>
+              <!-- Cart -->
+              <t t-call="website_sale.cart"/>
 
-            <!-- Account -->
-            <a href="/web/login" class="icon">👤</a>
+              <!-- Account -->
+              <t t-call="website.user_navbar"/>
+
+            </div>
 
           </div>
 
-        </div>
+          <!-- ===== SECOND ROW ===== -->
+          <div class="gifting-nav-bottom">
 
-        <!-- ===== SECOND ROW ===== -->
-        <div class="header-nav">
-
-          <div class="container nav-inner">
-
-            <div class="categories-btn">
+            <div class="gifting-categories">
               ☰ Kategoriler
             </div>
 
-            <nav class="category-links">
+            <div class="gifting-links">
 
               <a href="#">Yeni gelenler</a>
               <a href="#">Promolar</a>
@@ -61,13 +57,13 @@
               <a href="#">Eco friendly</a>
               <a href="#">Political products</a>
 
-            </nav>
+            </div>
 
           </div>
 
         </div>
 
-      </header>
+      </nav>
 
     </xpath>
 
