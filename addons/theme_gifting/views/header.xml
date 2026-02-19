@@ -9,7 +9,8 @@
 
       <nav class="gifting-navbar">
 
-        <div class="gifting-nav-container">
+        <!--div class="gifting-nav-container"-->
+        <div class="gifting-container gifting-nav-container">
 
           <!-- ===== TOP ROW ===== -->
           <div class="gifting-nav-top">
@@ -43,7 +44,11 @@
                 <a href="/shop/wishlist" class="icon">❤️</a>
 
                 <!-- Cart -->
-                <a href="/shop/cart" class="icon">🛒</a>
+               <a href="/shop/cart" class="icon cart-icon">
+                  🛒
+                  <span class="cart-count">0</span>
+                </a>
+
 
                 <!-- Account -->
                 <a href="/web/login" class="icon">👤</a>

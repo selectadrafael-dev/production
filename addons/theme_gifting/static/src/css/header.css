@@ -91,3 +91,38 @@
     color: #333;
     text-decoration: none;
 }
+
+/* GLOBAL LAYOUT CONTAINER */
+
+.gifting-container {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.container {
+    max-width: 1240px !important;
+}
+
+.cart-icon {
+    position: relative;
+}
+
+.cart-count {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    background: #ff4d4f;
+    color: #fff;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 50%;
+    display: none;
+}
+
+/*stucky header*/
+.gifting-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}

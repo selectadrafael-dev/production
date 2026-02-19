@@ -3,10 +3,12 @@
   <template id="gifting_hero" name="Gifting Hero Slider">
     <section class="gifting-hero carousel slide" data-bs-ride="carousel">
 
-      <div class="carousel-inner">
+      <!--div class="carousel-inner"-->
+      <div>
 
         <!-- SLIDE 1 — Your Figma Design -->
-        <div class="carousel-item active">
+        <div class="gifting-container"> <!--replaced carousel wrapper-->
+        <!--div class="carousel-item active gifting-container"-->
           <div class="container hero-content">
             
             <div class="row align-items-center">
@@ -36,7 +38,7 @@
         </div>
 
         <!-- SLIDE 2 — Placeholder -->
-        <div class="carousel-item">
+        <!--div class="carousel-item">
           <div class="container hero-content">
             <div class="row align-items-center">
               <div class="col-lg-6 hero-text">
@@ -52,10 +54,10 @@
               </div>
             </div>
           </div>
-        </div>
+        </div-->
 
         <!-- SLIDE 3 — Placeholder -->
-        <div class="carousel-item">
+        <!--div class="carousel-item">
           <div class="container hero-content">
             <div class="row align-items-center">
               <div class="col-lg-6 hero-text">
@@ -71,7 +73,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </div-->
 
       </div>
 
