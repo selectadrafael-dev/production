@@ -43,8 +43,14 @@
                       <!-- LEFT: TEXT -->
                         <div class="gifting-hero-text">
                           <h1>Branded Solutions That Break Through.</h1>
-                          <p>Elevate your brand with unique experiences…</p>
-                          <a href="/shop" class="btn-primary">Explore</a>
+                          <p>
+                          Elevate your brand with unique experiences that excite
+                          and foster a deeper connection with your employees and customers.
+                        </p>
+
+                          <a href="/shop" class="btn btn-primary hero-btn">
+                            Explore
+                          </a>
                         </div>
                    </div>
                     <!-- RIGHT: IMAGE OUTSIDE CONTAINER -->
