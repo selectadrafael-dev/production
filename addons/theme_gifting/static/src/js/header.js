@@ -1,44 +1,48 @@
-//product category
-document.addEventListener("DOMContentLoaded", function () {
-
-  const btn = document.getElementById("catToggle");
-  const menu = document.getElementById("catDropdown");
-
-  if (!btn || !menu) return;
-
-  btn.addEventListener("click", function (e) {
-    e.stopPropagation();
-    menu.style.display =
-      menu.style.display === "block" ? "none" : "block";
-  });
+odoo.define('theme_gifting.header', function (require) {
+  "use strict";
 
   document.addEventListener("click", function (e) {
-    if (!menu.contains(e.target) && e.target !== btn) {
-      menu.style.display = "none";
+
+    /* =============================
+       CATEGORY DROPDOWN
+    ============================= */
+
+    const catBtn = e.target.closest("#catToggle");
+    const catMenu = document.getElementById("catDropdown");
+
+    if (catBtn && catMenu) {
+      e.stopPropagation();
+
+      catMenu.style.display =
+        catMenu.style.display === "block" ? "none" : "block";
+
+      return;
     }
-  });
 
-});
-
-
-//language translator dropdown
-document.addEventListener("DOMContentLoaded", function () {
-
-  const btn = document.getElementById("langBtn");
-  const menu = document.getElementById("langMenu");
-
-  if (!btn || !menu) return;
-
-  btn.addEventListener("click", function (e) {
-    e.stopPropagation();
-    menu.style.display =
-      menu.style.display === "block" ? "none" : "block";
-  });
-
-  document.addEventListener("click", function (e) {
-    if (!menu.contains(e.target) && e.target !== btn) {
-      menu.style.display = "none";
+    if (catMenu && !e.target.closest("#catDropdown")) {
+      catMenu.style.display = "none";
     }
+
+    /* =============================
+       LANGUAGE DROPDOWN
+    ============================= */
+
+    const langBtn = e.target.closest("#langBtn");
+    const langMenu = document.getElementById("langMenu");
+
+    if (langBtn && langMenu) {
+      e.stopPropagation();
+
+      langMenu.style.display =
+        langMenu.style.display === "block" ? "none" : "block";
+
+      return;
+    }
+
+    if (langMenu && !e.target.closest("#langMenu")) {
+      langMenu.style.display = "none";
+    }
+
   });
 
 });
