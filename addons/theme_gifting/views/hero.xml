@@ -11,10 +11,10 @@
         <!--div class="carousel-item active gifting-container"-->
           <div class="container hero-content">
             
-            <div class="row align-items-center">
+            <!--div class="row align-items-center"-->
 
-              <!-- LEFT TEXT -->
-              <div class="col-lg-6 hero-text">
+              <!--LEFT TEXT-->
+              <!--div class="col-lg-6 hero-text">
                 <h1>Branded Solutions That Break Through.</h1>
 
                 <p>
@@ -25,15 +25,30 @@
                 <a href="/shop" class="btn btn-primary hero-btn">
                   Keşfet
                 </a>
-              </div>
+              </div-->
 
               <!-- RIGHT IMAGES -->
-              <div class="col-lg-6 hero-images">
+              <!--div class="col-lg-6 hero-images">
                 <img src="/theme_gifting/static/src/img/hero1.png" class="img-fluid"/>
               </div>
 
-            </div>
+            </div-->
 
+                <div class="gifting-hero-inner">
+
+                  <!-- LEFT: TEXT -->
+                  <div class="gifting-hero-text">
+                    <h1>Branded Solutions That Break Through.</h1>
+                    <p>Elevate your brand with unique experiences…</p>
+                    <a href="/shop" class="btn-primary">Explore</a>
+                  </div>
+
+                </div>
+
+                <!-- RIGHT: IMAGE OUTSIDE CONTAINER -->
+                <div class="gifting-hero-image">
+                  <img src="/theme_gifting/static/src/img/hero-1.png" alt="Hero"/>
+                </div>
           </div>
         </div>
 

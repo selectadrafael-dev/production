@@ -40,6 +40,8 @@
             <!-- ACTION ICONS -->
               <div class="gifting-icons">
 
+                <t t-call="website.lang_selector"/>
+
                 <!-- Wishlist -->
                 <a href="/shop/wishlist" class="icon">❤️</a>
 
@@ -51,7 +53,39 @@
 
 
                 <!-- Account -->
-                <a href="/web/login" class="icon">👤</a>
+                <div class="gifting-account">
+
+                  <!-- Logged IN -->
+                  <t t-if="request.session.uid">
+
+                    <div class="account-dropdown">
+
+                      <span class="icon">👤 ▾</span>
+
+                      <div class="dropdown-menu">
+
+                        <a href="/my">My Account</a>
+                        <a href="/my/orders">Orders</a>
+                        <a href="/vendor-data">Vendor Data</a>
+                        <a href="/web/session/logout">Logout</a>
+
+                      </div>
+
+                    </div>
+
+                  </t>
+
+                  <!-- NOT logged in -->
+                  <t t-else="">
+
+                    <a href="/web/login" class="login-btn">
+                      Login
+                    </a>
+
+                  </t>
+
+                </div>
+
 
               </div>
 
@@ -60,7 +94,7 @@
           <!-- ===== SECOND ROW ===== -->
           <div class="gifting-nav-bottom">
 
-            <div class="gifting-categories">
+            <!--div class="gifting-categories">
               ☰ Kategoriler
             </div>
 
@@ -70,6 +104,34 @@
               <a href="#">Promolar</a>
               <a href="#">Çok satanlar</a>
               <a href="#">Xüsusi teklifler</a>
+              <a href="#">Eco friendly</a>
+              <a href="#">Political products</a>
+
+            </div-->
+
+             <div class="all-categories">
+
+                <span class="categories-toggle">
+                  ☰ All Categories
+                </span>
+
+                <div class="categories-dropdown">
+
+                  <a href="/shop/category/1">Category 1</a>
+                  <a href="/shop/category/2">Category 2</a>
+                  <a href="/shop/category/3">Category 3</a>
+
+                </div>
+
+            </div>
+            
+
+            <div class="gifting-links">
+
+              <a href="#">New Arrivals</a>
+              <a href="#">Promotions</a>
+              <a href="#">Best Sellers</a>
+              <a href="#">Special Offers</a>
               <a href="#">Eco friendly</a>
               <a href="#">Political products</a>
 

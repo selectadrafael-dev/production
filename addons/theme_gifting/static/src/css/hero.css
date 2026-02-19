@@ -26,3 +26,36 @@
     max-height: 420px;
     object-fit: contain;
 }
+
+.gifting-hero {
+    position: relative;
+    background: #f6f6f6;
+    overflow: hidden;
+}
+
+.gifting-hero-inner {
+    display: flex;
+    align-items: center;
+    min-height: 520px;
+}
+
+/* TEXT SIDE */
+
+.gifting-hero-text {
+    max-width: 520px;
+    z-index: 2;
+}
+
+/* IMAGE SIDE */
+
+.gifting-hero-image {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+}
+
+.gifting-hero-image img {
+    height: 100%;
+    object-fit: contain;
+}
