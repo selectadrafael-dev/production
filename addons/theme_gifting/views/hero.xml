@@ -12,7 +12,6 @@
           <div class="container hero-content">
             
             <!--div class="row align-items-center"-->
-
               <!--LEFT TEXT-->
               <!--div class="col-lg-6 hero-text">
                 <h1>Branded Solutions That Break Through.</h1>
@@ -31,25 +30,22 @@
               <!--div class="col-lg-6 hero-images">
                 <img src="/theme_gifting/static/src/img/hero1.png" class="img-fluid"/>
               </div>
-
             </div-->
 
-                <div class="gifting-hero-inner">
+                    <div class="gifting-hero-inner">
+                      <!-- LEFT: TEXT -->
+                        <div class="gifting-hero-text">
+                          <h1>Branded Solutions That Break Through.</h1>
+                          <p>Elevate your brand with unique experiences…</p>
+                          <a href="/shop" class="btn-primary">Explore</a>
+                        </div>
+                    </div>
 
-                  <!-- LEFT: TEXT -->
-                  <div class="gifting-hero-text">
-                    <h1>Branded Solutions That Break Through.</h1>
-                    <p>Elevate your brand with unique experiences…</p>
-                    <a href="/shop" class="btn-primary">Explore</a>
-                  </div>
-
+                        <!-- RIGHT: IMAGE OUTSIDE CONTAINER -->
+                    <div class="gifting-hero-image">
+                        <img src="/theme_gifting/static/src/img/hero-1.png" alt="Hero"/>
+                    </div>
                 </div>
-
-                <!-- RIGHT: IMAGE OUTSIDE CONTAINER -->
-                <div class="gifting-hero-image">
-                  <img src="/theme_gifting/static/src/img/hero-1.png" alt="Hero"/>
-                </div>
-          </div>
         </div>
 
         <!-- SLIDE 2 — Placeholder -->

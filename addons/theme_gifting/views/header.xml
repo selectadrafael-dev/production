@@ -58,7 +58,7 @@
                   </div-->
 
                   <!--recommended language switcher-->
-                    <!--div class="language-dropdown">
+                    <div class="language-dropdown">
 
                     <span class="lang-current">
                       <t t-esc="request.lang.upper()"/> ▾
@@ -76,7 +76,7 @@
 
                     </div>
 
-                  </div-->
+                  </div>
 
 
                 <!-- Wishlist -->
