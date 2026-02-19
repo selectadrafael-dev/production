@@ -146,71 +146,67 @@
 
             <div class="all-categories">
 
-                <span class="categories-toggle">
-                  ☰ All Categories
-                </span>
+              <span class="categories-toggle">
+                ☰ All Categories
+              </span>
 
-                <div class="categories-dropdown">
+              <div class="categories-dropdown">
 
-                  <!-- FETCH PUBLISHED ROOT CATEGORIES -->
-                  <t t-set="categories"
-                    t-value="request.env['product.public.category']
-                              .sudo()
-                              .search([
-                                  ('is_published','=',True),
-                                  ('parent_id','=',False)
-                              ])"/>
+                <!-- FETCH ROOT CATEGORIES -->
+                <t t-set="categories"
+                  t-value="request.env['product.public.category']
+                            .sudo()
+                            .search([
+                                ('parent_id','=',False)
+                            ])"/>
 
-                  <t t-if="categories">
+                <t t-if="categories">
 
-                    <t t-foreach="categories" t-as="cat">
+                  <t t-foreach="categories" t-as="cat">
 
-                      <div class="category-item">
+                    <div class="category-item">
 
-                        <!-- PARENT -->
-                        <a t-att-href="'/shop/category/%s' % cat.id"
-                          class="category-parent">
-                          <t t-esc="cat.name"/>
-                        </a>
+                      <!-- PARENT -->
+                      <a t-att-href="'/shop/category/%s' % cat.id"
+                        class="category-parent">
+                        <t t-esc="cat.name"/>
+                      </a>
 
-                        <!-- CHILDREN -->
-                        <t t-if="cat.child_id">
+                      <!-- CHILDREN -->
+                      <t t-if="cat.child_id">
 
-                          <div class="subcategory-list">
+                        <div class="subcategory-list">
 
-                            <t t-foreach="cat.child_id.filtered(lambda c: c.is_published)"
-                              t-as="child">
+                          <t t-foreach="cat.child_id" t-as="child">
 
-                              <a t-att-href="'/shop/category/%s' % child.id"
-                                class="subcategory">
-                                <t t-esc="child.name"/>
-                              </a>
+                            <a t-att-href="'/shop/category/%s' % child.id"
+                              class="subcategory">
+                              <t t-esc="child.name"/>
+                            </a>
 
-                            </t>
+                          </t>
 
-                          </div>
+                        </div>
 
-                        </t>
+                      </t>
 
-                      </div>
-
-                    </t>
-
-                  </t>
-
-                  <t t-else="">
-                    <div class="no-categories">
-                      No categories available
                     </div>
+
                   </t>
 
-                </div>
+                </t>
+
+                <t t-else="">
+                  <div class="no-categories">
+                    No categories available
+                  </div>
+                </t>
 
               </div>
 
+            </div>
 
-
-            <div class="gifting-links">
+           
 
               <a href="#">New Arrivals</a>
               <a href="#">Promotions</a>
