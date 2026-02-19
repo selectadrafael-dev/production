@@ -61,7 +61,8 @@
                    <div class="lang-switcher">
 
                     <button id="langBtn" class="lang-btn">
-                      <t t-esc="request.env.lang.code.upper()"/> ▼
+                      <t t-esc="request.env.lang.split('_')[0].upper()"/>
+                       ▼
                     </button>
 
                     <div id="langMenu" class="lang-menu">
