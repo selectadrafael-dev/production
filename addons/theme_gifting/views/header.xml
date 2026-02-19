@@ -37,11 +37,10 @@
                 </form>
               </div>
 
-            <!-- ACTION ICONS -->
+              <!-- ACTION ICONS -->
               <div class="gifting-icons">
 
-                <!--t t-call="website.lang_selector"/-->
-
+              <!--t t-call="website.lang_selector"/-->
                 <!--div class="language-switcher">
 
                     <t t-foreach="request.website.language_ids" t-as="lang">
@@ -52,14 +51,11 @@
                         <t t-esc="lang.code.upper()"/>
 
                       </a>
-
                     </t>
-
                   </div-->
 
                   <!--recommended language switcher-->
                    <div class="lang-switcher">
-
                     <button id="langBtn" class="lang-btn">
                       <t t-esc="request.env.lang.split('_')[0].upper()"/>
                        ▼
@@ -75,9 +71,7 @@
                         </a>
 
                       </t>
-
                     </div>
-
                   </div>
 
                 <!-- Wishlist -->
