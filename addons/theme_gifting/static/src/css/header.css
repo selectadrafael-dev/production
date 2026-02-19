@@ -157,102 +157,67 @@
 }
 
 /*product category*/
-/*.all-categories {
-    position: relative;
-    font-weight: 600;
+.gifting-categories {
+  position: relative;
 }
 
-.categories-dropdown {
-    display: none;
-    position: absolute;
-    top: 36px;
-    left: 0;
-    background: #fff;
-    border: 1px solid #eee;
-    width: 260px;
-    box-shadow: 0 8px 30px rgba(0,0,0,.1);
+.cat-btn {
+  background: none;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.all-categories:hover .categories-dropdown {
-    display: block;
+.cat-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 260px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #eee;
+  box-shadow: 0 10px 30px rgba(0,0,0,.1);
+  display: none;
+  z-index: 9999;
 }
 
-.categories-dropdown a {
-    display: block;
-    padding: 12px 16px;
-    text-decoration: none;
-    color: #333;
-}*/
-
-.all-categories {
-    position: relative;
-    font-weight: 600;
-    cursor: pointer;
+.cat-dropdown a {
+  display: block;
+  padding: 10px 16px;
+  text-decoration: none;
+  color: #333;
 }
 
-/* DROPDOWN PANEL */
-
-.categories-dropdown {
-    display: none;
-    position: absolute;
-    top: 42px;
-    left: 0;
-    background: #fff;
-    width: 300px;
-    border: 1px solid #eee;
-    box-shadow: 0 14px 40px rgba(0,0,0,.12);
-    padding: 8px 0;
-    z-index: 999;
+.cat-dropdown a:hover {
+  background: #f5f5f5;
 }
-
-/* SHOW ON HOVER (or change to click via JS later) */
-
-.all-categories:hover .categories-dropdown {
-    display: block;
-}
-
-/* PARENT */
-
-.category-parent {
-    display: block;
-    padding: 12px 18px;
-    font-weight: 600;
-    color: #333;
-    text-decoration: none;
-}
-
-/* CHILD */
-
-.subcategory-list a {
-    display: block;
-    padding: 8px 24px;
-    font-size: 14px;
-    color: #666;
-    text-decoration: none;
-}
-
-/* EMPTY STATE */
-
-.no-categories {
-    padding: 14px 18px;
-    color: #999;
-}
-
 
 /*language selector*/
-.language-switcher {
-    display: flex;
-    gap: 10px;
-    margin-right: 16px;
+.lang-switcher {
+  position: relative;
 }
 
-.language-switcher a {
-    font-size: 13px;
-    text-decoration: none;
-    color: #333;
+.lang-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: #fff;
+  border: 1px solid #eee;
+  box-shadow: 0 10px 30px rgba(0,0,0,.1);
+  min-width: 180px;
+  z-index: 9999;
 }
 
-.language-switcher a.active {
-    font-weight: 600;
-    color: #2ecc71;
+.lang-menu a {
+  display: block;
+  padding: 10px 14px;
+  text-decoration: none;
+  color: #333;
 }
+
+.lang-menu a:hover {
+  background: #f5f5f5;
+}
+

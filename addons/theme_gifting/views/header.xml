@@ -58,19 +58,18 @@
                   </div-->
 
                   <!--recommended language switcher-->
-                    <div class="language-dropdown">
+                   <div class="lang-switcher">
 
-                    <span class="lang-current">
-            
-                      <t t-esc="request.env.lang.upper()"/> ▾
+                    <button id="langBtn" class="lang-btn">
+                      <t t-esc="request.env.lang.code.upper()"/> ▼
+                    </button>
 
-                    </span>
+                    <div id="langMenu" class="lang-menu">
 
-                    <div class="lang-menu">
+                      <t t-foreach="request.env['res.lang'].sudo().search([('active','=',True)])"
+                        t-as="lang">
 
-                      <t t-foreach="request.website.language_ids" t-as="lang">
-
-                        <a t-att-href="'/web/session/change_lang/%s' % lang.code">
+                        <a t-att-href="'/?lang=%s' % lang.code">
                           <t t-esc="lang.name"/>
                         </a>
 
@@ -79,7 +78,6 @@
                     </div>
 
                   </div>
-
 
                 <!-- Wishlist -->
                 <a href="/shop/wishlist" class="icon">❤️</a>
@@ -146,68 +144,32 @@
 
             </div-->
 
-            <div class="all-categories">
+              <div class="gifting-categories">
 
-                <span class="categories-toggle">
+                <button id="catToggle" class="cat-btn">
                   ☰ All Categories
-                </span>
+                </button>
 
-                <div class="categories-dropdown">
+                <div id="catDropdown" class="cat-dropdown">
 
-                  <!-- FETCH ROOT CATEGORIES -->
                   <t t-set="categories"
-                    t-value="request.env['product.public.category']
-                              .sudo()
-                              .search([
-                                  ('parent_id','=',False)
-                              ])"/>
+                    t-value="request.env['product.public.category'].sudo().search([])"/>
 
                   <t t-if="categories">
-
                     <t t-foreach="categories" t-as="cat">
-
-                      <div class="category-item">
-
-                        <!-- PARENT -->
-                        <a t-att-href="'/shop/category/%s' % cat.id"
-                          class="category-parent">
-                          <t t-esc="cat.name"/>
-                        </a>
-
-                        <!-- CHILDREN -->
-                        <t t-if="cat.child_id">
-
-                          <div class="subcategory-list">
-
-                            <t t-foreach="cat.child_id" t-as="child">
-
-                              <a t-att-href="'/shop/category/%s' % child.id"
-                                class="subcategory">
-                                <t t-esc="child.name"/>
-                              </a>
-
-                            </t>
-
-                          </div>
-
-                        </t>
-
-                      </div>
-
+                      <a t-att-href="'/shop/category/%s' % cat.id">
+                        <t t-esc="cat.name"/>
+                      </a>
                     </t>
-
                   </t>
 
-                  <t t-else="">
-                    <div class="no-categories">
-                      No categories available
-                    </div>
+                  <t t-if="not categories">
+                    <span>No categories</span>
                   </t>
 
                 </div>
 
               </div>
-
 
             <div class="gifting-links">
 

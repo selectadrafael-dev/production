@@ -7,35 +7,6 @@
       <div> <!--replace carousel inner div-->
 
         <!-- SLIDE 1 — Your Figma Design -->
-        <!--div class="carousel-item active">
-          <div class="container hero-content">
-            
-            <div class="row align-items-center">
-
-              <!-LEFT TEXT -->
-              <!--div class="col-lg-6 hero-text">
-                <h1>Branded Solutions That Break Through.</h1>
-
-                <p>
-                  Elevate your brand with unique experiences that excite
-                  and foster a deeper connection with your employees and customers.
-                </p>
-
-                <a href="/shop" class="btn btn-primary hero-btn">
-                  Keşfet
-                </a>
-              </div-->
-
-              <!-- RIGHT IMAGES -->
-              <!--div class="col-lg-6 hero-images">
-                <img src="/theme_gifting/static/src/img/hero1.png" class="img-fluid"/>
-              </div-->
-
-            <!--/div>
-
-          </div>
-        </div-->
-
          <!--div class="carousel-item active"-->
             <div class="gifting-container"> 
               <div class="container hero-content">
