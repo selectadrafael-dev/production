@@ -57,6 +57,27 @@
 
                   </div-->
 
+                  <!--recommended language switcher-->
+                    <!--div class="language-dropdown">
+
+                    <span class="lang-current">
+                      <t t-esc="request.lang.upper()"/> ▾
+                    </span>
+
+                    <div class="lang-menu">
+
+                      <t t-foreach="request.website.language_ids" t-as="lang">
+
+                        <a t-att-href="'/web/session/change_lang/%s' % lang.code">
+                          <t t-esc="lang.name"/>
+                        </a>
+
+                      </t>
+
+                    </div>
+
+                  </div-->
+
 
                 <!-- Wishlist -->
                 <a href="/shop/wishlist" class="icon">❤️</a>
@@ -125,71 +146,68 @@
 
             <div class="all-categories">
 
-              <!-- TOGGLE BUTTON -->
-              <span class="categories-toggle">
-                ☰ All Categories
-              </span>
+                <span class="categories-toggle">
+                  ☰ All Categories
+                </span>
 
-              <!-- DROPDOWN PANEL -->
-              <div class="categories-dropdown">
+                <div class="categories-dropdown">
 
-                <!-- FETCH TOP-LEVEL PUBLISHED CATEGORIES -->
-                <t t-set="categories"
-                  t-value="request.env['product.public.category']
-                            .sudo()
-                            .search([
-                                ('website_published','=',True),
-                                ('parent_id','=',False)
-                            ])"/>
+                  <!-- FETCH PUBLISHED ROOT CATEGORIES -->
+                  <t t-set="categories"
+                    t-value="request.env['product.public.category']
+                              .sudo()
+                              .search([
+                                  ('is_published','=',True),
+                                  ('parent_id','=',False)
+                              ])"/>
 
-                <!-- SAFE: Only render if categories exist -->
-                <t t-if="categories">
+                  <t t-if="categories">
 
-                  <t t-foreach="categories" t-as="cat">
+                    <t t-foreach="categories" t-as="cat">
 
-                    <div class="category-item">
+                      <div class="category-item">
 
-                      <!-- PARENT CATEGORY -->
-                      <a t-att-href="'/shop/category/%s' % cat.id"
-                        class="category-parent">
-                        <t t-esc="cat.name"/>
-                      </a>
+                        <!-- PARENT -->
+                        <a t-att-href="'/shop/category/%s' % cat.id"
+                          class="category-parent">
+                          <t t-esc="cat.name"/>
+                        </a>
 
-                      <!-- CHILD CATEGORIES (SAFE) -->
-                      <t t-if="cat.child_id">
+                        <!-- CHILDREN -->
+                        <t t-if="cat.child_id">
 
-                        <div class="subcategory-list">
+                          <div class="subcategory-list">
 
-                          <t t-foreach="cat.child_id.filtered(lambda c: c.website_published)"
-                            t-as="child">
+                            <t t-foreach="cat.child_id.filtered(lambda c: c.is_published)"
+                              t-as="child">
 
-                            <a t-att-href="'/shop/category/%s' % child.id"
-                              class="subcategory">
-                              <t t-esc="child.name"/>
-                            </a>
+                              <a t-att-href="'/shop/category/%s' % child.id"
+                                class="subcategory">
+                                <t t-esc="child.name"/>
+                              </a>
 
-                          </t>
+                            </t>
 
-                        </div>
+                          </div>
 
-                      </t>
+                        </t>
 
-                    </div>
+                      </div>
+
+                    </t>
 
                   </t>
 
-                </t>
+                  <t t-else="">
+                    <div class="no-categories">
+                      No categories available
+                    </div>
+                  </t>
 
-                <!-- OPTIONAL: EMPTY STATE -->
-                <t t-else="">
-                  <div class="no-categories">
-                    No categories available
-                  </div>
-                </t>
+                </div>
 
               </div>
 
-            </div>
 
 
             <div class="gifting-links">
