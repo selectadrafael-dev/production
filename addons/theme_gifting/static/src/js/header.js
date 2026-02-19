@@ -12,27 +12,33 @@ document.addEventListener("DOMContentLoaded", function () {
       menu.style.display === "block" ? "none" : "block";
   });
 
-  document.addEventListener("click", function () {
-    menu.style.display = "none";
+  document.addEventListener("click", function (e) {
+    if (!menu.contains(e.target) && e.target !== btn) {
+      menu.style.display = "none";
+    }
   });
 
 });
 
+
 //language translator dropdown
-const langBtn = document.getElementById("langBtn");
-const langMenu = document.getElementById("langMenu");
+document.addEventListener("DOMContentLoaded", function () {
 
-if (langBtn && langMenu) {
+  const btn = document.getElementById("langBtn");
+  const menu = document.getElementById("langMenu");
 
-  langBtn.addEventListener("click", function (e) {
+  if (!btn || !menu) return;
+
+  btn.addEventListener("click", function (e) {
     e.stopPropagation();
-    langMenu.style.display =
-      langMenu.style.display === "block" ? "none" : "block";
+    menu.style.display =
+      menu.style.display === "block" ? "none" : "block";
   });
 
-  document.addEventListener("click", function () {
-    langMenu.style.display = "none";
+  document.addEventListener("click", function (e) {
+    if (!menu.contains(e.target) && e.target !== btn) {
+      menu.style.display = "none";
+    }
   });
 
-}
-
+});

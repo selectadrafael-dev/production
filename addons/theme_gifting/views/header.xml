@@ -40,37 +40,28 @@
               <!-- ACTION ICONS -->
               <div class="gifting-icons">
                   <!--recommended language switcher-->
-                   <div class="lang-switcher">
-                      <button class="lang-btn">
+                  <div class="lang-switcher">
+
+                      <button id="langBtn" class="lang-btn">
                         <t t-esc="request.env.lang.split('_')[0].upper()"/> ▼
                       </button>
 
+                      <div id="langMenu" class="lang-menu">
 
-                    <!--div id="langMenu" class="lang-menu">
-                          <t t-foreach="request.env['res.lang'].search([('active','=',True)])" t-as="lang">
-                              <a t-att-href="'/website/lang/%s' % lang.code"
-                                class="lang-item">
+                        <t t-foreach="request.env['res.lang'].search([('active','=',True)])" t-as="lang">
 
-                                <t t-esc="lang.name"/>
-                              </a>
-                            </t>
-                    </div-->
+                          <a t-att-href="'/website/lang/%s' % lang.code"
+                            class="lang-item">
 
-                      <div class="lang-panel">
-                          <t t-foreach="request.env['res.lang'].search([('active','=',True)])" t-as="lang">
+                            <t t-esc="lang.name"/>
 
-                            <a t-att-href="'/website/lang/%s' % lang.code"
-                              class="lang-item">
+                          </a>
 
-                              <t t-esc="lang.name"/>
+                        </t>
 
-                            </a>
+                      </div>
+                    </div>
 
-                          </t>
-
-                        </div>
-
-                  </div>
 
                 <!-- Wishlist -->
                 <a href="/shop/wishlist" class="icon">❤️</a>
@@ -157,12 +148,13 @@
                   </t>
 
                   <t t-if="not categories">
-                    <span>No categories</span>
+                    <span class="empty">No categories</span>
                   </t>
 
                 </div>
 
               </div>
+
 
             <div class="gifting-links">
 
