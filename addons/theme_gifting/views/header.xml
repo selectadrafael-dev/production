@@ -85,10 +85,20 @@
 
                       <div class="dropdown-menu">
 
-                        <a href="/my">My Account</a>
-                        <a href="/my/orders">Orders</a>
-                        <a href="/vendor-data">Vendor Data</a>
-                        <a href="/web/session/logout">Logout</a>
+                        <a href="/my">
+                        
+                          <t t-esc="_('My Account')"/>
+                        </a>
+                        <a href="/my/orders">
+                           <t t-esc="_('Orders')"/>
+                        </a>
+                        <a href="/vendor-data">
+                          <t t-esc="_('Vendor Data')"/>
+                        </a>
+                        <a href="/web/session/logout">
+                       
+                          <t t-esc="_('Logout')"/>
+                        </a>
 
                       </div>
 
@@ -100,7 +110,7 @@
                   <t t-else="">
 
                     <a href="/web/login" class="login-btn">
-                      Login
+                       <t t-esc="_('Login')"/>
                     </a>
 
                   </t>
@@ -129,42 +139,89 @@
 
             </div-->
 
-              <div class="gifting-categories">
+            <div class="gifting-categories">
 
-                <button id="catToggle" class="cat-btn">
-                  ☰ All Categories
-                </button>
+              <!-- Toggle -->
+              <button class="cat-btn" data-cat-toggle>
+                ☰ <t t-esc="_('All Categories')"/>
+              </button>
 
-                <div id="catDropdown" class="cat-dropdown">
+              <!-- Dropdown -->
+              <div class="cat-dropdown"
+                  data-cat-menu
+                  hidden>
 
-                  <t t-set="categories"
-                    t-value="request.env['product.public.category'].sudo().search([])"/>
+                <!-- TOP LEVEL CATEGORIES ONLY -->
+                <t t-set="cats"
+                  t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
 
-                  <t t-if="categories">
-                    <t t-foreach="categories" t-as="cat">
-                      <a t-att-href="'/shop/category/%s' % cat.id">
-                        <t t-esc="cat.name"/>
+                <t t-if="cats">
+
+                  <t t-foreach="cats" t-as="c">
+
+                    <div class="cat-group">
+
+                      <!-- Parent -->
+                      <a t-att-href="'/shop/category/%s' % c.id"
+                        class="cat-parent">
+
+                        <t t-esc="c.name"/>
+
                       </a>
-                    </t>
+
+                      <!-- Children -->
+                      <t t-if="c.child_id">
+
+                        <t t-foreach="c.child_id" t-as="sub">
+
+                          <a t-att-href="'/shop/category/%s' % sub.id"
+                            class="cat-child">
+
+                            <t t-esc="sub.name"/>
+
+                          </a>
+
+                        </t>
+
+                      </t>
+
+                    </div>
+
                   </t>
 
-                  <t t-if="not categories">
-                    <span class="empty">No categories</span>
-                  </t>
+                </t>
 
-                </div>
+                <t t-if="not cats">
+                  <div class="empty">
+                    <t t-esc="_('No categories available')"/>
+                  </div>
+                </t>
 
               </div>
 
+            </div>
 
+              
             <div class="gifting-links">
 
-              <a href="#">New Arrivals</a>
-              <a href="#">Promotions</a>
-              <a href="#">Best Sellers</a>
-              <a href="#">Special Offers</a>
-              <a href="#">Eco friendly</a>
-              <a href="#">Political products</a>
+              <a href="#">
+                <t t-esc="_('New Arrivals')"/>
+              </a>
+              <a href="#">
+                  <t t-esc="_('Promotions')"/>
+              </a>
+              <a href="#">
+                <t t-esc="_('Best Sellers')"/>
+              </a>
+              <a href="#">
+                 <t t-esc="_('Special Offers')"/>
+              </a>
+              <a href="#">
+                  <t t-esc="_('Eco friendly')"/>
+              </a>
+              <a href="#">
+                  <t t-esc="_(' Political products')"/>
+              </a>
 
             </div>
 

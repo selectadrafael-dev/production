@@ -1,48 +1,37 @@
-odoo.define('theme_gifting.header', function (require) {
-  "use strict";
+(function () {
+  'use strict';
 
-  document.addEventListener("click", function (e) {
+  function getCatMenu() {
+    return document.querySelector('[data-cat-menu]');
+  }
 
-    /* =============================
-       CATEGORY DROPDOWN
-    ============================= */
+  document.addEventListener('click', function (e) {
 
-    const catBtn = e.target.closest("#catToggle");
-    const catMenu = document.getElementById("catDropdown");
+    const trigger = e.target.closest('[data-cat-toggle]');
+    const menu = getCatMenu();
 
-    if (catBtn && catMenu) {
-      e.stopPropagation();
+    /* OPEN / CLOSE */
+    if (trigger) {
 
-      catMenu.style.display =
-        catMenu.style.display === "block" ? "none" : "block";
+      e.preventDefault();
 
-      return;
-    }
+      if (!menu) {
+        console.error('[CAT] Menu not found');
+        return;
+      }
 
-    if (catMenu && !e.target.closest("#catDropdown")) {
-      catMenu.style.display = "none";
-    }
-
-    /* =============================
-       LANGUAGE DROPDOWN
-    ============================= */
-
-    const langBtn = e.target.closest("#langBtn");
-    const langMenu = document.getElementById("langMenu");
-
-    if (langBtn && langMenu) {
-      e.stopPropagation();
-
-      langMenu.style.display =
-        langMenu.style.display === "block" ? "none" : "block";
+      menu.hidden = !menu.hidden;
 
       return;
     }
 
-    if (langMenu && !e.target.closest("#langMenu")) {
-      langMenu.style.display = "none";
+    /* CLOSE OUTSIDE */
+    if (menu && !menu.hidden) {
+      if (!e.target.closest('[data-cat-menu]')) {
+        menu.hidden = true;
+      }
     }
 
   });
 
-});
+})();

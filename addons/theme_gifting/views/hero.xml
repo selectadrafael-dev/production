@@ -12,7 +12,7 @@
               <div class="container hero-content">
                    <div class="gifting-hero-inner">
                       <!-- LEFT: TEXT -->
-                        <div class="gifting-hero-text">
+                        <div class="gifting-hero-text" t-translation="on">
                             <h1>Branded Solutions That Break Through.</h1>
                             <p>
                             Elevate your brand with unique experiences that excite
