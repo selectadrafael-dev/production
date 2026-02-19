@@ -39,39 +39,37 @@
 
               <!-- ACTION ICONS -->
               <div class="gifting-icons">
-
-              <!--t t-call="website.lang_selector"/-->
-                <!--div class="language-switcher">
-
-                    <t t-foreach="request.website.language_ids" t-as="lang">
-
-                      <a t-att-href="'/web/session/change_lang/%s' % lang.code"
-                        t-att-class="'active' if lang.code == request.lang else ''">
-
-                        <t t-esc="lang.code.upper()"/>
-
-                      </a>
-                    </t>
-                  </div-->
-
                   <!--recommended language switcher-->
                    <div class="lang-switcher">
-                    <button id="langBtn" class="lang-btn">
-                      <t t-esc="request.env.lang.split('_')[0].upper()"/>
-                       ▼
-                    </button>
+                      <button class="lang-btn">
+                        <t t-esc="request.env.lang.split('_')[0].upper()"/> ▼
+                      </button>
 
-                    <div id="langMenu" class="lang-menu">
 
-                      <t t-foreach="request.env['res.lang'].sudo().search([('active','=',True)])"
-                        t-as="lang">
+                    <!--div id="langMenu" class="lang-menu">
+                          <t t-foreach="request.env['res.lang'].search([('active','=',True)])" t-as="lang">
+                              <a t-att-href="'/website/lang/%s' % lang.code"
+                                class="lang-item">
 
-                        <a t-att-href="'/?lang=%s' % lang.code">
-                          <t t-esc="lang.name"/>
-                        </a>
+                                <t t-esc="lang.name"/>
+                              </a>
+                            </t>
+                    </div-->
 
-                      </t>
-                    </div>
+                      <div class="lang-panel">
+                          <t t-foreach="request.env['res.lang'].search([('active','=',True)])" t-as="lang">
+
+                            <a t-att-href="'/website/lang/%s' % lang.code"
+                              class="lang-item">
+
+                              <t t-esc="lang.name"/>
+
+                            </a>
+
+                          </t>
+
+                        </div>
+
                   </div>
 
                 <!-- Wishlist -->
