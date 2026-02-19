@@ -40,7 +40,7 @@
               <!-- ACTION ICONS -->
               <div class="gifting-icons">
                   <!--recommended language switcher-->
-                  <div class="lang-switcher">
+                  <!--div class="lang-switcher">
 
                       <button id="langBtn" class="lang-btn">
                         <t t-esc="request.env.lang.split('_')[0].upper()"/> ▼
@@ -60,8 +60,9 @@
                         </t>
 
                       </div>
-                    </div>
+                    </div-->
 
+                <t t-call="website.language_selector"/>
 
                 <!-- Wishlist -->
                 <a href="/shop/wishlist" class="icon">❤️</a>
