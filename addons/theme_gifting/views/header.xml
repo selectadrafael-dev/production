@@ -142,14 +142,14 @@
             <div class="gifting-categories">
 
               <!-- Toggle -->
-              <button class="cat-btn" data-cat-toggle>
+              <button class="cat-btn" data-cat-toggle="1">
                 ☰ <t t-esc="_('All Categories')"/>
               </button>
 
               <!-- Dropdown -->
               <div class="cat-dropdown"
-                  data-cat-menu
-                  hidden>
+                  data-cat-menu="1"
+                  hidden="hidden">
 
                 <!-- TOP LEVEL CATEGORIES ONLY -->
                 <t t-set="cats"
