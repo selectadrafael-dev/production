@@ -59,3 +59,27 @@
     height: 100%;
     object-fit: contain;
 }
+
+@media(max-width: 992px) {
+   .gifting-hero-image {
+        position: relative;
+    }
+    .gifting-hero-inner {
+        display: block;
+       align-items: center;
+        min-height: auto;
+        margin-bottom: 50px;
+    }
+
+    @media(max-width: 768px) {
+        .gifting-hero-image img {
+            height: 100%;
+            object-fit: contain;
+            width: 95%;
+            margin: 0 auto;
+        }
+        .gifting-hero {
+            padding: 50px 0;
+        }
+    }
+}

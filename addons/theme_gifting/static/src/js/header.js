@@ -1,6 +1,10 @@
 (function () {
   'use strict';
 
+  /* =========================
+     CATEGORY MENU
+  ========================= */
+
   function getCatMenu() {
     return document.querySelector('[data-cat-menu]');
   }
@@ -10,22 +14,16 @@
     const trigger = e.target.closest('[data-cat-toggle]');
     const menu = getCatMenu();
 
-    /* OPEN / CLOSE */
     if (trigger) {
 
       e.preventDefault();
 
-      if (!menu) {
-        console.error('[CAT] Menu not found');
-        return;
-      }
+      if (!menu) return;
 
       menu.hidden = !menu.hidden;
-
       return;
     }
 
-    /* CLOSE OUTSIDE */
     if (menu && !menu.hidden) {
       if (!e.target.closest('[data-cat-menu]')) {
         menu.hidden = true;
