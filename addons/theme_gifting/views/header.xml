@@ -85,32 +85,28 @@
 
                       <div class="dropdown-menu">
 
-                        <a href="/my">
+                        <a href="/my"  t-translation="on">
                         
-                          <t t-esc="_('My Account')"/>
+                         My Account
                         </a>
-                        <a href="/my/orders">
-                           <t t-esc="_('Orders')"/>
+                        <a href="/my/orders"  t-translation="on">
+                           Orders
                         </a>
-                        <a href="/vendor-data">
-                          <t t-esc="_('Vendor Data')"/>
+                        <a href="/vendor-data"  t-translation="on">
+                          Vendor Data
                         </a>
-                        <a href="/web/session/logout">
-                       
-                          <t t-esc="_('Logout')"/>
+                        <a href="/web/session/logout"  t-translation="on">
+                         Logout
                         </a>
-
                       </div>
-
                     </div>
-
                   </t>
 
                   <!-- NOT logged in -->
                   <t t-else="">
 
-                    <a href="/web/login" class="login-btn">
-                       <t t-esc="_('Login')"/>
+                    <a href="/web/login" class="login-btn"  t-translation="on">
+                       Login
                     </a>
 
                   </t>
@@ -142,8 +138,8 @@
             <div class="gifting-categories">
 
               <!-- Toggle -->
-              <button class="cat-btn" data-cat-toggle="1">
-                ☰ <t t-esc="_('All Categories')"/>
+              <button class="cat-btn" data-cat-toggle="1" t-translation="on">
+                ☰ All Categories
               </button>
 
               <!-- Dropdown -->
@@ -192,8 +188,8 @@
                 </t>
 
                 <t t-if="not cats">
-                  <div class="empty">
-                    <t t-esc="_('No categories available')"/>
+                  <div class="empty" t-translation="on">
+                    No categories available
                   </div>
                 </t>
 
@@ -202,25 +198,25 @@
             </div>
 
               
-            <div class="gifting-links">
+            <div class="gifting-links" t-translation="on">
 
-              <a href="#">
-                <t t-esc="_('New Arrivals')"/>
+              <a href="#"  t-translation="on">
+                New Arrivals
               </a>
-              <a href="#">
-                  <t t-esc="_('Promotions')"/>
+              <a href="#"  t-translation="on">
+                  Promotions
               </a>
-              <a href="#">
-                <t t-esc="_('Best Sellers')"/>
+              <a href="#"  t-translation="on">
+                Best Sellers
               </a>
-              <a href="#">
-                 <t t-esc="_('Special Offers')"/>
+              <a href="#"  t-translation="on">
+                Special Offers
               </a>
-              <a href="#">
-                  <t t-esc="_('Eco friendly')"/>
+              <a href="#"  t-translation="on">
+                 Eco friendly
               </a>
-              <a href="#">
-                  <t t-esc="_(' Political products')"/>
+              <a href="#"  t-translation="on">
+                  Political products
               </a>
 
             </div>
