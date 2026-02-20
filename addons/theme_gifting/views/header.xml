@@ -138,7 +138,7 @@
             <div class="gifting-categories">
 
               <button class="cat-btn">
-                ☰ <t t-esc="_('All Categories')"/>
+                ☰ All Categories
               </button>
 
               <div class="cat-mega">
