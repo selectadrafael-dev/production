@@ -137,65 +137,56 @@
 
             <div class="gifting-categories">
 
-              <!-- Toggle -->
-              <button class="cat-btn" data-cat-toggle="1" t-translation="on">
-                ☰ All Categories
+              <button class="cat-btn">
+                ☰ <t t-esc="_('All Categories')"/>
               </button>
 
-              <!-- Dropdown -->
-              <div class="cat-dropdown"
-                  data-cat-menu="1"
-                  hidden="hidden">
+              <div class="cat-mega">
 
-                <!-- TOP LEVEL CATEGORIES ONLY -->
-                <t t-set="cats"
+                <!-- Get root categories -->
+                <t t-set="categories"
                   t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
 
-                <t t-if="cats">
+                <t t-if="categories">
 
-                  <t t-foreach="cats" t-as="c">
+                  <div class="cat-columns">
 
-                    <div class="cat-group">
+                    <t t-foreach="categories" t-as="cat">
 
-                      <!-- Parent -->
-                      <a t-att-href="'/shop/category/%s' % c.id"
-                        class="cat-parent">
+                      <div class="cat-col">
 
-                        <t t-esc="c.name"/>
+                        <!-- Parent category -->
+                        <a t-att-href="'/shop/category/%s' % cat.id"
+                          class="cat-parent">
+                          <t t-esc="cat.name"/>
+                        </a>
 
-                      </a>
+                        <!-- Subcategories -->
+                        <t t-if="cat.child_id">
 
-                      <!-- Children -->
-                      <t t-if="c.child_id">
+                          <t t-foreach="cat.child_id" t-as="sub">
 
-                        <t t-foreach="c.child_id" t-as="sub">
+                            <a t-att-href="'/shop/category/%s' % sub.id"
+                              class="cat-sub">
+                              <t t-esc="sub.name"/>
+                            </a>
 
-                          <a t-att-href="'/shop/category/%s' % sub.id"
-                            class="cat-child">
-
-                            <t t-esc="sub.name"/>
-
-                          </a>
+                          </t>
 
                         </t>
 
-                      </t>
+                      </div>
 
-                    </div>
+                    </t>
 
-                  </t>
-
-                </t>
-
-                <t t-if="not cats">
-                  <div class="empty" t-translation="on">
-                    No categories available
                   </div>
+
                 </t>
 
               </div>
 
             </div>
+
 
               
             <div class="gifting-links" t-translation="on">

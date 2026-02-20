@@ -228,3 +228,68 @@
   padding: 16px;
   color: #888;
 }
+
+
+/*mega menu*/
+/* Container */
+.gifting-categories {
+  position: relative;
+}
+
+/* Button */
+.cat-btn {
+  background: none;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Mega panel */
+.cat-mega {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 900px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: #fff;
+  box-shadow: 0 15px 40px rgba(0,0,0,.15);
+  border-radius: 8px;
+  padding: 20px;
+  z-index: 9999;
+}
+
+/* Show on hover */
+.gifting-categories:hover .cat-mega {
+  display: block;
+}
+
+/* Columns layout */
+.cat-columns {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+/* Parent category */
+.cat-parent {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #111;
+  text-decoration: none;
+}
+
+/* Subcategory */
+.cat-sub {
+  display: block;
+  padding: 4px 0;
+  color: #555;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.cat-sub:hover {
+  color: #000;
+}
