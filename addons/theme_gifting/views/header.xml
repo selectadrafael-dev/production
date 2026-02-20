@@ -85,17 +85,17 @@
 
                       <div class="dropdown-menu">
 
-                        <a href="/my"  t-translation="on">
+                        <a href="/my">
                         
                          My Account
                         </a>
-                        <a href="/my/orders"  t-translation="on">
+                        <a href="/my/orders">
                            Orders
                         </a>
-                        <a href="/vendor-data"  t-translation="on">
+                        <a href="/vendor-data">
                           Vendor Data
                         </a>
-                        <a href="/web/session/logout"  t-translation="on">
+                        <a href="/web/session/logout">
                          Logout
                         </a>
                       </div>
@@ -105,7 +105,7 @@
                   <!-- NOT logged in -->
                   <t t-else="">
 
-                    <a href="/web/login" class="login-btn"  t-translation="on">
+                    <a href="/web/login" class="login-btn">
                        Login
                     </a>
 
@@ -138,7 +138,7 @@
             <div class="gifting-categories">
 
               <!-- Toggle -->
-              <button class="cat-btn" data-cat-toggle="1" t-translation="on">
+              <button class="cat-btn" data-cat-toggle="1">
                 ☰ All Categories
               </button>
 
@@ -188,7 +188,7 @@
                 </t>
 
                 <t t-if="not cats">
-                  <div class="empty" t-translation="on">
+                  <div class="empty">
                     No categories available
                   </div>
                 </t>
@@ -198,24 +198,24 @@
             </div>
 
               
-            <div class="gifting-links" t-translation="on">
+            <div class="gifting-links">
 
-              <a href="#"  t-translation="on">
+              <a href="#">
                 New Arrivals
               </a>
-              <a href="#"  t-translation="on">
+              <a href="#">
                   Promotions
               </a>
-              <a href="#"  t-translation="on">
+              <a href="#">
                 Best Sellers
               </a>
-              <a href="#"  t-translation="on">
+              <a href="#">
                 Special Offers
               </a>
-              <a href="#"  t-translation="on">
+              <a href="#">
                  Eco friendly
               </a>
-              <a href="#"  t-translation="on">
+              <a href="#">
                   Political products
               </a>
 
