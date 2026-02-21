@@ -24,6 +24,7 @@
             <button class="mobile-toggle" aria-label="Menu">
               ☰
             </button>
+            
 
             <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
             <div class="gifting-search">
@@ -123,6 +124,7 @@
 
           <!-- ===== SECOND ROW ===== -->
           <div class="gifting-nav-bottom">
+              <button class="mobile-close" aria-label="Close Menu">✕</button>
 
             <div class="gifting-categories">
 

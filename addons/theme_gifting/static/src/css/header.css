@@ -407,3 +407,78 @@
   }
 
 }
+
+/* ================= CLOSE BUTTON ================= */
+
+.mobile-close {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+/* ================= MOBILE PANEL ================= */
+
+@media (max-width: 768px) {
+
+  /* Show close button */
+  .mobile-close {
+    display: block;
+    margin-bottom: 20px;
+  }
+
+  /* Existing mobile panel behavior */
+  .gifting-nav-bottom {
+    position: fixed;
+    top: 0;
+    left: -100%;
+    width: 85%;
+    height: 100vh;
+    background: #fff;
+    z-index: 99999;
+    padding: 20px;
+    overflow-y: auto;
+    transition: left .3s ease;
+  }
+
+  .gifting-nav-bottom.open {
+    left: 0;
+  }
+
+  /* ================= TABLET & MOBILE TOP LAYOUT ================= */
+  .gifting-nav-top {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  /* Logo centered */
+  .gifting-logo {
+    align-self: center;
+  }
+
+  /* Full width search */
+  .gifting-search {
+    width: 100%;
+    order: 2;
+  }
+
+  .gifting-search input {
+    width: 100%;
+  }
+
+  /* Hamburger last */
+  .mobile-toggle {
+    display: block;
+    align-self: flex-end;
+    order: 3;
+  }
+
+  /* Hide desktop icons */
+  .gifting-icons {
+    display: none;
+}
+
+}
