@@ -1,0 +1,41 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: theme_gifting\n"
+"Language: ru\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#. module: theme_gifting
+msgid "Branded Solutions That Break Through."
+msgstr "Брендированные решения, которые выделяются."
+
+#. module: theme_gifting
+msgid "Elevate your brand with unique experiences that excite and foster a deeper connection with your employees and customers."
+msgstr "Поднимите свой бренд на новый уровень с уникальными впечатлениями, которые вдохновляют и укрепляют связь с сотрудниками и клиентами."
+
+#. module: theme_gifting
+msgid "Explore"
+msgstr "Посмотреть"
+
+#. module: theme_gifting
+msgid "New Arrivals"
+msgstr "Новинки"
+
+#. module: theme_gifting
+msgid "Promotions"
+msgstr "Акции"
+
+#. module: theme_gifting
+msgid "Best Sellers"
+msgstr "Хиты продаж"
+
+#. module: theme_gifting
+msgid "Special Offers"
+msgstr "Специальные предложения"
+
+#. module: theme_gifting
+msgid "Eco friendly"
+msgstr "Экологичные товары"
+
+#. module: theme_gifting
+msgid "Political products"
+msgstr "Политическая продукция"

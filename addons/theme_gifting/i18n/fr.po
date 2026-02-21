@@ -1,0 +1,53 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: theme_gifting\n"
+"Language: fr\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#. module: theme_gifting
+msgid "All Categories"
+msgstr "Toutes les catégories"
+
+#. module: theme_gifting
+msgid "My Account"
+msgstr "Mon compte"
+
+#. module: theme_gifting
+msgid "Browse Catalog"
+msgstr "Parcourir le catalogue"
+
+#. module: theme_gifting
+msgid "Branded Solutions That Break Through."
+msgstr "Des solutions de marque qui font la différence."
+
+#. module: theme_gifting
+msgid "Elevate your brand with unique experiences that excite and foster a deeper connection with your employees and customers."
+msgstr "Valorisez votre marque grâce à des expériences uniques qui enthousiasment et renforcent les liens avec vos employés et vos clients."
+
+#. module: theme_gifting
+msgid "Explore"
+msgstr "Explorer"
+
+#. module: theme_gifting
+msgid "New Arrivals"
+msgstr "Nouveautés"
+
+#. module: theme_gifting
+msgid "Promotions"
+msgstr "Promotions"
+
+#. module: theme_gifting
+msgid "Best Sellers"
+msgstr "Meilleures ventes"
+
+#. module: theme_gifting
+msgid "Special Offers"
+msgstr "Offres spéciales"
+
+#. module: theme_gifting
+msgid "Eco friendly"
+msgstr "Écologique"
+
+#. module: theme_gifting
+msgid "Political products"
+msgstr "Produits politiques"

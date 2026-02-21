@@ -1,0 +1,103 @@
+.gifting-hero {
+    background: #f5f5f5;
+    padding: 80px 0;
+}
+
+.hero-text h1 {
+    font-size: 48px;
+    font-weight: 700;
+    color: #222;
+    margin-bottom: 20px;
+}
+
+.hero-text p {
+    font-size: 18px;
+    color: #666;
+    margin-bottom: 30px;
+}
+
+.hero-btn {
+    padding: 14px 28px;
+    font-weight: 600;
+    border-radius: 8px;
+}
+
+.hero-images img {
+    max-height: 420px;
+    object-fit: contain;
+}
+
+.gifting-hero {
+    position: relative;
+    background: #f6f6f6;
+    overflow: hidden;
+}
+
+.gifting-hero-inner {
+    display: flex;
+    align-items: center;
+    min-height: 520px;
+}
+
+/* TEXT SIDE */
+
+.gifting-hero-text {
+    max-width: 520px;
+    z-index: 2;
+}
+
+/* IMAGE SIDE */
+
+.gifting-hero-image {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+}
+
+.gifting-hero-image img {
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Hide product card text & buttons */
+/* ================= HOMEPAGE PRODUCT CARDS ================= */
+
+.gifting-home .o_wsale_product_information,
+.gifting-home .o_wsale_product_name,
+.gifting-home .product_price,
+.gifting-home .oe_product_cart a.btn,
+.gifting-home .o_wsale_product_btn {
+  display: none !important;
+}
+
+/* Clean image-only cards */
+.gifting-home .oe_product_cart {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+}
+
+@media(max-width: 992px) {
+   .gifting-hero-image {
+        position: relative;
+    }
+    .gifting-hero-inner {
+        display: block;
+       align-items: center;
+        min-height: auto;
+        margin-bottom: 50px;
+    }
+
+    @media(max-width: 768px) {
+        .gifting-hero-image img {
+            height: 100%;
+            object-fit: contain;
+            width: 95%;
+            margin: 0 auto;
+        }
+        .gifting-hero {
+            padding: 50px 0;
+        }
+    }
+}

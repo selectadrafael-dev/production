@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <!-- Register as a Theme -->
+  <template id="theme_gifting_layout"
+            inherit_id="website.layout"
+            name="Gifting Theme Layout">
+
+    <!-- Minimal change just to register theme -->
+    <xpath expr="//body" position="attributes">
+      <attribute name="class" add="theme-gifting"/>
+    </xpath>
+
+  </template>
+
+</odoo>

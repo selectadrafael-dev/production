@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <!-- =====================================================
+       HERO SECTION (Reusable Snippet-Style Section)
+       ===================================================== -->
+  <template id="gifting_hero" name="Gifting Hero Slider">
+
+    <!-- IMPORTANT: oe_structure makes section editable -->
+    <section class="gifting-hero carousel slide oe_structure gifting-home"
+             data-bs-ride="carousel"
+             data-snippet="gifting_hero">
+
+      <div class="gifting-container">
+
+        <div class="container hero-content">
+
+          <div class="gifting-hero-inner">
+
+            <!-- LEFT: TEXT -->
+            <div class="gifting-hero-text"
+                 t-translation="on"
+                 t-options='{"no_edit": true}'>
+
+              <h1>Branded Solutions That Break Through.</h1>
+
+              <p>
+                Elevate your brand with unique experiences that excite
+                and foster a deeper connection with your employees
+                and customers.
+              </p>
+
+              <a href="/shop" class="btn btn-primary hero-btn">
+                Explore
+              </a>
+
+            </div>
+
+          </div>
+
+          <!-- RIGHT: IMAGE -->
+          <div class="gifting-hero-image">
+            <img src="/theme_gifting/static/src/img/hero-1.png"
+                 alt="Hero"/>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </template>
+
+
+  <!-- =====================================================
+       HOMEPAGE EXTENSION (SAFE & EDITABLE)
+       ===================================================== -->
+  <template id="homepage" inherit_id="website.homepage">
+
+    <!-- DO NOT REPLACE wrap — insert INSIDE -->
+    <xpath expr="//div[@id='wrap']" position="inside">
+
+      <!-- Your hero section -->
+      <t t-call="theme_gifting.gifting_hero"/>
+
+      <!-- =================================================
+           EMPTY EDITABLE AREA FOR FUTURE SECTIONS
+           (Products, promos, etc.)
+           ================================================= -->
+      <section class="oe_structure"/>
+
+    </xpath>
+
+  </template>
+
+</odoo>
