@@ -124,24 +124,9 @@
           <!-- ===== SECOND ROW ===== -->
           <div class="gifting-nav-bottom">
 
-            <!--div class="gifting-categories">
-              ☰ Kategoriler
-            </div>
-
-            <div class="gifting-links">
-
-              <a href="#">Yeni gelenler</a>
-              <a href="#">Promolar</a>
-              <a href="#">Çok satanlar</a>
-              <a href="#">Xüsusi teklifler</a>
-              <a href="#">Eco friendly</a>
-              <a href="#">Political products</a>
-
-            </div-->
-
             <div class="gifting-categories">
 
-              <button class="cat-btn">
+              <button class="cat-btn mobile-cat-toggle">
                 ☰ All Categories
               </button>
 

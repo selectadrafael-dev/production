@@ -302,40 +302,108 @@
   color: #000;
 }
 
-/* Mobile toggle hidden on desktop */
+/* =========================================================
+   MOBILE RESPONSIVE NAV — SAFE FOR YOUR STRUCTURE
+   ========================================================= */
+
+/* Hamburger hidden on desktop */
 .mobile-toggle {
   display: none;
+  font-size: 26px;
   background: none;
   border: none;
-  font-size: 26px;
   cursor: pointer;
 }
 
-/* Mobile styles */
+/* ============================= */
+/* MOBILE LAYOUT                 */
+/* ============================= */
+
 @media (max-width: 992px) {
 
+  /* Show hamburger */
   .mobile-toggle {
     display: block;
   }
 
-  .gifting-nav-links {
+  /* Stack top row */
+  .gifting-nav-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Shrink search */
+  .gifting-search {
+    order: 3;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  /* Icons stay right */
+  .gifting-icons {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* =============================
+     COLLAPSIBLE BOTTOM MENU
+     ============================= */
+
+  .gifting-nav-bottom {
     position: fixed;
     top: 0;
     right: -100%;
     width: 80%;
-    height: 100%;
+    height: 100vh;
     background: #fff;
     padding: 80px 20px;
-    box-shadow: -10px 0 30px rgba(0,0,0,.15);
+    z-index: 9999;
+    overflow-y: auto;
     transition: right .3s ease;
+    box-shadow: -10px 0 40px rgba(0,0,0,.2);
+
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    z-index: 9999;
+    gap: 20px;
   }
 
-  .gifting-nav-links.open {
+  /* Visible state */
+  .gifting-nav-bottom.open {
     right: 0;
+  }
+
+  /* Links vertical */
+  .gifting-links {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .gifting-links a {
+    font-size: 16px;
+  }
+
+  /* Categories block */
+  .gifting-categories {
+    width: 100%;
+  }
+
+  /* Mega menu becomes static */
+  .cat-mega {
+    position: static !important;
+    box-shadow: none !important;
+    max-height: none !important;
+  }
+
+  /*category button*/
+   .cat-mega {
+    display: none;
+  }
+
+  .cat-mega.open {
+    display: block;
   }
 
 }

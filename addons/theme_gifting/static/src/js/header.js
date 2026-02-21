@@ -45,13 +45,36 @@
   });
 
   //secondary menu
+   document.addEventListener('click', function (e) {
+
+    const toggle = e.target.closest('.mobile-toggle');
+    if (!toggle) return;
+
+    const menu = document.querySelector('.gifting-nav-bottom');
+    menu?.classList.toggle('open');
+
+  });
+
+  //CLOSE MENU WHEN LINK CLICKED
   document.addEventListener('click', function (e) {
 
-  const catBtn = e.target.closest('.cat-btn');
-  if (!catBtn) return;
+  const link = e.target.closest('.gifting-nav-bottom a');
+  if (!link) return;
 
-  const panel = catBtn.nextElementSibling;
-  panel?.classList.toggle('open');
+  document
+    .querySelector('.gifting-nav-bottom')
+    ?.classList.remove('open');
+
+});
+
+//category btn logic
+document.addEventListener('click', function (e) {
+
+  const btn = e.target.closest('.mobile-cat-toggle');
+  if (!btn) return;
+
+  const mega = btn.nextElementSibling;
+  mega?.classList.toggle('open');
 
 });
 

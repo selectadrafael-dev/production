@@ -7,7 +7,7 @@
   <template id="gifting_hero" name="Gifting Hero Slider">
 
     <!-- IMPORTANT: oe_structure makes section editable -->
-    <section class="gifting-hero carousel slide oe_structure"
+    <section class="gifting-hero carousel slide oe_structure gifting-home"
              data-bs-ride="carousel"
              data-snippet="gifting_hero">
 

@@ -60,6 +60,27 @@
     object-fit: contain;
 }
 
+/* Hide product card text & buttons */
+.gifting-home .o_wsale_product_information,
+.gifting-home .o_wsale_product_name,
+.gifting-home .o_wsale_product_price,
+.gifting-home .o_wsale_product_btn {
+  display: none !important;
+}
+
+/* Make entire card clickable + clean */
+
+.gifting-home .o_wsale_product_information {
+  display: none !important;
+}
+
+.gifting-home .oe_product_cart {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+}
+
+
 @media(max-width: 992px) {
    .gifting-hero-image {
         position: relative;
