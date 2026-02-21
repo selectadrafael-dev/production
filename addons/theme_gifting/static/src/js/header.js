@@ -32,4 +32,16 @@
 
   });
 
+  //mobile nav
+   document.addEventListener('click', function (e) {
+
+    const toggle = e.target.closest('.mobile-toggle');
+    if (toggle) {
+      document
+        .querySelector('.gifting-nav-links')
+        ?.classList.toggle('open');
+    }
+
+  });
+
 })();

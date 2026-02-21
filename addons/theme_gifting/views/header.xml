@@ -21,6 +21,10 @@
                    alt="Logo"/>
             </a>
 
+            <button class="mobile-toggle" aria-label="Menu">
+              ☰
+            </button>
+
             <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
             <div class="gifting-search">
                 <form action="/shop"

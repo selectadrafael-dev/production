@@ -293,3 +293,41 @@
 .cat-sub:hover {
   color: #000;
 }
+
+/* Mobile toggle hidden on desktop */
+.mobile-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+/* Mobile styles */
+@media (max-width: 992px) {
+
+  .mobile-toggle {
+    display: block;
+  }
+
+  .gifting-nav-links {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 80%;
+    height: 100%;
+    background: #fff;
+    padding: 80px 20px;
+    box-shadow: -10px 0 30px rgba(0,0,0,.15);
+    transition: right .3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    z-index: 9999;
+  }
+
+  .gifting-nav-links.open {
+    right: 0;
+  }
+
+}
