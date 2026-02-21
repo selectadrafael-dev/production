@@ -44,4 +44,15 @@
 
   });
 
+  //secondary menu
+  document.addEventListener('click', function (e) {
+
+  const catBtn = e.target.closest('.cat-btn');
+  if (!catBtn) return;
+
+  const panel = catBtn.nextElementSibling;
+  panel?.classList.toggle('open');
+
+});
+
 })();

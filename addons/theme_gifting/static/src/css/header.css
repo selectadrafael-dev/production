@@ -92,6 +92,14 @@
     text-decoration: none;
 }
 
+.cat-mega {
+  display: none;
+}
+
+.cat-mega.open {
+  display: block;
+}
+
 /* GLOBAL LAYOUT CONTAINER */
 
 .gifting-container {
