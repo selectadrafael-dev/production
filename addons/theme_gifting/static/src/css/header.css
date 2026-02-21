@@ -446,20 +446,26 @@
     left: 0;
   }
 
-  /* ================= MOBILE HEADER STRUCTURE ================= */
+  /* ======================================================
+   PROFESSIONAL MOBILE HEADER ALIGNMENT
+   ====================================================== */
+  /* ---------- CONTAINER ---------- */
 
+  .gifting-nav-container {
+    padding: 10px 14px;
+  }
 
-
-  /* Top container becomes grid */
   .gifting-nav-top {
     display: grid;
     grid-template-columns: 1fr auto;
     grid-template-rows: auto auto auto;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
   }
 
-  /* ===== ROW 1 — LOGO ===== */
+  /* ===================================================
+     ROW 1 — LOGO
+     =================================================== */
 
   .gifting-logo {
     grid-column: 1 / 3;
@@ -467,26 +473,79 @@
     justify-self: center;
   }
 
-  /* ===== ROW 2 — ICONS ===== */
+  .gifting-logo img {
+    max-height: 38px;
+    width: auto;
+  }
+
+  /* ===================================================
+     ROW 2 — ICONS + HAMBURGER
+     =================================================== */
 
   .gifting-icons {
     grid-column: 1;
     grid-row: 2;
+
     display: flex !important;
     align-items: center;
-    gap: 12px;
-    flex-wrap: nowrap;
+    justify-content: flex-start;
+
+    gap: 14px;
+    height: 40px;
   }
 
-  /* Hamburger on right */
+  /* Make all icons consistent */
+
+  .gifting-icons a,
+  .gifting-icons .icon,
+  .gifting-icons span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  /* Language selector fix */
+
+  .gifting-icons .o_language_selector {
+    display: flex;
+    align-items: center;
+  }
+
+  /* Cart badge alignment */
+
+  .cart-icon {
+    position: relative;
+  }
+
+  .cart-count {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    font-size: 11px;
+  }
+
+  /* Hamburger button */
+
   .mobile-toggle {
     grid-column: 2;
     grid-row: 2;
+
     justify-self: end;
-    display: block;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 26px;
+    width: 42px;
+    height: 42px;
   }
 
-  /* ===== ROW 3 — SEARCH ===== */
+  /* ===================================================
+     ROW 3 — SEARCH BAR
+     =================================================== */
 
   .gifting-search {
     grid-column: 1 / 3;
@@ -494,7 +553,21 @@
     width: 100%;
   }
 
-  .gifting-search input {
+  .gifting-search form {
+    display: flex;
     width: 100%;
+  }
+
+  .gifting-search input {
+    flex: 1;
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 8px 0 0 8px;
+  }
+
+  .gifting-search button {
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 0 8px 8px 0;
   }
 }
