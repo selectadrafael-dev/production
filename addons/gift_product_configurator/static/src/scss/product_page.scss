@@ -27,3 +27,28 @@ transition: .2s;
 .tier-card:hover {
 border-color: #1a73e8;
 }
+
+/*variant styling*/
+.variant-options {
+display: flex;
+gap: 10px;
+margin-top: 8px;
+}
+
+.variant-option {
+border: 1px solid #ddd;
+padding: 8px 14px;
+border-radius: 6px;
+background: white;
+cursor: pointer;
+}
+
+.variant-option:hover {
+border-color: #1a73e8;
+}
+
+.variant-option.active {
+background: #1a73e8;
+color: white;
+}
+

@@ -28,4 +28,54 @@ publicWidget.registry.QtyTiers = publicWidget.Widget.extend({
     }
 });
 
+//product variant 
+const publicWidget = require('web.public.widget');
+
+publicWidget.registry.VariantSelect = publicWidget.Widget.extend({
+
+    selector: '.variant-section',
+
+    events: {
+        'click .variant-option': '_onSelect',
+    },
+
+    _onSelect: function (ev) {
+
+        const $btn = $(ev.currentTarget);
+
+        $btn
+            .closest('.variant-options')
+            .find('.variant-option')
+            .removeClass('active');
+
+        $btn.addClass('active');
+
+        // Later we will trigger price update
+    }
+});
+
+//quantity input
+publicWidget.registry.QuantityControl = publicWidget.Widget.extend({
+selector: '.custom-qty',
+
+events: {
+    'click .qty-plus': '_plus',
+    'click .qty-minus': '_minus',
+},
+
+_plus: function () {
+    const input = this.$('input')[0];
+    input.value = parseInt(input.value) + 1;
+},
+
+_minus: function () {
+    const input = this.$('input')[0];
+    if (input.value > 1) {
+        input.value = parseInt(input.value) - 1;
+    }
+}
+
+});
+
+
 });

@@ -15,45 +15,73 @@
 
 
             <!-- CENTER: CONFIGURATOR -->
-                    <div class="gift-configurator">
-                            
-                            <h1 t-field="product.name"/>
+                <div class="gift-configurator">                      
 
-                            <div class="product-code">
-                                Product Code:
-                                <t t-esc="product.default_code"/>
-                            </div>
+                        <!-- PRODUCT NAME -->
+                        <h1 t-field="product.name"/>
 
-                            <!-- SAFE PRICE DISPLAY -->
-                            <div class="price-box">
-                                <span t-field="product.list_price"
-                                    t-options='{"widget": "monetary",
-                                                "display_currency": website.pricelist_id.currency_id}'/>
-                            </div>
+                        <!-- PRODUCT CODE -->
+                        <div class="product-code">
+                            Product Code:
+                            <t t-esc="product.default_code"/>
+                        </div>
 
+                        <!-- PRICE -->
+                        <div class="price-box" id="dynamic_price">
+                            <span t-field="product.list_price"
+                                t-options='{"widget": "monetary",
+                                            "display_currency": website.pricelist_id.currency_id}'/>
+                        </div>
 
-                            <!-- VARIANT PLACEHOLDER -->
-                            <div class="variant-placeholder">
-                                Options available
-                            </div>
+                        <!-- ⭐ VARIANT SELECTOR (INSERTED HERE) -->
+                        <div class="variant-section">
 
-                            <!-- QUANTITY UI -->
-                            <div class="custom-qty">
-                                <button type="button">-</button>
-                                <input type="number" value="50"/>
-                                <button type="button">+</button>
-                            </div>               
+                            <t t-foreach="product.attribute_line_ids" t-as="attr">
 
-            </div>
+                                <div class="variant-group">
+
+                                    <strong t-esc="attr.attribute_id.name"/>
+
+                                    <div class="variant-options">
+
+                                        <t t-foreach="attr.value_ids" t-as="value">
+
+                                            <button type="button"
+                                                    class="variant-option"
+                                                    t-att-data-attr="attr.attribute_id.id"
+                                                    t-att-data-value="value.id">
+
+                                                <t t-esc="value.name"/>
+
+                                            </button>
+
+                                        </t>
+
+                                    </div>
+
+                                </div>
+
+                            </t>
+
+                        </div>
+
+                        <!-- QUANTITY INPUT -->
+                        <div class="custom-qty">
+                            <button type="button" class="qty-minus">-</button>
+                            <input type="number" value="50"/>
+                            <button type="button" class="qty-plus">+</button>
+                        </div>
+                </div>
 
             <!-- RIGHT: QUOTE PANEL -->
             <div class="gift-quote-panel">
                 <!-- SAFE PRICE DISPLAY -->
-                <div class="price-box">
-                        <span t-field="product.list_price"
-                                    t-options='{"widget": "monetary",
-                                                "display_currency": website.pricelist_id.currency_id}'/>
+                <div class="price-box" id="dynamic_price">
+                    <span t-field="product.list_price"
+                        t-options='{"widget": "monetary",
+                                    "display_currency": website.pricelist_id.currency_id}'/>
                 </div>
+
 
                 <button type="button" class="btn btn-primary">
                     Add To Quote
