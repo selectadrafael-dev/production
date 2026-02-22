@@ -126,7 +126,7 @@
           <div class="gifting-nav-bottom">
               <button class="mobile-close" aria-label="Close Menu">✕</button>
 
-            <div class="gifting-categories">
+            <div class="gifting-categories" t-translation="on">
 
               <button class="cat-btn mobile-cat-toggle">
                 ☰ All Categories

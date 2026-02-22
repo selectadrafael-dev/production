@@ -39,3 +39,11 @@ msgstr "Ekoloji məhsullar"
 #. module: theme_gifting
 msgid "Political products"
 msgstr "Siyasi məhsullar"
+
+#. module: theme_gifting
+msgid "All catégories"
+msgstr "Bütün Kateqoriyalar"
+
+#. module: theme_gifting
+msgid "search gift..."
+msgstr "Hədiyyə axtar..."
