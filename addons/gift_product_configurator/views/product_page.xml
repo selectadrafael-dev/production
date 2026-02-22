@@ -15,32 +15,38 @@
 
 
             <!-- CENTER: CONFIGURATOR -->
-            <div class="gift-configurator">
+                    <div class="gift-configurator">
+                            
+                            <h1 t-field="product.name"/>
 
-                <h1 t-field="product.name"/>
+                            <div class="product-code">
+                                Product Code:
+                                <t t-esc="product.default_code"/>
+                            </div>
 
-                <div class="product-code">
-                    Product Code:
-                    <t t-esc="product.default_code"/>
-                </div>
+                            <!-- SAFE PRICE DISPLAY -->
+                            <div class="price-box">
+                                <span t-esc="product.website_price"/>
+                            </div>
 
-                <t t-call="website_sale.product_variants"/>
+                            <!-- VARIANT PLACEHOLDER -->
+                            <div class="variant-placeholder">
+                                Options available
+                            </div>
 
-                <div id="qty_tiers"></div>
-
-                <div class="custom-qty">
-                    <button type="button">-</button>
-                    <input type="number" value="50"/>
-                    <button type="button">+</button>
-                </div>
+                            <!-- QUANTITY UI -->
+                            <div class="custom-qty">
+                                <button type="button">-</button>
+                                <input type="number" value="50"/>
+                                <button type="button">+</button>
+                            </div>               
 
             </div>
 
             <!-- RIGHT: QUOTE PANEL -->
             <div class="gift-quote-panel">
-
                 <div class="price-box">
-                    <t t-call="website_sale.product_price"/>
+                    <span t-esc="product.website_price"/>
                 </div>
 
                 <button type="button" class="btn btn-primary">
