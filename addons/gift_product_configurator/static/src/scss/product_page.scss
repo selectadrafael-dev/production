@@ -313,3 +313,38 @@ font-size: 14px;
 
 */
 
+/* =========================================
+Hide original Odoo product page (Odoo 18)
+========================================= */
+
+#product_detail_main {
+display: none !important;
+}
+
+/* Ensure custom layout displays */
+.gift-product-layout {
+display: grid !important;
+}
+/* =========================================
+Premium dropdown styling
+========================================= */
+
+.print-method-dropdown {
+width: 100%;
+padding: 14px 16px;
+border-radius: 10px;
+border: 1px solid #d6dae6;
+background: #fff;
+font-size: 15px;
+font-weight: 500;
+appearance: none;
+cursor: pointer;
+
+background-image: url("data:image/svg+xml;utf8,<svg fill='%236b7280' height='20' viewBox='0 0 24 24' width='20' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+background-repeat: no-repeat;
+background-position: right 14px center;
+background-size: 18px;
+
+}
+
+
