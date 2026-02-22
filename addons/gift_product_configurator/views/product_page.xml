@@ -1,66 +1,64 @@
 <odoo>
-
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
-<!-- ODOO 18 EXACT TARGET -->
-<xpath expr="//section[@id='product_detail']" position="replace">
 
-    <section id="product_detail" class="gift-product-layout container">
+    <!-- Replace Odoo 18 product section -->
+    <xpath expr="//section[@id='product_detail']" position="replace">
 
-        <!-- LEFT: GALLERY -->
-        <div class="gift-gallery">
-            <t t-call="website_sale.product_images"/>
-            <span class="badge-special">SPECIAL OFFER</span>
-        </div>
+        <section id="product_detail" class="gift-product-layout container">
 
-        <!-- CENTER: CONFIGURATOR -->
-        <div class="gift-configurator">
+            <!-- REQUIRED FOR WISHLIST MODULE -->
+            <div id="product_option_block"></div>
 
-            <h1 t-field="product.name"/>
-
-            <div class="product-code">
-                Product Code:
-                <t t-esc="product.default_code"/>
+            <!-- LEFT: PRODUCT GALLERY -->
+            <div class="gift-gallery">
+                <t t-call="website_sale.product_images"/>
             </div>
 
-            <!-- ATTRIBUTES -->
-            <t t-call="website_sale.product_variants"/>
+            <!-- CENTER: CONFIGURATOR -->
+            <div class="gift-configurator">
 
-            <!-- QUANTITY TIERS -->
-            <div id="qty_tiers"></div>
+                <h1 t-field="product.name"/>
 
-            <!-- CUSTOM QTY -->
-            <div class="custom-qty">
-                <button>−</button>
-                <input type="number" value="50"/>
-                <button>+</button>
+                <div class="product-code">
+                    Product Code:
+                    <t t-esc="product.default_code"/>
+                </div>
+
+                <!-- VARIANT OPTIONS -->
+                <t t-call="website_sale.product_variants"/>
+
+                <!-- QUANTITY TIERS -->
+                <div id="qty_tiers"></div>
+
+                <!-- CUSTOM QTY -->
+                <div class="custom-qty">
+                    <button type="button">-</button>
+                    <input type="number" value="50"/>
+                    <button type="button">+</button>
+                </div>
+
             </div>
 
-        </div>
+            <!-- RIGHT: QUOTE PANEL -->
+            <div class="gift-quote-panel">
 
-        <!-- RIGHT: QUOTE PANEL -->
-        <div class="gift-quote-panel">
+                <div class="price-box">
+                    <t t-call="website_sale.product_price"/>
+                </div>
 
-            <div class="price-box">
-                <t t-call="website_sale.product_price"/>
+                <button type="button" class="btn btn-primary">
+                    Add To Quote
+                </button>
+
+                <button type="button" class="btn btn-secondary">
+                    Buy 1 Sample
+                </button>
+
             </div>
 
-            <button class="btn btn-primary">
-                Add To Quote
-            </button>
+        </section>
 
-            <button class="btn btn-secondary">
-                Buy 1 Sample
-            </button>
+    </xpath>
 
-            <div class="trust-box">
-                Over 20,000+ reviews
-            </div>
-
-        </div>
-
-    </section>
-
-</xpath>
 </template>
-
 </odoo>
