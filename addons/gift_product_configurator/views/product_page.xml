@@ -1,7 +1,7 @@
 <odoo>
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
 
-    <!-- Replace Odoo 18 product section -->
+    <!--Replace Odoo 18 product section -->
     <xpath expr="//section[@id='product_detail']" position="replace">
 
         <section id="product_detail" class="gift-product-layout container">
