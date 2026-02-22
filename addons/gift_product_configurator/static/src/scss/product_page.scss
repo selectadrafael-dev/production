@@ -284,3 +284,10 @@ padding: 12px;
 border-radius: 999px;
 cursor: pointer;
 }
+/* =====================================
+Hide default Odoo product layout safely
+===================================== */
+
+#product_detail > *:not(.gift-product-layout) {
+display: none !important;
+}
