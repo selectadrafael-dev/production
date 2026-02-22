@@ -154,9 +154,11 @@
 
         <!-- ===== SLIDE-IN QUOTE PANEL ===== -->
         <div id="quoteDrawer" class="quote-drawer">
-            <div class="drawer-content">
+            <div class="drawer-overlay"></div>
 
-                <button class="drawer-close">✕</button>
+            <div class="drawer-panel">
+
+                <button class="drawer-close" type="button">✕</button>
 
                 <h3>Request a Quote</h3>
 
@@ -169,8 +171,6 @@
 
             </div>
         </div>
-
-
     </section>
 
 </xpath>

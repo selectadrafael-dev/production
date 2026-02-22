@@ -5,9 +5,9 @@ odoo.define('gift_product_configurator.frontend', function (require) {
 const publicWidget = require('web.public.widget');
 
 /* =====================================================
-Variant Selection (highlight active)
+Variant Selection (highlight active option)
 ===================================================== */
-publicWidget.registry.VariantSelect = publicWidget.Widget.extend({
+publicWidget.registry.GiftVariantSelect = publicWidget.Widget.extend({
 
 selector: '.variant-section',
 
@@ -32,7 +32,7 @@ _onSelect: function (ev) {
 /* =====================================================
 Quantity Stepper (+ / −)
 ===================================================== */
-publicWidget.registry.QuantityControl = publicWidget.Widget.extend({
+publicWidget.registry.GiftQuantityControl = publicWidget.Widget.extend({
 
 selector: '.custom-qty',
 
@@ -43,12 +43,16 @@ events: {
 
 _plus: function () {
     const input = this.$('input')[0];
+    if (!input) return;
+
     const value = parseInt(input.value) || 0;
     input.value = value + 1;
 },
 
 _minus: function () {
     const input = this.$('input')[0];
+    if (!input) return;
+
     const value = parseInt(input.value) || 1;
     if (value > 1) input.value = value - 1;
 }
@@ -58,7 +62,7 @@ _minus: function () {
 /* =====================================================
 Tier Selection → Sets Quantity
 ===================================================== */
-publicWidget.registry.TierSelect = publicWidget.Widget.extend({
+publicWidget.registry.GiftTierSelect = publicWidget.Widget.extend({
 
 selector: '#qty_tiers',
 
@@ -74,34 +78,37 @@ _selectTier: function (ev) {
     this.$('.tier-card').removeClass('active');
     $card.addClass('active');
 
-    // Extract quantity from card
+    // Extract quantity number
     const qty = parseInt($card.find('strong').text());
 
     // Update quantity input
     const input = document.querySelector('.custom-qty input');
-    if (input) input.value = qty;
+    if (input && qty) input.value = qty;
 }
 
 });
 
 /* =====================================================
-Quote Drawer (slide panel)
+Quote Drawer (Slide-in Panel)
 ===================================================== */
-publicWidget.registry.QuoteDrawer = publicWidget.Widget.extend({
+publicWidget.registry.GiftQuoteDrawer = publicWidget.Widget.extend({
 
 selector: 'body',
 
 events: {
     'click #openQuote': '_open',
     'click .drawer-close': '_close',
+    'click .drawer-overlay': '_close',
 },
 
 _open: function () {
+
     const drawer = document.getElementById('quoteDrawer');
     if (drawer) drawer.classList.add('active');
 },
 
 _close: function () {
+
     const drawer = document.getElementById('quoteDrawer');
     if (drawer) drawer.classList.remove('active');
 }
