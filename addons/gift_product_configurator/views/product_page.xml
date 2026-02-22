@@ -48,8 +48,11 @@
 
             <!-- RIGHT: QUOTE PANEL -->
             <div class="gift-quote-panel">
+                <!-- SAFE PRICE DISPLAY -->
                 <div class="price-box">
-                    <span t-esc="product.website_price"/>
+                        <span t-field="product.list_price"
+                                    t-options='{"widget": "monetary",
+                                                "display_currency": website.pricelist_id.currency_id}'/>
                 </div>
 
                 <button type="button" class="btn btn-primary">
