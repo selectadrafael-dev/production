@@ -5,11 +5,7 @@
 "category": "Website",
 "author": "SelectAd",
 "depends": [
-    "website", 
-    "product", 
-    "sale",
-    "website_sale",
-    "sale_management",
+    "website_sale"
 ],
 "data": [
     "views/product_page.xml",

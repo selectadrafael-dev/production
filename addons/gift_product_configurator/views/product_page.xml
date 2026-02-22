@@ -1,10 +1,12 @@
 <odoo>
+
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
-<xpath expr="//div[@id='product_details']" position="replace">
+<!-- ODOO 18 EXACT TARGET -->
+<xpath expr="//section[@id='product_detail']" position="replace">
 
-    <div class="gift-product-layout container">
+    <section id="product_detail" class="gift-product-layout container">
 
-        <!-- LEFT: PRODUCT GALLERY -->
+        <!-- LEFT: GALLERY -->
         <div class="gift-gallery">
             <t t-call="website_sale.product_images"/>
             <span class="badge-special">SPECIAL OFFER</span>
@@ -14,25 +16,23 @@
         <div class="gift-configurator">
 
             <h1 t-field="product.name"/>
-            
+
             <div class="product-code">
                 Product Code:
                 <t t-esc="product.default_code"/>
             </div>
 
-            <!-- VARIANT SELECTORS -->
-            <div class="config-section">
-                <t t-call="website_sale.product_variants"/>
-            </div>
+            <!-- ATTRIBUTES -->
+            <t t-call="website_sale.product_variants"/>
 
             <!-- QUANTITY TIERS -->
-            <div id="qty_tiers" class="qty-tiers"></div>
+            <div id="qty_tiers"></div>
 
-            <!-- CUSTOM QUANTITY -->
+            <!-- CUSTOM QTY -->
             <div class="custom-qty">
-                <button class="qty-minus">−</button>
+                <button>−</button>
                 <input type="number" value="50"/>
-                <button class="qty-plus">+</button>
+                <button>+</button>
             </div>
 
         </div>
@@ -44,7 +44,7 @@
                 <t t-call="website_sale.product_price"/>
             </div>
 
-            <button class="btn btn-primary btn-quote">
+            <button class="btn btn-primary">
                 Add To Quote
             </button>
 
@@ -58,7 +58,7 @@
 
         </div>
 
-    </div>
+    </section>
 
 </xpath>
 </template>
