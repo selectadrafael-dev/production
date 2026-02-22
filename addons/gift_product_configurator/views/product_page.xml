@@ -8,10 +8,22 @@
         <div class="gift-product-layout">
 
             <!-- LEFT: GALLERY -->
-           <div class="gift-gallery">
-                <img t-att-src="'/web/image/product.template/%s/image_1024' % product.id"
-                    class="img-fluid"/>
-            </div>
+            <div class="gift-gallery">
+                <div class="main-image">
+                    <img t-att-src="'/web/image/product.template/%s/image_1024' % product.id"
+                        id="main_product_image"/>
+                </div>
+
+                <div class="thumbnail-row">
+
+                    <img t-foreach="product.product_variant_ids"
+                        t-as="v"
+                        t-att-src="'/web/image/product.product/%s/image_128' % v.id"
+                        class="thumb"/>
+
+                </div>
+             </div>
+
 
 
             <!-- CENTER: CONFIGURATOR -->
