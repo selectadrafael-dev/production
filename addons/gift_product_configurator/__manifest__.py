@@ -9,7 +9,7 @@
 ],
 "data": [
     "views/product_page.xml",
-    "views/product_components.xml",
+    #"views/product_components.xml",
 ],
 "assets": {
     "web.assets_frontend": [
