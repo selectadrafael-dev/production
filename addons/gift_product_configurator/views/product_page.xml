@@ -1,105 +1,151 @@
 <odoo>
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
+<!-- REPLACE default product layout -->
+<xpath expr="//section[@id='product_detail']" position="replace">
 
-    <!-- DO NOT REPLACE THE SECTION -->
-    <xpath expr="//section[@id='product_detail']" position="inside">
+    <section id="product_detail" class="oe_website_sale container my-3 my-lg-4">
 
-        <!-- YOUR CUSTOM LAYOUT WRAPPER -->
         <div class="gift-product-layout">
 
+            <!-- ===================================== -->
             <!-- LEFT: GALLERY -->
+            <!-- ===================================== -->
             <div class="gift-gallery">
-                <div class="main-image">
+
+                <div class="product-image-wrapper">
+
+                    <span class="flag-badge">🇬🇧</span>
+                    <span class="offer-badge">SPECIAL OFFER</span>
+
                     <img t-att-src="'/web/image/product.template/%s/image_1024' % product.id"
-                        id="main_product_image"/>
-                </div>
+                         class="main-product-image"/>
 
-                <div class="thumbnail-row">
-
-                    <img t-foreach="product.product_variant_ids"
-                        t-as="v"
-                        t-att-src="'/web/image/product.product/%s/image_128' % v.id"
-                        class="thumb"/>
+                    <button class="nav-arrow left">‹</button>
+                    <button class="nav-arrow right">›</button>
 
                 </div>
-             </div>
+
+            </div>
 
 
-
+            <!-- ===================================== -->
             <!-- CENTER: CONFIGURATOR -->
-                <div class="gift-configurator">                      
+            <!-- ===================================== -->
+            <div class="gift-configurator">
 
-                        <!-- PRODUCT NAME -->
-                        <h1 t-field="product.name"/>
+                <!-- PROMO BANNER -->
+                <div class="promo-banner">
+                    CLICK HERE FOR OUR MOST POPULAR PICKS
+                </div>
 
-                        <!-- PRODUCT CODE -->
-                        <div class="product-code">
-                            Product Code:
-                            <t t-esc="product.default_code"/>
-                        </div>
+                <!-- PRODUCT NAME -->
+                <h1 t-field="product.name"/>
 
-                        <!-- PRICE -->
-                        <div class="price-box" id="dynamic_price">
-                            <span t-field="product.list_price"
-                                t-options='{"widget": "monetary",
-                                            "display_currency": website.pricelist_id.currency_id}'/>
-                        </div>
+                <!-- PRODUCT CODE -->
+                <div class="product-code">
+                    Product Code:
+                    <t t-esc="product.default_code"/>
+                </div>
 
 
-                        <!-- ⭐ VARIANT SELECTOR (INSERTED HERE) -->
-                        <div class="variant-section">
+                <!-- ============================= -->
+                <!-- VARIANT SELECTOR BLOCKS -->
+                <!-- ============================= -->
+                <div class="variant-section">
 
-                            <t t-foreach="product.attribute_line_ids" t-as="attr">
+                    <t t-foreach="product.attribute_line_ids" t-as="attr">
 
-                                <div class="variant-group">
+                        <div class="config-block">
 
-                                    <strong t-esc="attr.attribute_id.name"/>
+                            <!-- HEADER -->
+                            <div class="config-header">
+                                <span t-esc="attr.attribute_id.name"/>
+                                <span class="chevron">⌄</span>
+                            </div>
 
-                                    <div class="variant-options">
+                            <!-- BODY -->
+                            <div class="config-body">
 
-                                        <t t-foreach="attr.value_ids" t-as="value">
+                                <div class="variant-options">
 
-                                            <button type="button"
-                                                    class="variant-option"
-                                                    t-att-data-attr="attr.attribute_id.id"
-                                                    t-att-data-value="value.id">
+                                    <t t-foreach="attr.value_ids" t-as="value">
 
-                                                <t t-esc="value.name"/>
+                                        <button type="button"
+                                                class="variant-option"
+                                                t-att-data-attr="attr.attribute_id.id"
+                                                t-att-data-value="value.id">
 
-                                            </button>
+                                            <t t-esc="value.name"/>
 
-                                        </t>
+                                        </button>
 
-                                    </div>
+                                    </t>
 
                                 </div>
 
-                            </t>
+                            </div>
 
                         </div>
 
-                        <!-- QUANTITY INPUT -->
+                    </t>
+
+                </div>
+
+
+                <!-- ============================= -->
+                <!-- QUANTITY + TIERS BLOCK -->
+                <!-- ============================= -->
+                <div class="config-block">
+
+                    <!-- HEADER -->
+                    <div class="config-header">
+                        Quantity: 50
+                        <span class="chevron">⌄</span>
+                    </div>
+
+                    <!-- BODY -->
+                    <div class="config-body">
+
+                        <!-- TIER CARDS WILL RENDER HERE -->
+                        <div id="qty_tiers"></div>
+
+                        <div class="or-divider">OR</div>
+
+                        <!-- CUSTOM QUANTITY INPUT -->
                         <div class="custom-qty">
-                            <button type="button" class="qty-minus">-</button>
+                            <button type="button" class="qty-minus">−</button>
                             <input type="number" value="50"/>
                             <button type="button" class="qty-plus">+</button>
                         </div>
+
+                    </div>
+
                 </div>
 
+            </div>
+
+
+            <!-- ===================================== -->
             <!-- RIGHT: QUOTE PANEL -->
+            <!-- ===================================== -->
             <div class="gift-quote-panel">
-                <!-- SAFE PRICE DISPLAY -->
-                <div class="price-box" id="dynamic_price">
-                    <span t-field="product.list_price"
-                        t-options='{"widget": "monetary",
-                                    "display_currency": website.pricelist_id.currency_id}'/>
+
+                <div class="price-display">
+                    <span class="price">£7.71</span>
+                    <div class="per-unit">per unit (exc. VAT)</div>
                 </div>
 
-                <button type="button" class="btn btn-primary">
+                <button class="btn-quote">
                     Add To Quote
                 </button>
 
-                <button type="button" class="btn btn-secondary">
+                <button class="btn-ideas">
+                    Need Ideas?
+                </button>
+
+                <div class="divider">OR</div>
+
+                <button class="btn-sample">
                     Buy 1 Sample
                 </button>
 
@@ -107,7 +153,8 @@
 
         </div>
 
-    </xpath>
+    </section>
 
+</xpath>
 </template>
 </odoo>
