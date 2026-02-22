@@ -51,8 +51,9 @@
                 <!-- ============================= -->
                 <!-- VARIANT SELECTOR BLOCKS -->
                 <!-- ============================= -->
-                <div class="variant-section">
+              
 
+                <div class="variant-section">
                     <t t-foreach="product.attribute_line_ids" t-as="attr">
 
                         <div class="config-block">
@@ -66,30 +67,50 @@
                             <!-- BODY -->
                             <div class="config-body">
 
-                                <div class="variant-options">
+                                <!-- PRINT METHOD → DROPDOWN -->
+                                <t t-if="attr.attribute_id.name == 'Print Method'">
 
-                                    <t t-foreach="attr.value_ids" t-as="value">
+                                    <select class="print-method-dropdown">
 
-                                        <button type="button"
-                                                class="variant-option"
-                                                t-att-data-attr="attr.attribute_id.id"
-                                                t-att-data-value="value.id">
+                                        <t t-foreach="attr.value_ids" t-as="value">
+                                            <option t-att-value="value.id">
+                                                <t t-esc="value.name"/>
+                                            </option>
+                                        </t>
 
-                                            <t t-esc="value.name"/>
+                                    </select>
 
-                                        </button>
+                                </t>
 
-                                    </t>
+                                <!-- OTHER ATTRIBUTES → BUTTONS -->
+                                <t t-else="">
 
-                                </div>
+                                    <div class="variant-options">
+
+                                        <t t-foreach="attr.value_ids" t-as="value">
+
+                                            <button type="button"
+                                                    class="variant-option"
+                                                    t-att-data-attr="attr.attribute_id.id"
+                                                    t-att-data-value="value.id">
+
+                                                <t t-esc="value.name"/>
+
+                                            </button>
+
+                                        </t>
+
+                                    </div>
+
+                                </t>
 
                             </div>
 
                         </div>
 
                     </t>
-
                 </div>
+
 
 
                 <!-- ============================= -->
