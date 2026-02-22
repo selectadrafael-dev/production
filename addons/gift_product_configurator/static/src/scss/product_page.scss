@@ -350,4 +350,166 @@ background-size: 18px;
 
 }
 
+/* ===== TOP BANNER ===== */
+
+.gift-top-banner {
+background: linear-gradient(90deg,#ff8a00,#ffb300);
+text-align: center;
+padding: 14px;
+border-radius: 10px;
+margin-bottom: 20px;
+}
+
+.banner-link {
+color: white;
+font-weight: 700;
+text-decoration: none;
+display: block;
+}
+
+.banner-link span {
+display: block;
+font-size: 13px;
+font-weight: 400;
+}
+
+/* ===== GRID LAYOUT ===== */
+
+.gift-product-layout {
+display: grid;
+grid-template-columns: 1.2fr 1.4fr 0.9fr;
+gap: 40px;
+margin-top: 30px;
+}
+
+/* ===== CONFIG BLOCKS ===== */
+
+.config-block {
+border-top: 1px solid #e5e7ee;
+padding: 18px 0;
+}
+
+.form-select {
+width: 100%;
+padding: 10px;
+border-radius: 8px;
+border: 1px solid #d6dae6;
+}
+
+/* ===== TIER CARDS ===== */
+
+#qty_tiers {
+display: flex;
+gap: 10px;
+flex-wrap: wrap;
+}
+
+.tier-card {
+border: 1px solid #d6dae6;
+padding: 12px;
+border-radius: 10px;
+cursor: pointer;
+text-align: center;
+min-width: 80px;
+background: white;
+}
+
+.tier-card.popular {
+border: 2px solid #f2b63f;
+}
+
+.tier-card.active {
+border: 2px solid #1a73e8;
+background: #eef4ff;
+}
+
+/* ===== QUANTITY INPUT ===== */
+
+.custom-qty {
+display: flex;
+margin-top: 12px;
+border: 1px solid #d6dae6;
+border-radius: 10px;
+overflow: hidden;
+}
+
+.custom-qty button {
+width: 44px;
+border: none;
+background: white;
+}
+
+.custom-qty input {
+width: 100%;
+text-align: center;
+border: none;
+}
+
+/* ===== RIGHT PANEL ===== */
+
+.gift-quote-panel {
+position: sticky;
+top: 110px;
+background: #f4f6fb;
+border-radius: 14px;
+padding: 24px;
+}
+
+/* ===== DRAWER ===== */
+
+.quote-drawer {
+position: fixed;
+top: 0;
+right: -420px;
+width: 420px;
+height: 100%;
+background: white;
+box-shadow: -6px 0 20px rgba(0,0,0,.15);
+transition: .3s;
+z-index: 9999;
+}
+
+.quote-drawer.active {
+right: 0;
+}
+
+.drawer-content {
+padding: 28px;
+}
+
+.drawer-content input,
+.drawer-content textarea {
+width: 100%;
+margin-bottom: 12px;
+padding: 10px;
+border-radius: 8px;
+border: 1px solid #d6dae6;
+}
+
+.drawer-close {
+float: right;
+border: none;
+background: none;
+font-size: 22px;
+}
+
+/* ===== MOBILE ===== */
+
+@media (max-width: 992px) {
+
+.gift-product-layout {
+    grid-template-columns: 1fr;
+}
+
+.gift-gallery,
+.gift-quote-panel {
+    position: static;
+}
+
+.quote-drawer {
+    width: 100%;
+}
+}
+
+
 

@@ -4,7 +4,20 @@
 <xpath expr="//section[@id='product_detail']" position="inside">
 
     <section id="product_detail" class="oe_website_sale container my-3 my-lg-4">
+            <!-- ===== TOP PROMO BANNER ===== -->
 
+            <div class="gift-top-banner">
+
+            <a href="/shop/category/popular"
+            class="banner-link">
+
+                ⭐ CLICK HERE FOR OUR MOST POPULAR PICKS ⭐
+                <span>Buy tried and tested items customers love</span>
+
+            </a>
+            </div>
+
+       
         <div class="gift-product-layout">
 
             <!-- ===================================== -->
@@ -33,117 +46,82 @@
             <!-- ===================================== -->
             <div class="gift-configurator">
 
-                <!-- PROMO BANNER -->
-                <div class="promo-banner">
-                    CLICK HERE FOR OUR MOST POPULAR PICKS
-                </div>
-
-                <!-- PRODUCT NAME -->
                 <h1 t-field="product.name"/>
-
-                <!-- PRODUCT CODE -->
                 <div class="product-code">
-                    Product Code:
-                    <t t-esc="product.default_code"/>
+                    Product Code: <t t-esc="product.default_code"/>
                 </div>
 
-
-                <!-- ============================= -->
-                <!-- VARIANT SELECTOR BLOCKS -->
-                <!-- ============================= -->
-              
-
-                <div class="variant-section">
-                    <t t-foreach="product.attribute_line_ids" t-as="attr">
-
-                        <div class="config-block">
-
-                            <!-- HEADER -->
-                            <div class="config-header">
-                                <span t-esc="attr.attribute_id.name"/>
-                                <span class="chevron">⌄</span>
-                            </div>
-
-                            <!-- BODY -->
-                            <div class="config-body">
-
-                                <!-- PRINT METHOD → DROPDOWN -->
-                                <t t-if="attr.attribute_id.name == 'Print Method'">
-
-                                    <select class="print-method-dropdown">
-
-                                        <t t-foreach="attr.value_ids" t-as="value">
-                                            <option t-att-value="value.id">
-                                                <t t-esc="value.name"/>
-                                            </option>
-                                        </t>
-
-                                    </select>
-
-                                </t>
-
-                                <!-- OTHER ATTRIBUTES → BUTTONS -->
-                                <t t-else="">
-
-                                    <div class="variant-options">
-
-                                        <t t-foreach="attr.value_ids" t-as="value">
-
-                                            <button type="button"
-                                                    class="variant-option"
-                                                    t-att-data-attr="attr.attribute_id.id"
-                                                    t-att-data-value="value.id">
-
-                                                <t t-esc="value.name"/>
-
-                                            </button>
-
-                                        </t>
-
-                                    </div>
-
-                                </t>
-
-                            </div>
-
-                        </div>
-
-                    </t>
+                <!-- COLOUR SELECTOR -->
+                <div class="config-block">
+                    <div class="config-header">Colour</div>
+                    <div class="variant-options">
+                        <button class="variant-option active">White</button>
+                        <button class="variant-option">Blue</button>
+                        <button class="variant-option">Black</button>
+                    </div>
                 </div>
 
+                <!-- PRINT METHOD -->
+                <div class="config-block">
+                    <div class="config-header">Print Method</div>
+                    <select class="form-select">
+                        <option>Branded</option>
+                        <option>Digital</option>
+                        <option>Screen Print</option>
+                    </select>
+                </div>
 
+                <!-- LOGO COLOURS -->
+                <div class="config-block">
+                    <div class="config-header">Logo Colours</div>
+                    <select class="form-select">
+                        <option>1 colour</option>
+                        <option>2 colours</option>
+                        <option>Full colour</option>
+                    </select>
+                </div>
 
-                <!-- ============================= -->
-                <!-- QUANTITY + TIERS BLOCK -->
-                <!-- ============================= -->
+                <!-- QUANTITY TIERS -->
                 <div class="config-block">
 
-                    <!-- HEADER -->
-                    <div class="config-header">
-                        Quantity: 50
-                        <span class="chevron">⌄</span>
-                    </div>
+                    <div class="config-header">Quantity</div>
 
-                    <!-- BODY -->
-                    <div class="config-body">
+                    <div id="qty_tiers">
 
-                        <!-- TIER CARDS WILL RENDER HERE -->
-                        <div id="qty_tiers"></div>
+                        <div class="tier-card active">
+                            <strong>50+</strong>
+                            <span>£7.71 each</span>
+                        </div>
 
-                        <div class="or-divider">OR</div>
+                        <div class="tier-card popular">
+                            <strong>100+</strong>
+                            <span>£5.40 each</span>
+                        </div>
 
-                        <!-- CUSTOM QUANTITY INPUT -->
-                        <div class="custom-qty">
-                            <button type="button" class="qty-minus">−</button>
-                            <input type="number" value="50"/>
-                            <button type="button" class="qty-plus">+</button>
+                        <div class="tier-card">
+                            <strong>250+</strong>
+                            <span>£4.80 each</span>
+                        </div>
+
+                        <div class="tier-card">
+                            <strong>500+</strong>
+                            <span>£4.10 each</span>
                         </div>
 
                     </div>
 
-                </div>
+                    <div class="divider">OR</div>
 
+                    <!-- MANUAL QTY -->
+                    <div class="custom-qty">
+                        <button type="button" class="qty-minus">−</button>
+                        <input type="number" value="50"/>
+                        <button type="button" class="qty-plus">+</button>
+                    </div>
+
+                </div>
             </div>
+
 
 
             <!-- ===================================== -->
@@ -173,6 +151,25 @@
             </div>
 
         </div>
+
+        <!-- ===== SLIDE-IN QUOTE PANEL ===== -->
+        <div id="quoteDrawer" class="quote-drawer">
+            <div class="drawer-content">
+
+                <button class="drawer-close">✕</button>
+
+                <h3>Request a Quote</h3>
+
+                <input type="text" placeholder="Your Name"/>
+                <input type="email" placeholder="Email"/>
+                <input type="tel" placeholder="Phone"/>
+                <textarea placeholder="Project details"></textarea>
+
+                <button class="btn-submit">Send Request</button>
+
+            </div>
+        </div>
+
 
     </section>
 
