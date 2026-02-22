@@ -1,0 +1,21 @@
+/* Hide product card text & buttons */
+/* ================= HOMEPAGE PRODUCT CARDS ================= */
+
+/*.gifting-home .o_wsale_product_information,
+.gifting-home .o_wsale_product_name,
+.gifting-home .product_price,
+.gifting-home .oe_product_cart a.btn,
+.gifting-home .o_wsale_product_btn {
+  display: none !important;
+}*/
+
+.gifting-home .o_carousel_product_card_bod{
+  display: none !important;
+}
+
+/* Clean image-only cards */
+.gifting-home .oe_product_cart {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+}
