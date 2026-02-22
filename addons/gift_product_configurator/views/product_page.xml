@@ -1,15 +1,13 @@
 <odoo>
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
 
-    <!--Replace Odoo 18 product section -->
-    <xpath expr="//section[@id='product_detail']" position="replace">
+    <!-- DO NOT REPLACE THE SECTION -->
+    <xpath expr="//section[@id='product_detail']" position="inside">
 
-        <section id="product_detail" class="gift-product-layout container">
+        <!-- YOUR CUSTOM LAYOUT WRAPPER -->
+        <div class="gift-product-layout">
 
-            <!-- REQUIRED FOR WISHLIST MODULE -->
-            <div id="product_option_block"></div>
-
-            <!-- LEFT: PRODUCT GALLERY -->
+            <!-- LEFT: GALLERY -->
             <div class="gift-gallery">
                 <t t-call="website_sale.product_images"/>
             </div>
@@ -24,13 +22,10 @@
                     <t t-esc="product.default_code"/>
                 </div>
 
-                <!-- VARIANT OPTIONS -->
                 <t t-call="website_sale.product_variants"/>
 
-                <!-- QUANTITY TIERS -->
                 <div id="qty_tiers"></div>
 
-                <!-- CUSTOM QTY -->
                 <div class="custom-qty">
                     <button type="button">-</button>
                     <input type="number" value="50"/>
@@ -56,7 +51,7 @@
 
             </div>
 
-        </section>
+        </div>
 
     </xpath>
 
