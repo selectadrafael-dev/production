@@ -317,6 +317,9 @@ font-size: 14px;
 Hide original Odoo product page (Odoo 18)
 ========================================= */
 
+/* Scoped to website sale product pages */
+
+.oe_website_sale [data-name="Product Page"],
 #product_detail_main {
 display: none !important;
 }
