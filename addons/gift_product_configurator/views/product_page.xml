@@ -33,6 +33,7 @@
                                             "display_currency": website.pricelist_id.currency_id}'/>
                         </div>
 
+
                         <!-- ⭐ VARIANT SELECTOR (INSERTED HERE) -->
                         <div class="variant-section">
 
@@ -81,7 +82,6 @@
                         t-options='{"widget": "monetary",
                                     "display_currency": website.pricelist_id.currency_id}'/>
                 </div>
-
 
                 <button type="button" class="btn btn-primary">
                     Add To Quote
