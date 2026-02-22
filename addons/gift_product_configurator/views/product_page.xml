@@ -8,9 +8,11 @@
         <div class="gift-product-layout">
 
             <!-- LEFT: GALLERY -->
-            <div class="gift-gallery">
-                <t t-call="website_sale.product_images"/>
+           <div class="gift-gallery">
+                <img t-att-src="'/web/image/product.template/%s/image_1024' % product.id"
+                    class="img-fluid"/>
             </div>
+
 
             <!-- CENTER: CONFIGURATOR -->
             <div class="gift-configurator">
