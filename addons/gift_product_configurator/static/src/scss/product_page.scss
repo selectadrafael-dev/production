@@ -287,7 +287,7 @@ cursor: pointer;
 /* =====================================
 Hide default Odoo product layout safely
 ===================================== */
-
-#product_detail > *:not(.gift-product-layout) {
+#product_detail .oe_structure > *:not(.gift-product-layout) {
 display: none !important;
 }
+
