@@ -2,7 +2,7 @@
 
 <odoo>
 
-  <record id="gift_bestsellers_page" model="website.page">
+<record id="gift_bestsellers_page" model="website.page">
 <field name="name">Bestsellers</field>
 <field name="url">/bestsellers</field>
 <field name="is_published" eval="True"/>
@@ -12,94 +12,166 @@
 <field name="arch" type="xml">
 
   <t t-name="gift_product_configurator.bestsellers_page">
-
     <t t-call="website.layout">
 
-      <!--REQUIRED WRAP-->
       <div id="wrap" class="oe_structure bestsellers-page">
 
-        <!-- HERO -->
+        <!-- ===== BREADCRUMB ===== -->
+        <div class="container breadcrumb">
+          <a href="/">Home</a> / Bestsellers
+        </div>
+
+
+        <!-- ===== HERO ===== -->
         <section class="bestseller-hero">
 
-          <div class="container">
+          <div class="container hero-inner">
 
             <h1>Best-Selling Promotional Products</h1>
 
             <p>
-              Our most popular branded merchandise trusted by customers.
+              Our most popular branded merchandise trusted by thousands of customers.
             </p>
 
-            <a href="/contactus" class="btn btn-primary">
-              Get An Express Quote
-            </a>
+            <div class="hero-buttons">
+              <a href="/contactus" class="btn btn-primary">
+                Get An Express Quote
+              </a>
 
-            <a href="/contactus" class="btn btn-secondary">
-              Contact Us
-            </a>
+              <a href="/contactus" class="btn btn-secondary">
+                Contact Us
+              </a>
+            </div>
 
           </div>
 
         </section>
 
 
-        <!-- PRODUCTS -->
-        <section class="container bestseller-products">
-
-          <!-- FIND CATEGORY -->
-          <t t-set="category"
-             t-value="request.env['product.public.category'].sudo().search([
-               ('name', '=', 'Best Selling Promotional Products')
-             ], limit=1)"/>
-
-          <!-- FIND PUBLISHED PRODUCTS -->
-          <t t-set="products"
-             t-value="request.env['product.template'].sudo().search([
-               ('public_categ_ids', 'in', category.ids),
-               ('website_published', '=', True)
-             ])"/>
+        <!-- ===== MAIN CATALOG LAYOUT ===== -->
+        <div class="container catalog-layout">
 
 
-          <div class="product-grid">
+          <!-- LEFT FILTER SIDEBAR -->
+          <aside class="filters" id="filtersPanel">
 
-            <t t-foreach="products" t-as="product">
+            <h4>Filter by</h4>
 
-              <div class="product-card">
+            <div class="filter-group">
+              <strong>Price</strong>
+              <input type="range"/>
+            </div>
 
-                <a t-att-href="'/shop/product/%s' % product.id">
+            <div class="filter-group">
+              <strong>Colour</strong>
+              <label><input type="checkbox"/> Black</label>
+              <label><input type="checkbox"/> Blue</label>
+              <label><input type="checkbox"/> Red</label>
+            </div>
 
-                  <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+            <div class="filter-group">
+              <strong>MOQ</strong>
+              <label><input type="checkbox"/> 50</label>
+              <label><input type="checkbox"/> 100</label>
+              <label><input type="checkbox"/> 250</label>
+              <label><input type="checkbox"/> 500</label>
+            </div>
 
-                  <h5 t-esc="product.name"/>
+            <button class="clear-filters">
+              Clear filters
+            </button>
 
-                  <div class="price-note">
-                    As low as (exc. VAT)
-                  </div>
+          </aside>
 
-                  <strong>
-                    <t t-esc="product.list_price"/>
-                  </strong>
 
-                </a>
+          <!-- RIGHT RESULTS -->
+          <section class="results">
+
+
+            <!-- MOBILE FILTER BUTTON -->
+            <button id="openFilters" class="mobile-filter-btn">
+              Filter
+            </button>
+
+
+            <!-- RESULTS HEADER -->
+            <div class="results-header">
+
+              <div class="vat-toggle">
+                Excludes VAT
+                <input type="checkbox"/>
+              </div>
+
+              <div class="result-count">
+
+                <t t-set="category"
+                   t-value="request.env['product.public.category'].sudo().search([
+                     ('name','=','Best Selling Promotional Products')
+                   ], limit=1)"/>
+
+                <t t-set="products"
+                   t-value="request.env['product.template'].sudo().search([
+                     ('public_categ_ids','in', category.ids),
+                     ('website_published','=', True)
+                   ])"/>
+
+                <t t-esc="len(products)"/> results
 
               </div>
 
-            </t>
+              <div class="sort">
+                <select>
+                  <option>Sort by</option>
+                  <option>Price Low → High</option>
+                  <option>Price High → Low</option>
+                </select>
+              </div>
 
-          </div>
+            </div>
 
-        </section>
 
-        <!-- REQUIRED FOR BUILDER -->
+            <!-- PRODUCT GRID -->
+            <div class="product-grid">
+
+              <t t-foreach="products" t-as="product">
+
+                <div class="product-card">
+
+                  <a t-att-href="'/shop/product/%s' % product.id">
+
+                    <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+
+                    <h5 t-esc="product.name"/>
+
+                    <div class="price-note">
+                      As low as (exc. VAT)
+                    </div>
+
+                    <strong>
+                      <t t-esc="product.list_price"/>
+                    </strong>
+
+                  </a>
+
+                </div>
+
+              </t>
+
+            </div>
+
+          </section>
+
+        </div>
+
+
         <div class="oe_structure"/>
 
       </div>
 
     </t>
-
   </t>
 
 </field>
-
   </record>
 
 </odoo>
