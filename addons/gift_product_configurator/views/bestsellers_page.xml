@@ -7,32 +7,133 @@
 
             <div id="wrap" class="oe_structure">
 
-                <section class="container my-5">
+                <section class="bestsellers-page container-fluid">
 
-                    <h1>Best-Selling Promotional Products</h1>
+                    <div class="container">
 
-                    <p>Our most popular branded merchandise.</p>
+                        <div class="row">
 
-                    <div class="row">
+                            <!-- =========================
+                                 LEFT FILTER SIDEBAR
+                            ========================== -->
 
-                        <t t-foreach="products" t-as="product">
+                            <aside class="col-lg-3 filter-sidebar">
 
-                            <div class="col-lg-3 col-md-4 col-6 mb-4">
+                                <h5 class="filter-title">Filter by</h5>
 
-                                <a t-att-href="'/shop/product/%s' % product.id">
+                                <!-- Price -->
+                                <div class="filter-block">
+                                    <strong>Price</strong>
+                                    <div class="price-inputs">
+                                        £ <input type="text" value="0.00"/>
+                                        to
+                                        £ <input type="text" value="11.00"/>
+                                    </div>
+                                    <div class="price-slider"></div>
+                                </div>
 
-                                    <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
-                                         class="img-fluid rounded"/>
+                                <!-- Colour -->
+                                <div class="filter-block">
+                                    <strong>Colour</strong>
 
-                                    <h6 class="mt-2">
-                                        <t t-esc="product.name"/>
-                                    </h6>
+                                    <label><input type="checkbox"/> Black</label>
+                                    <label><input type="checkbox"/> Blue</label>
+                                    <label><input type="checkbox"/> Brown</label>
+                                    <label><input type="checkbox"/> Burgundy</label>
+                                    <label><input type="checkbox"/> Cyan</label>
+                                </div>
 
-                                </a>
+                                <button class="btn-clear">
+                                    Clear filters
+                                </button>
+
+                            </aside>
+
+                            <!-- =========================
+                                 RIGHT CONTENT
+                            ========================== -->
+
+                            <div class="col-lg-9">
+
+                                <!-- HERO INTRO -->
+                                <div class="bestseller-hero">
+
+                                    <div class="breadcrumbs">
+                                        Home / Bestsellers
+                                    </div>
+
+                                    <h1>Best-Selling Promotional Products</h1>
+
+                                    <h4>Our Most Popular Branded Merchandise</h4>
+
+                                    <p>
+                                        If you're looking for the best-selling promotional products,
+                                        look no further. We've got it all!
+                                    </p>
+
+                                    <div class="hero-buttons">
+                                        <a href="#" class="btn-primary">
+                                            Get An Express Quote
+                                        </a>
+                                        <a href="#" class="btn-secondary">
+                                            Contact Us
+                                        </a>
+                                    </div>
+
+                                </div>
+
+                                <!-- RESULT BAR -->
+                                <div class="results-bar">
+
+                                    <div class="vat-toggle">
+                                        Excludes VAT
+                                    </div>
+
+                                    <div class="results-count">
+                                        1–26 of 47 results
+                                    </div>
+
+                                    <div class="sort-box">
+                                        Sort by
+                                    </div>
+
+                                </div>
+
+                                <!-- PRODUCT GRID -->
+                                <div class="row product-grid">
+
+                                    <t t-foreach="products" t-as="product">
+
+                                        <div class="col-xl-3 col-lg-4 col-md-6 col-6">
+
+                                            <div class="product-card">
+
+                                                <a t-att-href="'/shop/product/%s' % product.id">
+
+                                                    <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+                                                         class="product-image"/>
+
+                                                    <div class="product-name">
+                                                        <t t-esc="product.name"/>
+                                                    </div>
+
+                                                    <div class="product-price">
+                                                        As low as (exc. VAT)
+                                                    </div>
+
+                                                </a>
+
+                                            </div>
+
+                                        </div>
+
+                                    </t>
+
+                                </div>
 
                             </div>
 
-                        </t>
+                        </div>
 
                     </div>
 
