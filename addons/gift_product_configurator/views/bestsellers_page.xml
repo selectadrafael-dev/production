@@ -1,120 +1,47 @@
-```xml
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-  <template id="bestsellers_page">
-    <t t-call="website.layout">
+    <template id="bestsellers_page" name="Bestsellers Page">
 
-      <div id="wrap" class="bestseller-page">
+        <t t-call="website.layout">
 
-        <!-- HERO SECTION -->
-        <section class="bs-hero">
-          <div class="container">
+            <div id="wrap" class="oe_structure">
 
-            <div class="breadcrumbs">
-              <a href="/">Home</a> / <strong>Bestsellers</strong>
-            </div>
+                <section class="container my-5">
 
-            <h1>Best-Selling Promotional Products</h1>
+                    <h1>Best-Selling Promotional Products</h1>
 
-            <h3>Our Most Popular Branded Merchandise</h3>
+                    <p>Our most popular branded merchandise.</p>
 
-            <p>
-              If you're looking for the best-selling promotional products,
-              you've found the right place.
-            </p>
+                    <div class="row">
 
-            <div class="hero-buttons">
-              <a href="#" class="btn-primary">Get An Express Quote</a>
-              <a href="/contactus" class="btn-secondary">Contact Us</a>
-            </div>
+                        <t t-foreach="products" t-as="product">
 
-          </div>
-        </section>
+                            <div class="col-lg-3 col-md-4 col-6 mb-4">
 
-        <!-- MAIN CONTENT -->
-        <section class="bs-main container">
+                                <a t-att-href="'/shop/product/%s' % product.id">
 
-          <div class="bs-layout">
+                                    <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+                                         class="img-fluid rounded"/>
 
-            <!-- LEFT FILTER SIDEBAR -->
-            <aside class="bs-sidebar">
+                                    <h6 class="mt-2">
+                                        <t t-esc="product.name"/>
+                                    </h6>
 
-              <h4>Filter by</h4>
+                                </a>
 
-              <div class="filter-group">
-                <h5>Price</h5>
-                <input type="range" min="0" max="100"/>
-              </div>
+                            </div>
 
-              <div class="filter-group">
-                <h5>Colour</h5>
+                        </t>
 
-                <label><input type="checkbox"/> Black</label>
-                <label><input type="checkbox"/> Blue</label>
-                <label><input type="checkbox"/> Red</label>
-                <label><input type="checkbox"/> Green</label>
-              </div>
-
-              <button class="clear-filters">Clear filters</button>
-
-            </aside>
-
-            <!-- RIGHT PRODUCT AREA -->
-            <div class="bs-products">
-
-              <div class="product-toolbar">
-
-                <div class="vat-toggle">
-                  Excludes VAT
-                  <input type="checkbox"/>
-                </div>
-
-                <div class="sort-box">
-                  Sort by
-                </div>
-
-              </div>
-
-              <!-- PRODUCT GRID -->
-              <div class="product-grid">
-
-                <t t-foreach="category.product_tmpl_ids.filtered(lambda p: p.website_published)" t-as="p">
-
-                  <div class="product-card">
-
-                    <div class="card-image">
-                      <img t-att-src="'/web/image/product.template/%s/image_512' % p.id"/>
-                      <span class="badge">BESTSELLER</span>
                     </div>
 
-                    <h4 t-esc="p.name"/>
-
-                    <div class="price-label">
-                      As low as (exc. VAT)
-                    </div>
-
-                    <div class="price">
-                      <span t-field="p.list_price"
-                            t-options='{"widget":"monetary",
-                            "display_currency":website.pricelist_id.currency_id}'/>
-                    </div>
-
-                  </div>
-
-                </t>
-
-              </div>
+                </section>
 
             </div>
 
-          </div>
+        </t>
 
-        </section>
-
-      </div>
-
-    </t>
-  </template>
+    </template>
 
 </odoo>
-```
