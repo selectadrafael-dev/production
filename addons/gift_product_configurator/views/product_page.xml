@@ -134,7 +134,7 @@
                     <div class="per-unit">per unit (exc. VAT)</div>
                 </div>
 
-                <button class="btn-quote">
+                <button id="openQuote" class="btn-quote">
                     Add To Quote
                 </button>
 
