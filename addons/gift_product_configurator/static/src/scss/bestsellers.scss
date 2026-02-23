@@ -1,65 +1,97 @@
-.catalog-layout {
-display: grid;
-grid-template-columns: 280px 1fr;
-gap: 40px;
-margin-top: 30px;
+/* HERO */
+.bs-hero {
+  background: #8ed6b5;
+  padding: 60px 0;
 }
 
-.bestseller-hero {
-background: #d7f2df;
-padding: 40px 0;
-margin-bottom: 30px;
+.bs-hero h1 {
+  font-size: 42px;
+  font-weight: 800;
 }
 
-.filters {
-background: #f8f9fb;
-padding: 20px;
-border-radius: 12px;
-position: sticky;
-top: 120px;
-height: fit-content;
+.hero-buttons {
+  margin-top: 20px;
 }
 
+.btn-primary {
+  background: #0f1f44;
+  color: white;
+  padding: 14px 26px;
+  border-radius: 999px;
+  margin-right: 12px;
+  text-decoration: none;
+}
+
+.btn-secondary {
+  background: white;
+  padding: 14px 26px;
+  border-radius: 999px;
+  text-decoration: none;
+}
+
+/* LAYOUT */
+.bs-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 40px;
+  margin-top: 40px;
+}
+
+/* SIDEBAR */
+.bs-sidebar {
+  position: sticky;
+  top: 120px;
+}
+
+.filter-group {
+  margin-bottom: 24px;
+}
+
+/* PRODUCT GRID */
 .product-grid {
-display: grid;
-grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 28px;
 }
 
-.results-header {
-display: flex;
-justify-content: space-between;
-margin-bottom: 20px;
+.product-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
 }
 
-.mobile-filter-btn {
-display: none;
+.card-image {
+  position: relative;
 }
 
-/*MOBILE*/
+.card-image img {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: orange;
+  color: white;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.price {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+/* MOBILE */
 @media (max-width: 992px) {
+  .bs-layout {
+    grid-template-columns: 1fr;
+  }
 
-.catalog-layout {
-grid-template-columns: 1fr;
-}
-
-.filters {
-position: fixed;
-left: -100%;
-top: 0;
-height: 100vh;
-width: 80%;
-z-index: 999;
-transition: 0.3s;
-}
-
-.filters.active {
-left: 0;
-}
-
-.mobile-filter-btn {
-display: block;
-margin-bottom: 12px;
-}
-
+  .product-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
