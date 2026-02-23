@@ -1,121 +1,110 @@
-<?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-<template id="bestsellers_page" name="Bestsellers Page">
+    <template id="bestsellers_page_template">
 
-<t t-call="website.layout">
+        <t t-call="website.layout">
 
-<div id="wrap" class="oe_structure">
+            <!-- REQUIRED FOR WEBSITE EDITOR -->
+            <div id="wrap" class="oe_structure">
 
-    <!-- HERO -->
-    <section class="bs-hero">
-        <div class="container">
+                <section class="bestsellers-page">
 
-            <div class="bs-hero-box">
+                    <!-- HERO -->
+                    <div class="bestsellers-hero">
+                        <div class="container">
 
-                <div class="bs-breadcrumb">
-                    Home / Bestsellers
-                </div>
+                            <div class="breadcrumbs">
+                                Home / Bestsellers
+                            </div>
 
-                <h1>Best-Selling Promotional Products</h1>
+                            <h1>Best-Selling Promotional Products</h1>
+                            <h2>Our Most Popular Branded Merchandise</h2>
 
-                <h3>Our Most Popular Branded Merchandise</h3>
+                            <p>
+                                If you're looking for the best-selling promotional
+                                products, look no further. We've got it all!
+                            </p>
 
-                <p>
-                    If you're looking for the best-selling promotional products,
-                    look no further. We've got it all!
-                </p>
+                            <div class="hero-actions">
+                                <a href="#" class="btn-primary">
+                                    Get An Express Quote
+                                </a>
+                                <a href="/contactus" class="btn-secondary">
+                                    Contact Us
+                                </a>
+                            </div>
 
-                <div class="bs-actions">
-                    <a href="#" class="btn-primary">Get An Express Quote</a>
-                    <a href="/contactus" class="btn-secondary">Contact Us</a>
-                </div>
-
-            </div>
-
-        </div>
-    </section>
-
-
-    <!-- MAIN LAYOUT -->
-    <section class="bs-main">
-        <div class="container">
-
-            <div class="bs-layout">
-
-                <!-- LEFT SIDEBAR -->
-                <aside class="bs-sidebar">
-
-                    <h4>Filter by</h4>
-
-                    <div class="filter-group">
-                        <h5>Colour</h5>
-
-                        <label><input type="checkbox"/> Black</label>
-                        <label><input type="checkbox"/> Blue</label>
-                        <label><input type="checkbox"/> Brown</label>
-                        <label><input type="checkbox"/> Burgundy</label>
-                    </div>
-
-                    <button class="clear-btn">
-                        Clear filters
-                    </button>
-
-                </aside>
-
-
-                <!-- RIGHT CONTENT -->
-                <div class="bs-content">
-
-                    <!-- TOOLBAR -->
-                    <div class="bs-toolbar">
-
-                        <div>Excludes VAT</div>
-
-                        <div>
-                            <t t-esc="len(products)"/> results
                         </div>
-
-                        <div>Sort by</div>
-
                     </div>
 
+                    <!-- MAIN CONTENT -->
+                    <div class="container bestsellers-layout">
 
-                    <!-- PRODUCT GRID -->
-                    <div class="bs-grid">
+                        <!-- LEFT FILTER SIDEBAR -->
+                        <aside class="filters">
+                            <h3>Filter by</h3>
 
-                        <t t-foreach="products" t-as="p">
+                            <div class="filter-group">
+                                <h4>Colour</h4>
+                                <label><input type="checkbox"/> Black</label>
+                                <label><input type="checkbox"/> Blue</label>
+                                <label><input type="checkbox"/> Brown</label>
+                                <label><input type="checkbox"/> Burgundy</label>
+                            </div>
 
-                            <div class="product-card">
+                            <button class="clear-btn">
+                                Clear filters
+                            </button>
+                        </aside>
 
-                                <a t-att-href="'/shop/product/%s' % p.id">
+                        <!-- PRODUCTS GRID -->
+                        <div class="products-area">
 
-                                    <img t-att-src="'/web/image/product.template/%s/image_512' % p.id"/>
+                            <div class="results-bar">
+                                <span>Excludes VAT</span>
+                                <span t-esc="len(products)"/> results
+                                <span>Sort by</span>
+                            </div>
 
-                                    <h6 t-esc="p.name"/>
+                            <div class="products-grid">
 
-                                    <div class="price">
-                                        £<t t-esc="p.list_price"/>
+                                <t t-foreach="products" t-as="product">
+
+                                    <div class="product-card">
+
+                                        <a t-att-href="'/shop/product/%s' % product.id">
+
+                                            <img
+                                                t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+                                                alt=""
+                                            />
+
+                                            <h4 t-esc="product.name"/>
+
+                                            <p class="price">
+                                                <span t-field="product.list_price"
+                                                      t-options='{"widget": "monetary",
+                                                      "display_currency": website.pricelist_id.currency_id}'/>
+                                            </p>
+
+                                        </a>
+
                                     </div>
 
-                                </a>
+                                </t>
 
                             </div>
 
-                        </t>
+                        </div>
 
                     </div>
 
-                </div>
+                </section>
 
             </div>
 
-        </div>
-    </section>
+        </t>
 
-</div>
-
-</t>
-</template>
+    </template>
 
 </odoo>
