@@ -99,7 +99,7 @@
 
                                 </div>
 
-                                <!-- PRODUCT GRID -->
+                                <!--PRODUCT GRID -->
                                 <div class="row product-grid">
 
                                     <t t-foreach="products" t-as="product">
