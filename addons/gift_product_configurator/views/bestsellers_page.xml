@@ -15,7 +15,7 @@
 
     <t t-call="website.layout">
 
-      <!-- REQUIRED WRAP -->
+      <!--REQUIRED WRAP-->
       <div id="wrap" class="oe_structure bestsellers-page">
 
         <!-- HERO -->
