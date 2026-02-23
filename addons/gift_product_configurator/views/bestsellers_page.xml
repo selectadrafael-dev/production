@@ -1,145 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+
 <odoo>
 
-  <template id="bestsellers_template" name="Bestsellers Page">
+  <record id="gift_bestsellers_page" model="website.page">
+<field name="name">Bestsellers</field>
+<field name="url">/bestsellers</field>
+<field name="is_published" eval="True"/>
+<field name="key">gift_product_configurator.bestsellers_page</field>
+<field name="type">qweb</field>
+
+<field name="arch" type="xml">
+
+  <t t-name="gift_product_configurator.bestsellers_page">
 
     <t t-call="website.layout">
 
-      <div class="container bestsellers-page">
-
-        <!-- BREADCRUMB -->
-        <div class="breadcrumb">
-          <a href="/">Home</a> / Bestsellers
-        </div>
+      <!-- REQUIRED WRAP -->
+      <div id="wrap" class="oe_structure bestsellers-page">
 
         <!-- HERO -->
-        <div class="bestseller-hero">
+        <section class="bestseller-hero">
 
-          <div class="hero-content">
+          <div class="container">
 
             <h1>Best-Selling Promotional Products</h1>
 
             <p>
-              Our most popular branded merchandise that customers love.
+              Our most popular branded merchandise trusted by customers.
             </p>
 
-            <div class="hero-buttons">
-              <a href="/contactus" class="btn btn-primary">
-                Get An Express Quote
-              </a>
+            <a href="/contactus" class="btn btn-primary">
+              Get An Express Quote
+            </a>
 
-              <a href="/contactus" class="btn btn-outline">
-                Contact Us
-              </a>
-            </div>
+            <a href="/contactus" class="btn btn-secondary">
+              Contact Us
+            </a>
 
           </div>
 
-        </div>
+        </section>
 
 
-        <!-- MAIN LAYOUT -->
-        <div class="bestseller-layout">
+        <!-- PRODUCTS -->
+        <section class="container bestseller-products">
 
-          <!-- FILTER SIDEBAR -->
-          <aside class="filters" id="filtersPanel">
+          <!-- FIND CATEGORY -->
+          <t t-set="category"
+             t-value="request.env['product.public.category'].sudo().search([
+               ('name', '=', 'Best Selling Promotional Products')
+             ], limit=1)"/>
 
-            <h4>Filter by</h4>
-
-            <div class="filter-group">
-              <strong>Price</strong>
-              <input type="range"/>
-            </div>
-
-            <div class="filter-group">
-              <strong>Colour</strong>
-              <label><input type="checkbox"/> Black</label>
-              <label><input type="checkbox"/> Blue</label>
-              <label><input type="checkbox"/> Red</label>
-            </div>
-
-            <div class="filter-group">
-              <strong>MOQ</strong>
-              <label><input type="checkbox"/> 50</label>
-              <label><input type="checkbox"/> 100</label>
-              <label><input type="checkbox"/> 250</label>
-              <label><input type="checkbox"/> 500</label>
-            </div>
-
-            <button class="clear-filters">
-              Clear filters
-            </button>
-
-          </aside>
+          <!-- FIND PUBLISHED PRODUCTS -->
+          <t t-set="products"
+             t-value="request.env['product.template'].sudo().search([
+               ('public_categ_ids', 'in', category.ids),
+               ('website_published', '=', True)
+             ])"/>
 
 
-          <!-- RESULTS AREA -->
-          <section class="product-results">
+          <div class="product-grid">
 
-            <!-- MOBILE FILTER BUTTON -->
-            <button class="mobile-filter-btn" id="openFilters">
-              Filter
-            </button>
+            <t t-foreach="products" t-as="product">
 
-            <!-- HEADER -->
-            <div class="results-header">
+              <div class="product-card">
 
-              <div class="vat-toggle">
-                Excludes VAT
-                <input type="checkbox"/>
+                <a t-att-href="'/shop/product/%s' % product.id">
+
+                  <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+
+                  <h5 t-esc="product.name"/>
+
+                  <div class="price-note">
+                    As low as (exc. VAT)
+                  </div>
+
+                  <strong>
+                    <t t-esc="product.list_price"/>
+                  </strong>
+
+                </a>
+
               </div>
 
-              <div class="result-count">
-                <t t-esc="len(products)"/> results
-              </div>
+            </t>
 
-              <div class="sort">
-                <select>
-                  <option>Sort by</option>
-                  <option>Price Low → High</option>
-                  <option>Price High → Low</option>
-                </select>
-              </div>
+          </div>
 
-            </div>
+        </section>
 
-
-            <!-- PRODUCT GRID -->
-            <div class="product-grid">
-
-              <t t-foreach="products" t-as="product">
-
-                <div class="product-card">
-
-                  <a t-att-href="'/shop/product/%s' % product.id">
-
-                    <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
-
-                    <h5 t-esc="product.name"/>
-
-                    <div class="price-note">
-                      As low as (exc. VAT)
-                    </div>
-
-                    <strong>
-                      <t t-esc="product.list_price"/>
-                    </strong>
-
-                  </a>
-
-                </div>
-
-              </t>
-
-            </div>
-
-          </section>
-
-        </div>
+        <!-- REQUIRED FOR BUILDER -->
+        <div class="oe_structure"/>
 
       </div>
 
     </t>
 
-  </template>
+  </t>
+
+</field>
+
+  </record>
 
 </odoo>

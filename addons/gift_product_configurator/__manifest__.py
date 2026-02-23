@@ -9,6 +9,7 @@
 ],
 "data": [
     "views/product_page.xml",
+    'views/bestsellers_page.xml',
     #"views/product_components.xml",
 ],
 "assets": {
