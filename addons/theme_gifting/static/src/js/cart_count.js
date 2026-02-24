@@ -1,24 +1,36 @@
-odoo.define('theme_gifting.cart_count', function (require) {
-    "use strict";
+(function () {
+  'use strict';
 
-    const publicWidget = require('web.public.widget');
+  async function updateCartCount() {
 
-    publicWidget.registry.GiftingCartCount = publicWidget.Widget.extend({
-        selector: '.cart-icon',
+    try {
 
-        start: function () {
-            fetch('/shop/cart/update_json', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({})
-            })
-            .then(res => res.json())
-            .then(data => {
-                const qty = data.cart_quantity || 0;
-                this.el.querySelector('.cart-count').textContent = qty;
-            });
+      const res = await fetch('/shop/cart/update_json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
 
-            return this._super(...arguments);
-        },
-    });
-});
+      const data = await res.json();
+
+      const qty = data.cart_quantity || 0;
+
+      document.querySelectorAll('.cart-count')
+        .forEach(el => el.textContent = qty);
+
+    } catch (err) {
+      console.error('Cart count error:', err);
+    }
+  }
+
+
+  // Run when page loads
+  document.addEventListener('DOMContentLoaded', updateCartCount);
+
+
+  // Optional: refresh when returning to tab
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) updateCartCount();
+  });
+
+})();
