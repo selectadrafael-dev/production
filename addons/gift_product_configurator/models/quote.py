@@ -82,16 +82,16 @@ class QuoteOrder(models.Model):
     # =====================================================
     # SEQUENCE ON CREATE
     # =====================================================
+    @api.model_create_multi
+    def create(self, vals_list):
 
-    @api.model
-    def create(self, vals):
+        for vals in vals_list:
+            if vals.get('name', 'New') == 'New':
+                vals['name'] = self.env['ir.sequence'].next_by_code(
+                    'quote.order'
+                ) or 'Q-NEW'
 
-        if vals.get('name', 'New') == 'New':
-            vals['name'] = self.env['ir.sequence'].next_by_code(
-                'quote.order'
-            ) or 'Q-NEW'
-
-        return super().create(vals)
+            return super().create(vals_list)
 
     # =====================================================
     # ACTIONS

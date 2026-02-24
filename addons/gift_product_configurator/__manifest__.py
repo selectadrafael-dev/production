@@ -18,6 +18,7 @@
     "web.assets_frontend": [
     "gift_product_configurator/static/src/scss/product_page.scss",
     "gift_product_configurator/static/src/scss/bestsellers.scss",
+    "gift_product_configurator/static/src/scss/quote_drawer.scss",
      "gift_product_configurator/static/src/js/configurator.js",
     "gift_product_configurator/static/src/js/quote_drawer.js",
     ],
