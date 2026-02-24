@@ -160,4 +160,25 @@ if (uploadBox) {
 
 });
 
+//update cart
+const countEl = document.querySelector('.cart-count');
+
+  if (countEl) {
+
+    async function updateQuoteCount() {
+
+      const res = await fetch('/quote/count', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}'
+      });
+
+      const data = await res.json();
+
+      countEl.textContent = data.result.count || 0;
+    }
+
+    updateQuoteCount();
+  }
+
 })();

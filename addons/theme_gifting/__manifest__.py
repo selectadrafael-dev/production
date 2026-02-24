@@ -19,10 +19,9 @@
     ],
     "assets": {
         "web.assets_frontend": [
-            "theme_gifting/static/src/css/header.css",
-            "theme_gifting/static/src/css/hero.css",
-            "theme_gifting/static/src/css/product.css",
-            "theme_gifting/static/src/css/quote_drawer.scss",
+            "theme_gifting/static/src/css/header.scss",
+            "theme_gifting/static/src/css/hero.scss",
+            "theme_gifting/static/src/css/product.scss",
             "theme_gifting/static/src/js/cart_count.js",
             "theme_gifting/static/src/js/header.js",
         ],
