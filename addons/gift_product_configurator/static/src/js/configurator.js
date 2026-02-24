@@ -77,10 +77,10 @@ if (input && qty) input.value = qty;
 /* =========================================
 QUOTE DRAWER (DESKTOP + MOBILE)
 ========================================= */
-
+/*
 document.addEventListener('click', function (e) {
 
-/* OPEN DRAWER */
+ OPEN DRAWER 
 const openBtn = e.target.closest('#openQuote');
 if (openBtn) {
 
@@ -89,7 +89,7 @@ if (openBtn) {
   return;
 }
 
-/* CLOSE BUTTON */
+/* CLOSE BUTTON 
 if (e.target.closest('.drawer-close')) {
 
   const drawer = document.getElementById('quoteDrawer');
@@ -97,7 +97,7 @@ if (e.target.closest('.drawer-close')) {
   return;
 }
 
-/* CLICK OUTSIDE PANEL (overlay) */
+/* CLICK OUTSIDE PANEL (overlay) 
 const overlay = e.target.closest('.drawer-overlay');
 if (overlay) {
 
@@ -107,5 +107,6 @@ if (overlay) {
 }
 
 });
+*/
 
 })();

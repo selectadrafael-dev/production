@@ -5,18 +5,21 @@
 "category": "Website",
 "author": "SelectAd",
 "depends": [
-    "website_sale"
+   'website_sale',
+   'sale_management'
 ],
 "data": [
     "views/product_page.xml",
     'views/bestsellers_page.xml',
     #"views/product_components.xml",
+    'data/sequence.xml'
 ],
 "assets": {
     "web.assets_frontend": [
-    "gift_product_configurator/static/src/js/configurator.js",
     "gift_product_configurator/static/src/scss/product_page.scss",
     "gift_product_configurator/static/src/scss/bestsellers.scss",
+     "gift_product_configurator/static/src/js/configurator.js",
+    "gift_product_configurator/static/src/js/quote_drawer.js",
     ],
 },
  'installable': True,

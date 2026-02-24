@@ -73,9 +73,8 @@
                 <a href="/shop/wishlist" class="icon">❤️</a>
 
                 <!-- Cart -->
-               <a href="/shop/cart" class="icon cart-icon">
-                  🛒
-                  <span class="cart-count">0</span>
+                <a href="#" class="icon cart-icon js-open-quote">
+                  🛒 <span class="cart-count">0</span>
                 </a>
 
 

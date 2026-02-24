@@ -1,0 +1,8 @@
+<odoo>
+  <record id="seq_quote_order" model="ir.sequence">
+    <field name="name">Quote Order</field>
+    <field name="code">quote.order</field>
+    <field name="prefix">QO</field>
+    <field name="padding">5</field>
+  </record>
+</odoo>
