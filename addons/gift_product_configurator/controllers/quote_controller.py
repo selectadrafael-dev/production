@@ -86,3 +86,21 @@ class QuoteController(http.Controller):
     def quote_count(self):
         quote = self._get_quote()
         return {'count': len(quote.line_ids)}
+    
+    @http.route('/quote/data', type='json', auth='public', website=True)
+    def quote_data(self):
+
+        quote = self._get_quote()
+
+        lines = []
+
+        for l in quote.line_ids:
+            lines.append({
+                'id': l.id,
+                'name': l.name,
+                'qty': l.quantity,
+                'price': l.price_unit,
+                'image': f"/web/image/product.product/{l.product_id.id}/image_128"
+            })
+
+        return {'lines': lines}
