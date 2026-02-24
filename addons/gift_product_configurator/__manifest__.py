@@ -12,7 +12,8 @@
     "views/product_page.xml",
     'views/bestsellers_page.xml',
     #"views/product_components.xml",
-    'data/sequence.xml'
+    'data/sequence.xml',
+    'security/ir.model.access.csv',
 ],
 "assets": {
     "web.assets_frontend": [

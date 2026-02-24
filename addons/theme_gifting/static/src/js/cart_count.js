@@ -1,33 +1,33 @@
 (function () {
   'use strict';
 
+  const icon = document.querySelector('.cart-icon');
+  if (!icon) return;
+
+  const countEl = icon.querySelector('.cart-count');
+
   async function updateCartCount() {
 
     try {
-
       const res = await fetch('/shop/cart', {
         method: 'GET'
       });
 
       const html = await res.text();
 
-      // Create temp DOM
-      const temp = document.createElement('div');
-      temp.innerHTML = html;
+      // Parse returned page to extract quantity
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
 
-      // Odoo cart quantity element
-      const qtyEl = temp.querySelector('.my_cart_quantity');
+      const qty = doc.querySelector('.my_cart_quantity');
 
-      const qty = qtyEl ? parseInt(qtyEl.textContent) || 0 : 0;
+      countEl.textContent = qty ? qty.textContent : 0;
 
-      document.querySelectorAll('.cart-count')
-        .forEach(el => el.textContent = qty);
-
-    } catch (err) {
-      console.error('Cart count error:', err);
+    } catch (e) {
+      console.error('Cart count failed:', e);
     }
   }
 
-  document.addEventListener('DOMContentLoaded', updateCartCount);
+  updateCartCount();
 
 })();

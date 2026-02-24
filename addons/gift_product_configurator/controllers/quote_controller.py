@@ -81,3 +81,8 @@ class QuoteController(http.Controller):
         })
 
         return request.redirect('/')
+    
+    @http.route('/quote/count', type='json', auth='public', website=True)
+    def quote_count(self):
+        quote = self._get_quote()
+        return {'count': len(quote.line_ids)}
