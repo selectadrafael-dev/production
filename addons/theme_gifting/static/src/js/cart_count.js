@@ -5,15 +5,20 @@
 
     try {
 
-      const res = await fetch('/shop/cart/update_json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}'
+      const res = await fetch('/shop/cart', {
+        method: 'GET'
       });
 
-      const data = await res.json();
+      const html = await res.text();
 
-      const qty = data.cart_quantity || 0;
+      // Create temp DOM
+      const temp = document.createElement('div');
+      temp.innerHTML = html;
+
+      // Odoo cart quantity element
+      const qtyEl = temp.querySelector('.my_cart_quantity');
+
+      const qty = qtyEl ? parseInt(qtyEl.textContent) || 0 : 0;
 
       document.querySelectorAll('.cart-count')
         .forEach(el => el.textContent = qty);
@@ -23,14 +28,6 @@
     }
   }
 
-
-  // Run when page loads
   document.addEventListener('DOMContentLoaded', updateCartCount);
-
-
-  // Optional: refresh when returning to tab
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) updateCartCount();
-  });
 
 })();
