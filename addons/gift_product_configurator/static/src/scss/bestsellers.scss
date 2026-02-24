@@ -1,78 +1,115 @@
+/* ================= PAGE WRAPPER ================= */
+
+.bestsellers-page {
+  background: #fff;
+}
+
+
 /* ================= HERO ================= */
 
-.bestsellers-hero {
+.bs-hero {
   background: #8fd1a7;
   padding: 60px 0;
 }
 
-.bestsellers-hero .container {
-  max-width: 1100px;
+.bs-hero-box {
+  max-width: 800px;
 }
 
-.breadcrumbs {
+.bs-breadcrumb {
   font-size: 14px;
   margin-bottom: 10px;
+  color: #1f2a44;
 }
 
-.bestsellers-hero h1 {
+.bs-hero h1 {
   font-size: 42px;
   font-weight: 800;
   margin: 0;
+  color: #0f1f44;
 }
 
-.bestsellers-hero h2 {
+.bs-hero h3 {
   margin-top: 8px;
   font-weight: 600;
+  color: #0f1f44;
 }
 
-.hero-actions {
+.bs-hero p {
+  max-width: 650px;
+  margin-top: 12px;
+}
+
+
+/* HERO BUTTONS */
+
+.bs-actions {
   margin-top: 22px;
   display: flex;
-  gap: 12px;
+  gap: 14px;
 }
 
-.btn-primary {
+.bs-actions .btn-primary {
   background: #1f2a44;
   color: white;
   padding: 14px 26px;
   border-radius: 999px;
   text-decoration: none;
+  font-weight: 600;
 }
 
-.btn-secondary {
-  background: white;
+.bs-actions .btn-secondary {
+  background: #f3f3f3;
   padding: 14px 26px;
   border-radius: 999px;
-  border: 1px solid #ccc;
+  border: 1px solid #ddd;
   text-decoration: none;
+  color: #1f2a44;
+  font-weight: 600;
 }
 
 
-/* ================= MAIN LAYOUT ================= */
+/* ================= MAIN ================= */
 
-.bestsellers-layout {
-  display: flex;
-  gap: 30px;
+.bs-main {
   padding: 40px 0;
+}
+
+
+/* ================= LAYOUT ================= */
+
+.bs-layout {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
 }
 
 
 /* ================= SIDEBAR ================= */
 
-.filters {
-  width: 260px;
+.bs-sidebar {
+  width: 280px;
+  background: #f7f8fc;
+  padding: 20px;
+  border-radius: 12px;
   position: sticky;
-  top: 110px;
-  align-self: flex-start;
+  top: 120px;
 }
 
-.filters h3 {
-  margin-bottom: 20px;
+.bs-sidebar h4 {
+  margin-bottom: 18px;
+  font-weight: 700;
+}
+
+.filter-group h5 {
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
 .filter-group label {
   display: block;
-  margin: 8px 0;
+  margin: 6px 0;
+  font-size: 14px;
 }
 
 .clear-btn {
@@ -82,22 +119,24 @@
   border-radius: 999px;
   border: 1px solid #ccc;
   background: white;
+  font-weight: 600;
 }
 
 
-/* ================= PRODUCTS AREA ================= */
+/* ================= CONTENT ================= */
 
-.products-area {
+.bs-content {
   flex: 1;
 }
 
 
-/* ================= RESULTS BAR ================= */
+/* ================= TOOLBAR ================= */
 
-.results-bar {
+.bs-toolbar {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 20px;
+  align-items: center;
+  margin-bottom: 22px;
   color: #666;
   font-size: 14px;
 }
@@ -105,38 +144,44 @@
 
 /* ================= PRODUCT GRID ================= */
 
-.products-grid {
+.bs-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 22px;
+  gap: 26px;
 }
 
 .product-card {
   background: white;
   padding: 16px;
-  border-radius: 10px;
+  border-radius: 12px;
   text-align: center;
-  transition: 0.2s;
+  transition: all 0.2s ease;
+  border: 1px solid #eee;
 }
 
 .product-card:hover {
   transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
 }
 
 .product-card img {
   width: 100%;
   height: auto;
+  border-radius: 8px;
 }
 
-.product-card h4 {
-  margin-top: 10px;
+.product-card h6 {
+  margin-top: 12px;
+  font-size: 15px;
   font-weight: 600;
+  color: #1f2a44;
 }
 
 .price {
   margin-top: 6px;
-  font-weight: bold;
-  font-size: 18px;
+  font-weight: 700;
+  font-size: 20px;
+  color: #1f2a44;
 }
 
 
@@ -144,16 +189,16 @@
 
 @media (max-width: 992px) {
 
-  .bestsellers-layout {
+  .bs-layout {
     flex-direction: column;
   }
 
-  .filters {
+  .bs-sidebar {
     width: 100%;
     position: static;
   }
 
-  .products-grid {
+  .bs-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
