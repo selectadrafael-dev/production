@@ -19,12 +19,12 @@
               <div class="carousel-item active">
                 <div class="d-flex justify-content-around align-items-center flex-wrap">
 
-                  <img src="/theme_gifting/static/src/img/logos/uefa.png" class="logo-img"/>
-                  <img src="/theme_gifting/static/src/img/logos/justeat.png" class="logo-img"/>
-                  <img src="/theme_gifting/static/src/img/logos/virgin.png" class="logo-img"/>
-                  <img src="/theme_gifting/static/src/img/logos/netflix.png" class="logo-img"/>
-                  <img src="/theme_gifting/static/src/img/logos/samsung.png" class="logo-img"/>
-                  <img src="/theme_gifting/static/src/img/logos/amazon.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy1.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy2.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy3.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy4.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy1.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy2.png" class="logo-img"/>
 
                 </div>
               </div>
@@ -33,9 +33,9 @@
               <div class="carousel-item">
                 <div class="d-flex justify-content-around align-items-center flex-wrap">
 
-                  <img src="/theme_gifting/static/src/img/logos/google.png" class="logo-img"/>
-                  <img src="/theme_gifting/static/src/img/logos/apple.png" class="logo-img"/>
-                  <img src="/theme_gifting/static/src/img/logos/microsoft.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy1.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy2.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/coy3.png" class="logo-img"/>
 
                 </div>
               </div>
