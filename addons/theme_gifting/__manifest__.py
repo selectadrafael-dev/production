@@ -21,6 +21,7 @@
         "views/section_promotional_products.xml",
         "views/section_testimonials.xml",
         'views/category_card.xml',
+        'views/product_card.xml',
         'data/product_categories.xml',
     ],
     "assets": {
