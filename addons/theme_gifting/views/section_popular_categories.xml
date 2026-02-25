@@ -9,7 +9,7 @@
       <t t-set="cat"
          t-value="request.env.ref('theme_gifting.category_most_popular')"/>
 
-      <!--Fetch products -->
+      <!--Fetch products-->
       <t t-set="products"
          t-value="request.env['gifting.product.helper']
                   .get_latest_products(
