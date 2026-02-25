@@ -1,33 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
 
-  <template id="product_card">
+  <data>
 
-    <a t-att-href="'/shop/product/%s' % product.id"
-       class="product-card-wrapper text-decoration-none">
+    <template id="product_card" name="Reusable Product Card">
 
-      <!-- CARD WITH IMAGE ONLY -->
-      <div class="product-card shadow-sm">
+      <a t-att-href="'/shop/product/%s' % product.id"
+         class="product-card-wrapper text-decoration-none">
 
-        <div class="product-img">
-          <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+        <!-- CARD WITH IMAGE ONLY -->
+        <div class="product-card shadow-sm">
+
+          <div class="product-img">
+            <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+          </div>
+
         </div>
 
-      </div>
+        <!-- NAME + PRICE BELOW -->
+        <div class="product-meta">
 
-      <!-- NAME + PRICE BELOW CARD -->
-      <div class="product-meta">
+          <span class="product-name"
+                t-esc="product.name"/>
 
-        <span class="product-name"
-              t-esc="product.name"/>
+          <span class="product-price">
+            $ <t t-esc="product.list_price"/>
+          </span>
 
-        <span class="product-price">
-          $ <t t-esc="product.list_price"/>
-        </span>
+        </div>
 
-      </div>
+      </a>
 
-    </a>
+    </template>
 
-  </template>
+  </data>
 
 </odoo>
