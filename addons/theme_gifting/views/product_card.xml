@@ -1,33 +1,31 @@
 <odoo>
-
   <template id="product_card">
 
-    <a t-att-href="'/shop/product/%s' % product.id"
-       class="product-card-wrapper text-decoration-none">
+    <div class="product-card shadow-sm">
 
-      <!-- CARD WITH IMAGE ONLY -->
-      <div class="product-card shadow-sm">
+      <a t-att-href="'/shop/product/%s' % product.id">
 
-        <div class="product-img">
-          <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+        <div class="product-image">
+          <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+               alt="product"/>
         </div>
 
-      </div>
+        <div class="product-info p-3">
 
-      <!-- NAME + PRICE BELOW CARD -->
-      <div class="product-meta">
+          <h6 class="fw-bold" t-esc="product.name"/>
 
-        <span class="product-name"
-              t-esc="product.name"/>
+          <div class="price">
+            <span class="from">from</span>
+            <span class="amount">
+              <t t-esc="product.list_price"/>
+            </span>
+            <span class="vat">excl. VAT</span>
+          </div>
 
-        <span class="product-price">
-          $ <t t-esc="product.list_price"/>
-        </span>
+        </div>
+      </a>
 
-      </div>
-
-    </a>
+    </div>
 
   </template>
-
 </odoo>
