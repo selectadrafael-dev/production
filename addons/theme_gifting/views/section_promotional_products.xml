@@ -1,80 +1,36 @@
-<odoo>
+<t t-set="cats"
+   t-value="request.env['product.public.category'].search([
+       ('name', 'in', [
+           'Fresh and Finds',
+           'Tested and Loved',
+           'Big Savings',
+           'Record Time'
+       ])
+   ])"/>
 
-  <template id="section_promotional_products"
-            name="Promotional Products Section">
+<div class="row g-4">
 
-    <!-- Get latest 4 products from Promotional Products category -->
-    <t t-set="products"
-       t-value="request.env['gifting.product.helper']
-            .get_latest_products(
-                'theme_gifting.category_promotional', 4)"/>
+  <t t-foreach="cats" t-as="cat">
 
-    <section class="promo-products container py-5">
+    <div class="col-lg-3 col-md-6 col-6">
 
-      <div class="text-center mb-5">
-        <h2 class="fw-bold">Promotional Products</h2>
-        <p class="text-muted">
-          Promotional products for your company
-        </p>
-      </div>
+      <a t-att-href="'/shop/category/%s' % cat.id"
+         class="promo-category-card text-decoration-none">
 
-      <!-- PRODUCTS GRID -->
-      <div class="row g-4">
+        <div class="promo-image-card">
 
-        <t t-if="products">
+          <img t-att-src="'/web/image/product.public.category/%s/image_512' % cat.id"/>
 
-          <t t-foreach="products" t-as="product">
+        </div>
 
-            <div class="col-lg-3 col-md-6 col-12">
+        <div class="promo-name text-center">
+          <span t-esc="cat.name"/>
+        </div>
 
-              <a t-att-href="'/shop/product/%s' % product.id"
-                 class="text-decoration-none">
+      </a>
 
-                <div class="promo-product-card shadow-sm h-100">
+    </div>
 
-                  <!-- IMAGE -->
-                  <div class="promo-img">
-                    <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
-                         alt="product"/>
-                  </div>
+  </t>
 
-                  <!-- INFO -->
-                  <div class="p-3 text-center">
-
-                    <h6 class="fw-bold"
-                        t-esc="product.name"/>
-
-                    <div class="price mt-2">
-                      from
-                      <strong>
-                        <t t-esc="product.list_price"/>
-                      </strong>
-                      excl. VAT
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </a>
-
-            </div>
-
-          </t>
-
-        </t>
-
-        <!-- EMPTY STATE -->
-        <t t-if="not products">
-          <div class="col-12 text-center text-muted">
-            No products found in Promotional Products category.
-          </div>
-        </t>
-
-      </div>
-
-    </section>
-
-  </template>
-
-</odoo>
+</div>

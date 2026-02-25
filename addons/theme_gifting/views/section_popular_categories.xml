@@ -1,86 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
+  <data>
 
-  <template id="section_popular_categories"
-            name="Most Popular Categories Section">
+    <template id="section_popular_categories"
+              name="Most Popular Categories Section">
 
-    <!-- Get category record -->
-    <t t-set="cat"
-       t-value="request.env.ref('theme_gifting.category_most_popular')"/>
+      <!-- Get category -->
+      <t t-set="cat"
+         t-value="request.env.ref('theme_gifting.category_most_popular')"/>
 
-    <!-- Fetch latest 4 products from this category -->
-    <t t-set="products"
-       t-value="request.env['gifting.product.helper']
-                .get_latest_products(
-                'theme_gifting.category_most_popular', 4)"/>
+      <!-- Fetch products -->
+      <t t-set="products"
+         t-value="request.env['gifting.product.helper']
+                  .get_latest_products(
+                  'theme_gifting.category_most_popular', 4)"/>
 
-    <section class="most-popular-products bg-light py-5">
+      <section class="most-popular-products bg-light py-5">
 
-      <div class="container">
+        <div class="container">
 
-        <!-- ⭐ Dynamic title from backend -->
-        <div class="text-center mb-5">
-          <h2 class="fw-bold" t-esc="cat.name"/>
-          <p class="text-muted">
-            Discover our best-selling products
-          </p>
-        </div>
+          <!-- Section Title -->
+          <div class="text-center mb-5">
+            <h2 class="fw-bold" t-esc="cat.name"/>
+            <p class="text-muted">
+              Discover our best-selling products
+            </p>
+          </div>
 
-        <!-- PRODUCTS GRID -->
-        <div class="row g-4">
+          <!-- PRODUCTS GRID -->
+          <div class="row g-4">
 
-          <t t-if="products">
+            <t t-if="products">
 
-            <t t-foreach="products" t-as="product">
+              <t t-foreach="products" t-as="product">
 
-              <div class="col-lg-3 col-md-6 col-12">
+                <div class="col-lg-3 col-md-6 col-6">
 
-                <a t-att-href="'/shop/product/%s' % product.id"
-                   class="text-decoration-none">
+                  <!-- ⭐ USE GLOBAL CARD COMPONENT -->
+                  <t t-call="theme_gifting.product_card"/>
 
-                  <div class="popular-product-card shadow-sm h-100">
+                </div>
 
-                    <div class="product-img">
-                      <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
-                    </div>
-
-                    <div class="p-3 text-center">
-
-                      <h6 class="fw-bold"
-                          t-esc="product.name"/>
-
-                      <div class="price mt-2">
-                        from
-                        <strong>
-                          <t t-esc="product.list_price"/>
-                        </strong>
-                        excl. VAT
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                </a>
-
-              </div>
+              </t>
 
             </t>
 
-          </t>
+            <!-- Empty fallback -->
+            <t t-if="not products">
+              <div class="col-12 text-center text-muted">
+                No products found in this category.
+              </div>
+            </t>
 
-          <!-- Empty fallback -->
-          <t t-if="not products">
-            <div class="col-12 text-center text-muted">
-              No products found in this category.
-            </div>
-          </t>
+          </div>
 
         </div>
 
-      </div>
+      </section>
 
-    </section>
+    </template>
 
-  </template>
-
+  </data>
 </odoo>

@@ -64,6 +64,9 @@
       <!-- Your hero section -->
       <t t-call="theme_gifting.gifting_hero"/>
 
+      <!--⭐ companies logos -->
+      <t t-call="theme_gifting.section_company_logos"/>
+
       <!-- =================================================
           Products
            ================================================= -->
