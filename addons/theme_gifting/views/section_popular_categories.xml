@@ -1,61 +1,86 @@
 <odoo>
-  <template id="section_popular_categories">
 
-    <section class="popular-categories bg-light py-5">
+  <template id="section_popular_categories"
+            name="Most Popular Categories Section">
+
+    <!-- Get category record -->
+    <t t-set="cat"
+       t-value="request.env.ref('theme_gifting.category_most_popular')"/>
+
+    <!-- Fetch latest 4 products from this category -->
+    <t t-set="products"
+       t-value="request.env['gifting.product.helper']
+                .get_latest_products(
+                'theme_gifting.category_most_popular', 4)"/>
+
+    <section class="most-popular-products bg-light py-5">
 
       <div class="container">
 
+        <!-- ⭐ Dynamic title from backend -->
         <div class="text-center mb-5">
-          <h2 class="fw-bold">Shop Our Most Popular Categories</h2>
+          <h2 class="fw-bold" t-esc="cat.name"/>
           <p class="text-muted">
-            Discover best-selling promotional products
+            Discover our best-selling products
           </p>
         </div>
 
-        <div id="categorySlider" class="carousel slide">
+        <!-- PRODUCTS GRID -->
+        <div class="row g-4">
 
-          <div class="carousel-inner">
+          <t t-if="products">
 
-            <div class="carousel-item active">
-              <div class="row g-4">
+            <t t-foreach="products" t-as="product">
 
-                <div class="col-lg-3 col-md-6">
-                  <t t-call="theme_gifting.category_card">
-                    <t t-set="title">Clothing</t>
-                    <t t-set="img">/theme_gifting/static/src/img/cat1.png</t>
-                  </t>
-                </div>
+              <div class="col-lg-3 col-md-6 col-12">
 
-                <div class="col-lg-3 col-md-6">
-                  <t t-call="theme_gifting.category_card">
-                    <t t-set="title">Office</t>
-                    <t t-set="img">/theme_gifting/static/src/img/cat2.png</t>
-                  </t>
-                </div>
+                <a t-att-href="'/shop/product/%s' % product.id"
+                   class="text-decoration-none">
 
-                <div class="col-lg-3 col-md-6">
-                  <t t-call="theme_gifting.category_card">
-                    <t t-set="title">Eco-Friendly</t>
-                    <t t-set="img">/theme_gifting/static/src/img/cat3.png</t>
-                  </t>
-                </div>
+                  <div class="popular-product-card shadow-sm h-100">
 
-                <div class="col-lg-3 col-md-6">
-                  <t t-call="theme_gifting.category_card">
-                    <t t-set="title">Trade Shows</t>
-                    <t t-set="img">/theme_gifting/static/src/img/cat4.png</t>
-                  </t>
-                </div>
+                    <div class="product-img">
+                      <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+                    </div>
+
+                    <div class="p-3 text-center">
+
+                      <h6 class="fw-bold"
+                          t-esc="product.name"/>
+
+                      <div class="price mt-2">
+                        from
+                        <strong>
+                          <t t-esc="product.list_price"/>
+                        </strong>
+                        excl. VAT
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </a>
 
               </div>
-            </div>
 
-          </div>
+            </t>
+
+          </t>
+
+          <!-- Empty fallback -->
+          <t t-if="not products">
+            <div class="col-12 text-center text-muted">
+              No products found in this category.
+            </div>
+          </t>
 
         </div>
 
       </div>
+
     </section>
 
   </template>
+
 </odoo>

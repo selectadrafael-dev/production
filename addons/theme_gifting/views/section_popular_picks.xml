@@ -3,7 +3,7 @@
 
     <t t-set="products"
        t-value="request.env['gifting.product.helper']
-                .get_products_by_category(
+            .get_latest_products(
                 'theme_gifting.category_popular_picks', 7)"/>
 
     <section class="gifting-popular-picks container py-5">

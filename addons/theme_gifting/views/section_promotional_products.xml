@@ -6,7 +6,7 @@
     <!-- Get latest 4 products from Promotional Products category -->
     <t t-set="products"
        t-value="request.env['gifting.product.helper']
-                .get_latest_products(
+            .get_latest_products(
                 'theme_gifting.category_promotional', 4)"/>
 
     <section class="promo-products container py-5">
