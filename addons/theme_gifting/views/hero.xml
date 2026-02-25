@@ -65,14 +65,25 @@
       <t t-call="theme_gifting.gifting_hero"/>
 
       <!-- =================================================
-           EMPTY EDITABLE AREA FOR FUTURE SECTIONS
-           (Products, promos, etc.)
+          Products
            ================================================= -->
+       <!-- ⭐ POPULAR PICKS -->
       <t t-call="theme_gifting.section_popular_picks"/>
+
+      <!-- ⭐ MOST POPULAR CATEGORIES -->
       <t t-call="theme_gifting.section_popular_categories"/>
+
+      <!-- ⭐ PROMOTIONAL PRODUCTS -->
       <t t-call="theme_gifting.section_promotional_products"/>
+
+      <!-- ⭐ TESTIMONIALS -->
       <t t-call="theme_gifting.section_testimonials"/>
 
+
+<!-- =================================================
+           EMPTY EDITABLE AREA FOR FUTURE SECTIONS
+           (Products, promos, etc.)
+    ================================================= -->
       <section class="oe_structure"/>
 
     </xpath>
