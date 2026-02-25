@@ -67,10 +67,10 @@
       <!-- =================================================
           Products
            ================================================= -->
-       <!-- ⭐ POPULAR PICKS -->
+       <!--⭐ POPULAR PICKS -->
       <t t-call="theme_gifting.section_popular_picks"/>
 
-      <!-- ⭐ MOST POPULAR CATEGORIES -->
+      <!--⭐ MOST POPULAR CATEGORIES -->
       <!--t t-call="theme_gifting.section_popular_categories"/-->
 
       <!-- ⭐ PROMOTIONAL PRODUCTS -->
