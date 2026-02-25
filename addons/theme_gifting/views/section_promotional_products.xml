@@ -1,50 +1,80 @@
 <odoo>
-  <template id="section_promotional_products">
+
+  <template id="section_promotional_products"
+            name="Promotional Products Section">
+
+    <!-- Get latest 4 products from Promotional Products category -->
+    <t t-set="products"
+       t-value="request.env['gifting.product.helper']
+                .get_latest_products(
+                'theme_gifting.category_promotional', 4)"/>
 
     <section class="promo-products container py-5">
 
       <div class="text-center mb-5">
-        <h2 class="fw-bold">
-          Promote your brand logo and increase awareness
-        </h2>
+        <h2 class="fw-bold">Promotional Products</h2>
+        <p class="text-muted">
+          Promotional products for your company
+        </p>
       </div>
 
+      <!-- PRODUCTS GRID -->
       <div class="row g-4">
 
-        <div class="col-lg-3 col-md-6">
-          <div class="promo-card red">
-            <h4>Best Seller</h4>
-            <p>Tried, Tested & Loved</p>
-            <a href="/shop" class="btn btn-dark">Shop Now</a>
-          </div>
-        </div>
+        <t t-if="products">
 
-        <div class="col-lg-3 col-md-6">
-          <div class="promo-card green">
-            <h4>New Arrivals</h4>
-            <p>Fresh Finds for Your Brand</p>
-            <a href="/shop" class="btn btn-dark">Shop New</a>
-          </div>
-        </div>
+          <t t-foreach="products" t-as="product">
 
-        <div class="col-lg-3 col-md-6">
-          <div class="promo-card yellow">
-            <h4>Clearance</h4>
-            <p>Big Savings on Promo Products</p>
-            <a href="/shop" class="btn btn-dark">Shop Deals</a>
-          </div>
-        </div>
+            <div class="col-lg-3 col-md-6 col-12">
 
-        <div class="col-lg-3 col-md-6">
-          <div class="promo-card blue">
-            <h4>Express</h4>
-            <p>Delivered in Record Time</p>
-            <a href="/shop" class="btn btn-dark">Shop Now</a>
+              <a t-att-href="'/shop/product/%s' % product.id"
+                 class="text-decoration-none">
+
+                <div class="promo-product-card shadow-sm h-100">
+
+                  <!-- IMAGE -->
+                  <div class="promo-img">
+                    <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+                         alt="product"/>
+                  </div>
+
+                  <!-- INFO -->
+                  <div class="p-3 text-center">
+
+                    <h6 class="fw-bold"
+                        t-esc="product.name"/>
+
+                    <div class="price mt-2">
+                      from
+                      <strong>
+                        <t t-esc="product.list_price"/>
+                      </strong>
+                      excl. VAT
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </a>
+
+            </div>
+
+          </t>
+
+        </t>
+
+        <!-- EMPTY STATE -->
+        <t t-if="not products">
+          <div class="col-12 text-center text-muted">
+            No products found in Promotional Products category.
           </div>
-        </div>
+        </t>
 
       </div>
 
     </section>
+
   </template>
+
 </odoo>
