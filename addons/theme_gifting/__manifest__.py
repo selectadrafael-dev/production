@@ -17,7 +17,7 @@
         "views/header.xml",
         "views/hero.xml",
         "views/section_popular_picks.xml",
-        "views/section_popular_categories.xml",
+        #"views/section_popular_categories.xml",
         "views/section_promotional_products.xml",
         "views/section_testimonials.xml",
         'views/category_card.xml',
