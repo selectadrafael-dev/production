@@ -1,0 +1,17 @@
+<odoo>
+  <template id="category_card">
+
+    <div class="category-card shadow-sm p-4 text-center h-100">
+
+      <img t-att-src="img" class="mb-3 category-img"/>
+
+      <h5 class="fw-bold" t-esc="title"/>
+
+      <a t-att-href="url or '/shop'" class="text-primary small">
+        Shop all
+      </a>
+
+    </div>
+
+  </template>
+</odoo>

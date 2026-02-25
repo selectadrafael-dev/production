@@ -1,0 +1,61 @@
+<odoo>
+  <template id="section_popular_categories">
+
+    <section class="popular-categories bg-light py-5">
+
+      <div class="container">
+
+        <div class="text-center mb-5">
+          <h2 class="fw-bold">Shop Our Most Popular Categories</h2>
+          <p class="text-muted">
+            Discover best-selling promotional products
+          </p>
+        </div>
+
+        <div id="categorySlider" class="carousel slide">
+
+          <div class="carousel-inner">
+
+            <div class="carousel-item active">
+              <div class="row g-4">
+
+                <div class="col-lg-3 col-md-6">
+                  <t t-call="theme_gifting.category_card">
+                    <t t-set="title">Clothing</t>
+                    <t t-set="img">/theme_gifting/static/src/img/cat1.png</t>
+                  </t>
+                </div>
+
+                <div class="col-lg-3 col-md-6">
+                  <t t-call="theme_gifting.category_card">
+                    <t t-set="title">Office</t>
+                    <t t-set="img">/theme_gifting/static/src/img/cat2.png</t>
+                  </t>
+                </div>
+
+                <div class="col-lg-3 col-md-6">
+                  <t t-call="theme_gifting.category_card">
+                    <t t-set="title">Eco-Friendly</t>
+                    <t t-set="img">/theme_gifting/static/src/img/cat3.png</t>
+                  </t>
+                </div>
+
+                <div class="col-lg-3 col-md-6">
+                  <t t-call="theme_gifting.category_card">
+                    <t t-set="title">Trade Shows</t>
+                    <t t-set="img">/theme_gifting/static/src/img/cat4.png</t>
+                  </t>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+  </template>
+</odoo>

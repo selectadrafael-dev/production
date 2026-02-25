@@ -68,6 +68,11 @@
            EMPTY EDITABLE AREA FOR FUTURE SECTIONS
            (Products, promos, etc.)
            ================================================= -->
+      <t t-call="theme_gifting.section_popular_picks"/>
+      <t t-call="theme_gifting.section_popular_categories"/>
+      <t t-call="theme_gifting.section_promotional_products"/>
+      <t t-call="theme_gifting.section_testimonials"/>
+
       <section class="oe_structure"/>
 
     </xpath>
