@@ -1,4 +1,4 @@
-.gifting-popular-picks .product-card {
+/*.gifting-popular-picks .product-card {
   background: #fff;
   border-radius: 16px;
   overflow: hidden;
@@ -61,4 +61,53 @@
 .price .vat {
   font-size: 0.75rem;
   color: #777;
+}*/
+
+.product-card-wrapper {
+  display: block;
+}
+
+/* IMAGE CARD */
+
+.product-card {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  padding: 16px;
+  transition: transform .2s ease;
+}
+
+.product-card:hover {
+  transform: translateY(-4px);
+}
+
+.product-img {
+  text-align: center;
+}
+
+.product-img img {
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  object-fit: contain;   /* ⭐ prevents cropping */
+}
+
+/* TEXT BELOW */
+
+.product-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.product-name {
+  font-weight: 500;
+  color: #222;
+}
+
+.product-price {
+  font-weight: 700;
+  color: #000;
 }
