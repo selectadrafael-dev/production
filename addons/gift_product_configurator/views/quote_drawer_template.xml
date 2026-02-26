@@ -5,6 +5,17 @@
       <!-- Overlay -->
       <div id="quoteDrawerOverlay" class="quote-drawer-overlay"></div>
 
+
+        <h4 class="quote-drawer__title">Your Quote</h4>
+
+        <button
+            type="button"
+            class="quote-drawer__close js-close-quote"
+            aria-label="Close quote drawer"
+        >
+            ×
+        </button>
+
       <!-- Drawer -->
       <aside id="quoteDrawer" class="quote-drawer">
 

@@ -1,55 +1,97 @@
-.quote-drawer-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.5);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .3s;
-  z-index: 1050;
-}
-
-.quote-drawer {
+/* OVERLAY */
+#quoteDrawerOverlay {
   position: fixed;
   top: 0;
-  right: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  opacity: 0;
+  visibility: hidden;
+  transition: all .3s ease;
+  z-index: 9998;
+}
+
+/* DRAWER */
+#quoteDrawer {
+  position: fixed;
+  top: 0;
+  right: 0;              /* CRITICAL */
   width: 420px;
   max-width: 95%;
-  height: 100%;
+  height: 100vh;
   background: #fff;
-  box-shadow: -5px 0 25px rgba(0,0,0,.15);
-  transform: translateX(100%);
+  box-shadow: -6px 0 30px rgba(0,0,0,.2);
+  transform: translateX(100%);   /* Hidden off screen */
   transition: transform .35s ease;
-  z-index: 1051;
+  z-index: 9999;
+
   display: flex;
   flex-direction: column;
 }
 
 /* OPEN STATE */
-.quote-drawer.is-open {
+#quoteDrawer.is-open {
   transform: translateX(0);
 }
 
-.quote-drawer-overlay.is-open {
+#quoteDrawerOverlay.is-open {
   opacity: 1;
-  pointer-events: auto;
+  visibility: visible;
 }
 
+/* HEADER */
 .quote-drawer__header {
-  padding: 16px 20px;
+  padding: 18px;
   border-bottom: 1px solid #eee;
   display: flex;
   justify-content: space-between;
-}
-
-.quote-drawer__content {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto;
+  align-items: center;
 }
 
 .quote-drawer__close {
-  border: none;
+  font-size: 24px;
   background: none;
-  font-size: 26px;
+  border: none;
   cursor: pointer;
+}
+
+.quote-drawer__header {
+  position: relative;
+  padding: 18px 20px;
+  border-bottom: 1px solid #eee;
+  font-weight: 600;
+}
+
+.quote-drawer__title {
+  font-size: 18px;
+  margin: 0;
+}
+
+/* CLOSE BUTTON */
+.quote-drawer__close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+
+  width: 36px;
+  height: 36px;
+
+  border: none;
+  border-radius: 50%;
+  background: #f5f5f5;
+
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  transition: background .2s ease;
+}
+
+.quote-drawer__close:hover {
+  background: #e0e0e0;
 }
