@@ -6,24 +6,24 @@
 
       <field name="name">product.public.category.hero.form</field>
       <field name="model">product.public.category</field>
+
+      <!-- IMPORTANT: Correct parent view -->
       <field name="inherit_id"
              ref="website_sale.product_public_category_form_view"/>
 
       <field name="arch" type="xml">
 
-        <xpath expr="//sheet/notebook"
-               position="inside">
+        <!-- Insert inside main sheet -->
+        <xpath expr="//sheet" position="inside">
 
-          <page string="Hero Banner">
+          <group string="Hero Banner">
 
-            <group>
-              <field name="hero_title"/>
-              <field name="hero_subtitle"/>
-              <field name="hero_description"/>
-              <field name="hero_bg_color"/>
-            </group>
+            <field name="hero_title"/>
+            <field name="hero_subtitle"/>
+            <field name="hero_description"/>
+            <field name="hero_bg_color"/>
 
-          </page>
+          </group>
 
         </xpath>
 
