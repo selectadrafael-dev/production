@@ -77,7 +77,7 @@ document.addEventListener('click', function (ev) {
 
   const target = tab.dataset.target;
 
-  // Activate tab
+  //Activate tab
   document.querySelectorAll('.drawer-tab')
     .forEach(t => t.classList.remove('is-active'));
 
