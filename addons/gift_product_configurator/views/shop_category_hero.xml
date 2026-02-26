@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data>
+
+    <!-- Inherit default shop page -->
+    <template id="shop_category_hero"
+              inherit_id="website_sale.products"
+              name="Category Hero Banner">
+
+      <!-- Insert BEFORE product grid -->
+      <xpath expr="//div[@id='products_grid']"
+             position="before">
+
+        <t t-if="category">
+
+          <!-- BEST SELLERS -->
+          <t t-if="category.name == 'Tested and Loved'">
+
+            <section class="promo-hero promo-green">
+              <div class="container py-5">
+
+                <div class="row">
+
+                  <div class="col-lg-8">
+
+                    <nav class="mb-2">
+                      Home / Bestsellers
+                    </nav>
+
+                    <h1 class="fw-bold">
+                      Best-Selling Promotional Products
+                    </h1>
+
+                    <h5>
+                      Our Most Popular Branded Merchandise
+                    </h5>
+
+                    <p>
+                      If you're looking for the best-selling promotional
+                      products, look no further.
+                    </p>
+
+                    <a href="/contactus"
+                       class="btn btn-dark me-3">
+                      Get An Express Quote
+                    </a>
+
+                    <a href="/contactus"
+                       class="btn btn-outline-secondary">
+                      Contact Us
+                    </a>
+
+                  </div>
+
+                </div>
+
+              </div>
+            </section>
+
+          </t>
+
+
+          <!-- NEW ARRIVALS -->
+          <t t-if="category.name == 'Fresh and Finds'">
+
+            <section class="promo-hero promo-grey">
+              <div class="container py-5">
+
+                <nav>Home / New Arrivals</nav>
+
+                <h1>New Arrivals</h1>
+
+                <p>
+                  Discover our latest promotional products ready to brand.
+                </p>
+
+                <a href="/contactus"
+                   class="btn btn-dark me-3">
+                  Get An Express Quote
+                </a>
+
+                <a href="/contactus"
+                   class="btn btn-outline-secondary">
+                  Contact Us
+                </a>
+
+              </div>
+            </section>
+
+          </t>
+
+
+          <!-- CLEARANCE -->
+          <t t-if="category.name == 'Big Savings'">
+
+            <section class="promo-hero promo-peach">
+              <div class="container py-5">
+
+                <nav>Home / Clearance</nav>
+
+                <h1>Clearance</h1>
+
+                <h5>When it's gone, it's gone!</h5>
+
+                <p>
+                  Explore our end-of-line promotional products at unbeatable prices.
+                </p>
+
+                <a href="/contactus"
+                   class="btn btn-dark me-3">
+                  Get An Express Quote
+                </a>
+
+                <a href="/contactus"
+                   class="btn btn-outline-secondary">
+                  Contact Us
+                </a>
+
+              </div>
+            </section>
+
+          </t>
+
+
+          <!-- EXPRESS -->
+          <t t-if="category.name == 'Record Time'">
+
+            <section class="promo-hero promo-blue">
+              <div class="container py-5">
+
+                <nav>Home / Express</nav>
+
+                <h1>Express Promotional Merchandise</h1>
+
+                <h5>
+                  Need your branded items quick?
+                </h5>
+
+                <p>
+                  Explore our express products delivered in record time.
+                </p>
+
+                <a href="/contactus"
+                   class="btn btn-dark me-3">
+                  Get An Express Quote
+                </a>
+
+                <a href="/contactus"
+                   class="btn btn-outline-secondary">
+                  Contact Us
+                </a>
+
+              </div>
+            </section>
+
+          </t>
+
+        </t>
+
+      </xpath>
+
+    </template>
+
+  </data>
+</odoo>
