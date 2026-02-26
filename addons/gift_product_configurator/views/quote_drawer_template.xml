@@ -5,26 +5,71 @@
       <!-- Overlay -->
       <div id="quoteDrawerOverlay"></div>
 
-      <!-- Drawer -->
-      <aside id="quoteDrawer">
+        <!-- Drawer -->
+        <aside id="quoteDrawer">
 
+        <!-- HEADER -->
         <div class="quote-drawer__header">
-          <h4 class="quote-drawer__title">Your Quote</h4>
+            <h4 class="quote-drawer__title">Your Quote</h4>
 
-          <button
-            type="button"
-            class="quote-drawer__close js-close-quote"
-            aria-label="Close quote drawer"
-          >
+            <button type="button"
+                    class="quote-drawer__close js-close-quote"
+                    aria-label="Close quote drawer">
             ×
-          </button>
+            </button>
         </div>
 
+        <!-- TAB BUTTONS -->
+        <div class="quote-drawer__tabs">
+            <button class="drawer-tab is-active" data-target="sample">
+            Order Sample
+            </button>
+
+            <button class="drawer-tab" data-target="quote">
+            Quote Now
+            </button>
+        </div>
+
+        <!-- CONTENT AREA -->
         <div class="quote-drawer__content">
-          <!-- EMPTY FOR NOW -->
+
+            <!-- SAMPLE CONTENT -->
+            <div class="drawer-panel" data-panel="sample">
+            <p>Sample items will appear here</p>
+
+            <button class="drawer-primary">
+                Checkout Now
+            </button>
+            </div>
+
+            <!-- QUOTE CONTENT -->
+            <div class="drawer-panel is-active" data-panel="quote">
+
+            <!-- FREE VISUAL SWITCH -->
+            <div class="free-visual">
+                <label class="switch">
+                <input type="checkbox" id="freeVisualSwitch">
+                <span class="slider"></span>
+                </label>
+
+                <span>Would you like a free visual?</span>
+            </div>
+
+            <p>Quote items will appear here</p>
+
+            <button class="drawer-primary">
+                Place Your Quote Now
+            </button>
+
+            <button class="drawer-secondary">
+                Continue Shopping
+            </button>
+
+            </div>
+
         </div>
 
-      </aside>
+        </aside>
 
     </xpath>
   </template>

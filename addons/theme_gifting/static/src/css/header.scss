@@ -426,7 +426,8 @@
       }
        .gifting-categories
       {
-          overflow: auto;
+        overflow: auto;
+        min-height: 300px;
       }
       .gifting-links a{
         margin-top: 20px;
