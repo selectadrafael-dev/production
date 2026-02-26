@@ -24,7 +24,7 @@
         "views/section_company_logos.xml",
         'views/category_card.xml',
         'data/product_categories.xml',
-        "views/promo_category_page.xml",
+        #"views/promo_category_page.xml",
         "views/section_promotional_products.xml",
     ],
     "assets": {
@@ -35,7 +35,7 @@
             "theme_gifting/static/src/css/category_product.scss",
             'theme_gifting/static/src/css/gifting_sections.scss',
             'theme_gifting/static/src/css/company_logos.scss',
-            'theme_gifting/static/src/css/promo_categories.scss',
+            #'theme_gifting/static/src/css/promo_categories.scss',
             "theme_gifting/static/src/js/cart_count.js",
             "theme_gifting/static/src/js/header.js",
             "theme_gifting/static/src/js/gifting.js",
