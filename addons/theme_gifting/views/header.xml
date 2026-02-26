@@ -125,66 +125,66 @@
           <div class="gifting-nav-bottom">
               <button class="mobile-close" aria-label="Close Menu">✕</button>
 
-          <div class="gifting-categories">
+            <div class="gifting-categories" t-translation="on">
 
-            <button class="cat-btn mobile-cat-toggle">
-              ☰ <t t-translation="on">All Categories</t>
-            </button>
+              <button class="cat-btn mobile-cat-toggle">
+                ☰ All Categories
+              </button>
 
-            <div class="cat-mega">
+              <div class="cat-mega">
 
-              <!-- SAFE CATEGORY SOURCE -->
-              <t t-set="categories"
-                t-value="request.website.sale_product_categories"/>
+                <!-- Get root categories -->
+                <t t-set="categories"
+                  t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
 
-              <!-- Defensive check -->
-              <t t-if="categories">
+                  <!--t t-set="categories"
+                    t-value="request.env['product.public.category']
+                              .with_context(prefetch_fields=False)
+                              .sudo()
+                              .search([('parent_id','=',False)], order='sequence')"/-->
 
-                <div class="cat-columns">
+                <t t-if="categories">
 
-                  <t t-foreach="categories" t-as="cat">
+                  <div class="cat-columns">
 
-                    <div class="cat-col">
+                    <t t-foreach="categories" t-as="cat">
 
-                      <!-- Parent -->
-                      <a t-att-href="'/shop/category/%s' % cat.id"
-                        class="cat-parent">
-                        <t t-esc="cat.name"/>
-                      </a>
+                      <div class="cat-col">
 
-                      <!-- Subcategories -->
-                      <t t-if="cat.child_id">
+                        <!-- Parent category -->
+                        <a t-att-href="'/shop/category/%s' % cat.id"
+                          class="cat-parent">
+                          <t t-esc="cat.name"/>
+                        </a>
 
-                        <t t-foreach="cat.child_id" t-as="sub">
+                        <!-- Subcategories -->
+                        <t t-if="cat.child_id">
 
-                          <a t-att-href="'/shop/category/%s' % sub.id"
-                            class="cat-sub">
-                            <t t-esc="sub.name"/>
-                          </a>
+                          <t t-foreach="cat.child_id" t-as="sub">
+
+                            <a t-att-href="'/shop/category/%s' % sub.id"
+                              class="cat-sub">
+                              <t t-esc="sub.name"/>
+                            </a>
+
+                          </t>
 
                         </t>
 
-                      </t>
+                      </div>
 
-                    </div>
+                    </t>
 
-                  </t>
+                  </div>
 
-                </div>
+                </t>
 
-              </t>
-
-              <!-- Fallback -->
-              <t t-else="">
-                <div class="cat-empty">
-                  <t t-translation="on">No categories available</t>
-                </div>
-              </t>
+              </div>
 
             </div>
 
-          </div>
 
+              
             <div class="gifting-links" t-translation="on">
 
               <a href="#"  t-translation="on">
