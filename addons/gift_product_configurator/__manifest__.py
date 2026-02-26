@@ -16,6 +16,7 @@
     'views/shop_category_hero.xml',
     'views/product_public_category_form.xml',
     'data/sequence.xml',
+    'views/quote_drawer_template.xml',
     #'security/ir.model.access.csv',
 ],
 "assets": {
