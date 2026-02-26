@@ -1,64 +1,67 @@
 <odoo>
   <data>
 
-    <template id="shop_category_hero_fullwidth"
+    <template id="shop_category_hero_safe"
               inherit_id="website_sale.products"
-              name="Fullwidth Category Hero (Safe)">
+              name="Category Hero Banner (Stable)">
 
-      <!-- Wrap the main products row -->
-      <xpath expr="//div[contains(@class,'o_wsale_products_main_row')]"
-             position="attributes">
-
-        <!-- Add hero class + background -->
-        <attribute name="class"
-                   add=" category-hero-full"/>
-
-        <attribute name="t-att-style">
-          "'background:%s;' % (category.hero_bg_color or '#6E8FC6')"
-        </attribute>
-
-      </xpath>
-
-      <!-- Insert hero text at top of product column -->
-      <xpath expr="//div[contains(@class,'o_wsale_products_main_col')]"
-             position="inside">
+      <!-- Insert BEFORE product grid -->
+      <xpath expr="//div[@id='products_grid']"
+             position="before">
 
         <t t-if="category">
 
-          <div class="hero-text-block py-5">
+          <section class="category-hero-full"
+                   t-att-style="'background:%s;' % (category.hero_bg_color or '#6E8FC6')">
 
-            <nav class="mb-2 text-light">
-              Home /
-              <t t-esc="category.name"/>
-            </nav>
+            <div class="container py-5">
 
-            <h1 class="fw-bold">
-              <t t-esc="category.hero_title or category.name"/>
-            </h1>
+              <div class="row">
 
-            <h4 class="mb-3">
-              <t t-esc="category.hero_subtitle"/>
-            </h4>
+                <!-- LEFT COLUMN: EMPTY (sidebar already rendered by Odoo) -->
+                <div class="col-lg-3"></div>
 
-            <p>
-              <t t-esc="category.hero_description"/>
-            </p>
+                <!-- RIGHT COLUMN: HERO TEXT -->
+                <div class="col-lg-9">
 
-            <div class="mt-4">
+                  <nav class="mb-2 text-light">
+                    Home /
+                    <t t-esc="category.name"/>
+                  </nav>
 
-              <a href="/contactus"
-                 class="btn btn-dark me-3">
-                Get An Express Quote
-              </a>
+                  <h1 class="fw-bold">
+                    <t t-esc="category.hero_title or category.name"/>
+                  </h1>
 
-              <a href="/contactus"
-                 class="btn btn-light">
-                Contact Us
-              </a>
+                  <h4 class="mb-3">
+                    <t t-esc="category.hero_subtitle"/>
+                  </h4>
+
+                  <p>
+                    <t t-esc="category.hero_description"/>
+                  </p>
+
+                  <div class="mt-4">
+
+                    <a href="/contactus"
+                       class="btn btn-dark me-3">
+                      Get An Express Quote
+                    </a>
+
+                    <a href="/contactus"
+                       class="btn btn-light">
+                      Contact Us
+                    </a>
+
+                  </div>
+
+                </div>
+
+              </div>
 
             </div>
 
-          </div>
+          </section>
 
         </t>
 

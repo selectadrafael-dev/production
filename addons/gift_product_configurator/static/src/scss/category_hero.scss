@@ -1,19 +1,9 @@
 .category-hero-full {
-  padding-top: 20px;
+  width: 100%;
   padding-bottom: 40px;
 }
 
-/* Make sidebar blend with hero */
-.category-hero-full .o_wsale_products_categories {
-  background: transparent;
-}
-
-/* Hero text */
-.hero-text-block {
-  max-width: 900px;
-}
-
-.hero-text-block h1 {
+.category-hero-full h1 {
   font-size: 44px;
   font-weight: 700;
 }
