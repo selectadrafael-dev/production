@@ -4,20 +4,28 @@
     <template id="section_popular_picks"
               name="Popular Picks">
 
-      <!-- SAFE SINGLE-LINE QUERY -->
-      <t t-set="products"
-         t-value="request.env['product.template'].search([('website_published','=',True), ('sale_ok','=',True)], limit=7)"/>
-
       <section class="container py-5">
 
-        <!-- SAFE DEBUG -->
-        <p>Products found:
-          <t t-esc="products and len(products) or 0"/>
-        </p>
+        <div class="text-center mb-4">
+          <h2 class="fw-bold">Unmissable Deals &amp; Popular Picks</h2>
+          <p class="text-muted">
+            Save time and money with our best bulk offers
+          </p>
+        </div>
 
-        <t t-foreach="products or []" t-as="product">
-          <div t-esc="product.name"/>
-        </t>
+        <div class="row g-4">
+
+          <t t-foreach="products or []" t-as="product">
+
+            <div class="col-lg-3 col-md-4 col-6">
+
+              <t t-call="theme_gifting.product_card"/>
+
+            </div>
+
+          </t>
+
+        </div>
 
       </section>
 
