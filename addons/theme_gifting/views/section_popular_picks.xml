@@ -9,7 +9,7 @@
       <section class="container py-5">
 
        
-         <t t-esc="products"/>
+        <t t-esc="len(products)"/>
 
       </section>
 
