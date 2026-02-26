@@ -3,13 +3,13 @@
 
     <template id="shop_category_hero_absolute"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Absolute Safe)">
+              name="Category Hero Banner (Correct Position)">
 
-      <xpath expr="." position="inside">
+      <!-- INSERT AT TOP OF PAGE CONTENT -->
+      <xpath expr="//div[@id='wrap']" position="inside">
 
-        <!-- EXTRACT CATEGORY ID FROM URL -->
-        <t t-set="path"
-           t-value="request.httprequest.path"/>
+        <!-- URL CATEGORY DETECTION -->
+        <t t-set="path" t-value="request.httprequest.path"/>
 
         <t t-set="cat_id"
            t-value="int(path.rsplit('-', 1)[-1])
@@ -29,7 +29,7 @@
 
               <div class="row">
 
-                <!-- LEFT SPACE (aligns with sidebar) -->
+                <!-- LEFT SPACE FOR FILTER SIDEBAR -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
                 <!-- HERO CONTENT -->
