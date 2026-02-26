@@ -37,3 +37,11 @@
 .product-price {
   color: #1e3a8a;
 }
+
+//homepage section carousel
+.most-popular-products .carousel-control-prev-icon,
+.most-popular-products .carousel-control-next-icon {
+  background-color: rgba(0,0,0,0.6);
+  border-radius: 50%;
+  padding: 18px;
+}
