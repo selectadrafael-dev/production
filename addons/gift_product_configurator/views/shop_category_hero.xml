@@ -3,41 +3,50 @@
 
     <template id="shop_category_hero_safe"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Failsafe)">
+              name="Category Hero Banner (Final Safe)">
 
-      <!-- Insert BEFORE ANY content -->
       <xpath expr="." position="inside">
 
-        <t t-if="category">
+        <!-- GET CATEGORY FROM URL -->
+        <t t-set="cat_id"
+           t-value="int(request.httprequest.path.split('-')[-1])
+                    if '/shop/category/' in request.httprequest.path
+                    else False"/>
+
+        <t t-set="cat"
+           t-value="request.env['product.public.category'].sudo().browse(cat_id)
+                    if cat_id else False"/>
+
+        <t t-if="cat">
 
           <section class="category-hero-full"
-                   t-att-style="'background:%s;' % (category.hero_bg_color or '#6E8FC6')">
+                   t-att-style="'background:%s;' % (cat.hero_bg_color or '#6E8FC6')">
 
             <div class="container py-5">
 
               <div class="row">
 
-                <!-- LEFT SPACE for sidebar alignment -->
+                <!-- LEFT SPACE (aligns with sidebar) -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
-                <!-- RIGHT HERO CONTENT -->
+                <!-- HERO CONTENT -->
                 <div class="col-lg-9">
 
                   <nav class="mb-2 text-light">
                     Home /
-                    <t t-esc="category.name"/>
+                    <t t-esc="cat.name"/>
                   </nav>
 
                   <h1 class="fw-bold">
-                    <t t-esc="category.hero_title or category.name"/>
+                    <t t-esc="cat.hero_title or cat.name"/>
                   </h1>
 
                   <h4 class="mb-3">
-                    <t t-esc="category.hero_subtitle"/>
+                    <t t-esc="cat.hero_subtitle"/>
                   </h4>
 
                   <p>
-                    <t t-esc="category.hero_description"/>
+                    <t t-esc="cat.hero_description"/>
                   </p>
 
                   <div class="mt-4">
