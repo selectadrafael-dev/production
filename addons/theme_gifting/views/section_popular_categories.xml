@@ -5,21 +5,23 @@
     <template id="section_popular_categories"
               name="Most Popular Categories Section">
 
-      <!-- Get category -->
+      <!-- Get category record -->
       <t t-set="cat"
          t-value="request.env.ref('theme_gifting.category_most_popular')"/>
 
-      <!--Fetch products-->
+      <!-- SAFE PRODUCT QUERY -->
       <t t-set="products"
-         t-value="request.env['gifting.product.helper']
-                  .get_latest_products(
-                  'theme_gifting.category_most_popular', 4)"/>
+         t-value="request.env['product.template'].search([
+             ('website_published','=',True),
+             ('sale_ok','=',True),
+             ('public_categ_ids','in',[cat.id])
+         ], order='id desc', limit=4)"/>
 
       <section class="most-popular-products bg-light py-5">
 
         <div class="container">
 
-          <!-- Section Title -->
+          <!-- SECTION TITLE -->
           <div class="text-center mb-5">
             <h2 class="fw-bold" t-esc="cat.name"/>
             <p class="text-muted">
@@ -30,22 +32,21 @@
           <!-- PRODUCTS GRID -->
           <div class="row g-4">
 
-            <t t-if="products">
+            <!-- PRODUCT LOOP -->
+            <t t-foreach="products" t-as="product">
 
-              <t t-foreach="products" t-as="product">
+              <div class="col-lg-3 col-md-6 col-6">
 
-                <div class="col-lg-3 col-md-6 col-6">
+                <!-- USE GLOBAL CARD -->
+                <t t-call="theme_gifting.product_card">
+                  <t t-set="product" t-value="product"/>
+                </t>
 
-                  <!-- ⭐ USE GLOBAL CARD COMPONENT -->
-                  <t t-call="theme_gifting.product_card"/>
-
-                </div>
-
-              </t>
+              </div>
 
             </t>
 
-            <!-- Empty fallback -->
+            <!-- EMPTY STATE -->
             <t t-if="not products">
               <div class="col-12 text-center text-muted">
                 No products found in this category.
