@@ -1,39 +1,53 @@
 <odoo>
-  <template id="section_popular_picks" name="Popular Picks">
+  <data>
 
-    <t t-set="products"
-       t-value="request.env['gifting.product.helper']
-            .get_latest_products(
-                'theme_gifting.category_popular_picks', 7)"/>
+    <template id="section_popular_picks"
+              name="Popular Picks">
 
-    <section class="gifting-popular-picks container py-5">
+      <!-- Fetch last 7 products -->
+      <t t-set="products"
+         t-value="request.env['gifting.product.helper']
+                  .get_latest_products(
+                  'theme_gifting.category_popular_picks', 7)"/>
 
-      <div class="text-center mb-5">
-        <h2 class="fw-bold">Unmissable Deals &amp; Popular Picks</h2>
-        <p class="text-muted">
-          Save time and money with our best bulk offers, ready to go!
-        </p>
-      </div>
+      <section class="container py-5">
 
-      <!-- Row 1 (3 items) -->
-      <div class="row g-4">
-        <t t-foreach="products[:3]" t-as="product">
-          <div class="col-lg-4 col-md-6">
-            <t t-call="theme_gifting.product_card"/>
-          </div>
-        </t>
-      </div>
+        <div class="text-center mb-4">
+          <h2 class="fw-bold">Unmissable Deals &amp; Popular Picks</h2>
+          <p class="text-muted">
+            Save time and money with our best bulk offers
+          </p>
+        </div>
 
-      <!-- Row 2 (4 items) -->
-      <div class="row g-4 mt-2">
-        <t t-foreach="products[3:7]" t-as="product">
-          <div class="col-lg-3 col-md-6">
-            <t t-call="theme_gifting.product_card"/>
-          </div>
-        </t>
-      </div>
+        <!-- ROW 1: 3 PRODUCTS -->
+        <div class="row g-4">
 
-    </section>
-  </template>
+          <t t-foreach="products[:3]" t-as="product">
+
+            <div class="col-lg-4 col-md-6 col-6">
+              <t t-call="theme_gifting.product_card"/>
+            </div>
+
+          </t>
+
+        </div>
+
+        <!-- ROW 2: 4 PRODUCTS -->
+        <div class="row g-4 mt-2">
+
+          <t t-foreach="products[3:7]" t-as="product">
+
+            <div class="col-lg-3 col-md-6 col-6">
+              <t t-call="theme_gifting.product_card"/>
+            </div>
+
+          </t>
+
+        </div>
+
+      </section>
+
+    </template>
+
+  </data>
 </odoo>
-

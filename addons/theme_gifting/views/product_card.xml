@@ -1,31 +1,29 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-
   <data>
 
-    <template id="product_card" name="Reusable Product Card">
+    <template id="product_card">
 
       <a t-att-href="'/shop/product/%s' % product.id"
-         class="product-card-wrapper text-decoration-none">
+         class="text-decoration-none">
 
-        <!-- CARD WITH IMAGE ONLY -->
         <div class="product-card shadow-sm">
 
           <div class="product-img">
+
             <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+
           </div>
 
-        </div>
+          <div class="product-meta d-flex justify-content-between">
 
-        <!-- NAME + PRICE BELOW -->
-        <div class="product-meta">
+            <span class="product-name"
+                  t-esc="product.name"/>
 
-          <span class="product-name"
-                t-esc="product.name"/>
+            <span class="product-price">
+              <t t-esc="product.list_price"/>
+            </span>
 
-          <span class="product-price">
-            $ <t t-esc="product.list_price"/>
-          </span>
+          </div>
 
         </div>
 
@@ -34,5 +32,4 @@
     </template>
 
   </data>
-
 </odoo>

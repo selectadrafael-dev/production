@@ -3,25 +3,21 @@
     <xpath expr="//body" position="inside">
 
       <!-- Overlay -->
-      <div id="quoteDrawerOverlay" class="quote-drawer-overlay"></div>
+      <div id="quoteDrawerOverlay"></div>
 
+      <!-- Drawer -->
+      <aside id="quoteDrawer">
 
-        <h4 class="quote-drawer__title">Your Quote</h4>
+        <div class="quote-drawer__header">
+          <h4 class="quote-drawer__title">Your Quote</h4>
 
-        <button
+          <button
             type="button"
             class="quote-drawer__close js-close-quote"
             aria-label="Close quote drawer"
-        >
+          >
             ×
-        </button>
-
-      <!-- Drawer -->
-      <aside id="quoteDrawer" class="quote-drawer">
-
-        <div class="quote-drawer__header">
-          <h4>Your Quote</h4>
-          <button class="quote-drawer__close js-close-quote">×</button>
+          </button>
         </div>
 
         <div class="quote-drawer__content">
