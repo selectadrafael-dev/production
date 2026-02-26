@@ -1,4 +1,9 @@
-<section class="container py-5">
+<odoo>
+  <data>
+
+    <template id="section_popular_picks"
+              name="Popular Picks">
+          <section class="container py-5">
 
   <div class="text-center mb-4">
     <h2 class="fw-bold">Unmissable Deals &amp; Popular Picks</h2>
@@ -43,3 +48,7 @@
   </div>
 
 </section>
+    </template>
+
+  </data>
+</odoo>
