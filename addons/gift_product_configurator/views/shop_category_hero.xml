@@ -1,21 +1,14 @@
 <odoo>
   <data>
 
-    <template id="shop_category_hero_safe"
+    <template id="shop_category_hero_final"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Final Safe)">
+              name="Category Hero Banner (Working)">
 
       <xpath expr="." position="inside">
 
-        <!-- GET CATEGORY FROM URL -->
-        <t t-set="cat_id"
-           t-value="int(request.httprequest.path.split('-')[-1])
-                    if '/shop/category/' in request.httprequest.path
-                    else False"/>
-
-        <t t-set="cat"
-           t-value="request.env['product.public.category'].sudo().browse(cat_id)
-                    if cat_id else False"/>
+        <!-- USE ODOO VARIABLE -->
+        <t t-set="cat" t-value="search_category"/>
 
         <t t-if="cat">
 
@@ -26,7 +19,7 @@
 
               <div class="row">
 
-                <!-- LEFT SPACE (aligns with sidebar) -->
+                <!-- LEFT SPACE for sidebar -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
                 <!-- HERO CONTENT -->
