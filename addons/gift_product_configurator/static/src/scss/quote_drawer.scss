@@ -55,3 +55,100 @@
   background: none;
   cursor: pointer;
 }
+
+/* TABS */
+.quote-drawer__tabs {
+  display: flex;
+  border-bottom: 1px solid #eee;
+}
+
+.drawer-tab {
+  flex: 1;
+  padding: 14px;
+  background: none;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.drawer-tab.is-active {
+  border-bottom: 3px solid #3b5cff;
+  color: #3b5cff;
+}
+
+/* PANELS */
+.drawer-panel {
+  display: none;
+  padding: 18px;
+}
+
+.drawer-panel.is-active {
+  display: block;
+}
+
+/* PRIMARY CTA */
+.drawer-primary {
+  width: 100%;
+  background: #f0b63f;
+  border: none;
+  padding: 14px;
+  font-weight: bold;
+  border-radius: 999px;
+  margin-top: 20px;
+}
+
+/* SECONDARY */
+.drawer-secondary {
+  width: 100%;
+  padding: 12px;
+  border-radius: 999px;
+  border: 1px solid #ddd;
+  margin-top: 10px;
+  background: #fff;
+}
+
+/* SWITCH */
+.free-visual {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.switch {
+  position: relative;
+  width: 52px;
+  height: 28px;
+}
+
+.switch input {
+  display: none;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #ccc;
+  border-radius: 50px;
+  transition: .3s;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: .3s;
+}
+
+.switch input:checked + .slider {
+  background: #1f2a44;
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(24px);
+}

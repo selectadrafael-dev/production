@@ -423,10 +423,11 @@
       .gifting-categories, .cat-mega
       {
           width: auto;
+          padding: 0 10px;
       }
        .gifting-categories
       {
-        overflow: auto;
+        /*overflow: auto;*/
         min-height: 300px;
       }
       .gifting-links a{

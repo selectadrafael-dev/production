@@ -69,4 +69,30 @@
     }
   });
 
+  // TAB SWITCHING
+document.addEventListener('click', function (ev) {
+
+  const tab = ev.target.closest('.drawer-tab');
+  if (!tab) return;
+
+  const target = tab.dataset.target;
+
+  // Activate tab
+  document.querySelectorAll('.drawer-tab')
+    .forEach(t => t.classList.remove('is-active'));
+
+  tab.classList.add('is-active');
+
+  // Show panel
+  document.querySelectorAll('.drawer-panel')
+    .forEach(p => p.classList.remove('is-active'));
+
+  const panel = document.querySelector(
+    `.drawer-panel[data-panel="${target}"]`
+  );
+
+  if (panel) panel.classList.add('is-active');
+
+});
+
 })();
