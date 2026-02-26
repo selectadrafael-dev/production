@@ -4,17 +4,18 @@
     <template id="section_popular_picks"
               name="Popular Picks">
 
-      <!-- DIRECT PRODUCT QUERY -->
+      <!-- SAFE SINGLE-LINE QUERY -->
       <t t-set="products"
-         t-value="request.env['product.template'].search(
-           [('website_published','=',True)], limit=7)"/>
+         t-value="request.env['product.template'].search([('website_published','=',True), ('sale_ok','=',True)], limit=7)"/>
 
       <section class="container py-5">
 
-        <!-- DEBUG OUTPUT -->
-        <p>Products found: <t t-esc="len(products)"/></p>
+        <!-- SAFE DEBUG -->
+        <p>Products found:
+          <t t-esc="products and len(products) or 0"/>
+        </p>
 
-        <t t-foreach="products" t-as="product">
+        <t t-foreach="products or []" t-as="product">
           <div t-esc="product.name"/>
         </t>
 
