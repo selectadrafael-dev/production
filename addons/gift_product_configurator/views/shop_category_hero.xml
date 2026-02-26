@@ -3,40 +3,52 @@
 
     <template id="shop_category_hero_perfect"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Perfect Placement — Safe)">
+              name="Category Hero Banner (Perfect Placement — Fully Safe)">
 
-      <!--INSERT HERO BEFORE PRODUCTS ROW -->
+      <!-- INSERT HERO BEFORE PRODUCTS ROW -->
       <xpath expr="//div[contains(@class,'o_wsale_products_main_row')]"
              position="before">
 
-        <!-- GET CATEGORY FROM URL -->
+        <!--GET CURRENT URL -->
         <t t-set="path" t-value="request.httprequest.path"/>
 
+        <!--EXTRACT CATEGORY ID FROM /shop/category/...-ID -->
         <t t-set="cat_id"
            t-value="int(path.rsplit('-', 1)[-1])
                     if '/shop/category/' in path and '-' in path
                     else False"/>
 
+        <!-- LOAD CATEGORY SAFELY -->
         <t t-set="cat"
            t-value="request.env['product.public.category'].sudo().browse(cat_id)
                     if cat_id else False"/>
 
+        <!-- RENDER ONLY IF CATEGORY EXISTS -->
         <t t-if="cat and cat.exists()">
 
-          <!-- 🛡️ SAFE FIELD ACCESS (CRITICAL) -->
+          <!-- 🛡️ SAFE FIELD ACCESS (NO getattr, NO CRASH) -->
+
           <t t-set="hero_title"
-             t-value="getattr(cat, 'hero_title', False) or cat.name"/>
+             t-value="cat.hero_title
+                      if 'hero_title' in cat._fields and cat.hero_title
+                      else cat.name"/>
 
           <t t-set="hero_subtitle"
-             t-value="getattr(cat, 'hero_subtitle', False) or ''"/>
+             t-value="cat.hero_subtitle
+                      if 'hero_subtitle' in cat._fields and cat.hero_subtitle
+                      else ''"/>
 
           <t t-set="hero_description"
-             t-value="getattr(cat, 'hero_description', False) or ''"/>
+             t-value="cat.hero_description
+                      if 'hero_description' in cat._fields and cat.hero_description
+                      else ''"/>
 
           <t t-set="hero_color"
-             t-value="getattr(cat, 'hero_bg_color', False) or '#6E8FC6'"/>
+             t-value="cat.hero_bg_color
+                      if 'hero_bg_color' in cat._fields and cat.hero_bg_color
+                      else '#6E8FC6'"/>
 
-          <!-- HERO -->
+          <!-- ⭐ HERO SECTION -->
           <section class="category-hero"
                    t-att-style="'background:%s;' % hero_color">
 
@@ -44,7 +56,7 @@
 
               <div class="row">
 
-                <!-- LEFT SPACE (FILTER AREA) -->
+                <!-- LEFT SPACE (FOR FILTER SIDEBAR ALIGNMENT) -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
                 <!-- HERO CONTENT -->
