@@ -1,53 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
   <data>
 
     <template id="section_popular_picks"
               name="Popular Picks">
-          <section class="container py-5">
 
-  <div class="text-center mb-4">
-    <h2 class="fw-bold">Unmissable Deals &amp; Popular Picks</h2>
-    <p class="text-muted">
-      Save time and money with our best bulk offers
-    </p>
-  </div>
+      <!-- SAFE: always returns recordset (never None) -->
+      <t t-set="products"
+         t-value="request.env['product.template'].search([
+             ('website_published','=',True),
+             ('sale_ok','=',True)
+         ], order='id desc', limit=7)"/>
 
-  <!-- ROW 1: 3 PRODUCTS -->
-  <div class="row g-4">
+      <section class="container py-5">
 
-    <t t-foreach="products[:3] or []" t-as="product">
+        <div class="text-center mb-4">
+          <h2 class="fw-bold">Unmissable Deals &amp; Popular Picks</h2>
+          <p class="text-muted">
+            Save time and money with our best bulk offers
+          </p>
+        </div>
 
-      <div class="col-lg-4 col-md-6 col-6">
+        <!-- ROW 1 -->
+        <div class="row g-4">
 
-        <!-- PASS product INTO CARD -->
-        <t t-call="theme_gifting.product_card">
-          <t t-set="product" t-value="product"/>
-        </t>
+          <t t-foreach="products[:3]" t-as="product">
 
-      </div>
+            <div class="col-lg-4 col-md-6 col-6">
 
-    </t>
+              <t t-call="theme_gifting.product_card">
+                <t t-set="product" t-value="product"/>
+              </t>
 
-  </div>
+            </div>
 
-  <!-- ROW 2: 4 PRODUCTS -->
-  <div class="row g-4 mt-2">
+          </t>
 
-    <t t-foreach="products[3:7] or []" t-as="product">
+        </div>
 
-      <div class="col-lg-3 col-md-6 col-6">
+        <!-- ROW 2 -->
+        <div class="row g-4 mt-2">
 
-        <t t-call="theme_gifting.product_card">
-          <t t-set="product" t-value="product"/>
-        </t>
+          <t t-foreach="products[3:7]" t-as="product">
 
-      </div>
+            <div class="col-lg-3 col-md-6 col-6">
 
-    </t>
+              <t t-call="theme_gifting.product_card">
+                <t t-set="product" t-value="product"/>
+              </t>
 
-  </div>
+            </div>
 
-</section>
+          </t>
+
+        </div>
+
+      </section>
+
     </template>
 
   </data>
