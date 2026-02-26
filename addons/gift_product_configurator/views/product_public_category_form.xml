@@ -1,0 +1,35 @@
+<odoo>
+  <data>
+
+    <record id="product_public_category_form_hero"
+            model="ir.ui.view">
+
+      <field name="name">product.public.category.hero.form</field>
+      <field name="model">product.public.category</field>
+      <field name="inherit_id"
+             ref="website_sale.product_public_category_form_view"/>
+
+      <field name="arch" type="xml">
+
+        <xpath expr="//sheet/notebook"
+               position="inside">
+
+          <page string="Hero Banner">
+
+            <group>
+              <field name="hero_title"/>
+              <field name="hero_subtitle"/>
+              <field name="hero_description"/>
+              <field name="hero_bg_color"/>
+            </group>
+
+          </page>
+
+        </xpath>
+
+      </field>
+
+    </record>
+
+  </data>
+</odoo>
