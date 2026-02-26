@@ -32,10 +32,10 @@
 /* SEARCH */
 
 .gifting-search {
-    flex: 1;
-    margin: 0 40px;
+  flex: 1;
+  max-width: 700px;
+  margin: 0 40px;
 }
-
 .gifting-search form {
     display: flex;
     border: 1px solid #ddd;
@@ -315,6 +315,16 @@
   cursor: pointer;
 }
 
+/* ================= CLOSE BUTTON ================= */
+
+.mobile-close {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+}
+
 /* ============================= */
 /* MOBILE LAYOUT                 */
 /* ============================= */
@@ -406,21 +416,50 @@
     display: block;
   }
 
-}
 
-/* ================= CLOSE BUTTON ================= */
+  /*working/added css*/
+  /* =========================
+   TABLET / SMALL DESKTOP
+   ========================= */
+  /* Row 1: logo + hamburger only */
+  .gifting-nav-top {
+    flex-wrap: wrap;
+  }
 
-.mobile-close {
-  display: none;
-  background: none;
-  border: none;
-  font-size: 28px;
-  cursor: pointer;
-}
+  .gifting-logo {
+    order: 1;
+  }
+
+  .mobile-toggle {
+    order: 2;
+    margin-left: auto;
+    display: block;
+  }
+
+  /* Move icons + search to Row 2 */
+  .gifting-icons {
+    order: 3;
+    width: auto;
+  }
+
+  .gifting-search {
+    order: 4;
+    width: 100%;
+    max-width: none;
+    margin-top: 8px;
+  }
+
+  /* Make row 2 nice */
+  .gifting-search form {
+    width: 100%;
+  }
+
+  .gifting-search input {
+    width: 100%;
+  }
+
 
 /* ================= MOBILE PANEL ================= */
-@media (max-width: 992px){
-
   .gifting-nav-container {
     padding: 12px 18px;
   }
@@ -531,6 +570,11 @@
       }
       .gifting-links a{
         margin-top: 20px;
+      }
+
+      .gifting-search input {
+        border-radius: 10px;
+        border: 1px solid #ddd;
       }
 
 @media (max-width: 768px) {
@@ -685,5 +729,41 @@
     padding: 0 14px;
     border-radius: 0 8px 8px 0;
   }
+
+ /*newly added css*/
+ /* =========================
+   MOBILE
+   ========================= */
+
+  /* Row 1 remains unchanged */
+
+  /* Row 2: icons + language only */
+  .gifting-icons {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* Row 3: Search full width */
+  .gifting-search {
+    order: 5;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .gifting-search form {
+    width: 100%;
+  }
+
+  .gifting-search input {
+    width: 100%;
+    font-size: 16px;
+    padding: 12px;
+  }
+
+  .gifting-search button {
+    font-size: 18px;
+  }
+
   } 
-}
+ } 
