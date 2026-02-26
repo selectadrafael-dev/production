@@ -1,14 +1,15 @@
 <odoo>
   <data>
 
-    <template id="shop_category_hero_universal_safe"
+    <template id="shop_category_hero_perfect"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Universal Safe)">
+              name="Category Hero Banner (Perfect Placement)">
 
-      <!-- INSERT AT TOP OF PAGE -->
-      <xpath expr="//div[@id='wrap']" position="inside">
+      <!-- INSERT HERO BEFORE PRODUCTS ROW -->
+      <xpath expr="//div[contains(@class,'o_wsale_products_main_row')]"
+             position="before">
 
-        <!-- CATEGORY FROM URL -->
+        <!-- GET CATEGORY FROM URL -->
         <t t-set="path" t-value="request.httprequest.path"/>
 
         <t t-set="cat_id"
@@ -23,25 +24,25 @@
         <t t-if="cat and cat.exists()">
 
           <!-- HERO -->
-          <section class="category-hero-full"
+          <section class="category-hero"
                    t-att-style="'background:%s;' % (cat.hero_bg_color or '#6E8FC6')">
 
-            <div class="container py-5">
+            <div class="container">
 
               <div class="row">
 
-                <!-- SPACE FOR FILTER SIDEBAR -->
+                <!-- LEFT SPACE (FILTER AREA) -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
                 <!-- HERO CONTENT -->
-                <div class="col-lg-9 text-dark">
+                <div class="col-lg-9 text-dark py-5">
 
                   <nav class="mb-2 text-light">
                     Home /
                     <t t-esc="cat.name"/>
                   </nav>
 
-                  <h1 class="fw-bold">
+                  <h1 class="fw-bold mb-3">
                     <t t-esc="cat.hero_title or cat.name"/>
                   </h1>
 
@@ -49,23 +50,19 @@
                     <t t-esc="cat.hero_subtitle"/>
                   </h4>
 
-                  <p>
+                  <p class="mb-4">
                     <t t-esc="cat.hero_description"/>
                   </p>
 
-                  <div class="mt-4">
+                  <a href="/contactus"
+                     class="btn btn-dark me-3">
+                    Get An Express Quote
+                  </a>
 
-                    <a href="/contactus"
-                       class="btn btn-dark me-3">
-                      Get An Express Quote
-                    </a>
-
-                    <a href="/contactus"
-                       class="btn btn-light">
-                      Contact Us
-                    </a>
-
-                  </div>
+                  <a href="/contactus"
+                     class="btn btn-light">
+                    Contact Us
+                  </a>
 
                 </div>
 
