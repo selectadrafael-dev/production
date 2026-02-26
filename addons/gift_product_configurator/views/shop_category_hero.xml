@@ -9,10 +9,10 @@
       <xpath expr="//div[contains(@class,'o_wsale_products_main_row')]"
              position="before">
 
-        <!-- GET CURRENT URL -->
+        <!--GET CURRENT URL -->
         <t t-set="path" t-value="request.httprequest.path"/>
 
-        <!-- EXTRACT CATEGORY ID FROM /shop/category/...-ID -->
+        <!--EXTRACT CATEGORY ID FROM /shop/category/...-ID -->
         <t t-set="cat_id"
            t-value="int(path.rsplit('-', 1)[-1])
                     if '/shop/category/' in path and '-' in path
