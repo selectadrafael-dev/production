@@ -1,29 +1,39 @@
 (function () {
   'use strict';
 
-  function openDrawer() {
-    document
-      .getElementById('quoteDrawer')
-      .classList.add('is-open');
+  function getDrawer() {
+    return document.getElementById('quoteDrawer');
+  }
 
-    document
-      .getElementById('quoteDrawerOverlay')
-      .classList.add('is-open');
+  function getOverlay() {
+    return document.getElementById('quoteDrawerOverlay');
+  }
+
+  function openDrawer() {
+    const drawer = getDrawer();
+    const overlay = getOverlay();
+
+    if (!drawer || !overlay) {
+      console.warn('Quote drawer not found in DOM');
+      return;
+    }
+
+    drawer.classList.add('is-open');
+    overlay.classList.add('is-open');
   }
 
   function closeDrawer() {
-    document
-      .getElementById('quoteDrawer')
-      .classList.remove('is-open');
+    const drawer = getDrawer();
+    const overlay = getOverlay();
 
-    document
-      .getElementById('quoteDrawerOverlay')
-      .classList.remove('is-open');
+    if (!drawer || !overlay) return;
+
+    drawer.classList.remove('is-open');
+    overlay.classList.remove('is-open');
   }
 
   document.addEventListener('click', function (ev) {
 
-    // OPEN FROM ANY TRIGGER
     if (
       ev.target.closest('.js-open-quote') ||
       ev.target.closest('.js-add-quote')
@@ -32,12 +42,10 @@
       openDrawer();
     }
 
-    // CLOSE BUTTON
     if (ev.target.closest('.js-close-quote')) {
       closeDrawer();
     }
 
-    // CLOSE ON OVERLAY CLICK
     if (ev.target.id === 'quoteDrawerOverlay') {
       closeDrawer();
     }
