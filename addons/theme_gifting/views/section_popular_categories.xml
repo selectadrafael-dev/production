@@ -5,11 +5,12 @@
     <template id="section_popular_categories"
               name="Most Popular Categories Section">
 
-      <!-- Category -->
+      <!-- ⭐ SAFE: GET CATEGORY BY NAME -->
       <t t-set="cat"
-         t-value="request.env.ref('theme_gifting.category_most_popular')"/>
+         t-value="request.env['product.public.category'].search(
+             [('name','=','Most Popular')], limit=1)"/>
 
-      <!-- ALL PRODUCTS IN CATEGORY -->
+      <!-- ⭐ SAFE PRODUCT QUERY -->
       <t t-set="products"
          t-value="request.env['product.template'].search([
              ('website_published','=',True),
@@ -23,70 +24,84 @@
 
           <!-- TITLE -->
           <div class="text-center mb-5">
-            <h2 class="fw-bold" t-esc="cat.name"/>
+            <h2 class="fw-bold" t-esc="cat.name or 'Most Popular'"/>
             <p class="text-muted">
               Discover our best-selling products
             </p>
           </div>
 
+          <!-- EMPTY STATE -->
+          <t t-if="not products">
+            <div class="text-center text-muted py-5">
+              No products found in this category.
+            </div>
+          </t>
+
           <!-- CAROUSEL -->
+          <t t-if="products">
+
             <div id="popularProductsCarousel"
-                class="carousel slide"
-                data-bs-ride="carousel"
-                data-bs-interval="false">
+                 class="carousel slide"
+                 data-bs-ride="carousel"
+                 data-bs-interval="false">
 
-            <div class="carousel-inner">
+              <div class="carousel-inner">
 
-                <t t-foreach="products" t-as="product" t-index="i">
+                <!-- ⭐ CHUNK PRODUCTS INTO GROUPS OF 4 -->
+                <t t-set="chunk_size" t-value="4"/>
+                <t t-set="total" t-value="len(products)"/>
 
-                <div t-attf-class="carousel-item #{'active' if i == 0 else ''}">
+                <t t-foreach="range(0, total, chunk_size)"
+                   t-as="i">
+
+                  <div t-attf-class="carousel-item #{'active' if i == 0 else ''}">
 
                     <div class="row g-4">
 
-                    <!-- SHOW CURRENT + NEXT 3 PRODUCTS -->
-                    <t t-foreach="range(0,4)" t-as="k">
-
-                        <t t-set="idx" t-value="(i + k) % len(products)"/>
+                      <t t-foreach="products[i:i+chunk_size]"
+                         t-as="product">
 
                         <div class="col-lg-3 col-md-6 col-6">
 
-                        <t t-set="product" t-value="products[idx]"/>
-
-                        <t t-call="theme_gifting.product_card"/>
+                          <t t-call="theme_gifting.product_card">
+                            <t t-set="product" t-value="product"/>
+                          </t>
 
                         </div>
 
-                    </t>
+                      </t>
 
                     </div>
 
-                </div>
+                  </div>
 
                 </t>
 
-            </div>
+              </div>
 
-            <!-- PREV -->
-            <button class="carousel-control-prev"
-                    type="button"
-                    data-bs-target="#popularProductsCarousel"
-                    data-bs-slide="prev">
+              <!-- PREV -->
+              <button class="carousel-control-prev"
+                      type="button"
+                      data-bs-target="#popularProductsCarousel"
+                      data-bs-slide="prev">
 
                 <span class="carousel-control-prev-icon bg-dark rounded-circle p-3"/>
 
-            </button>
+              </button>
 
-            <!-- NEXT -->
-            <button class="carousel-control-next"
-                    type="button"
-                    data-bs-target="#popularProductsCarousel"
-                    data-bs-slide="next">
+              <!-- NEXT -->
+              <button class="carousel-control-next"
+                      type="button"
+                      data-bs-target="#popularProductsCarousel"
+                      data-bs-slide="next">
 
                 <span class="carousel-control-next-icon bg-dark rounded-circle p-3"/>
 
-            </button>
+              </button>
 
             </div>
+
+          </t>
 
         </div>
 
