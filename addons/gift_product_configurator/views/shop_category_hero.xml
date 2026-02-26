@@ -1,14 +1,14 @@
 <odoo>
   <data>
 
-    <template id="shop_category_hero_top"
+    <template id="shop_category_hero_universal_safe"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Top of Shop)">
+              name="Category Hero Banner (Universal Safe)">
 
-      <!-- INSERT AT TOP OF MAIN CONTENT -->
-      <xpath expr="//main" position="inside">
+      <!-- INSERT AT TOP OF PAGE -->
+      <xpath expr="//div[@id='wrap']" position="inside">
 
-        <!-- CATEGORY DETECTION FROM URL -->
+        <!-- CATEGORY FROM URL -->
         <t t-set="path" t-value="request.httprequest.path"/>
 
         <t t-set="cat_id"
@@ -22,7 +22,7 @@
 
         <t t-if="cat and cat.exists()">
 
-          <!-- FULL WIDTH HERO -->
+          <!-- HERO -->
           <section class="category-hero-full"
                    t-att-style="'background:%s;' % (cat.hero_bg_color or '#6E8FC6')">
 
