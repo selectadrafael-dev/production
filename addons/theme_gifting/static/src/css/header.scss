@@ -419,6 +419,18 @@
 }
 
 /* ================= MOBILE PANEL ================= */
+ @media (max-width: 992px) {
+      .gifting-categories, .cat-mega
+      {
+          width: auto;
+      }
+       .gifting-categories
+      {
+          overflow: auto;
+      }
+      .gifting-links a{
+        margin-top: 20px;
+      }
 
 @media (max-width: 768px) {
 
@@ -572,19 +584,5 @@
     padding: 0 14px;
     border-radius: 0 8px 8px 0;
   }
-
-
-  @media (max-width: 992px) {
-      .gifting-categories, .cat-mega
-      {
-          width: auto;
-      }
-       .gifting-categories
-      {
-          overflow: auto;
-      }
-      .gifting-links a{
-        margin-top: 20px;
-      }
   } 
 }
