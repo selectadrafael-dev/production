@@ -4,7 +4,9 @@
 "summary": "Advanced B2B product page for promotional gifts",
 "category": "Website",
 "author": "SelectAd",
+'license': 'LGPL-3',
 "depends": [
+   'website',
    'website_sale',
    'sale_management'
 ],

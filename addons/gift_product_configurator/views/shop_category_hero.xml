@@ -3,7 +3,7 @@
 
     <template id="shop_category_hero_perfect"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Perfect Placement)">
+              name="Category Hero Banner (Perfect Placement — Safe)">
 
       <!-- INSERT HERO BEFORE PRODUCTS ROW -->
       <xpath expr="//div[contains(@class,'o_wsale_products_main_row')]"
@@ -23,9 +23,22 @@
 
         <t t-if="cat and cat.exists()">
 
+          <!-- 🛡️ SAFE FIELD ACCESS (CRITICAL) -->
+          <t t-set="hero_title"
+             t-value="getattr(cat, 'hero_title', False) or cat.name"/>
+
+          <t t-set="hero_subtitle"
+             t-value="getattr(cat, 'hero_subtitle', False) or ''"/>
+
+          <t t-set="hero_description"
+             t-value="getattr(cat, 'hero_description', False) or ''"/>
+
+          <t t-set="hero_color"
+             t-value="getattr(cat, 'hero_bg_color', False) or '#6E8FC6'"/>
+
           <!-- HERO -->
           <section class="category-hero"
-                   t-att-style="'background:%s;' % (cat.hero_bg_color or '#6E8FC6')">
+                   t-att-style="'background:%s;' % hero_color">
 
             <div class="container">
 
@@ -43,15 +56,15 @@
                   </nav>
 
                   <h1 class="fw-bold mb-3">
-                    <t t-esc="cat.hero_title or cat.name"/>
+                    <t t-esc="hero_title"/>
                   </h1>
 
                   <h4 class="mb-3">
-                    <t t-esc="cat.hero_subtitle"/>
+                    <t t-esc="hero_subtitle"/>
                   </h4>
 
                   <p class="mb-4">
-                    <t t-esc="cat.hero_description"/>
+                    <t t-esc="hero_description"/>
                   </p>
 
                   <a href="/contactus"
