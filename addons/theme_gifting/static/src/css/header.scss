@@ -574,10 +574,17 @@
   }
 
 
-  @media (max-width: 450px) {
-      .gifting-categories
+  @media (max-width: 992px) {
+      .gifting-categories, .cat-mega
       {
           width: auto;
+      }
+       .gifting-categories
+      {
+          overflow: auto;
+      }
+      .gifting-links a{
+        margin-top: 20px;
       }
   } 
 }
