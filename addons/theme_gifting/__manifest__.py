@@ -16,7 +16,10 @@
         #'views/theme.xml',
         "views/header.xml",
         "views/hero.xml",
-         'views/product_card.xml',
+        'views/product_card.xml',
+        'views/section_cta_banner.xml',
+        'views/section_main_category.xml',
+        'views/section_new_arrivals.xml',
         "views/section_popular_picks.xml",
         "views/section_popular_categories.xml",
         "views/section_promotional_products.xml",
@@ -30,6 +33,7 @@
     "assets": {
         "web.assets_frontend": [
             "theme_gifting/static/src/css/header.scss",
+            "theme_gifting/static/src/css/main.scss",
             "theme_gifting/static/src/css/hero.scss",
             "theme_gifting/static/src/css/product.scss",
             "theme_gifting/static/src/css/category_product.scss",

@@ -15,4 +15,13 @@
     <field name="name">Promotional Products</field>
   </record>
 
+    <record id="category_main_category"
+            model="product.public.category">
+        <field name="name">Main Category</field>
+    </record>
+
+  <record id="category_new_arrivals"
+          model="product.public.category">
+    <field name="name">New Arrivals</field>
+  </record>
 </odoo>
