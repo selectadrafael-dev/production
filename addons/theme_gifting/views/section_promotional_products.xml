@@ -32,8 +32,8 @@
             <t t-foreach="cats" t-as="cat">
                 <div class="col-lg-3 col-md-6 col-6">
 
-                <a href="#"
-                    class="promo-category-card text-decoration-none">
+                    <a t-att-href="'/gift-store/%s' % cat.id"
+                        class="promo-category-card text-decoration-none">
 
                     <div class="promo-image-card">
 
