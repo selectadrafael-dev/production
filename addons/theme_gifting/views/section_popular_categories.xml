@@ -5,12 +5,12 @@
     <template id="section_popular_categories"
               name="Most Popular Categories Section">
 
-      <!-- ⭐ SAFE: GET CATEGORY BY NAME -->
+      <!--⭐ SAFE: GET CATEGORY BY NAME -->
       <t t-set="cat"
          t-value="request.env['product.public.category'].search(
              [('name','=','Most Popular')], limit=1)"/>
 
-      <!-- ⭐ SAFE PRODUCT QUERY -->
+      <!--⭐ SAFE PRODUCT QUERY -->
       <t t-set="products"
          t-value="request.env['product.template'].search([
              ('website_published','=',True),
@@ -41,9 +41,11 @@
           <t t-if="products">
 
             <div id="popularProductsCarousel"
-                 class="carousel slide"
-                 data-bs-ride="carousel"
-                 data-bs-interval="false">
+                    class="carousel slide"
+                    data-bs-ride="carousel"
+                    data-bs-interval="7000"
+                    data-bs-pause="hover"
+                    data-bs-wrap="true">
 
               <div class="carousel-inner">
 
