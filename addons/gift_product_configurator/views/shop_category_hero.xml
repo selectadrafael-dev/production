@@ -1,14 +1,14 @@
 <odoo>
   <data>
 
-    <template id="shop_category_hero_absolute"
+    <template id="shop_category_hero_top"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Correct Position)">
+              name="Category Hero Banner (Top of Shop)">
 
-      <!-- INSERT AT TOP OF PAGE CONTENT -->
-      <xpath expr="//div[@id='wrap']" position="inside">
+      <!-- INSERT AT TOP OF MAIN CONTENT -->
+      <xpath expr="//main" position="inside">
 
-        <!-- URL CATEGORY DETECTION -->
+        <!-- CATEGORY DETECTION FROM URL -->
         <t t-set="path" t-value="request.httprequest.path"/>
 
         <t t-set="cat_id"
@@ -22,6 +22,7 @@
 
         <t t-if="cat and cat.exists()">
 
+          <!-- FULL WIDTH HERO -->
           <section class="category-hero-full"
                    t-att-style="'background:%s;' % (cat.hero_bg_color or '#6E8FC6')">
 
@@ -29,11 +30,11 @@
 
               <div class="row">
 
-                <!-- LEFT SPACE FOR FILTER SIDEBAR -->
+                <!-- SPACE FOR FILTER SIDEBAR -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
                 <!-- HERO CONTENT -->
-                <div class="col-lg-9">
+                <div class="col-lg-9 text-dark">
 
                   <nav class="mb-2 text-light">
                     Home /
