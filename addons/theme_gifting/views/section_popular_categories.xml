@@ -30,64 +30,63 @@
           </div>
 
           <!-- CAROUSEL -->
-          <div id="popularProductsCarousel"
-               class="carousel slide"
-               data-bs-ride="carousel">
+            <div id="popularProductsCarousel"
+                class="carousel slide"
+                data-bs-ride="carousel"
+                data-bs-interval="false">
 
             <div class="carousel-inner">
 
-              <!-- CREATE SLIDES OF 4 PRODUCTS -->
-              <t t-set="chunk_size" t-value="4"/>
-              <t t-set="total" t-value="len(products)"/>
-
-              <t t-foreach="range(0, total, chunk_size)"
-                 t-as="i">
+                <t t-foreach="products" t-as="product" t-index="i">
 
                 <div t-attf-class="carousel-item #{'active' if i == 0 else ''}">
 
-                  <div class="row g-4">
+                    <div class="row g-4">
 
-                    <t t-foreach="products[i:i+chunk_size]"
-                       t-as="product">
+                    <!-- SHOW CURRENT + NEXT 3 PRODUCTS -->
+                    <t t-foreach="range(0,4)" t-as="k">
 
-                      <div class="col-lg-3 col-md-6 col-6">
+                        <t t-set="idx" t-value="(i + k) % len(products)"/>
 
-                        <t t-call="theme_gifting.product_card">
-                          <t t-set="product" t-value="product"/>
-                        </t>
+                        <div class="col-lg-3 col-md-6 col-6">
 
-                      </div>
+                        <t t-set="product" t-value="products[idx]"/>
+
+                        <t t-call="theme_gifting.product_card"/>
+
+                        </div>
 
                     </t>
 
-                  </div>
+                    </div>
 
                 </div>
 
-              </t>
+                </t>
 
             </div>
 
-            <!-- CONTROLS -->
+            <!-- PREV -->
             <button class="carousel-control-prev"
                     type="button"
                     data-bs-target="#popularProductsCarousel"
                     data-bs-slide="prev">
 
-              <span class="carousel-control-prev-icon"/>
+                <span class="carousel-control-prev-icon bg-dark rounded-circle p-3"/>
 
             </button>
 
+            <!-- NEXT -->
             <button class="carousel-control-next"
                     type="button"
                     data-bs-target="#popularProductsCarousel"
                     data-bs-slide="next">
 
-              <span class="carousel-control-next-icon"/>
+                <span class="carousel-control-next-icon bg-dark rounded-circle p-3"/>
 
             </button>
 
-          </div>
+            </div>
 
         </div>
 
