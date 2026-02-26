@@ -33,9 +33,11 @@
               <div class="carousel-item">
                 <div class="d-flex justify-content-around align-items-center flex-wrap">
 
+                  <img src="/theme_gifting/static/src/img/coy2.png" class="logo-img"/>
                   <img src="/theme_gifting/static/src/img/coy1.png" class="logo-img"/>
                   <img src="/theme_gifting/static/src/img/coy2.png" class="logo-img"/>
                   <img src="/theme_gifting/static/src/img/coy3.png" class="logo-img"/>
+                  <img src="/theme_gifting/static/src/img/coy1.png" class="logo-img"/>
 
                 </div>
               </div>

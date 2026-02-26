@@ -5,23 +5,23 @@
     <template id="section_popular_categories"
               name="Most Popular Categories Section">
 
-      <!-- Get category record -->
+      <!-- Category -->
       <t t-set="cat"
          t-value="request.env.ref('theme_gifting.category_most_popular')"/>
 
-      <!-- SAFE PRODUCT QUERY -->
+      <!-- ALL PRODUCTS IN CATEGORY -->
       <t t-set="products"
          t-value="request.env['product.template'].search([
              ('website_published','=',True),
              ('sale_ok','=',True),
              ('public_categ_ids','in',[cat.id])
-         ], order='id desc', limit=4)"/>
+         ], order='id desc')"/>
 
       <section class="most-popular-products bg-light py-5">
 
         <div class="container">
 
-          <!-- SECTION TITLE -->
+          <!-- TITLE -->
           <div class="text-center mb-5">
             <h2 class="fw-bold" t-esc="cat.name"/>
             <p class="text-muted">
@@ -29,29 +29,63 @@
             </p>
           </div>
 
-          <!-- PRODUCTS GRID -->
-          <div class="row g-4">
+          <!-- CAROUSEL -->
+          <div id="popularProductsCarousel"
+               class="carousel slide"
+               data-bs-ride="carousel">
 
-            <!-- PRODUCT LOOP -->
-            <t t-foreach="products" t-as="product">
+            <div class="carousel-inner">
 
-              <div class="col-lg-3 col-md-6 col-6">
+              <!-- CREATE SLIDES OF 4 PRODUCTS -->
+              <t t-set="chunk_size" t-value="4"/>
+              <t t-set="total" t-value="len(products)"/>
 
-                <!-- USE GLOBAL CARD -->
-                <t t-call="theme_gifting.product_card">
-                  <t t-set="product" t-value="product"/>
-                </t>
+              <t t-foreach="range(0, total, chunk_size)"
+                 t-as="i">
 
-              </div>
+                <div t-attf-class="carousel-item #{'active' if i == 0 else ''}">
 
-            </t>
+                  <div class="row g-4">
 
-            <!-- EMPTY STATE -->
-            <t t-if="not products">
-              <div class="col-12 text-center text-muted">
-                No products found in this category.
-              </div>
-            </t>
+                    <t t-foreach="products[i:i+chunk_size]"
+                       t-as="product">
+
+                      <div class="col-lg-3 col-md-6 col-6">
+
+                        <t t-call="theme_gifting.product_card">
+                          <t t-set="product" t-value="product"/>
+                        </t>
+
+                      </div>
+
+                    </t>
+
+                  </div>
+
+                </div>
+
+              </t>
+
+            </div>
+
+            <!-- CONTROLS -->
+            <button class="carousel-control-prev"
+                    type="button"
+                    data-bs-target="#popularProductsCarousel"
+                    data-bs-slide="prev">
+
+              <span class="carousel-control-prev-icon"/>
+
+            </button>
+
+            <button class="carousel-control-next"
+                    type="button"
+                    data-bs-target="#popularProductsCarousel"
+                    data-bs-slide="next">
+
+              <span class="carousel-control-next-icon"/>
+
+            </button>
 
           </div>
 
