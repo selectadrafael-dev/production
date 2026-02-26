@@ -1,12 +1,12 @@
 <odoo>
   <data>
 
-    <template id="shop_category_hero_universal"
+    <template id="shop_category_hero_safe"
               inherit_id="website_sale.products"
-              name="Category Hero Banner (Universal Safe)">
+              name="Category Hero Banner (Failsafe)">
 
-      <!-- Insert at top of page content -->
-      <xpath expr="//main" position="inside">
+      <!-- Insert BEFORE ANY content -->
+      <xpath expr="." position="inside">
 
         <t t-if="category">
 
@@ -17,10 +17,10 @@
 
               <div class="row">
 
-                <!-- LEFT SPACE (for sidebar alignment) -->
+                <!-- LEFT SPACE for sidebar alignment -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
-                <!-- RIGHT HERO TEXT -->
+                <!-- RIGHT HERO CONTENT -->
                 <div class="col-lg-9">
 
                   <nav class="mb-2 text-light">
