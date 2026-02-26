@@ -1,0 +1,18 @@
+<odoo>
+
+  <record id="category_popular_picks"
+          model="product.public.category">
+    <field name="name">Popular Picks</field>
+  </record>
+
+  <record id="category_most_popular"
+          model="product.public.category">
+    <field name="name">Most Popular</field>
+  </record>
+
+  <record id="category_promotional"
+          model="product.public.category">
+    <field name="name">Promotional Products</field>
+  </record>
+
+</odoo>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data>
+
+    <template id="promo_category_page" name="Promo Category Page">
+
+      <t t-call="website.layout">
+
+        <!-- HERO -->
+       <section class="promo-hero"
+         t-att-style="'background:%s' % (getattr(category, 'promo_bg_color', False) or '#f5f5f5')">
+
+            <div class="container py-5 text-center">
+
+                <h1 class="fw-bold"
+                    t-esc="category.name"/>
+
+                <p class="lead"
+                t-esc="getattr(category, 'promo_tagline', '')"/>
+
+            </div>
+
+        </section>
+
+        <div class="container py-5">
+
+          <div class="row">
+
+            <!-- LEFT: VARIANTS -->
+            <aside class="col-lg-3">
+
+              <div class="variant-sidebar">
+
+                <t t-foreach="attributes" t-as="attr">
+
+                  <h6 t-esc="attr.name"/>
+
+                  <t t-foreach="attr.value_ids" t-as="val">
+                    <div>
+                      <input type="checkbox"
+                             class="variant-filter"
+                             t-att-data-value="val.id"/>
+                      <label t-esc="val.name"/>
+                    </div>
+                  </t>
+
+                </t>
+
+              </div>
+
+            </aside>
+
+            <!-- MIDDLE: PRODUCTS -->
+            <div class="col-lg-9">
+
+              <div id="promo-products"
+                   class="row g-4">
+
+                <t t-foreach="products" t-as="product">
+
+                  <div class="col-lg-4 col-md-6 col-6">
+
+                    <t t-call="theme_gifting.product_card"/>
+
+                  </div>
+
+                </t>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </t>
+
+    </template>
+
+  </data>
+</odoo>

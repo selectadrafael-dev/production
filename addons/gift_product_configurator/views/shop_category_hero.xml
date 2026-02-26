@@ -1,0 +1,95 @@
+<odoo>
+  <data>
+
+    <template id="shop_category_hero_perfect"
+              inherit_id="website_sale.products"
+              name="Category Hero Banner (Perfect Placement — Safe)">
+
+      <!--INSERT HERO BEFORE PRODUCTS ROW -->
+      <xpath expr="//div[contains(@class,'o_wsale_products_main_row')]"
+             position="before">
+
+        <!-- GET CATEGORY FROM URL -->
+        <t t-set="path" t-value="request.httprequest.path"/>
+
+        <t t-set="cat_id"
+           t-value="int(path.rsplit('-', 1)[-1])
+                    if '/shop/category/' in path and '-' in path
+                    else False"/>
+
+        <t t-set="cat"
+           t-value="request.env['product.public.category'].sudo().browse(cat_id)
+                    if cat_id else False"/>
+
+        <t t-if="cat and cat.exists()">
+
+          <!-- 🛡️ SAFE FIELD ACCESS (CRITICAL) -->
+          <t t-set="hero_title"
+             t-value="getattr(cat, 'hero_title', False) or cat.name"/>
+
+          <t t-set="hero_subtitle"
+             t-value="getattr(cat, 'hero_subtitle', False) or ''"/>
+
+          <t t-set="hero_description"
+             t-value="getattr(cat, 'hero_description', False) or ''"/>
+
+          <t t-set="hero_color"
+             t-value="getattr(cat, 'hero_bg_color', False) or '#6E8FC6'"/>
+
+          <!-- HERO -->
+          <section class="category-hero"
+                   t-att-style="'background:%s;' % hero_color">
+
+            <div class="container">
+
+              <div class="row">
+
+                <!-- LEFT SPACE (FILTER AREA) -->
+                <div class="col-lg-3 d-none d-lg-block"></div>
+
+                <!-- HERO CONTENT -->
+                <div class="col-lg-9 text-dark py-5">
+
+                  <nav class="mb-2 text-light">
+                    Home /
+                    <t t-esc="cat.name"/>
+                  </nav>
+
+                  <h1 class="fw-bold mb-3">
+                    <t t-esc="hero_title"/>
+                  </h1>
+
+                  <h4 class="mb-3">
+                    <t t-esc="hero_subtitle"/>
+                  </h4>
+
+                  <p class="mb-4">
+                    <t t-esc="hero_description"/>
+                  </p>
+
+                  <a href="/contactus"
+                     class="btn btn-dark me-3">
+                    Get An Express Quote
+                  </a>
+
+                  <a href="/contactus"
+                     class="btn btn-light">
+                    Contact Us
+                  </a>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </section>
+
+        </t>
+
+      </xpath>
+
+    </template>
+
+  </data>
+</odoo>

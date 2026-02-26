@@ -73,9 +73,8 @@
                 <a href="/shop/wishlist" class="icon">❤️</a>
 
                 <!-- Cart -->
-               <a href="/shop/cart" class="icon cart-icon">
-                  🛒
-                  <span class="cart-count">0</span>
+                <a href="#" class="icon cart-icon js-open-quote">
+                  🛒 <span class="cart-count">0</span>
                 </a>
 
 
@@ -137,6 +136,12 @@
                 <!-- Get root categories -->
                 <t t-set="categories"
                   t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
+
+                  <!--t t-set="categories"
+                    t-value="request.env['product.public.category']
+                              .with_context(prefetch_fields=False)
+                              .sudo()
+                              .search([('parent_id','=',False)], order='sequence')"/-->
 
                 <t t-if="categories">
 

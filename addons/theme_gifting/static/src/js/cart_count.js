@@ -1,24 +1,33 @@
-odoo.define('theme_gifting.cart_count', function (require) {
-    "use strict";
+(function () {
+  'use strict';
 
-    const publicWidget = require('web.public.widget');
+  const icon = document.querySelector('.cart-icon');
+  if (!icon) return;
 
-    publicWidget.registry.GiftingCartCount = publicWidget.Widget.extend({
-        selector: '.cart-icon',
+  const countEl = icon.querySelector('.cart-count');
 
-        start: function () {
-            fetch('/shop/cart/update_json', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({})
-            })
-            .then(res => res.json())
-            .then(data => {
-                const qty = data.cart_quantity || 0;
-                this.el.querySelector('.cart-count').textContent = qty;
-            });
+  async function updateCartCount() {
 
-            return this._super(...arguments);
-        },
-    });
-});
+    try {
+      const res = await fetch('/shop/cart', {
+        method: 'GET'
+      });
+
+      const html = await res.text();
+
+      // Parse returned page to extract quantity
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+
+      const qty = doc.querySelector('.my_cart_quantity');
+
+      countEl.textContent = qty ? qty.textContent : 0;
+
+    } catch (e) {
+      console.error('Cart count failed:', e);
+    }
+  }
+
+  updateCartCount();
+
+})();

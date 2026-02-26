@@ -463,7 +463,7 @@ z-index: 9999;
 pointer-events: none;
 }
 
-/* Dark overlay */
+/* Dark overlay 
 .drawer-overlay {
 position: absolute;
 inset: 0;
@@ -472,7 +472,7 @@ opacity: 0;
 transition: .3s;
 }
 
-/* Sliding panel */
+
 .drawer-panel {
 position: absolute;
 top: 0;
@@ -486,7 +486,7 @@ padding: 28px;
 overflow-y: auto;
 }
 
-/* Active state */
+
 .quote-drawer.active {
 pointer-events: auto;
 }
@@ -499,7 +499,6 @@ opacity: 1;
 right: 0;
 }
 
-/* Close button */
 .drawer-close {
 border: none;
 background: none;
@@ -508,7 +507,7 @@ float: right;
 cursor: pointer;
 }
 
-/* MOBILE */
+
 @media (max-width: 768px) {
 
 .drawer-panel {
@@ -516,7 +515,7 @@ cursor: pointer;
 }
 
 }
-
+/*
 
 /* ===== MOBILE ===== */
 
