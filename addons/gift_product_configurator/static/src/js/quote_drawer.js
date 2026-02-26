@@ -83,7 +83,7 @@ document.addEventListener('click', function (ev) {
 
   tab.classList.add('is-active');
 
-  // Show panel
+  //Show panel
   document.querySelectorAll('.drawer-panel')
     .forEach(p => p.classList.remove('is-active'));
 
