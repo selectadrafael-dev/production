@@ -4,12 +4,19 @@
     <template id="section_popular_picks"
               name="Popular Picks">
 
-    
+      <!-- DIRECT PRODUCT QUERY -->
+      <t t-set="products"
+         t-value="request.env['product.template'].search(
+           [('website_published','=',True)], limit=7)"/>
 
       <section class="container py-5">
 
-       
-        <t t-esc="len(products)"/>
+        <!-- DEBUG OUTPUT -->
+        <p>Products found: <t t-esc="len(products)"/></p>
+
+        <t t-foreach="products" t-as="product">
+          <div t-esc="product.name"/>
+        </t>
 
       </section>
 
