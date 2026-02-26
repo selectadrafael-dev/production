@@ -1,0 +1,24 @@
+<odoo>
+  <template id="quote_drawer_global" inherit_id="website.layout">
+    <xpath expr="//body" position="inside">
+
+      <!-- Overlay -->
+      <div id="quoteDrawerOverlay" class="quote-drawer-overlay"></div>
+
+      <!-- Drawer -->
+      <aside id="quoteDrawer" class="quote-drawer">
+
+        <div class="quote-drawer__header">
+          <h4>Your Quote</h4>
+          <button class="quote-drawer__close js-close-quote">×</button>
+        </div>
+
+        <div class="quote-drawer__content">
+          <!-- EMPTY FOR NOW -->
+        </div>
+
+      </aside>
+
+    </xpath>
+  </template>
+</odoo>

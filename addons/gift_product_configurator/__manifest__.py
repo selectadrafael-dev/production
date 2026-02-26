@@ -22,7 +22,7 @@
     "web.assets_frontend": [
         "gift_product_configurator/static/src/scss/product_page.scss",
         "gift_product_configurator/static/src/scss/bestsellers.scss",
-        #"gift_product_configurator/static/src/scss/quote_drawer.scss",
+        "gift_product_configurator/static/src/scss/quote_drawer.scss",
         "gift_product_configurator/static/src/scss/shop_hero.scss",
         "gift_product_configurator/static/src/scss/category_hero.scss",
         "gift_product_configurator/static/src/js/configurator.js",
