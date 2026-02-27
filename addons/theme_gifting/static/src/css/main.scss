@@ -354,7 +354,7 @@
 
 /* Product name */
 .promo-name {
-  font-size: 14px;
+  font-size: 14px!important;
   font-weight: 500;
 
   max-width: 70%;
@@ -367,6 +367,12 @@
 .promo-variants {
   display: flex;
   gap: 4px;
+  width: 50px;
+  height: 30px;
+   background-image: url('/theme_gifting/static/src/img/variant_icon.png');
+   background-repeat: no-repeat;
+   background-size: contain;
+   background-position: center;
 }
 
 .variant-dot {

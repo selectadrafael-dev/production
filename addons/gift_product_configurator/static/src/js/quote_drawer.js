@@ -70,6 +70,7 @@
   });
 
   // TAB SWITCHING
+// TAB SWITCHING
 document.addEventListener('click', function (ev) {
 
   const tab = ev.target.closest('.drawer-tab');
@@ -77,13 +78,15 @@ document.addEventListener('click', function (ev) {
 
   const target = tab.dataset.target;
 
-  //Activate tab
+  console.log('Tab clicked:', target);
+
+  // Activate tab
   document.querySelectorAll('.drawer-tab')
     .forEach(t => t.classList.remove('is-active'));
 
   tab.classList.add('is-active');
 
-  //Show panel
+  // Show panel
   document.querySelectorAll('.drawer-panel')
     .forEach(p => p.classList.remove('is-active'));
 
@@ -94,6 +97,7 @@ document.addEventListener('click', function (ev) {
   if (panel) panel.classList.add('is-active');
 
 });
+
 
 // FREE VISUAL TOGGLE
 document.addEventListener('change', function (ev) {
@@ -110,6 +114,42 @@ document.addEventListener('change', function (ev) {
     upload.classList.remove('show');
   }
 
+});
+
+//===============================
+// FREE VISUAL TOGGLE (DEBUG MODE)
+//===============================
+document.addEventListener('change', function (ev) {
+
+  console.log('CHANGE event detected:', ev.target);
+
+  if (ev.target.id !== 'freeVisualSwitch') return;
+
+  console.log('Free visual switch toggled');
+
+  const upload = document.getElementById('visualUploadArea');
+
+  console.log('Upload area element:', upload);
+
+  if (!upload) {
+    console.error('❌ Upload area NOT FOUND in DOM');
+    return;
+  }
+
+  if (ev.target.checked) {
+    console.log('Switch is ON → showing upload area');
+    upload.classList.add('show');
+  } else {
+    console.log('Switch is OFF → hiding upload area');
+    upload.classList.remove('show');
+  }
+
+});
+
+document.addEventListener('click', function (ev) {
+  if (ev.target.closest('.switch')) {
+    console.log('Switch label clicked');
+  }
 });
 
 })();

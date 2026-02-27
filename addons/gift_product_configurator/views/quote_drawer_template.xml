@@ -21,28 +21,32 @@
 
         <!-- TAB BUTTONS -->
         <div class="quote-drawer__tabs">
-          <button class="drawer-tab is-active" data-target="sample">
+
+          <button class="drawer-tab" data-target="sample">
             Order Sample
           </button>
 
-          <button class="drawer-tab" data-target="quote">
+          <button class="drawer-tab is-active" data-target="quote">
             Quote Now
           </button>
+
         </div>
 
         <!-- CONTENT AREA -->
         <div class="quote-drawer__content">
 
-          <!-- SAMPLE CONTENT -->
+          <!-- ================= SAMPLE PANEL ================= -->
           <div class="drawer-panel" data-panel="sample">
+
             <p>Sample items will appear here</p>
 
             <button class="drawer-primary">
               Checkout Now
             </button>
+
           </div>
 
-          <!-- QUOTE CONTENT -->
+          <!-- ================= QUOTE PANEL ================= -->
           <div class="drawer-panel is-active" data-panel="quote">
 
             <!-- FREE VISUAL SWITCH -->
@@ -62,7 +66,7 @@
 
             </div>
 
-            <!-- UPLOAD AREA (hidden initially) -->
+            <!-- UPLOAD AREA -->
             <div id="visualUploadArea" class="visual-upload">
 
               <label class="upload-title">
