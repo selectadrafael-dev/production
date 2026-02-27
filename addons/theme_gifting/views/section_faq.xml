@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data>
+
+    <template id="section_faq"
+              name="FAQ Section">
+
+      <section class="faq-section py-5">
+
+        <div class="container">
+
+          <!-- Title -->
+          <h2 class="text-center fw-bold mb-5">
+            Tez-tez verilən suallar
+          </h2>
+
+          <!-- Bootstrap Accordion -->
+          <div class="accordion faq-accordion"
+               id="faqAccordion">
+
+            <!-- ITEM 1 (OPEN) -->
+            <div class="accordion-item">
+
+              <h2 class="accordion-header">
+                <button class="accordion-button"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#faq1"
+                        aria-expanded="true">
+
+                  Sellectad kimdir?
+                </button>
+              </h2>
+
+              <div id="faq1"
+                   class="accordion-collapse collapse show"
+                   data-bs-parent="#faqAccordion">
+
+                <div class="accordion-body">
+                  Lorem ipsum dolor sit amet consectetur.
+                  Tellus gravida congue aliquet mattis
+                  consectetur varius egestas.
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ITEM 2 -->
+            <div class="accordion-item">
+
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#faq2">
+
+                  Promosyon məhsulları nədir?
+                </button>
+              </h2>
+
+              <div id="faq2"
+                   class="accordion-collapse collapse"
+                   data-bs-parent="#faqAccordion">
+
+                <div class="accordion-body">
+                  Promotional products are branded items
+                  used for marketing and advertising.
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ITEM 3 -->
+            <div class="accordion-item">
+
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#faq3">
+
+                  Promosyon məhsulları niyə işləyir?
+                </button>
+              </h2>
+
+              <div id="faq3"
+                   class="accordion-collapse collapse"
+                   data-bs-parent="#faqAccordion">
+
+                <div class="accordion-body">
+                  They increase brand visibility and customer
+                  engagement through practical usage.
+                </div>
+
+              </div>
+            </div>
+
+            <!-- ITEM 4 -->
+            <div class="accordion-item">
+
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#faq4">
+
+                  Hansı promosyon məhsulları ən effektivdir?
+                </button>
+              </h2>
+
+              <div id="faq4"
+                   class="accordion-collapse collapse"
+                   data-bs-parent="#faqAccordion">
+
+                <div class="accordion-body">
+                  Everyday-use items like pens, mugs,
+                  and bags tend to be most effective.
+                </div>
+
+              </div>
+
+            </div>
+
+            <!-- ITEM 5 -->
+            <div class="accordion-item">
+
+              <h2 class="accordion-header">
+                <button class="accordion-button collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#faq5">
+
+                  Promo məhsulu necə seçə bilərəm?
+                </button>
+              </h2>
+
+              <div id="faq5"
+                   class="accordion-collapse collapse"
+                   data-bs-parent="#faqAccordion">
+
+                <div class="accordion-body">
+                  Choose based on your audience,
+                  budget, and marketing goals.
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </template>
+
+  </data>
+</odoo>

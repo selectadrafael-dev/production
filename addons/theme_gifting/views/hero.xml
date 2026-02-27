@@ -96,9 +96,11 @@
        <!--⭐ section_cta_banner -->
       <t t-call="theme_gifting.section_cta_banner"/>
 
-      <!-- ⭐ TESTIMONIALS -->
-      <t t-call="theme_gifting.section_testimonials"/>
+      <!-- ⭐ faq -->
+     <t t-call="theme_gifting.section_faq"/>
 
+  <!-- ⭐ newsletter -->
+  <t t-call="theme_gifting.section_newsletter"/>
 
 <!-- =================================================
            EMPTY EDITABLE AREA FOR FUTURE SECTIONS
