@@ -5,44 +5,41 @@
     <template id="section_promotions"
               name="Promotions Section">
 
-      <!-- CATEGORY: Promotions -->
+      <!-- Fetch LAST 6 products from Promotions category -->
       <t t-set="products"
          t-value="request.env['gifting.product.helper']
                   .get_latest_products(
-                  'theme_gifting.category_promotions', 6) or []"/>
+                  'theme_gifting.category_promotions', 6)"/>
 
       <section class="promo-section py-5">
 
         <div class="container">
 
           <!-- HEADER -->
-          <div class="promo-header mb-4">
+          <div class="d-flex justify-content-between align-items-center mb-4">
 
             <div>
               <span class="promo-badge">Bu ay</span>
-              <h3 class="fw-bold mt-2">Promotions</h3>
+              <h2 class="promo-title">Promotions</h2>
             </div>
 
             <a href="/shop"
-               class="promo-more">
-              See more
-            </a>
+               class="promo-more">See more</a>
 
           </div>
 
-          <!-- PRODUCTS -->
-          <div class="promo-products">
+          <!-- HORIZONTAL SCROLL AREA -->
+          <div class="promo-scroll">
 
-            <t t-if="products">
+            <div class="promo-track">
 
-              <t t-foreach="products" t-as="product">
+              <t t-foreach="products or []" t-as="product">
 
-                <!-- CALL REUSABLE CARD -->
                 <t t-call="theme_gifting.product_card_promo"/>
 
               </t>
 
-            </t>
+            </div>
 
           </div>
 
