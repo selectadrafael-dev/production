@@ -163,6 +163,11 @@
   text-decoration: none;
 }
 
+/*close mobile*/
+.mobile-close {
+  display: none;
+}
+
 /* Desktop hover only */
 @media (min-width: 993px) {
   .gifting-categories:hover .cat-mega {
