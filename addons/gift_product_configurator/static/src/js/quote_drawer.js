@@ -95,4 +95,21 @@ document.addEventListener('click', function (ev) {
 
 });
 
+// FREE VISUAL TOGGLE
+document.addEventListener('change', function (ev) {
+
+  if (ev.target.id !== 'freeVisualSwitch') return;
+
+  const upload = document.getElementById('visualUploadArea');
+
+  if (!upload) return;
+
+  if (ev.target.checked) {
+    upload.classList.add('show');
+  } else {
+    upload.classList.remove('show');
+  }
+
+});
+
 })();

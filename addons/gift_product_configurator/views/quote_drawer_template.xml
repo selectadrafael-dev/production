@@ -48,18 +48,34 @@
             <!-- FREE VISUAL SWITCH -->
             <div class="free-visual">
 
-                <input
-                    type="checkbox"
-                    id="freeVisualSwitch"
-                    class="switch-input"/>
+            <!-- SWITCH -->
+            <input
+                type="checkbox"
+                id="freeVisualSwitch"
+                class="switch-input"/>
 
-                <label
-                    for="freeVisualSwitch"
-                    class="switch">
-                    <span class="slider"></span>
-                </label>
+            <label for="freeVisualSwitch" class="switch">
+                <span class="slider"></span>
+            </label>
 
-                <span>Would you like a free visual?</span>
+            <span class="switch-label">
+                Would you like a free visual?
+            </span>
+
+            </div>
+
+            <!-- UPLOAD AREA -->
+            <div id="visualUploadArea" class="visual-upload">
+
+            <label class="upload-title">
+                Your logo <span>(optional)</span>
+            </label>
+
+            <input type="file" id="logoUpload"/>
+
+            <p class="upload-note">
+                Formats we accept: .ai, .eps, .pdf, .png, .jpg
+            </p>
 
             </div>
 
