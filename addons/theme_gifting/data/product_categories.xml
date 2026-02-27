@@ -24,4 +24,10 @@
           model="product.public.category">
     <field name="name">New Arrivals</field>
   </record>
+
+    <record id="category_promotions"
+            model="product.public.category">
+      <field name="name">Promotions</field>
+    </record>
+    
 </odoo>

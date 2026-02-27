@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <template id="product_card_promo"
+            name="Promo Product Card">
+
+    <t t-if="product">
+
+      <div class="promo-item">
+
+        <a t-att-href="'/shop/product/%s' % product.id"
+           class="promo-card-link">
+
+          <!-- IMAGE (FIXED RATIO) -->
+          <div class="promo-card">
+            <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+                 t-att-alt="product.name"/>
+          </div>
+
+          <!-- META -->
+          <div class="promo-meta">
+
+            <!-- ROW 1 -->
+            <div class="promo-row">
+
+              <span class="promo-name"
+                    t-esc="product.name"/>
+
+              <!-- COLOR DOTS FROM VARIANTS -->
+              <div class="promo-variants">
+
+                <t t-foreach="product.product_variant_ids" t-as="variant" t-limit="5">
+
+                  <t t-set="color"
+                     t-value="variant.product_template_attribute_value_ids.filtered(lambda v: v.attribute_id.display_type == 'color')[:1]"/>
+
+                  <t t-if="color">
+
+                    <span class="variant-dot"
+                          t-att-style="'background:%s' % (color[0].html_color or '#ccc')"/>
+
+                  </t>
+
+                </t>
+
+              </div>
+
+            </div>
+
+            <!-- ROW 2 -->
+            <div class="promo-price"
+                 t-esc="product.list_price"/>
+
+          </div>
+
+        </a>
+
+      </div>
+
+    </t>
+
+  </template>
+
+</odoo>

@@ -20,6 +20,8 @@
         'views/section_cta_banner.xml',
         'views/section_main_category.xml',
         'views/section_new_arrivals.xml',
+        'views/components/product_card_promo.xml',
+        'views/section_promotions.xml',
         'views/section_faq.xml',
         'views/section_newsletter.xml',
         "views/section_popular_picks.xml",

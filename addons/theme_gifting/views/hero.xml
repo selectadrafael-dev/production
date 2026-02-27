@@ -71,22 +71,17 @@
       <t t-call="theme_gifting.section_main_category"/>
      
       <!--⭐ section_cta_banner -->
-      <t t-call="theme_gifting.section_cta_banner"/>
+      <!--t t-call="theme_gifting.section_cta_banner"/-->
       
       <!--⭐ new_arrivals -->
       <t t-call="theme_gifting.section_new_arrivals"/>
 
        <!--⭐ section_cta_banner -->
       <t t-call="theme_gifting.section_cta_banner"/>
+      
+       <!--⭐ promotion -->
+      <t t-call="theme_gifting.section_promotions"/>
 
-      <!-- =================================================
-          Products
-           ================================================= -->
-       <!--⭐ POPULAR PICKS -->
-      <t t-call="theme_gifting.section_popular_picks"/>
-
-      <!--⭐ MOST POPULAR CATEGORIES -->
-      <!--t t-call="theme_gifting.section_popular_categories"/-->
        <!--⭐ section_cta_banner -->
       <t t-call="theme_gifting.section_cta_banner"/>
 

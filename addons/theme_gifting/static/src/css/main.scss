@@ -252,3 +252,151 @@
 .newsletter-btn:hover {
   background: #148a5c;
 }
+
+/* =====================================================
+   PROMOTIONS SECTION + REUSABLE PROMO CARD
+   COMPLETE STYLES — NO DUPLICATES
+   ===================================================== */
+
+/* ===== PROMOTIONS SECTION ===== */
+
+.promo-section {
+  background: #fff;
+}
+
+/* Header */
+.promo-badge {
+  display: inline-block;
+  background: #ff5a5f;
+  color: #fff;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.promo-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.promo-more {
+  color: #6c63ff;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* ===== SCROLL AREA ===== */
+
+.promo-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 10px;
+}
+
+.promo-track {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+}
+
+/* ===== CARD CONTAINER ===== */
+
+.promo-item {
+  width: 220px;
+  flex-shrink: 0;
+}
+
+/* Clickable link */
+.promo-card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+/* ===== IMAGE AREA — FIXED SIZE ===== */
+
+.promo-card {
+  background: #f7f7f7;
+  border-radius: 14px;
+  overflow: hidden;
+
+  width: 100%;
+  height: 220px;          /* 🔥 FIXED HEIGHT */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.promo-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ===== META AREA — FIXED HEIGHT ===== */
+
+.promo-meta {
+  margin-top: 8px;
+  height: 52px;           /* 🔥 KEY FIX */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Row with name + dots */
+.promo-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Product name */
+.promo-name {
+  font-size: 14px;
+  font-weight: 500;
+
+  max-width: 70%;
+  overflow: hidden;
+  white-space: nowrap;      /* 🔥 FORCE SINGLE LINE */
+  text-overflow: ellipsis;
+}
+
+/* Variant dots */
+.promo-variants {
+  display: flex;
+  gap: 4px;
+}
+
+.variant-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+}
+
+/* Price row */
+.promo-price {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ff3b3b;
+}
+
+/* ===== MOBILE ===== */
+
+@media (max-width: 768px) {
+
+  .promo-item {
+    width: 160px;
+  }
+
+  .promo-card {
+    height: 160px;
+  }
+
+  .promo-title {
+    font-size: 22px;
+  }
+
+}
