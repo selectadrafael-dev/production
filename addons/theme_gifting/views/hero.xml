@@ -85,17 +85,6 @@
        <!--⭐ section_cta_banner -->
       <t t-call="theme_gifting.section_cta_banner"/>
 
-      <!-- =================================================
-          Products
-           ================================================= -->
-       <!--⭐ POPULAR PICKS -->
-      <t t-call="theme_gifting.section_popular_picks"/>
-
-      <!--⭐ MOST POPULAR CATEGORIES -->
-      <!--t t-call="theme_gifting.section_popular_categories"/-->
-       <!--⭐ section_cta_banner -->
-      <t t-call="theme_gifting.section_cta_banner"/>
-
       <!-- ⭐ PROMOTIONAL PRODUCTS -->
       <t t-call="theme_gifting.section_promotional_products"/>
 
