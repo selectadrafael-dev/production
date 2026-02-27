@@ -1,250 +1,124 @@
-/* NAVBAR BASE */
+/* =========================================================
+   GIFTING NAVBAR — CLEAN PRODUCTION CSS
+   Works with your existing markup
+   ========================================================= */
+
+/* ================= BASE ================= */
 
 .gifting-navbar {
-    background: #fff;
-    border-bottom: 1px solid #eee;
-    width: 100%;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+  width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
 }
 
-/* CONTAINER */
-
-.gifting-nav-container {
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 0 20px;
+.gifting-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 20px;
 }
 
-/* TOP ROW */
+/* ================= TOP ROW ================= */
 
 .gifting-nav-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
 }
 
-/* LOGO */
-
+/* Logo */
 .gifting-logo img {
-    height: 42px;
+  height: 42px;
 }
 
-/* SEARCH */
-
+/* Search */
 .gifting-search {
   flex: 1;
   max-width: 700px;
   margin: 0 40px;
 }
+
 .gifting-search form {
-    display: flex;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    overflow: hidden;
+  display: flex;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .gifting-search input {
-    flex: 1;
-    padding: 12px;
-    border: none;
-    outline: none;
-    font-size: 15px;
+  flex: 1;
+  padding: 12px;
+  border: none;
+  outline: none;
 }
 
 .gifting-search button {
-    padding: 0 18px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
+  padding: 0 18px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
 }
 
-/* ICONS */
-
+/* Icons */
 .gifting-icons {
-    display: flex;
-    align-items: center;
-    gap: 18px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
 }
 
 .gifting-icons .icon {
-    font-size: 20px;
-    color: #333;
-    text-decoration: none;
+  font-size: 20px;
+  text-decoration: none;
+  color: #333;
 }
 
-/* SECOND ROW */
+/* ================= SECOND ROW ================= */
 
 .gifting-nav-bottom {
-    display: flex;
-    align-items: center;
-    padding: 10px 0;
-    border-top: 1px solid #eee;
-}
-
-.gifting-categories {
-    font-weight: 600;
-    margin-right: 24px;
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid #eee;
 }
 
 .gifting-links a {
-    margin-right: 20px;
-    color: #333;
-    text-decoration: none;
+  margin-right: 20px;
+  text-decoration: none;
+  color: #333;
 }
 
-.cat-mega {
-  display: none;
-}
+/* ================= ACCOUNT DROPDOWN ================= */
 
-.cat-mega.open {
-  display: block;
-}
-
-/* GLOBAL LAYOUT CONTAINER */
-
-.gifting-container {
-    max-width: 1240px;
-    margin: 0 auto;
-    padding: 0 20px;
-}
-
-.container {
-    max-width: 1240px !important;
-}
-
-.cart-icon {
-    position: relative;
-}
-
-.cart-count {
-    position: absolute;
-    top: -6px;
-    right: -8px;
-    background: #ff4d4f;
-    color: #fff;
-    font-size: 11px;
-    padding: 2px 6px;
-    border-radius: 50%;
-    /*display: none;*/
-}
-
-/*stucky header*/
-.gifting-navbar {
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-}
-
-/*account dropdown*/
 .account-dropdown {
-    position: relative;
-    cursor: pointer;
+  position: relative;
+  cursor: pointer;
 }
 
 .account-dropdown .dropdown-menu {
-    display: none;
-    position: absolute;
-    right: 0;
-    top: 36px;
-    background: #fff;
-    border: 1px solid #eee;
-    padding: 10px 0;
-    min-width: 180px;
-    box-shadow: 0 6px 20px rgba(0,0,0,.08);
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 36px;
+  background: #fff;
+  border: 1px solid #eee;
+  min-width: 180px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.08);
 }
 
 .account-dropdown:hover .dropdown-menu {
-    display: block;
+  display: block;
 }
 
-.dropdown-menu a {
-    display: block;
-    padding: 10px 16px;
-    color: #333;
-    text-decoration: none;
-}
+/* ================= CATEGORY MEGA ================= */
 
-/*product category*/
 .gifting-categories {
   position: relative;
+  margin-right: 24px;
 }
 
-/* Toggle button */
-.cat-btn {
-  background: none;
-  border: none;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 8px 10px;
-}
-
-/* Dropdown panel */
-.cat-dropdown {
-  position: absolute;
-  top: 110%;
-  left: 0;
-  width: 320px;
-  max-height: 480px;
-  overflow-y: auto;
-
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid #eee;
-  box-shadow: 0 20px 50px rgba(0,0,0,.15);
-
-  z-index: 99999;
-}
-
-/* Group wrapper */
-.cat-group {
-  border-bottom: 1px solid #f1f1f1;
-}
-
-/* Parent category */
-.cat-parent {
-  display: block;
-  padding: 14px 18px;
-  font-weight: 600;
-  color: #222;
-  text-decoration: none;
-}
-
-.cat-parent:hover {
-  background: #f6f6f6;
-}
-
-/* Child categories */
-.cat-child {
-  display: block;
-  padding: 8px 28px;
-  font-size: 14px;
-  color: #666;
-  text-decoration: none;
-}
-
-.cat-child:hover {
-  background: #f2f2f2;
-}
-
-/* Hidden state */
-.cat-dropdown[hidden] {
-  display: none;
-}
-
-/* Empty state */
-.empty {
-  padding: 16px;
-  color: #888;
-}
-
-
-/*mega menu*/
-/* Container */
-.gifting-categories {
-  position: relative;
-}
-
-/* Button */
 .cat-btn {
   background: none;
   border: none;
@@ -252,7 +126,6 @@
   cursor: pointer;
 }
 
-/* Mega panel */
 .cat-mega {
   display: none;
   position: absolute;
@@ -268,66 +141,49 @@
   z-index: 9999;
 }
 
-/* Show on hover */
-.gifting-categories:hover .cat-mega {
-  display: block;
-}
-
-/* Columns layout */
 .cat-columns {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
 }
 
-/* Parent category */
 .cat-parent {
-  display: block;
   font-weight: 700;
+  display: block;
   margin-bottom: 8px;
-  color: #111;
   text-decoration: none;
+  color: #111;
 }
 
-/* Subcategory */
 .cat-sub {
   display: block;
+  font-size: 14px;
   padding: 4px 0;
   color: #555;
   text-decoration: none;
-  font-size: 14px;
 }
 
-.cat-sub:hover {
-  color: #000;
+/* Desktop hover only */
+@media (min-width: 993px) {
+  .gifting-categories:hover .cat-mega {
+    display: block;
+  }
 }
 
-/* =========================================================
-   MOBILE RESPONSIVE NAV — SAFE FOR YOUR STRUCTURE
-   ========================================================= */
+/* ================= MOBILE TOGGLE BUTTON ================= */
 
-/* Hamburger hidden on desktop */
 .mobile-toggle {
   display: none;
   font-size: 26px;
   background: none;
   border: none;
   cursor: pointer;
+  z-index: 100001;
 }
 
-/* ================= CLOSE BUTTON ================= */
-
-.mobile-close {
-  display: none;
-  background: none;
-  border: none;
-  font-size: 28px;
-  cursor: pointer;
-}
-
-/* ============================= */
-/* MOBILE LAYOUT                 */
-/* ============================= */
+/* =========================================================
+   TABLET / SMALL DESKTOP (≤ 992px)
+   ========================================================= */
 
 @media (max-width: 992px) {
 
@@ -336,50 +192,68 @@
     display: block;
   }
 
-  /* Stack top row */
+  /* ===== ROW 1 — Logo + Hamburger ===== */
+
   .gifting-nav-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  /* Shrink search */
-  .gifting-search {
-    order: 3;
-    width: 100%;
-    margin-top: 10px;
-  }
-
-  /* Icons stay right */
-  .gifting-icons {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
     gap: 12px;
+    align-items: center;
   }
 
-  /* =============================
-     COLLAPSIBLE BOTTOM MENU
-     ============================= */
+  .gifting-logo {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .mobile-toggle {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  /* ===== ROW 2 — Icons + Search ===== */
+
+  .gifting-icons {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    justify-content: center;
+  }
+
+  .gifting-search {
+    grid-column: 1 / 3;
+    grid-row: 3;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  /* ===== MOBILE DRAWER MENU ===== */
 
   .gifting-nav-bottom {
     position: fixed;
     top: 0;
     right: -100%;
-    width: 80%;
+
+    width: 82%;
     height: 100vh;
+
     background: #fff;
-    padding: 80px 20px;
-    z-index: 9999;
+    padding: 80px 20px 20px;
+
+    z-index: 100000;
     overflow-y: auto;
+
     transition: right .3s ease;
-    box-shadow: -10px 0 40px rgba(0,0,0,.2);
 
     display: flex;
     flex-direction: column;
     gap: 20px;
+
+    box-shadow: -12px 0 40px rgba(0,0,0,.2);
   }
 
-  /* Visible state */
   .gifting-nav-bottom.open {
     right: 0;
   }
@@ -391,242 +265,34 @@
     gap: 14px;
   }
 
-  .gifting-links a {
-    font-size: 16px;
-  }
-
-  /* Categories block */
-  .gifting-categories {
-    width: 100%;
-  }
-
-  /* Mega menu becomes static */
+  /* Mega becomes normal block */
   .cat-mega {
-    position: static !important;
-    box-shadow: none !important;
-    max-height: none !important;
-  }
-
-  /*category button*/
-   .cat-mega {
+    position: static;
+    width: 100%;
+    box-shadow: none;
+    max-height: none;
     display: none;
   }
 
   .cat-mega.open {
     display: block;
   }
-
-
-  /*working/added css*/
-  /* =========================
-   TABLET / SMALL DESKTOP
-   ========================= */
-  /* Row 1: logo + hamburger only */
-  .gifting-nav-top {
-    flex-wrap: wrap;
-  }
-
-  .gifting-logo {
-    order: 1;
-  }
-
-  .mobile-toggle {
-    order: 2;
-    margin-left: auto;
-    display: block;
-  }
-
-  /* Move icons + search to Row 2 */
-  .gifting-icons {
-    order: 3;
-    width: auto;
-  }
-
-  .gifting-search {
-    order: 4;
-    width: 100%;
-    max-width: none;
-    margin-top: 8px;
-  }
-
-  /* Make row 2 nice */
-  .gifting-search form {
-    width: 100%;
-  }
-
-  .gifting-search input {
-    width: 100%;
-  }
-
-
-/* ================= MOBILE PANEL ================= */
-  .gifting-nav-container {
-    padding: 12px 18px;
-  }
-
-  .gifting-nav-top {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto auto;
-    gap: 12px;
-    align-items: center;
-  }
-
-  /* ===============================
-     ROW 1 — LOGO LEFT / HAMBURGER RIGHT
-     =============================== */
-
-  .gifting-logo {
-    grid-column: 1;
-    grid-row: 1;
-    justify-self: start;
-  }
-
-  /*
-  @media (max-width: 992px) {
-  .gifting-logo img {
-    max-height: 42px;
-  }
 }
-  */
 
-  .mobile-toggle {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-    display: block;
-    font-size: 26px;
-  }
-
-  /* ===============================
-     ROW 2 — ICONS BAR
-     =============================== */
-
-  .gifting-icons {
-    grid-column: 1 / 3;
-    grid-row: 2;
-
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-
-    gap: 18px;
-    padding: 6px 0;
-  }
-
-  /* Make icons consistent */
-
-  .gifting-icons a,
-  .gifting-icons .icon,
-  .gifting-icons span {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-  }
-
-  /* ===============================
-     ROW 3 — SEARCH FULL WIDTH
-     =============================== */
-
-  .gifting-search {
-    grid-column: 1 / 3;
-    grid-row: 3;
-    width: 100%;
-  }
-
-  .gifting-search form {
-    display: flex;
-    width: 100%;
-  }
-
-  .gifting-search input {
-    flex: 1;
-    height: 44px;
-    padding: 0 16px;
-  }
-
-  .gifting-search button {
-    height: 44px;
-    padding: 0 16px;
-  }
-
-  /* Hide desktop second-row navigation */
-
-  .gifting-nav-bottom {
-    display: none;
-  }
-
-
-      .gifting-categories, .cat-mega
-      {
-          width: auto;
-          padding: 0 10px;
-      }
-       .gifting-categories
-      {
-        /*overflow: auto;*/
-        min-height: 300px;
-      }
-      .gifting-links a{
-        margin-top: 20px;
-      }
-
-      .gifting-search input {
-        border-radius: 10px;
-        border: 1px solid #ddd;
-      }
-
-      .gifting-search {
-          margin: 10px 0 0 0!important;
-      }
+/* =========================================================
+   MOBILE (≤ 768px)
+   ========================================================= */
 
 @media (max-width: 768px) {
 
-  /* Show close button */
-  .mobile-close {
-    display: block;
-    margin-bottom: 20px;
-  }
-
-  /* Existing mobile panel behavior */
-  .gifting-nav-bottom {
-    position: fixed;
-    top: 0;
-    left: -100%;
-    width: 85%;
-    height: 100vh;
-    background: #fff;
-    z-index: 99999;
-    padding: 20px;
-    overflow-y: auto;
-    transition: left .3s ease;
-  }
-
-  .gifting-nav-bottom.open {
-    left: 0;
-  }
-
-  /* ======================================================
-   PROFESSIONAL MOBILE HEADER ALIGNMENT
-   ====================================================== */
-  /* ---------- CONTAINER ---------- */
-
-  .gifting-nav-container {
-    padding: 10px 14px;
-  }
+  /* ===== CLEAN 3-ROW MOBILE HEADER ===== */
 
   .gifting-nav-top {
-    display: grid;
     grid-template-columns: 1fr auto;
     grid-template-rows: auto auto auto;
-    gap: 12px;
-    align-items: center;
   }
 
-  /* ===================================================
-     ROW 1 — LOGO
-     =================================================== */
+  /* Row 1 — Logo centered */
 
   .gifting-logo {
     grid-column: 1 / 3;
@@ -636,140 +302,30 @@
 
   .gifting-logo img {
     max-height: 38px;
-    width: auto;
-    margin-bottom: 30px;
   }
 
-  /* ===================================================
-     ROW 2 — ICONS + HAMBURGER
-     =================================================== */
+  /* Row 2 — Icons left, hamburger right */
 
   .gifting-icons {
     grid-column: 1;
     grid-row: 2;
-
-    display: flex !important;
-    align-items: center;
     justify-content: flex-start;
-
-    gap: 14px;
-    height: 40px;
   }
-
-  /* Make all icons consistent */
-
-  .gifting-icons a,
-  .gifting-icons .icon,
-  .gifting-icons span {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    line-height: 1;
-  }
-
-  /* Language selector fix */
-
-  .gifting-icons .o_language_selector {
-    display: flex;
-    align-items: center;
-  }
-
-  /* Cart badge alignment */
-
-  .cart-icon {
-    position: relative;
-  }
-
-  .cart-count {
-    position: absolute;
-    top: -6px;
-    right: -8px;
-    font-size: 11px;
-  }
-
-  /* Hamburger button */
 
   .mobile-toggle {
     grid-column: 2;
     grid-row: 2;
-
     justify-self: end;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    font-size: 26px;
-    width: 42px;
-    height: 42px;
   }
 
-  /* ===================================================
-     ROW 3 — SEARCH BAR
-     =================================================== */
+  /* Row 3 — Search full width */
 
   .gifting-search {
     grid-column: 1 / 3;
     grid-row: 3;
-    width: 100%;
-  }
-
-  .gifting-search form {
-    display: flex;
-    width: 100%;
   }
 
   .gifting-search input {
-    flex: 1;
     height: 42px;
-    padding: 0 14px;
-    border-radius: 8px 0 0 8px;
   }
-
-  .gifting-search button {
-    height: 42px;
-    padding: 0 14px;
-    border-radius: 0 8px 8px 0;
-  }
-
- /*newly added css*/
- /* =========================
-   MOBILE
-   ========================= */
-
-  /* Row 1 remains unchanged */
-
-  /* Row 2: icons + language only */
-  .gifting-icons {
-    width: 100%;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-
-  /* Row 3: Search full width */
-  .gifting-search {
-    order: 5;
-    width: 100%;
-  }
-
-  .gifting-search form {
-    width: 100%;
-  }
-
-  .gifting-search input {
-    width: 100%;
-    font-size: 16px;
-    padding: 12px;
-  }
-
-  .gifting-search button {
-    font-size: 18px;
-  }
-
-   .gifting-icons {
-        justify-content: start!important;
-    }
-
-  } 
- } 
+}
