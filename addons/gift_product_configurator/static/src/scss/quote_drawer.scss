@@ -1,4 +1,6 @@
+/* ============================= */
 /* OVERLAY */
+/* ============================= */
 #quoteDrawerOverlay {
   position: fixed;
   inset: 0;
@@ -9,7 +11,9 @@
   z-index: 9998;
 }
 
+/* ============================= */
 /* DRAWER */
+/* ============================= */
 #quoteDrawer {
   position: fixed;
   top: 0;
@@ -24,12 +28,10 @@
   transition: transform .35s ease;
 
   z-index: 9999;
-
   display: flex;
   flex-direction: column;
 }
 
-/* OPEN STATE */
 #quoteDrawer.is-open {
   transform: translateX(0);
 }
@@ -39,7 +41,9 @@
   visibility: visible;
 }
 
+/* ============================= */
 /* HEADER */
+/* ============================= */
 .quote-drawer__header {
   padding: 18px;
   border-bottom: 1px solid #eee;
@@ -48,7 +52,6 @@
   align-items: center;
 }
 
-/* CLOSE BUTTON */
 .quote-drawer__close {
   font-size: 22px;
   border: none;
@@ -56,7 +59,9 @@
   cursor: pointer;
 }
 
+/* ============================= */
 /* TABS */
+/* ============================= */
 .quote-drawer__tabs {
   display: flex;
   border-bottom: 1px solid #eee;
@@ -76,7 +81,9 @@
   color: #3b5cff;
 }
 
+/* ============================= */
 /* PANELS */
+/* ============================= */
 .drawer-panel {
   display: none;
   padding: 18px;
@@ -86,7 +93,9 @@
   display: block;
 }
 
-/* PRIMARY CTA */
+/* ============================= */
+/* BUTTONS */
+/* ============================= */
 .drawer-primary {
   width: 100%;
   background: #f0b63f;
@@ -97,7 +106,6 @@
   margin-top: 20px;
 }
 
-/* SECONDARY */
 .drawer-secondary {
   width: 100%;
   padding: 12px;
@@ -107,52 +115,9 @@
   background: #fff;
 }
 
-/* SWITCH */
-.free-visual {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.switch {
-  position: relative;
-  width: 52px;
-  height: 28px;
-}
-
-.switch input {
-  display: none;
-}
-
-.slider {
-  position: absolute;
-  inset: 0;
-  background: #ccc;
-  border-radius: 50px;
-  transition: .3s;
-}
-
-.slider::before {
-  content: "";
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  left: 3px;
-  top: 3px;
-  background: white;
-  border-radius: 50%;
-  transition: .3s;
-}
-
-.switch input:checked + .slider {
-  background: #1f2a44;
-}
-
-.switch input:checked + .slider::before {
-  transform: translateX(24px);
-}
-/* SWITCH LAYOUT */
+/* ============================= */
+/* FREE VISUAL SWITCH ROW */
+/* ============================= */
 .free-visual {
   display: flex;
   align-items: center;
@@ -161,15 +126,15 @@
   border: 1px solid #e6e6e6;
   border-radius: 12px;
   margin-bottom: 16px;
-  background: #f9f9f9;
+  background: #f7f7f7;
 }
 
-/* HIDE REAL INPUT */
+/* Hide real checkbox */
 .switch-input {
   display: none;
 }
 
-/* SWITCH BODY */
+/* Switch container (label) */
 .switch {
   position: relative;
   width: 52px;
@@ -180,15 +145,16 @@
   flex-shrink: 0;
 }
 
+/* Slider knob */
 .slider {
   position: absolute;
   width: 22px;
   height: 22px;
   left: 3px;
   top: 3px;
-  background: white;
+  background: #fff;
   border-radius: 50%;
-  transition: .3s;
+  transition: transform .25s ease;
 }
 
 /* ON STATE */
@@ -200,9 +166,11 @@
   transform: translateX(24px);
 }
 
+/* ============================= */
 /* UPLOAD AREA */
+/* ============================= */
 .visual-upload {
-  display: none;
+  display: none;  /* hidden by default */
   padding: 16px;
   border: 1px solid #e6e6e6;
   border-radius: 12px;
@@ -211,7 +179,7 @@
 }
 
 .visual-upload.show {
-  display: block;
+  display: block; /* visible when toggled */
 }
 
 .upload-title {

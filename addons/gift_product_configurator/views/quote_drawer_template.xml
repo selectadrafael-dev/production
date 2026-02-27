@@ -5,95 +5,93 @@
       <!-- Overlay -->
       <div id="quoteDrawerOverlay"></div>
 
-        <!-- Drawer -->
-        <aside id="quoteDrawer">
+      <!-- Drawer -->
+      <aside id="quoteDrawer">
 
         <!-- HEADER -->
         <div class="quote-drawer__header">
-            <h4 class="quote-drawer__title">Your Quote</h4>
+          <h4 class="quote-drawer__title">Your Quote</h4>
 
-            <button type="button"
-                    class="quote-drawer__close js-close-quote"
-                    aria-label="Close quote drawer">
+          <button type="button"
+                  class="quote-drawer__close js-close-quote"
+                  aria-label="Close quote drawer">
             ×
-            </button>
+          </button>
         </div>
 
         <!-- TAB BUTTONS -->
         <div class="quote-drawer__tabs">
-            <button class="drawer-tab is-active" data-target="sample">
+          <button class="drawer-tab is-active" data-target="sample">
             Order Sample
-            </button>
+          </button>
 
-            <button class="drawer-tab" data-target="quote">
+          <button class="drawer-tab" data-target="quote">
             Quote Now
-            </button>
+          </button>
         </div>
 
         <!-- CONTENT AREA -->
         <div class="quote-drawer__content">
 
-            <!-- SAMPLE CONTENT -->
-            <div class="drawer-panel" data-panel="sample">
-                <p>Sample items will appear here</p>
+          <!-- SAMPLE CONTENT -->
+          <div class="drawer-panel" data-panel="sample">
+            <p>Sample items will appear here</p>
 
-                <button class="drawer-primary">
-                    Checkout Now
-                </button>
-            </div>
+            <button class="drawer-primary">
+              Checkout Now
+            </button>
+          </div>
 
-            <!-- QUOTE CONTENT -->
-            <div class="drawer-panel is-active" data-panel="quote">
+          <!-- QUOTE CONTENT -->
+          <div class="drawer-panel is-active" data-panel="quote">
 
             <!-- FREE VISUAL SWITCH -->
             <div class="free-visual">
 
-            <!-- SWITCH -->
-            <input
-                type="checkbox"
-                id="freeVisualSwitch"
-                class="switch-input"/>
+              <input type="checkbox"
+                     id="freeVisualSwitch"
+                     class="switch-input"/>
 
-            <label for="freeVisualSwitch" class="switch">
+              <label for="freeVisualSwitch" class="switch">
                 <span class="slider"></span>
-            </label>
+              </label>
 
-            <span class="switch-label">
+              <span class="switch-label">
                 Would you like a free visual?
-            </span>
+              </span>
 
             </div>
 
-            <!-- UPLOAD AREA -->
+            <!-- UPLOAD AREA (hidden initially) -->
             <div id="visualUploadArea" class="visual-upload">
 
-            <label class="upload-title">
+              <label class="upload-title">
                 Your logo <span>(optional)</span>
-            </label>
+              </label>
 
-            <input type="file" id="logoUpload"/>
+              <input type="file" id="logoUpload"/>
 
-            <p class="upload-note">
+              <p class="upload-note">
                 Formats we accept: .ai, .eps, .pdf, .png, .jpg
-            </p>
+              </p>
 
             </div>
 
             <p>Quote items will appear here</p>
 
             <button class="drawer-primary">
-                Place Your Quote Now
+              Place Your Quote Now
             </button>
 
             <button class="drawer-secondary">
-                Continue Shopping
+              Continue Shopping
             </button>
 
-            </div>
+          </div>
 
         </div>
 
-        </aside>
+      </aside>
 
     </xpath>
   </template>
