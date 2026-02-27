@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data>
+
+    <template id="section_promotions"
+              name="Promotions Section">
+
+      <!-- CATEGORY: Promotions -->
+      <t t-set="products"
+         t-value="request.env['gifting.product.helper']
+                  .get_latest_products(
+                  'theme_gifting.category_promotions', 6) or []"/>
+
+      <section class="promo-section py-5">
+
+        <div class="container">
+
+          <!-- HEADER -->
+          <div class="promo-header mb-4">
+
+            <div>
+              <span class="promo-badge">Bu ay</span>
+              <h3 class="fw-bold mt-2">Promotions</h3>
+            </div>
+
+            <a href="/shop"
+               class="promo-more">
+              See more
+            </a>
+
+          </div>
+
+          <!-- PRODUCTS -->
+          <div class="promo-products">
+
+            <t t-if="products">
+
+              <t t-foreach="products" t-as="product">
+
+                <!-- CALL REUSABLE CARD -->
+                <t t-call="theme_gifting.product_card_promo"/>
+
+              </t>
+
+            </t>
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </template>
+
+  </data>
+</odoo>

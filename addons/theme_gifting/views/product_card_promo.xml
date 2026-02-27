@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <!-- =====================================================
+       GLOBAL PROMO PRODUCT CARD — REUSABLE
+       ===================================================== -->
+
+  <template id="product_card_promo"
+            name="Promo Product Card">
+
+    <t t-if="product">
+
+      <div class="promo-item">
+
+        <a t-att-href="'/shop/product/%s' % product.id"
+           class="promo-card-link">
+
+          <!-- Image Card -->
+          <div class="promo-card">
+
+            <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+                 t-att-alt="product.name"/>
+
+          </div>
+
+          <!-- META -->
+          <div class="promo-meta">
+
+            <!-- ROW 1 -->
+            <div class="promo-row">
+
+              <!-- Product Name -->
+              <span class="promo-name"
+                    t-esc="product.name"/>
+
+              <!-- Variant indicators -->
+              <div class="promo-variants">
+
+                <!-- Example dots (replace later with real attributes) -->
+                <span class="variant-dot"/>
+                <span class="variant-dot"/>
+                <span class="variant-dot"/>
+                <span class="variant-dot"/>
+
+              </div>
+
+            </div>
+
+            <!-- ROW 2 PRICE -->
+            <div class="promo-price"
+                 t-esc="product.list_price"/>
+
+          </div>
+
+        </a>
+
+      </div>
+
+    </t>
+
+  </template>
+
+</odoo>
