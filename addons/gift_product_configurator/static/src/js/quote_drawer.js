@@ -112,4 +112,40 @@ document.addEventListener('change', function (ev) {
 
 });
 
+// ===============================
+// FREE VISUAL TOGGLE (DEBUG MODE)
+// ===============================
+document.addEventListener('change', function (ev) {
+
+  console.log('CHANGE event detected:', ev.target);
+
+  if (ev.target.id !== 'freeVisualSwitch') return;
+
+  console.log('Free visual switch toggled');
+
+  const upload = document.getElementById('visualUploadArea');
+
+  console.log('Upload area element:', upload);
+
+  if (!upload) {
+    console.error('❌ Upload area NOT FOUND in DOM');
+    return;
+  }
+
+  if (ev.target.checked) {
+    console.log('Switch is ON → showing upload area');
+    upload.classList.add('show');
+  } else {
+    console.log('Switch is OFF → hiding upload area');
+    upload.classList.remove('show');
+  }
+
+});
+
+document.addEventListener('click', function (ev) {
+  if (ev.target.closest('.switch')) {
+    console.log('Switch label clicked');
+  }
+});
+
 })();
