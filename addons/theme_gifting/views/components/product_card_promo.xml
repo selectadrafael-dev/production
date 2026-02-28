@@ -29,19 +29,19 @@
               <!-- COLOR DOTS FROM VARIANTS -->
               <div class="promo-variants">
 
-                <t t-foreach="product.product_variant_ids" t-as="variant" t-limit="5">
+                    <!--t t-foreach="product.product_variant_ids" t-as="variant" t-limit="5">
 
-                  <t t-set="color"
-                     t-value="variant.product_template_attribute_value_ids.filtered(lambda v: v.attribute_id.display_type == 'color')[:1]"/>
+                      <t t-set="color"
+                        t-value="variant.product_template_attribute_value_ids.filtered(lambda v: v.attribute_id.display_type == 'color')[:1]"/>
 
-                  <t t-if="color">
+                      <t t-if="color">
 
-                    <span class="variant-dot"
-                          t-att-style="'background:%s' % (color[0].html_color or '#ccc')"/>
+                        <span class="variant-dot"
+                              t-att-style="'background:%s' % (color[0].html_color or '#ccc')"/>
 
-                  </t>
+                      </t>
 
-                </t>
+                    </t-->
 
               </div>
 
