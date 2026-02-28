@@ -20,15 +20,80 @@
         </div>
 
         <!-- TAB BUTTONS -->
-        <div class="quote-drawer__tabs">
-          <button class="drawer-tab is-active" data-target="sample">
-            Order Sample
-          </button>
+<div class="quote-drawer__tabs">
 
-          <button class="drawer-tab" data-target="quote">
-            Quote Now
-          </button>
-        </div>
+  <!-- SAMPLE TAB -->
+  <button class="drawer-tab" data-target="sample">
+    Order Sample
+  </button>
+
+  <!-- QUOTE TAB (DEFAULT ACTIVE) -->
+  <button class="drawer-tab is-active" data-target="quote">
+    Quote Now
+  </button>
+
+</div>
+
+<!-- CONTENT AREA -->
+<div class="quote-drawer__content">
+
+  <!-- SAMPLE CONTENT -->
+  <div class="drawer-panel" data-panel="sample">
+    <p>Sample items will appear here</p>
+
+    <button class="drawer-primary">
+      Checkout Now
+    </button>
+  </div>
+
+  <!-- QUOTE CONTENT (DEFAULT ACTIVE) -->
+  <div class="drawer-panel is-active" data-panel="quote">
+
+    <!-- FREE VISUAL SWITCH -->
+    <div class="free-visual">
+
+      <input type="checkbox"
+             id="freeVisualSwitch"
+             class="switch-input"/>
+
+      <label for="freeVisualSwitch" class="switch">
+        <span class="slider"></span>
+      </label>
+
+      <span class="switch-label">
+        Would you like a free visual?
+      </span>
+
+    </div>
+
+    <!-- UPLOAD AREA -->
+    <div id="visualUploadArea" class="visual-upload">
+
+      <label class="upload-title">
+        Your logo <span>(optional)</span>
+      </label>
+
+      <input type="file" id="logoUpload"/>
+
+      <p class="upload-note">
+        Formats we accept: .ai, .eps, .pdf, .png, .jpg
+      </p>
+
+    </div>
+
+    <p>Quote items will appear here</p>
+
+    <button class="drawer-primary">
+      Place Your Quote Now
+    </button>
+
+    <button class="drawer-secondary">
+      Continue Shopping
+    </button>
+
+  </div>
+
+</div>
 
         <!-- CONTENT AREA -->
         <div class="quote-drawer__content">

@@ -70,6 +70,7 @@
   });
 
   // TAB SWITCHING
+// TAB SWITCHING
 document.addEventListener('click', function (ev) {
 
   const tab = ev.target.closest('.drawer-tab');
@@ -77,13 +78,15 @@ document.addEventListener('click', function (ev) {
 
   const target = tab.dataset.target;
 
-  //Activate tab
+  console.log('Tab clicked:', target);
+
+  // Activate tab
   document.querySelectorAll('.drawer-tab')
     .forEach(t => t.classList.remove('is-active'));
 
   tab.classList.add('is-active');
 
-  //Show panel
+  // Show panel
   document.querySelectorAll('.drawer-panel')
     .forEach(p => p.classList.remove('is-active'));
 
@@ -94,6 +97,7 @@ document.addEventListener('click', function (ev) {
   if (panel) panel.classList.add('is-active');
 
 });
+
 
 // FREE VISUAL TOGGLE
 document.addEventListener('change', function (ev) {
