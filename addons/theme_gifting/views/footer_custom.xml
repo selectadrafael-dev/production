@@ -1,36 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
 
-  <!-- Override Website Footer -->
   <template id="footer_custom"
-            inherit_id="website.footer"
+            inherit_id="website.layout"
             name="Selectad Custom Footer">
 
+    <!-- Replace default footer -->
     <xpath expr="//footer" position="replace">
 
       <footer class="selectad-footer">
 
-        <!-- ===== TOP FOOTER ===== -->
+        <!-- ===== TOP ===== -->
         <div class="footer-main">
 
           <div class="container">
-
             <div class="row">
 
               <!-- BRAND -->
               <div class="col-lg-4 col-md-12 mb-4">
 
-                <div class="footer-brand">
+                <img src="/theme_gifting/static/src/img/logo-light.svg"
+                     class="footer-logo"/>
 
-                  <img src="/theme_gifting/static/src/img/logo-light.svg"
-                       alt="Selectad"
-                       class="footer-logo"/>
-
-                  <p class="footer-tagline">
-                    #1 Reklam Bazarı ↗
-                  </p>
-
-                </div>
+                <p class="footer-tagline">
+                  #1 Reklam Bazarı ↗
+                </p>
 
               </div>
 
@@ -78,18 +72,15 @@
 
                 <!-- SOCIAL -->
                 <div class="footer-social">
-
                   <a href="#"><i class="fa fa-whatsapp"></i></a>
                   <a href="#"><i class="fa fa-facebook"></i></a>
                   <a href="#"><i class="fa fa-instagram"></i></a>
                   <a href="#"><i class="fa fa-linkedin"></i></a>
-
                 </div>
 
               </div>
 
             </div>
-
           </div>
 
         </div>
@@ -106,15 +97,13 @@
 
             <div class="footer-right d-flex align-items-center gap-3">
 
-              <!-- Language -->
               <div class="footer-lang">
                 AZ 🇦🇿
               </div>
 
-              <!-- Payment icons -->
               <div class="footer-payments">
-                <img src="/theme_gifting/static/src/img/visa.svg" alt="Visa"/>
-                <img src="/theme_gifting/static/src/img/mastercard.svg" alt="Mastercard"/>
+                <img src="/theme_gifting/static/src/img/visa.svg"/>
+                <img src="/theme_gifting/static/src/img/mastercard.svg"/>
               </div>
 
             </div>
