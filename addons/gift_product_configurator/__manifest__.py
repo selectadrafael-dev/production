@@ -32,6 +32,7 @@
         "gift_product_configurator/static/src/js/quote_drawer.js"
         "gift_product_configurator/static/src/js/quote_cart.js"
         "gift_product_configurator/static/src/js/quote_button_logic.js"
+        "gift_product_configurator/static/src/js/quote_drawer_items.js"
     ],
 },
  'installable': True,
