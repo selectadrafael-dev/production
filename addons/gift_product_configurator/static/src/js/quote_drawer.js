@@ -112,9 +112,9 @@ document.addEventListener('change', function (ev) {
 
 });
 
-// ===============================
+//===============================
 // FREE VISUAL TOGGLE (DEBUG MODE)
-// ===============================
+//===============================
 document.addEventListener('change', function (ev) {
 
   console.log('CHANGE event detected:', ev.target);
