@@ -40,7 +40,7 @@
       // Update button state
       updateButton(btn);
 
-      // Open drawer
+      //Open drawer
       document.body.classList.add('quote-open');
 
       // Trigger drawer refresh
