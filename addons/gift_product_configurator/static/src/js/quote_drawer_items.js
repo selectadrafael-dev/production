@@ -20,22 +20,48 @@
       return;
     }
 
-    container.innerHTML = cart.map(item => `
-      <div class="quote-item">
 
-        <img src="${item.image}" width="60"/>
+        container.innerHTML = cart.map(item => `
+    <div class="quote-item">
 
-        <div class="quote-info">
-          <strong>${item.name}</strong>
-          <div>£${item.price}</div>
-        </div>
-
+        <!-- DELETE -->
         <button class="quote-remove"
                 data-id="${item.id}">
-          🗑
+        🗑
         </button>
 
-      </div>
+        <!-- TOP ROW -->
+        <div class="quote-item__top">
+
+        <img src="${item.image || '/web/static/img/placeholder.png'}"
+            class="quote-item__image"/>
+
+        <div class="quote-item__info">
+            <div class="quote-item__name">${item.name}</div>
+            <div class="quote-item__meta">${item.code || ''}</div>
+        </div>
+
+        </div>
+
+        <!-- DIVIDER -->
+        <div class="quote-item__divider"></div>
+
+        <!-- BOTTOM ROW -->
+        <div class="quote-item__bottom">
+
+        <input type="number"
+                class="quote-item__qty"
+                value="${item.qty || 1}"
+                min="1">
+
+        <div class="quote-item__price">
+            £${item.price}
+            <span>per unit</span>
+        </div>
+
+        </div>
+
+    </div>
     `).join('');
   }
 

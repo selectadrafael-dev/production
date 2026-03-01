@@ -193,3 +193,99 @@
   color: #777;
   margin-top: 6px;
 }
+
+/*drawer update*/
+/* CARD CONTAINER */
+
+.quote-item {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e6e6e6;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+/* DELETE BUTTON */
+
+.quote-remove {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border: none;
+  background: #f3f3f3;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* TOP ROW */
+
+.quote-item__top {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+/* IMAGE */
+
+.quote-item__image {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+/* INFO */
+
+.quote-item__name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.quote-item__meta {
+  font-size: 13px;
+  color: #777;
+  margin-top: 4px;
+}
+
+/* DIVIDER */
+
+.quote-item__divider {
+  height: 1px;
+  background: #eee;
+  margin: 14px 0;
+}
+
+/* BOTTOM ROW */
+
+.quote-item__bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* QTY */
+
+.quote-item__qty {
+  width: 80px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  font-weight: 600;
+}
+
+/* PRICE */
+
+.quote-item__price {
+  text-align: right;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.quote-item__price span {
+  display: block;
+  font-size: 12px;
+  color: #777;
+  font-weight: normal;
+}
