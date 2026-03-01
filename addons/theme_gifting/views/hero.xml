@@ -51,14 +51,14 @@
                       </div>
                    
                    <!-- SLIDE 2 — Your Figma Design -->
-                  <div class="carousel-item carousel-item-wrapper">
+                  <div class="carousel-item carousel-item-wrapper-1">
                     <div class="carousel-item-support">
                       Carousel 2
                     </div>
                   </div>
                   
                   <!-- SLIDE 3 — Your Figma Design -->
-                  <div class="carousel-item carousel-item-wrapper">
+                  <div class="carousel-item carousel-item-wrapper-2">
                     <div class="carousel-item-support">
                        Carousel 3
                     </div>
