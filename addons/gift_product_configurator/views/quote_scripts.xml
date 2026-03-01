@@ -1,0 +1,12 @@
+<odoo>
+  <template id="gift_quote_scripts" inherit_id="website.layout">
+    <xpath expr="//body" position="inside">
+
+      <script src="/gift_product_configurator/static/src/js/quote_cart.js"/>
+      <script src="/gift_product_configurator/static/src/js/quote_button_logic.js"/>
+      <script src="/gift_product_configurator/static/src/js/quote_drawer_items.js"/>
+      <script src="/gift_product_configurator/static/src/js/quote_drawer.js"/>
+
+    </xpath>
+  </template>
+</odoo>

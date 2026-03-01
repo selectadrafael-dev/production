@@ -90,7 +90,10 @@
 
                         <div class="tier-card active">
                             <strong>50+</strong>
-                            <span>£7.71 each</span>
+                            <div id="actual_price">
+                                 <span>£7.71 each</span>
+                            </div>
+                           
                         </div>
 
                         <div class="tier-card popular">
@@ -134,14 +137,14 @@
                     <div class="per-unit">per unit (exc. VAT)</div>
                 </div>
 
-                <!--button id="openQuote" class="btn-quote">
-                   Create To Quote
-                </button-->
-
                 <button
                 class="js-add-quote btn-quote"
-                t-att-data-product-id="product.product_variant_id.id">
-                Add to Quote
+                t-att-data-product-id="product.product_variant_id.id"
+                t-att-data-product-name="product.name"
+                t-att-data-product-image="product.image_1920 and ('/web/image/product.product/' + str(product.product_variant_id.id) + '/image_1920')"
+                data-product-price="7.71"
+                >
+                Create Quote
                 </button>
 
                 <button class="btn-ideas">

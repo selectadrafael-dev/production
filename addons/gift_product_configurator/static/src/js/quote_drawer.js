@@ -152,4 +152,14 @@ document.addEventListener('click', function (ev) {
   }
 });
 
+ document.addEventListener('openQuoteDrawer', function () {
+  const drawer = document.getElementById('quoteDrawer');
+  const overlay = document.getElementById('quoteDrawerOverlay');
+
+  if (drawer && overlay) {
+    drawer.classList.add('is-open');
+    overlay.classList.add('is-open');
+  }
+});
+
 })();
