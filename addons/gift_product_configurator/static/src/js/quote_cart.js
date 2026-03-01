@@ -7,7 +7,7 @@
     return JSON.parse(localStorage.getItem(KEY) || '[]');
   }
 
-  function saveCart(cart) {
+  function save(cart) {
     localStorage.setItem(KEY, JSON.stringify(cart));
   }
 
@@ -15,22 +15,21 @@
     return getCart().length === 0;
   }
 
-  function exists(productId) {
-    return getCart().some(p => p.id === productId);
+  function exists(id) {
+    return getCart().some(p => p.id === id);
   }
 
   function add(product) {
     const cart = getCart();
-
     if (!exists(product.id)) {
       cart.push(product);
-      saveCart(cart);
+      save(cart);
     }
   }
 
-  function remove(productId) {
-    const cart = getCart().filter(p => p.id !== productId);
-    saveCart(cart);
+  function remove(id) {
+    const cart = getCart().filter(p => p.id !== id);
+    save(cart);
   }
 
   window.QuoteCart = {
