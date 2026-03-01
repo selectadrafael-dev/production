@@ -194,6 +194,18 @@
   margin-top: 6px;
 }
 
+/* DRAWER CONTENT SHOULD SCROLL */
+
+.quote-drawer__content {
+  flex: 1;              /* take remaining height */
+  overflow-y: auto;     /* vertical scroll */
+  min-height: 0;        /* IMPORTANT for flexbox scrolling */
+}
+
+#quoteDrawer.is-open {
+  overscroll-behavior: contain;
+}
+
 /*drawer update*/
 /* CARD CONTAINER */
 

@@ -38,10 +38,15 @@
                         <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
                       </div>
 
-                      <div class="category-name">
-                        <t t-esc="product.name"/>
+                      <div class="category-name d-flex justify-content-beween">
+                        <div>
+                             <t t-esc="product.name"/>
+                        </div>
+                        
+                        <div>
+                             $ <t t-esc="product.list_price"/>
+                        </div>
                       </div>
-
                     </div>
 
                   </a>
