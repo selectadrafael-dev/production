@@ -43,7 +43,7 @@
                              <t t-esc="product.name"/>
                         </div>
                         
-                        <div>
+                        <div class="hidden-price">
                              $ <t t-esc="product.list_price"/>
                         </div>
                       </div>
