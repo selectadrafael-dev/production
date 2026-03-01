@@ -53,7 +53,7 @@
                    <!-- SLIDE 2 — Your Figma Design -->
                   <div class="carousel-item carousel-item-wrapper">
                     <div class="carousel-item-support">
-                     <img src="/theme_gifting/static/src/img/banners/banner_1.png"
+                     <img src="/theme_gifting/static/src/img/banners/banner_1a.png"
                                 alt="Hero"/>
                     </div>
                   </div>
@@ -61,7 +61,7 @@
                   <!-- SLIDE 3 — Your Figma Design -->
                   <div class="carousel-item carousel-item-wrapper">
                     <div class="carousel-item-support">
-                      <img src="/theme_gifting/static/src/img/banners/banner_2.png"
+                      <img src="/theme_gifting/static/src/img/banners/banner_2a.png"
                                 alt="Hero"/>
                     </div>
                   </div>

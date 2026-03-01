@@ -1,8 +1,8 @@
 (function () {
   'use strict';
 
-  function renderDrawer() {
-    const container = document.querySelector('.drawer-panel[data-panel="quote"]');
+  function render() {
+    const container = document.querySelector('[data-panel="quote"]');
     if (!container) return;
 
     const cart = QuoteCart.getCart();
@@ -11,47 +11,50 @@
 
     if (cart.length === 0) {
       html = `
-        <div class="empty-quote">
+        <div class="quote-empty">
           <p>Your quote is empty.</p>
-          <button class="drawer-secondary js-close-quote">
-            Continue Shopping
-          </button>
         </div>
       `;
     } else {
       html = cart.map(item => `
         <div class="quote-item">
-          <img src="${item.image}" />
-          <div>
+          <img src="${item.image}" width="60"/>
+          <div class="quote-info">
             <strong>${item.name}</strong>
-            <button class="js-remove-quote" data-id="${item.product_id}">
-              🗑
-            </button>
+            <div>${item.variant}</div>
+            <div>£${item.price}</div>
           </div>
+
+          <button class="quote-remove"
+                  data-id="${item.id}">
+            🗑
+          </button>
         </div>
       `).join('');
     }
 
-    container.insertAdjacentHTML('beforeend', html);
+    const itemsArea = container.querySelector('.quote-items');
+    if (itemsArea) itemsArea.innerHTML = html;
   }
 
-  document.addEventListener('quote-cart-updated', renderDrawer);
+  document.addEventListener('quoteCartUpdated', render);
 
-  document.addEventListener('click', function (ev) {
-
-    const btn = ev.target.closest('.js-remove-quote');
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.quote-remove');
     if (!btn) return;
 
-    const id = parseInt(btn.dataset.id);
-
-    QuoteCart.removeItem(id);
-
-    document.dispatchEvent(new CustomEvent('quote-cart-updated'));
-
+    QuoteCart.remove(parseInt(btn.dataset.id));
+    document.dispatchEvent(new Event('quoteCartUpdated'));
   });
 
-  document.addEventListener('DOMContentLoaded', function () {
-    document.dispatchEvent(new CustomEvent('quote-cart-updated'));
-  });
+  document.addEventListener('openQuoteDrawer', function () {
+  const drawer = document.getElementById('quoteDrawer');
+  const overlay = document.getElementById('quoteDrawerOverlay');
+
+  if (drawer && overlay) {
+    drawer.classList.add('is-open');
+    overlay.classList.add('is-open');
+  }
+});
 
 })();

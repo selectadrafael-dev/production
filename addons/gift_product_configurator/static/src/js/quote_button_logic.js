@@ -1,51 +1,48 @@
 (function () {
   'use strict';
 
-  function updateButton(btn) {
-    const cart = QuoteCart.getCart();
-
-    btn.textContent = cart.length === 0
-      ? 'Create Quote'
-      : 'Add To Quote';
-  }
-
   document.addEventListener('DOMContentLoaded', function () {
 
-    document.querySelectorAll('.js-add-quote').forEach(updateButton);
+    const btn = document.querySelector('.js-quote-button');
+    if (!btn) return;
 
-    document.addEventListener('click', function (ev) {
+    const productId = parseInt(btn.dataset.productId);
+    const productName = btn.dataset.productName;
+    const variant = btn.dataset.variant || '';
+    const price = parseFloat(btn.dataset.price || 0);
+    const image = btn.dataset.image || '';
 
-      const btn = ev.target.closest('.js-add-quote');
-      if (!btn) return;
+    function updateButton() {
+      if (QuoteCart.isEmpty()) {
+        btn.textContent = 'Create Quote';
+      } else {
+        btn.textContent = 'Add To Quote';
+      }
+    }
 
-      ev.preventDefault();
+    updateButton();
 
-      const productId = parseInt(btn.dataset.productId);
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
 
-      if (QuoteCart.findItem(productId)) {
-        // Already exists → open drawer only
-        document.body.classList.add('quote-open');
+      if (QuoteCart.exists(productId)) {
+        document.dispatchEvent(new Event('openQuoteDrawer'));
         return;
       }
 
-      const item = {
-        product_id: productId,
-        name: btn.dataset.productName,
-        image: btn.dataset.productImage,
-        quantity: 1
-      };
+      QuoteCart.add({
+        id: productId,
+        name: productName,
+        variant: variant,
+        price: price,
+        qty: 1,
+        image: image
+      });
 
-      QuoteCart.addItem(item);
+      document.dispatchEvent(new Event('quoteCartUpdated'));
+      document.dispatchEvent(new Event('openQuoteDrawer'));
 
-      // Update button state
-      updateButton(btn);
-
-      //Open drawer
-      document.body.classList.add('quote-open');
-
-      // Trigger drawer refresh
-      document.dispatchEvent(new CustomEvent('quote-cart-updated'));
-
+      updateButton();
     });
 
   });

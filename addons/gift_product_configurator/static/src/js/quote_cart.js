@@ -1,51 +1,44 @@
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'gifting_quote_cart';
+  const KEY = 'quote_cart';
 
   function getCart() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    } catch (e) {
-      return [];
-    }
+    return JSON.parse(localStorage.getItem(KEY) || '[]');
   }
 
   function saveCart(cart) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+    localStorage.setItem(KEY, JSON.stringify(cart));
   }
 
-  function findItem(productId) {
-    return getCart().find(p => p.product_id === productId);
+  function isEmpty() {
+    return getCart().length === 0;
   }
 
-  function addItem(item) {
+  function exists(productId) {
+    return getCart().some(p => p.id === productId);
+  }
+
+  function add(product) {
     const cart = getCart();
 
-    if (!cart.some(p => p.product_id === item.product_id)) {
-      cart.push(item);
+    if (!exists(product.id)) {
+      cart.push(product);
       saveCart(cart);
     }
-
-    return cart;
   }
 
-  function removeItem(productId) {
-    const cart = getCart().filter(p => p.product_id !== productId);
+  function remove(productId) {
+    const cart = getCart().filter(p => p.id !== productId);
     saveCart(cart);
-    return cart;
-  }
-
-  function clearCart() {
-    localStorage.removeItem(STORAGE_KEY);
   }
 
   window.QuoteCart = {
     getCart,
-    addItem,
-    removeItem,
-    findItem,
-    clearCart
+    add,
+    remove,
+    exists,
+    isEmpty
   };
 
 })();

@@ -81,7 +81,8 @@
 
             </div>
 
-            <p>Quote items will appear here</p>
+            <!--p>Quote items will appear here</p-->
+            <div class="quote-items"></div>
 
             <button class="drawer-primary">
               Place Your Quote Now
