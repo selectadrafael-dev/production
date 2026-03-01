@@ -26,19 +26,12 @@
     max-height: 420px;
     object-fit: contain;
 }
-.carousel-item-wrapper-1{
-   background-image: url('/theme_gifting/static/src/img/banners/banner_1.png');
-   background-repeat: no-repeat;
-   background-size: cover;
-   background-position: center;
+.carousel-item-wrapper img{
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
-.carousel-item-wrapper-{
-   background-image: url('/theme_gifting/static/src/img/banners/banner_2.png');
-   background-repeat: no-repeat;
-   background-size: cover;
-   background-position: center;
-}
 
 .gifting-hero {
     position: relative;
