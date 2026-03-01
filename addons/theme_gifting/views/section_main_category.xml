@@ -39,7 +39,7 @@
                       </div>
 
                       <div class="category-name d-flex justify-content-beween">
-                        <div>
+                        <div class="category-name-main">
                              <t t-esc="product.name"/>
                         </div>
                         

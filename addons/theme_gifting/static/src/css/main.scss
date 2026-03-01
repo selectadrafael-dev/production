@@ -99,8 +99,14 @@
   text-decoration: underline;
 }
 
+.category-name-main{
+  width: 100%!important;
+}
+
 .hidden-price{
   display: none!important;
+  width: 0;
+  height: 0;
 }
 
 /* Mobile tweaks */
