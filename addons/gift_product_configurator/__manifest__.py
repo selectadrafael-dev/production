@@ -19,6 +19,7 @@
     'views/product_public_category_form.xml',
     'data/sequence.xml',
     'views/quote_drawer_template.xml',
+     "views/quote_scripts.xml",
     #'security/ir.model.access.csv',
 ],
 "assets": {
@@ -33,9 +34,6 @@
         #"gift_product_configurator/static/src/js/quote_cart.js",
         #"gift_product_configurator/static/src/js/quote_button_logic.js",
         #"gift_product_configurator/static/src/js/quote_drawer_items.js"
-
-         "views/quote_drawer_template.xml",
-         "views/quote_scripts.xml",
     ],
 },
  'installable': True,
