@@ -91,12 +91,12 @@
             height: 350px;
         }
 
-        .gifting-hero {
+        .carousel-item.active {
             padding: 50px 0;
         }
          @media(max-width: 520px) {
             .carousel-item-wrapper img{
-                height: auto!important;
+                height: 150px;
             }
          }
     }
