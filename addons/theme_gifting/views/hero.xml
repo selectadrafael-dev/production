@@ -23,7 +23,7 @@
                             <!-- LEFT: TEXT -->
                             <div class="gifting-hero-text"
                                 t-translation="on"
-                                t-options='{"no_edit": true}' data-aos="zoom-out">
+                                t-options='{"no_edit": true}'>
 
                               <h1>Branded Solutions That Break Through.</h1>
 

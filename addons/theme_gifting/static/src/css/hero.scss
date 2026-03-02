@@ -49,8 +49,27 @@
 /*TEXT SIDE*/
 
 .gifting-hero-text {
-    max-width: 520px;
+    max-width: 490px;
     z-index: 2;
+    opacity: 0;
+    transform: translateY(30px);
+}
+
+/* Animate ONLY when slide becomes active */
+.carousel-item.active .gifting-hero-text {
+  animation: heroFade 0.9s ease forwards;
+}
+
+/* Fade animation */
+@keyframes heroFade {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /*IMAGE SIDE*/
