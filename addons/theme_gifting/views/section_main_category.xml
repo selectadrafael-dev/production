@@ -34,7 +34,7 @@
 
                     <div class="category-card">
 
-                      <div class="category-img">
+                      <div class="category-img" data-aos="fade-up">
                         <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
                       </div>
 
