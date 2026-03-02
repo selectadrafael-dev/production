@@ -87,7 +87,7 @@
 
                       <span class="icon">👤 ▾</span>
 
-                      <div class="dropdown-menu">
+                      <div class="dropdown-menu custom-acount-user-menu">
 
                         <a href="/my"  t-translation="on">
                         
@@ -96,9 +96,18 @@
                         <a href="/my/orders"  t-translation="on">
                            Orders
                         </a>
-                        <a href="/vendor-data"  t-translation="on">
+                        <!--a href="/vendor-data"  t-translation="on">
                           Vendor Data
-                        </a>
+                        </a-->
+
+                        <button type="button"
+                              class="vendor-data-link"
+                              data-bs-toggle="modal"
+                              data-bs-target="#vendorDataModal">
+                        Vendor Data
+                      </button>
+
+
                         <a href="/web/session/logout"  t-translation="on">
                          Logout
                         </a>

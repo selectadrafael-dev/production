@@ -51,15 +51,90 @@
                     Product Code: <t t-esc="product.default_code"/>
                 </div>
 
-                <!-- COLOUR SELECTOR -->
-                <div class="config-block">
-                    <div class="config-header">Colour</div>
+                <!-- COLOUR SELECTOR/VARIANTS -->
+                <!--div class="config-block">
+                    <div class="config-header">Colour(VARIANT NAME)</div>
                     <div class="variant-options">
                         <button class="variant-option active">White</button>
                         <button class="variant-option">Blue</button>
                         <button class="variant-option">Black</button>
                     </div>
-                </div>
+                </div-->
+
+                <!-- DYNAMIC MULTI-ATTRIBUTE VARIANTS -->
+                <t t-if="product.attribute_line_ids">
+
+                <form class="o_custom_variant_form"
+                        t-att-data-product-template-id="product.id">
+
+                    <t t-foreach="product.attribute_line_ids" t-as="line">
+
+                    <div class="config-block"
+                        t-att-data-attribute-id="line.attribute_id.id">
+
+                        <!-- Header showing selected value -->
+                        <div class="config-header">
+                        <t t-esc="line.attribute_id.name"/>:
+                        <span class="selected-value">
+                            <t t-esc="line.product_template_value_ids[0].name"/>
+                        </span>
+                        </div>
+
+                        <div class="variant-options">
+
+                        <t t-foreach="line.product_template_value_ids" t-as="ptav">
+
+                            <!-- COLOR ATTRIBUTE (SWATCH) -->
+                            <t t-if="line.attribute_id.display_type == 'color'">
+
+                            <label class="variant-swatch">
+
+                                <input type="radio"
+                                    class="variant-radio"
+                                    name="attr_{{ line.attribute_id.id }}"
+                                    t-att-value="ptav.id"
+                                    t-att-data-value-name="ptav.name"
+                                    t-att-checked="ptav == line.product_template_value_ids[0]"/>
+
+                                <span class="color-circle"
+                                    t-att-style="'background:' + (ptav.html_color or '#ccc')">
+                                </span>
+
+                            </label>
+
+                            </t>
+
+                            <!-- NON-COLOR ATTRIBUTES (BUTTON STYLE) -->
+                            <t t-else="">
+
+                            <label class="variant-btn">
+
+                                <input type="radio"
+                                    class="variant-radio"
+                                    name="attr_{{ line.attribute_id.id }}"
+                                    t-att-value="ptav.id"
+                                    t-att-data-value-name="ptav.name"
+                                    t-att-checked="ptav == line.product_template_value_ids[0]"/>
+
+                                <span>
+                                <t t-esc="ptav.name"/>
+                                </span>
+
+                            </label>
+
+                            </t>
+
+                        </t>
+
+                        </div>
+
+                    </div>
+
+                    </t>
+
+                </form>
+
+                </t>
 
                 <!-- PRINT METHOD -->
                 <div class="config-block">
@@ -91,7 +166,7 @@
                         <div class="tier-card active">
                             <strong>50+</strong>
                             <div id="actual_price">
-                                 <span>£7.71 each</span>
+                                 <span class="price">£7.71</span>
                             </div>
                            
                         </div>
@@ -131,7 +206,7 @@
             <!-- RIGHT: QUOTE PANEL -->
             <!-- ===================================== -->
             <div class="gift-quote-panel">
-
+                <!--product price-->
                 <div class="price-display">
                     <span class="price">£7.71</span>
                     <div class="per-unit">per unit (exc. VAT)</div>
@@ -162,24 +237,6 @@
         </div>
 
         <!-- ===== SLIDE-IN QUOTE PANEL ===== -->
-        <!--div id="quoteDrawer" class="quote-drawer">
-            <div class="drawer-overlay"></div>
-
-            <div class="drawer-panel">
-
-                <button class="drawer-close" type="button">✕</button>
-
-                <h3>Request a Quote</h3>
-
-                <input type="text" placeholder="Your Name"/>
-                <input type="email" placeholder="Email"/>
-                <input type="tel" placeholder="Phone"/>
-                <textarea placeholder="Project details"></textarea>
-
-                <button class="btn-submit">Send Request</button>
-
-            </div>
-        </div-->
     </section>
 
 </xpath>

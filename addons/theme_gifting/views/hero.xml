@@ -117,17 +117,88 @@
       <!-- ⭐ faq -->
      <t t-call="theme_gifting.section_faq"/>
 
-  <!-- ⭐ newsletter -->
-  <t t-call="theme_gifting.section_newsletter"/>
+    <!-- ⭐ newsletter -->
+    <t t-call="theme_gifting.section_newsletter"/>
 
-<!-- =================================================
+    <!--vendor data modalbox-->
+    <div class="modal fade" id="vendorDataModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content vendor-modal">
+
+          <div class="modal-header">
+            <h5 class="modal-title">Upload Vendor Product Data</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body">
+
+            <!-- URL INPUT -->
+            <div class="mb-4">
+              <label class="form-label fw-semibold">Vendor Website / Data URL</label>
+              <input type="url" class="form-control"
+                    placeholder="https://vendor-site.com/catalog"/>
+            </div>
+
+            <div class="text-center mb-3 text-muted">— OR —</div>
+
+            <!-- FILE UPLOAD GRID -->
+            <div class="row g-3">
+
+              <!-- PDF -->
+              <div class="col-md-6">
+                <div class="upload-card">
+                  <label class="upload-label">Upload PDF Catalog</label>
+                  <input type="file" accept=".pdf" class="form-control"/>
+                </div>
+              </div>
+
+              <!-- EXCEL -->
+              <div class="col-md-6">
+                <div class="upload-card">
+                  <label class="upload-label">Upload Excel / CSV</label>
+                  <input type="file" accept=".xls,.xlsx,.csv" class="form-control"/>
+                </div>
+              </div>
+
+              <!-- LOGO -->
+              <div class="col-md-12">
+                <div class="upload-card">
+                  <label class="upload-label">Vendor Logo (optional)</label>
+                  <input type="file" accept="image/*" class="form-control"/>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- EXTRA INFO -->
+            <div class="mt-4">
+              <label class="form-label fw-semibold">
+                Additional Information (Optional)
+              </label>
+              <textarea class="form-control" rows="4"
+                placeholder="Provide pricing notes, MOQ, printing methods, special instructions, etc."></textarea>
+            </div>
+
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-outline-secondary"
+                    data-bs-dismiss="modal">Cancel</button>
+            <button class="btn btn-primary px-4">
+              Submit Data
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+<!--=================================================
            EMPTY EDITABLE AREA FOR FUTURE SECTIONS
            (Products, promos, etc.)
     ================================================= -->
       <section class="oe_structure"/>
 
     </xpath>
-
   </template>
-
 </odoo>
