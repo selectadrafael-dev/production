@@ -40,7 +40,7 @@
                     <div class="arrival-card">
 
                       <!-- Image -->
-                      <div class="arrival-img">
+                      <div class="arrival-img" data-aos="fade-up">
                         <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
                       </div>
 

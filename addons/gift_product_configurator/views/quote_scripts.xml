@@ -2,10 +2,33 @@
   <template id="gift_quote_scripts" inherit_id="website.layout">
     <xpath expr="//body" position="inside">
 
+    <!-- AOS CSS -->
+      <link rel="stylesheet"
+            href="https://unpkg.com/aos@2.3.4/dist/aos.css"/>
+
+     <!--Drawer CSS -->
       <script src="/gift_product_configurator/static/src/js/quote_cart.js"/>
       <script src="/gift_product_configurator/static/src/js/quote_button_logic.js"/>
       <script src="/gift_product_configurator/static/src/js/quote_drawer_items.js"/>
       <script src="/gift_product_configurator/static/src/js/quote_drawer.js"/>
+
+       <!-- AOS JS -->
+      <script src="https://unpkg.com/aos@2.3.4/dist/aos.js"></script>
+      
+      <!-- Init Script -->
+      <script>
+        document.addEventListener("DOMContentLoaded", function () {
+          if (window.AOS) {
+            AOS.init({
+              duration: 900,
+              easing: 'ease-out-cubic',
+              once: false,
+              mirror: true,
+              offset: 120
+            });
+          }
+        });
+      </script>
 
     </xpath>
   </template>

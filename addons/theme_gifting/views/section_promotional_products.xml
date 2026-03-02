@@ -16,7 +16,7 @@
             </p>
           </div>
 
-          <!-- Fetch specific promotional categories -->
+          <!--Fetch specific promotional categories -->
           <t t-set="cats"
                 t-value="request.env['product.public.category'].search([
                     ('name', 'in', [
@@ -35,9 +35,9 @@
                     <a t-att-href="'/shop/category/%s' % cat.id"
                             class="promo-category-card text-decoration-none">
 
-                    <div class="promo-image-card">
+                    <div class="promo-image-card" data-aos="zoom-in">
 
-                    <img t-att-src="'/web/image/product.public.category/%s/image_1024' % cat.id"/>
+                        <img t-att-src="'/web/image/product.public.category/%s/image_1024' % cat.id"/>
 
                     </div>
 
