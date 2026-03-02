@@ -46,14 +46,33 @@
     min-height: 520px;
 }
 
-/* TEXT SIDE */
+/*TEXT SIDE*/
 
 .gifting-hero-text {
-    max-width: 520px;
+    max-width: 490px;
     z-index: 2;
+    opacity: 0;
+    transform: translateY(30px);
 }
 
-/* IMAGE SIDE */
+/* Animate ONLY when slide becomes active */
+.carousel-item.active .gifting-hero-text {
+  animation: heroFade 0.9s ease forwards;
+}
+
+/* Fade animation */
+@keyframes heroFade {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*IMAGE SIDE*/
 
 .gifting-hero-image {
     position: absolute;
@@ -78,14 +97,26 @@
     }
 
     @media(max-width: 768px) {
+        .carousel-item{
+            min-height: auto!important;
+        }
         .gifting-hero-image img {
             height: 100%;
             object-fit: contain;
             width: 95%;
             margin: 0 auto;
         }
-        .gifting-hero {
+        .carousel-item-wrapper img{
+            height: 350px;
+        }
+
+        .carousel-item-active {
             padding: 50px 0;
         }
+         @media(max-width: 520px) {
+            .carousel-item-wrapper img{
+                height: 150px;
+            }
+         }
     }
 }
