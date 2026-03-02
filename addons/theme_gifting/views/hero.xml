@@ -14,7 +14,7 @@
              <!--div class="carousel-inner"-->
               <div class="carousel-inner">
                    <!-- SLIDE 1 — Your Figma Design -->
-                    <div class="carousel-item active gifting-container">
+                    <div class="carousel-item active gifting-container carousel-item-active">
 
                         <div class="container hero-content">
 
