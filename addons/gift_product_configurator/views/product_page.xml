@@ -1,70 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
-        <!-- 1. HIDE the original details div but keep it in the DOM for JS -->
+        <!-- Hide the original details column but keep it in DOM to prevent JS crashes -->
         <xpath expr="//div[@id='product_details']" position="attributes">
-            <attribute name="class" add="d-none" separator=" """)/>>
+            
+            <attribute name="class" add="d-none" separator=" " />
+
         </xpath>
 
-        <!-- 2. INJECT your custom layout inside the main section -->
+        <!-- Inject the new 3-column layout -->
         <xpath expr="//section[@id='product_detail']" position="inside">
-            <div class="gift-product-main-layout d-flex flex-wrap gap-4 mt-4">
-                
-                <!-- LEFT: GALLERY -->
-                <div class="gift-column-gallery col-lg-5 col-12">
-                    <div class="custom-gallery-container border rounded p-3 position-relative">
-                        <span class="badge rounded-pill bg-danger position-absolute top-0 end-0 m-3 z-index-1">15% OFF</span>
-                        <!-- We 're-home' the native carousel here via CSS or move -->
-                        <div id="gift_gallery_placeholder">
-                            <!-- Odoo's native #o-carousel-product will be moved here -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- CENTER: CONFIGURATOR -->
-                <div class="gift-column-configurator col-lg-4 col-12">
-                    <h1 t-field="product.name" class="h3 fw-bold mb-1""")/>>
-                    <div class="text-muted mb-3 small">Product Code: <span t-field="product.default_code""")/>></div>
+            <div class="gift-main-wrapper container mt-4">
+                <div class="row g-4">
                     
-                    <!-- Re-home the native Variant Selection form here -->
-                    <div id="gift_variant_form_placeholder" class="mb-4">
-                        <!-- Odoo's .js_add_cart_variants will be moved here -->
-                    </div>
-
-                    <!-- QUANTITY TIERS GRID (Reference Image Match) -->
-                    <div class="gift-qty-grid mt-4">
-                        <div class="row g-2">
-                            <t t-foreach="[50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 40000]" t-as="tier_qty">
-                                <div class="col-4">
-                                    <div t-attf-class="tier-card p-2 border rounded text-center #{'active border-primary' if tier_qty == 50 else ''}">
-                                        <div class="fw-bold"><t t-esc="tier_qty""")/>>+</div>
-                                        <div class="small text-muted">£7.71 each</div>
-                                    </div>
-                                </div>
-                            </t>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- RIGHT: QUOTE PANEL (Screenshot 2 Match) -->
-                <div class="gift-column-quote col-lg-3 col-12">
-                    <div class="quote-panel shadow-sm border rounded p-3 bg-white">
-                        <div class="price-display h2 fw-bold text-primary mb-0">
-                             <t t-call="website_sale.product_price""")/>>
-                        </div>
-                        <div class="small text-muted mb-4">per unit (exc. VAT)</div>
-                        
-                        <button class="btn btn-primary w-100 py-3 fw-bold mb-2">Book A Call Back</button>
-                        <div class="text-center small text-muted my-2">Showing our 5 star reviews</div>
-                        
-                        <div class="trustpilot-snippet mt-3 pt-3 border-top">
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <img src="/web/image/theme_common.trustpilot_logo" style="height: 20px;""")/>>
-                                <span class="fw-bold">4.3 / 5</span>
+                    <!-- COLUMN 1: GALLERY -->
+                    <div class="col-lg-5 col-12">
+                        <div class="gift-gallery-card border rounded p-3 position-relative bg-white h-100">
+                            <span class="badge rounded-pill bg-danger position-absolute top-0 end-0 m-3 z-index-1" style="font-size: 1.2rem; padding: 15px;">15% OFF</span>
+                            <div id="gift_gallery_hook">
+                                <!-- Odoo's native #o-carousel-product will be moved here by JS -->
                             </div>
-                            <div class="testimonial fst-italic small">"Excellent service from start to finish..."</div>
                         </div>
                     </div>
+
+                    <!-- COLUMN 2: CONFIGURATOR -->
+                    <div class="col-lg-4 col-12">
+                        <div class="gift-configurator-card h-100">
+                            <h1 t-field="product.name" class="h3 fw-bold mb-1"/>
+                            <div class="text-muted mb-4 small">
+                                Product Code: <span t-field="product.default_code"/>
+                            </div>
+                            
+                            <div id="gift_variant_hook">
+                                <!-- Odoo's native .js_add_cart_variants will be moved here by JS -->
+                            </div>
+
+                            <!-- QUANTITY TIERS (MATCHING SCREENSHOT) -->
+                            <div class="gift-quantity-grid mt-4">
+                                <div class="row g-2">
+                                    <t t-foreach="[50, 100, 250, 500]" t-as="qty">
+                                        <div class="col-6">
+                                            <div class="tier-card p-2 border rounded text-center">
+                                                <div class="fw-bold"><t t-esc="qty"/>+</div>
+                                                <div class="small text-muted">£7.71 each</div>
+                                            </div>
+                                        </div>
+                                    </t>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- COLUMN 3: QUOTE PANEL -->
+                    <div class="col-lg-3 col-12">
+                        <div class="gift-quote-card shadow-sm border rounded p-3 bg-white h-100">
+                            <div class="price-section mb-4">
+                                <t t-call="website_sale.product_price"/>
+                                <div class="small text-muted">per unit (exc. VAT)</div>
+                            </div>
+                            
+                            <button class="btn btn-primary w-100 py-3 fw-bold mb-3 shadow-sm" style="background-color: #002D5B;">Book A Call Back</button>
+                            
+                            <div class="trustpilot-box border-top pt-3 mt-3">
+                                <div class="small text-muted mb-2">Showing our 5 star reviews</div>
+                                <div class="testimonial border-start border-4 border-success ps-2 mb-3">
+                                    <div class="fst-italic small">"Excellent service from start to finish..."</div>
+                                    <div class="fw-bold x-small mt-1">James Dickinson, 2 days ago</div>
+                                </div>
+                                <img src="https://upload.wikimedia.org" style="height: 20px; opacity: 0.7;"/>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </xpath>
