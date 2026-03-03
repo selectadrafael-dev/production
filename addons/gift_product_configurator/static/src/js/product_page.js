@@ -1,29 +1,55 @@
 (function () {
     'use strict';
-    
-    var syncLayout = function () {
-        // Target native Odoo elements
+
+    /**
+     * Relocates Odoo's native functional elements into the custom 3-column hooks.
+     */
+    var relocateElements = function () {
         var carousel = document.getElementById('o-carousel-product');
         var variants = document.querySelector('.js_add_cart_variants');
         
-        // Target your custom hooks
         var galleryHook = document.getElementById('gift_gallery_hook');
         var variantHook = document.getElementById('gift_variant_hook');
 
-        // Relocate elements if they exist
-        if (carousel && galleryHook) {
+        // Move the Gallery/Carousel
+        if (carousel && galleryHook && !galleryHook.contains(carousel)) {
             galleryHook.appendChild(carousel);
         }
-        if (variants && variantHook) {
+
+        // Move the Variant Buttons/Form
+        if (variants && variantHook && !variantHook.contains(variants)) {
             variantHook.appendChild(variants);
         }
     };
 
-    // Run on load and after Odoo's internal AJAX updates
-    document.addEventListener('DOMContentLoaded', syncLayout);
-    
-    // Safety check for Odoo's variant change events
-    $(document).on('variant_info_full', function() {
-        syncLayout();
+    // 1. Run immediately when the DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', relocateElements);
+    } else {
+        relocateElements();
+    }
+
+    // 2. Watch for Odoo's AJAX updates (Variant Change)
+    // Odoo often re-renders the variant form; this observer puts it back if it resets.
+    var observer = new MutationObserver(function (mutations) {
+        relocateElements();
     });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    // 3. UI Helper: Manual toggle for active class on your custom buttons
+    document.addEventListener('change', function (e) {
+        if (e.target.classList.contains('js_variant_change')) {
+            var label = e.target.closest('label');
+            if (label) {
+                var allLabels = label.closest('ul').querySelectorAll('label');
+                allLabels.forEach(function (l) { l.classList.remove('active'); });
+                label.classList.add('active');
+            }
+        }
+    });
+
 })();
