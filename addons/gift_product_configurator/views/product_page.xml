@@ -2,8 +2,8 @@
 <odoo>
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
         <xpath expr="//section[@id='product_detail']" position="replace">
-            <!-- Keep the ID as product_detail but we will fix the JS crash with the script below -->
-            <section id="product_detail" 
+            <!-- ID changed to gift_product_detail to avoid Odoo's broken Zoom JS -->
+            <section id="gift_product_detail" 
                      t-attf-class="oe_website_sale container my-3 my-lg-4" 
                      t-att-data-view-id="view_id">
                 
@@ -11,14 +11,11 @@
                     <!-- GALLERY -->
                     <div class="gift-gallery">
                         <div class="product-image-wrapper">
-                            <!-- Dummy structure to satisfy Odoo's broken Zoom JS -->
-                            <div id="o-carousel-product" class="d-none">
-                                <div class="carousel-inner"><div class="carousel-item active"><img class="js_variant_img"/></div></div>
-                            </div>
-                            
                             <span class="flag-badge">🇬🇧</span>
+                            <!-- Custom ID for our manual JS swap -->
                             <img t-att-src="image_data_uri(product.image_1024)"
-                                 class="main-product-image oe_variant_img_main"
+                                 id="gift_main_image"
+                                 class="main-product-image"
                                  t-att-data-image-id="product.id"/>
                         </div>
                     </div>
@@ -26,19 +23,20 @@
                     <!-- CONFIGURATOR -->
                     <div class="gift-configurator">
                         <h1 t-field="product.name"/>
-                        <form class="js_add_cart_variants" t-att-data-product-template-id="product.id" method="POST">
-                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <form class="o_gift_variant_form" t-att-data-product-template-id="product.id">
                             <t t-foreach="product.attribute_line_ids" t-as="line">
-                                <div class="config-block variant_attribute">
+                                <div class="config-block">
                                     <div class="config-header">
                                         <t t-esc="line.attribute_id.name"/>: 
-                                        <span class="selected-value"><t t-if="line.product_template_value_ids" t-esc="line.product_template_value_ids[0].name"/></span>
+                                        <span class="selected-value">
+                                            <t t-if="line.product_template_value_ids" t-esc="line.product_template_value_ids[0].name"/>
+                                        </span>
                                     </div>
                                     <div class="variant-options">
                                         <t t-foreach="line.product_template_value_ids" t-as="ptav">
-                                            <label class="variant-btn">
+                                            <label t-attf-class="variant-btn #{'active' if ptav == line.product_template_value_ids[0] else ''}">
                                                 <input type="radio"
-                                                       class="js_variant_change"
+                                                       class="js_gift_variant_change"
                                                        t-att-name="'attr_%s' % line.attribute_id.id"
                                                        t-att-value="ptav.id"
                                                        t-att-data-value_name="ptav.name"
@@ -50,20 +48,21 @@
                                 </div>
                             </t>
                         </form>
-                        <!-- REQUIRED HOOK -->
-                        <div id="product_option_block"/>
                     </div>
 
                     <!-- PRICE PANEL -->
                     <div class="gift-quote-panel">
                         <div class="price-display">
-                            <t t-call="website_sale.product_price"/>
+                            <div id="gift_price_container">
+                                <t t-call="website_sale.product_price"/>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- REQUIRED HOOK: This fixes your current RPC_ERROR -->
-                <div id="o_product_terms_and_share" class="mt-4"/>
+                <!-- Hooks to prevent RPC_ERROR ParseErrors -->
+                <div id="product_option_block" class="d-none"/>
+                <div id="o_product_terms_and_share" class="d-none"/>
             </section>
         </xpath>
     </template>

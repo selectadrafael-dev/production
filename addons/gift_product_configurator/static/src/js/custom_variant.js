@@ -1,38 +1,38 @@
 /** @odoo-module **/
 import publicWidget from "@web/legacy/js/public/public_widget";
-import { jsonrpc } from "@web/core/network/rpc_service";
+import { rpc } from "@web/core/network/rpc_service";
 
 publicWidget.registry.GiftVariantUpdate = publicWidget.Widget.extend({
-    selector: '#custom_product_detail', // Target our new custom ID
+    selector: '#gift_product_detail',
     events: {
-        'change .js_custom_variant_change': '_onVariantChange',
+        'change .js_gift_variant_change': '_onVariantChange',
     },
 
-    _onVariantChange: function (ev) {
+    _onVariantChange: async function (ev) {
         const $input = $(ev.currentTarget);
-        const $parent = this.$el;
+        const $block = $input.closest('.config-block');
         
-        // 1. UI Updates (Text/Labels)
-        $input.closest('.config-block').find('.selected-value').text($input.data('value_name'));
-        $input.closest('.config-block').find('.variant-btn').removeClass('active');
-        $input.closest('label').addClass('active');
+        // 1. Update UI Labels
+        $block.find('.selected-value').text($input.data('value_name'));
+        $block.find('.variant-btn').removeClass('active');
+        $input.closest('.variant-btn').addClass('active');
 
-        // 2. Fetch Variant Data (Price/Image) via RPC
-        const productTemplateId = parseInt($('.o_custom_variant_form').data('product-template-id'));
-        const variantValues = this.$('.js_custom_variant_change:checked').map((i, el) => parseInt($(el).val())).get();
+        // 2. Collect selected values
+        const combination = this.$('.js_gift_variant_change:checked').map((i, el) => parseInt($(el).val())).get();
+        const productTemplateId = parseInt(this.$('.o_gift_variant_form').data('product-template-id'));
 
-        jsonrpc('/website_sale/get_combination_info', {
+        // 3. Fetch data from Odoo
+        const data = await rpc('/website_sale/get_combination_info', {
             product_template_id: productTemplateId,
-            combination: variantValues,
-        }).then((data) => {
-            // Update Image
-            if (data.display_image) {
-                this.$('.js_variant_img_target').attr('src', '/web/image/product.product/' + data.product_id + '/image_1024');
-            }
-            // Update Price
-            if (data.price) {
-                this.$('.js_custom_price_wrapper').html(data.price);
-            }
+            combination: combination,
         });
+
+        // 4. Update Image and Price
+        if (data.product_id) {
+            this.$('#gift_main_image').attr('src', `/web/image/product.product/${data.product_id}/image_1024`);
+        }
+        if (data.price) {
+            this.$('#gift_price_container').html(data.price);
+        }
     },
 });
