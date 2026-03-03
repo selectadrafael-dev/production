@@ -1,6 +1,5 @@
 <odoo>
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
-        <!-- REPLACE the entire product section to avoid ID conflicts -->
         <xpath expr="//section[@id='product_detail']" position="replace">
             <section id="product_detail" 
                      t-attf-class="oe_website_sale container my-3 my-lg-4 #{'js_sale' if combination_info else ''}" 
@@ -79,7 +78,12 @@
                         </button>
                     </div>
                 </div>
+
+                 <!-- ADD THIS LINE BELOW YOUR LAYOUT: 
+                     This satisfies the "cannot be located" error by providing the missing target -->
+                <div id="o_product_terms_and_share" class="mt-4"/>
             </section>
         </xpath>
     </template>
 </odoo>
+
