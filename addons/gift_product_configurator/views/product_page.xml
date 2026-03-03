@@ -15,15 +15,10 @@
 
                 <div class="gift-product-layout">
                     <!-- LEFT: GALLERY -->
-                    <div class="gift-gallery">
+                    <!--div class="gift-gallery">
                         <div class="product-image-wrapper">
                             <span class="flag-badge">🇬🇧</span>
                             <span class="offer-badge">SPECIAL OFFER</span>
-                            
-                            <!-- CRITICAL: Added 'oe_variant_img_main' for auto-swapping -->
-                            <!--img t-att-src="image_data_uri(product.image_1024)" 
-                                 class="main-product-image oe_variant_img_main"
-                                 t-att-data-image-id="product.id"/-->
 
                                   <img t-att-src="image_data_uri(product.image_1024)"
                                     class="main-product-image oe_variant_img_main js_variant_img"
@@ -32,7 +27,32 @@
                                     <button class="nav-arrow left">‹</button>
                                     <button class="nav-arrow right">›</button>
                         </div>
+                    </div-->
+
+                    <!-- LEFT: GALLERY -->
+                    <div class="gift-gallery">
+                        <!-- Odoo's Zoom JS requires this ID and the nested structure below -->
+                        <div id="o-carousel-product" class="carousel slide">
+                            <div class="carousel-inner">
+                                <div class="carousel-item active">
+                                    <div class="product-image-wrapper">
+                                        <span class="flag-badge">🇬🇧</span>
+                                        <span class="offer-badge">SPECIAL OFFER</span>
+
+                                        <!-- IMPORTANT: Classes 'js_variant_img' and 'oe_variant_img_main' -->
+                                        <img t-att-src="image_data_uri(product.image_1024)"
+                                            class="main-product-image oe_variant_img_main js_variant_img"
+                                            t-att-data-image-id="product.id"
+                                            style="width: 100%; height: auto;"/>
+
+                                        <button class="nav-arrow left">‹</button>
+                                        <button class="nav-arrow right">›</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
 
                     <!-- CENTER: CONFIGURATOR -->
                     <div class="gift-configurator">
