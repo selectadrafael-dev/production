@@ -1,80 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
-        <xpath expr="//section[@id='product_detail']" position="replace">
-            <section id="product_detail" class="oe_website_sale container my-3 my-lg-4">
+        <!-- 1. HIDE the original details div but keep it in the DOM for JS -->
+        <xpath expr="//div[@id='product_details']" position="attributes">
+            <attribute name="class" add="d-none" separator=" """)/>>
+        </xpath>
+
+        <!-- 2. INJECT your custom layout inside the main section -->
+        <xpath expr="//section[@id='product_detail']" position="inside">
+            <div class="gift-product-main-layout d-flex flex-wrap gap-4 mt-4">
                 
-                <!-- HIDDEN STRUCTURE: This satisfies the crashing JS -->
-                <div id="o-carousel-product" class="carousel slide d-none" data-bs-ride="carousel">
-                    <div class="carousel-inner">
-                        <div class="carousel-item active">
-                            <img src="/" class="js_variant_img" data-zoom-image="/"/>
+                <!-- LEFT: GALLERY -->
+                <div class="gift-column-gallery col-lg-5 col-12">
+                    <div class="custom-gallery-container border rounded p-3 position-relative">
+                        <span class="badge rounded-pill bg-danger position-absolute top-0 end-0 m-3 z-index-1">15% OFF</span>
+                        <!-- We 're-home' the native carousel here via CSS or move -->
+                        <div id="gift_gallery_placeholder">
+                            <!-- Odoo's native #o-carousel-product will be moved here -->
                         </div>
                     </div>
                 </div>
 
-                <div class="gift-product-layout">
-                    <!-- YOUR VISUAL GALLERY -->
-                    <div class="gift-gallery">
-                        <div class="product-image-wrapper">
-                            <span class="flag-badge">🇬🇧</span>
-                            <!-- We use 'oe_variant_img_main' to hook into Odoo's native swap logic safely -->
-                            <img t-att-src="image_data_uri(product.image_1024)"
-                                 class="main-product-image oe_variant_img_main"
-                                 t-att-data-image-id="product.id"/>
-                        </div>
+                <!-- CENTER: CONFIGURATOR -->
+                <div class="gift-column-configurator col-lg-4 col-12">
+                    <h1 t-field="product.name" class="h3 fw-bold mb-1""")/>>
+                    <div class="text-muted mb-3 small">Product Code: <span t-field="product.default_code""")/>></div>
+                    
+                    <!-- Re-home the native Variant Selection form here -->
+                    <div id="gift_variant_form_placeholder" class="mb-4">
+                        <!-- Odoo's .js_add_cart_variants will be moved here -->
                     </div>
 
-                    <!-- CONFIGURATOR -->
-                    <div class="gift-configurator">
-                        <h1 t-field="product.name"/>
-                        
-                        <!-- js_add_cart_variants is the "engine" class -->
-                        <form class="js_add_cart_variants" t-att-data-product-template-id="product.id" method="POST">
-                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
-                            
-                            <t t-foreach="product.attribute_line_ids" t-as="line">
-                                <div class="config-block variant_attribute">
-                                    <div class="config-header">
-                                        <t t-esc="line.attribute_id.name"/>: 
-                                        <span class="selected-value">
-                                            <t t-if="line.product_template_value_ids" t-esc="line.product_template_value_ids[0].name"/>
-                                        </span>
-                                    </div>
-
-                                    <div class="variant-options">
-                                        <t t-foreach="line.product_template_value_ids" t-as="ptav">
-                                            <label t-attf-class="variant-btn #{'active' if ptav == line.product_template_value_ids[0] else ''}">
-                                                <!-- js_variant_change triggers the price/image swap -->
-                                                <input type="radio"
-                                                       class="js_variant_change"
-                                                       t-att-name="'attr_%s' % line.attribute_id.id"
-                                                       t-att-value="ptav.id"
-                                                       t-att-data-value_id="ptav.id"
-                                                       t-att-data-value_name="ptav.name"
-                                                       t-att-checked="ptav == line.product_template_value_ids[0]"/>
-                                                <span t-esc="ptav.name"/>
-                                            </label>
-                                        </t>
+                    <!-- QUANTITY TIERS GRID (Reference Image Match) -->
+                    <div class="gift-qty-grid mt-4">
+                        <div class="row g-2">
+                            <t t-foreach="[50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000, 40000]" t-as="tier_qty">
+                                <div class="col-4">
+                                    <div t-attf-class="tier-card p-2 border rounded text-center #{'active border-primary' if tier_qty == 50 else ''}">
+                                        <div class="fw-bold"><t t-esc="tier_qty""")/>>+</div>
+                                        <div class="small text-muted">£7.71 each</div>
                                     </div>
                                 </div>
                             </t>
-                        </form>
-                    </div>
-
-                    <!-- QUOTE PANEL -->
-                    <div class="gift-quote-panel">
-                        <div class="price-display">
-                            <!-- Native price call to ensure it updates -->
-                            <t t-call="website_sale.product_price"/>
                         </div>
                     </div>
                 </div>
 
-                <!-- REQUIRED HOOKS (DO NOT REMOVE) -->
-                <div id="product_option_block"/>
-                <div id="o_product_terms_and_share" class="mt-4"/>
-            </section>
+                <!-- RIGHT: QUOTE PANEL (Screenshot 2 Match) -->
+                <div class="gift-column-quote col-lg-3 col-12">
+                    <div class="quote-panel shadow-sm border rounded p-3 bg-white">
+                        <div class="price-display h2 fw-bold text-primary mb-0">
+                             <t t-call="website_sale.product_price""")/>>
+                        </div>
+                        <div class="small text-muted mb-4">per unit (exc. VAT)</div>
+                        
+                        <button class="btn btn-primary w-100 py-3 fw-bold mb-2">Book A Call Back</button>
+                        <div class="text-center small text-muted my-2">Showing our 5 star reviews</div>
+                        
+                        <div class="trustpilot-snippet mt-3 pt-3 border-top">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <img src="/web/image/theme_common.trustpilot_logo" style="height: 20px;""")/>>
+                                <span class="fw-bold">4.3 / 5</span>
+                            </div>
+                            <div class="testimonial fst-italic small">"Excellent service from start to finish..."</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </xpath>
     </template>
 </odoo>
