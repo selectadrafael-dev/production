@@ -1,5 +1,6 @@
 /** @odoo-module **/
 import publicWidget from "@web/legacy/js/public/public_widget";
+import { ProductConfiguratorWidget } from "@website_sale/js/website_sale_utils";
 
 publicWidget.registry.GiftVariantUpdate = publicWidget.Widget.extend({
     selector: '.oe_website_sale',
@@ -7,24 +8,25 @@ publicWidget.registry.GiftVariantUpdate = publicWidget.Widget.extend({
         'change .js_variant_change': '_onVariantChange',
     },
 
-    /**
-     * Handles visual updates when a radio button is clicked
-     */
     _onVariantChange: function (ev) {
         const $input = $(ev.currentTarget);
         const $block = $input.closest('.config-block');
         
-        // 1. Update the "Selected Value" text header
+        // 1. Update the "Selected Value" text in the header
         const valName = $input.data('value_name');
         if (valName) {
             $block.find('.selected-value').text(valName);
         }
 
-        // 2. Manage visual 'active' classes for your custom buttons
+        // 2. Visual state for buttons
         $block.find('.variant-btn').removeClass('active');
         $input.closest('.variant-btn').addClass('active');
 
-        // 3. Update 'Product Code' if it's visible
-        // Odoo's core JS handles price/image, but we help it find our custom spans
+        // 3. Manually trigger Odoo's core variant logic
+        // This ensures the price and image swap even if the standard carousel is missing
+        this.trigger_up('variant_value_changed', {
+            $parent: this.$el,
+            variant_id: $input.val(),
+        });
     },
 });
