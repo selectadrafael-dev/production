@@ -8,29 +8,18 @@
     console.log('[GIFT CONFIGURATOR] DOM Ready');
 
     const form = document.querySelector('.o_custom_variant_form');
-
     if (!form) {
       console.error('[GIFT CONFIGURATOR] Variant form not found.');
       return;
     }
 
     const templateId = parseInt(form.dataset.productTemplateId);
-
-    if (!templateId) {
-      console.error('[GIFT CONFIGURATOR] Missing product template ID.');
-      return;
-    }
-
     console.log('[GIFT CONFIGURATOR] Template ID:', templateId);
 
     form.addEventListener('change', function (e) {
-
       if (!e.target.classList.contains('variant-radio')) return;
-
       console.log('[GIFT CONFIGURATOR] Variant changed');
-
       handleVariantChange();
-
     });
 
     async function handleVariantChange() {
@@ -50,24 +39,16 @@
 
         console.log('[GIFT CONFIGURATOR] Selected combination:', combination);
 
-        // ============================================
-        // ODOO JSON-RPC REQUEST
-        // ============================================
-
+        // ✅ ODOO 18 EXPECTS THIS FORMAT
         const response = await fetch('/website_sale/get_combination_info', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "call",
-            params: {
-              product_template_id: templateId,
-              combination: combination,
-              add_qty: 1,
-              context: {}
-            }
+            product_template_id: templateId,
+            combination: combination,
+            add_qty: 1
           }),
         });
 
@@ -76,31 +57,23 @@
           return;
         }
 
-        const result = await response.json();
+        const data = await response.json();
 
-        console.log('[GIFT CONFIGURATOR] RPC Response:', result);
-
-        if (!result.result) {
-          console.error('[GIFT CONFIGURATOR] Invalid RPC result format.');
-          return;
-        }
-
-        const data = result.result;
+        console.log('[GIFT CONFIGURATOR] Raw Response:', data);
 
         if (!data.product_id) {
-          console.warn('[GIFT CONFIGURATOR] No matching variant found.');
+          console.error('[GIFT CONFIGURATOR] No product_id returned.');
           return;
         }
 
-        console.log('[GIFT CONFIGURATOR] Resolved product ID:', data.product_id);
-        console.log('[GIFT CONFIGURATOR] Variant price:', data.price);
+        console.log('[GIFT CONFIGURATOR] Resolved product:', data.product_id);
+        console.log('[GIFT CONFIGURATOR] New price:', data.price);
 
-        // ============================================
+        // ===============================
         // UPDATE IMAGE
-        // ============================================
+        // ===============================
 
         const mainImage = document.querySelector('.main-product-image');
-
         if (mainImage) {
           const newSrc =
             '/web/image/product.product/' +
@@ -110,18 +83,14 @@
           mainImage.src = newSrc;
 
           console.log('[GIFT CONFIGURATOR] Image updated:', newSrc);
-        } else {
-          console.warn('[GIFT CONFIGURATOR] Main image element not found.');
         }
 
-        // ============================================
-        // UPDATE PRICE (PRESERVE SYMBOL)
-        // ============================================
+        // ===============================
+        // UPDATE PRICE
+        // ===============================
 
         const priceEl = document.querySelector('.price');
-
         if (priceEl) {
-
           const currentText = priceEl.textContent.trim();
           const symbolMatch = currentText.match(/^\D+/);
           const symbol = symbolMatch ? symbolMatch[0] : '';
@@ -132,19 +101,14 @@
           priceEl.textContent = newPrice;
 
           console.log('[GIFT CONFIGURATOR] Price updated:', newPrice);
-
-        } else {
-          console.warn('[GIFT CONFIGURATOR] Price element not found.');
         }
 
-        // ============================================
+        // ===============================
         // UPDATE QUOTE BUTTON
-        // ============================================
+        // ===============================
 
         const quoteBtn = document.querySelector('.js-add-quote');
-
         if (quoteBtn) {
-
           quoteBtn.dataset.productId = data.product_id;
           quoteBtn.dataset.productImage =
             '/web/image/product.product/' +
@@ -153,14 +117,7 @@
           quoteBtn.dataset.productPrice = data.price;
 
           console.log('[GIFT CONFIGURATOR] Quote button updated.');
-
-        } else {
-          console.warn('[GIFT CONFIGURATOR] Quote button not found.');
         }
-
-        // ============================================
-        // UPDATE SELECTED LABELS
-        // ============================================
 
         updateSelectedLabels();
 
@@ -180,12 +137,11 @@
         if (!selected) return;
 
         const valueName = selected.dataset.valueName;
-
         const label = block.querySelector('.selected-value');
 
         if (label) {
           label.textContent = valueName;
-          console.log('[GIFT CONFIGURATOR] Updated label:', valueName);
+          console.log('[GIFT CONFIGURATOR] Label updated:', valueName);
         }
 
       });
