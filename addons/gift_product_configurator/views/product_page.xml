@@ -2,17 +2,17 @@
 <odoo>
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
         
-        <!-- 1. HIDE default columns using stable ID targets -->
+        <!-- 1. HIDE default details sidebar using its ID -->
         <xpath expr="//div[@id='product_details']" position="attributes">
             <attribute name="class" add="d-none" separator=" " />
         </xpath>
 
-        <!-- Target the gallery container by its shared parent row -->
-        <xpath expr="//section[@id='product_detail']//div[hasclass('row')][1]/div[1]" position="attributes">
+        <!-- 2. HIDE default gallery by targeting the carousel's parent div -->
+        <xpath expr="//div[@id='o-carousel-product']/.." position="attributes">
             <attribute name="class" add="d-none" separator=" " />
         </xpath>
 
-        <!-- 2. INJECT your custom 3-column layout -->
+        <!-- 3. INJECT your custom layout inside the main section -->
         <xpath expr="//section[@id='product_detail']" position="inside">
             
             <!-- TOP ORANGE BANNER -->
@@ -33,7 +33,7 @@
                         </div>
                     </div>
 
-                    <!-- COLUMN 2: CONFIGURATOR (SCROLLING) -->
+                    <!-- COLUMN 2: CONFIGURATOR (Scrolling) -->
                     <div class="col-lg-4 col-12">
                         <h1 t-field="product.name" class="h2 fw-bold mb-1" />
                         <div class="text-muted mb-4 small">Product Code: <span t-field="product.default_code" /></div>
@@ -58,7 +58,7 @@
                         </div>
                     </div>
 
-                    <!-- COLUMN 3: QUOTE PANEL (STICKY) -->
+                    <!-- COLUMN 3: QUOTE PANEL (Sticky) -->
                     <div class="col-lg-3 col-12 sticky-sidebar">
                         <div class="gift-quote-panel border rounded p-4 bg-white shadow-sm">
                             <div class="d-flex justify-content-between align-items-start mb-3">
@@ -78,6 +78,7 @@
                             </div>
                             <button class="btn btn-primary w-100 py-3 fw-bold mb-2 shadow-sm" style="background-color: #002D5B; border: none;">Add To Quote</button>
                             <button class="btn btn-warning w-100 py-2 fw-bold mb-2" style="background-color: #FFB800; border: none;">Need Ideas?</button>
+                            
                             <div class="text-center small text-muted my-2">OR</div>
                             <button class="btn btn-outline-secondary w-100 py-2 mb-3">Buy 1 Sample</button>
 
@@ -89,7 +90,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-        </xpath>
+            </xpath>
     </template>
 </odoo>
