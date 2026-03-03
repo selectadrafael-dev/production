@@ -21,9 +21,16 @@
                             <span class="offer-badge">SPECIAL OFFER</span>
                             
                             <!-- CRITICAL: Added 'oe_variant_img_main' for auto-swapping -->
-                            <img t-att-src="image_data_uri(product.image_1024)" 
+                            <!--img t-att-src="image_data_uri(product.image_1024)" 
                                  class="main-product-image oe_variant_img_main"
-                                 t-att-data-image-id="product.id"/>
+                                 t-att-data-image-id="product.id"/-->
+
+                                  <img t-att-src="image_data_uri(product.image_1024)"
+                                    class="main-product-image oe_variant_img_main js_variant_img"
+                                    t-att-data-image-id="product.id"/>
+
+                                    <button class="nav-arrow left">‹</button>
+                                    <button class="nav-arrow right">›</button>
                         </div>
                     </div>
 
