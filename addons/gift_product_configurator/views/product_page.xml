@@ -2,20 +2,25 @@
 <odoo>
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
         <xpath expr="//section[@id='product_detail']" position="replace">
-            <!-- ID changed to gift_product_detail to avoid Odoo's broken Zoom JS -->
-            <section id="gift_product_detail" 
-                     t-attf-class="oe_website_sale container my-3 my-lg-4" 
-                     t-att-data-view-id="view_id">
+            <section id="product_detail" class="oe_website_sale container my-3 my-lg-4">
                 
+                <!-- HIDDEN STRUCTURE: This satisfies the crashing JS -->
+                <div id="o-carousel-product" class="carousel slide d-none" data-bs-ride="carousel">
+                    <div class="carousel-inner">
+                        <div class="carousel-item active">
+                            <img src="/" class="js_variant_img" data-zoom-image="/"/>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="gift-product-layout">
-                    <!-- GALLERY -->
+                    <!-- YOUR VISUAL GALLERY -->
                     <div class="gift-gallery">
                         <div class="product-image-wrapper">
                             <span class="flag-badge">🇬🇧</span>
-                            <!-- Custom ID for our manual JS swap -->
+                            <!-- We use 'oe_variant_img_main' to hook into Odoo's native swap logic safely -->
                             <img t-att-src="image_data_uri(product.image_1024)"
-                                 id="gift_main_image"
-                                 class="main-product-image"
+                                 class="main-product-image oe_variant_img_main"
                                  t-att-data-image-id="product.id"/>
                         </div>
                     </div>
@@ -23,22 +28,29 @@
                     <!-- CONFIGURATOR -->
                     <div class="gift-configurator">
                         <h1 t-field="product.name"/>
-                        <form class="o_gift_variant_form" t-att-data-product-template-id="product.id">
+                        
+                        <!-- js_add_cart_variants is the "engine" class -->
+                        <form class="js_add_cart_variants" t-att-data-product-template-id="product.id" method="POST">
+                            <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                            
                             <t t-foreach="product.attribute_line_ids" t-as="line">
-                                <div class="config-block">
+                                <div class="config-block variant_attribute">
                                     <div class="config-header">
                                         <t t-esc="line.attribute_id.name"/>: 
                                         <span class="selected-value">
                                             <t t-if="line.product_template_value_ids" t-esc="line.product_template_value_ids[0].name"/>
                                         </span>
                                     </div>
+
                                     <div class="variant-options">
                                         <t t-foreach="line.product_template_value_ids" t-as="ptav">
                                             <label t-attf-class="variant-btn #{'active' if ptav == line.product_template_value_ids[0] else ''}">
+                                                <!-- js_variant_change triggers the price/image swap -->
                                                 <input type="radio"
-                                                       class="js_gift_variant_change"
+                                                       class="js_variant_change"
                                                        t-att-name="'attr_%s' % line.attribute_id.id"
                                                        t-att-value="ptav.id"
+                                                       t-att-data-value_id="ptav.id"
                                                        t-att-data-value_name="ptav.name"
                                                        t-att-checked="ptav == line.product_template_value_ids[0]"/>
                                                 <span t-esc="ptav.name"/>
@@ -50,19 +62,18 @@
                         </form>
                     </div>
 
-                    <!-- PRICE PANEL -->
+                    <!-- QUOTE PANEL -->
                     <div class="gift-quote-panel">
                         <div class="price-display">
-                            <div id="gift_price_container">
-                                <t t-call="website_sale.product_price"/>
-                            </div>
+                            <!-- Native price call to ensure it updates -->
+                            <t t-call="website_sale.product_price"/>
                         </div>
                     </div>
                 </div>
 
-                <!-- Hooks to prevent RPC_ERROR ParseErrors -->
-                <div id="product_option_block" class="d-none"/>
-                <div id="o_product_terms_and_share" class="d-none"/>
+                <!-- REQUIRED HOOKS (DO NOT REMOVE) -->
+                <div id="product_option_block"/>
+                <div id="o_product_terms_and_share" class="mt-4"/>
             </section>
         </xpath>
     </template>
