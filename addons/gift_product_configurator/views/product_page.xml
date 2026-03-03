@@ -1,3 +1,5 @@
+<odoo>
+<template id="gift_custom_product_page" inherit_id="website_sale.product">
 <xpath expr="//section[@id='product_detail']" position="replace">
     <!-- Change ID to 'custom_product_detail' to hide from Odoo's broken Zoom JS -->
     <section id="custom_product_detail" 
@@ -61,3 +63,5 @@
         <div id="product_option_block_custom"/>
     </section>
 </xpath>
+</template>
+</odoo>
