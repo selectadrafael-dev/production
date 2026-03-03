@@ -20,7 +20,7 @@
     'data/sequence.xml',
     'views/quote_drawer_template.xml',
      "views/quote_scripts.xml",
-    #'security/ir.model.access.csv',
+    #'security/ir.model.access.csv'
 ],
 "assets": {
     "web.assets_frontend": [
