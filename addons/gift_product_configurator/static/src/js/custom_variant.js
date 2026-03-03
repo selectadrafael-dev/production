@@ -14,12 +14,6 @@
     const templateId = parseInt(form.dataset.productTemplateId);
     console.log('[GIFT CONFIGURATOR] Template ID:', templateId);
 
-    const csrfToken = document.querySelector('meta[name="csrf_token"]')
-      ? document.querySelector('meta[name="csrf_token"]').getAttribute('content')
-      : null;
-
-    console.log('[GIFT CONFIGURATOR] CSRF Token:', csrfToken);
-
     form.addEventListener('change', function (e) {
       if (!e.target.classList.contains('variant-radio')) return;
       console.log('[GIFT CONFIGURATOR] Variant changed');
@@ -42,40 +36,25 @@
 
         console.log('[GIFT CONFIGURATOR] Selected combination:', combination);
 
-        // ✅ ODOO 18 PROPER JSON-RPC FORMAT + CSRF
-        const response = await fetch('/website_sale/get_combination_info', {
+        // ✅ CORRECT ODOO 18 PUBLIC ENDPOINT
+        const formData = new FormData();
+        formData.append('product_template_id', templateId);
+        formData.append('combination', combination);
+        formData.append('add_qty', 1);
+
+        const response = await fetch('/shop/get_combination_info', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            method: "call",
-            params: {
-              product_template_id: templateId,
-              combination: combination,
-              add_qty: 1,
-              context: {}
-            }
-          }),
+          body: formData
         });
 
-        const result = await response.json();
-
-        console.log('[GIFT CONFIGURATOR] RPC Response:', result);
-
-        if (result.error) {
-          console.error('[GIFT CONFIGURATOR] SERVER ERROR:', result.error);
+        if (!response.ok) {
+          console.error('[GIFT CONFIGURATOR] Network error:', response.status);
           return;
         }
 
-        if (!result.result) {
-          console.error('[GIFT CONFIGURATOR] No result returned.');
-          return;
-        }
+        const data = await response.json();
 
-        const data = result.result;
+        console.log('[GIFT CONFIGURATOR] Raw Response:', data);
 
         if (!data.product_id) {
           console.error('[GIFT CONFIGURATOR] No product_id returned.');
@@ -162,4 +141,5 @@
     }
 
   });
+
 })();
