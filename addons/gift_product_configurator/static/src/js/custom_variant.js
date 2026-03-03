@@ -5,8 +5,6 @@
 
   document.addEventListener('DOMContentLoaded', function () {
 
-    console.log('[GIFT CONFIGURATOR] DOM Ready');
-
     const form = document.querySelector('.o_custom_variant_form');
     if (!form) {
       console.error('[GIFT CONFIGURATOR] Variant form not found.');
@@ -15,6 +13,12 @@
 
     const templateId = parseInt(form.dataset.productTemplateId);
     console.log('[GIFT CONFIGURATOR] Template ID:', templateId);
+
+    const csrfToken = document.querySelector('meta[name="csrf_token"]')
+      ? document.querySelector('meta[name="csrf_token"]').getAttribute('content')
+      : null;
+
+    console.log('[GIFT CONFIGURATOR] CSRF Token:', csrfToken);
 
     form.addEventListener('change', function (e) {
       if (!e.target.classList.contains('variant-radio')) return;
@@ -27,7 +31,6 @@
       try {
 
         const checked = form.querySelectorAll('.variant-radio:checked');
-
         if (!checked.length) {
           console.warn('[GIFT CONFIGURATOR] No variant selected.');
           return;
@@ -39,27 +42,40 @@
 
         console.log('[GIFT CONFIGURATOR] Selected combination:', combination);
 
-        // ✅ ODOO 18 EXPECTS THIS FORMAT
+        // ✅ ODOO 18 PROPER JSON-RPC FORMAT + CSRF
         const response = await fetch('/website_sale/get_combination_info', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
           },
           body: JSON.stringify({
-            product_template_id: templateId,
-            combination: combination,
-            add_qty: 1
+            jsonrpc: "2.0",
+            method: "call",
+            params: {
+              product_template_id: templateId,
+              combination: combination,
+              add_qty: 1,
+              context: {}
+            }
           }),
         });
 
-        if (!response.ok) {
-          console.error('[GIFT CONFIGURATOR] Network error:', response.status);
+        const result = await response.json();
+
+        console.log('[GIFT CONFIGURATOR] RPC Response:', result);
+
+        if (result.error) {
+          console.error('[GIFT CONFIGURATOR] SERVER ERROR:', result.error);
           return;
         }
 
-        const data = await response.json();
+        if (!result.result) {
+          console.error('[GIFT CONFIGURATOR] No result returned.');
+          return;
+        }
 
-        console.log('[GIFT CONFIGURATOR] Raw Response:', data);
+        const data = result.result;
 
         if (!data.product_id) {
           console.error('[GIFT CONFIGURATOR] No product_id returned.');
@@ -81,7 +97,6 @@
             '/image_1024';
 
           mainImage.src = newSrc;
-
           console.log('[GIFT CONFIGURATOR] Image updated:', newSrc);
         }
 
@@ -91,15 +106,13 @@
 
         const priceEl = document.querySelector('.price');
         if (priceEl) {
-          const currentText = priceEl.textContent.trim();
-          const symbolMatch = currentText.match(/^\D+/);
+          const symbolMatch = priceEl.textContent.trim().match(/^\D+/);
           const symbol = symbolMatch ? symbolMatch[0] : '';
 
           const newPrice =
             symbol + parseFloat(data.price).toFixed(2);
 
           priceEl.textContent = newPrice;
-
           console.log('[GIFT CONFIGURATOR] Price updated:', newPrice);
         }
 
