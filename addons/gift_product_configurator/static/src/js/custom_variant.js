@@ -65,9 +65,9 @@
 
     });
 
-    // ======================================
+    //======================================
     // UPDATE "Colour: Navy", "Size: 2XS"
-    // ======================================
+    //======================================
     function updateSelectedLabels() {
 
       const blocks = form.querySelectorAll('.config-block');
