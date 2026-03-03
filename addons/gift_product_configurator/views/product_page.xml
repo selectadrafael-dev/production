@@ -63,6 +63,9 @@
                                 </div>
                             </t>
                         </form>
+
+                        <!-- ADD THIS LINE HERE: It fixes the "cannot be located" error for product_option_block -->
+                        <div id="product_option_block"/>
                         
                         <!-- Rest of your UI (Print Method, etc.) -->
                     </div>
