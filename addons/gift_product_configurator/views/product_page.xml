@@ -151,7 +151,7 @@
                     </select>
                 </div>
 
-                <!-- LOGO COLOURS -->
+                <!--LOGO COLOURS-->
                 <div class="config-block">
                     <div class="config-header">Logo Colours</div>
                     <select class="form-select">
@@ -163,7 +163,7 @@
 
             </div>
 
-            <!-- RIGHT: QUOTE PANEL -->
+            <!--RIGHT: QUOTE PANEL-->
             <div class="gift-quote-panel">
 
                 <div class="price-display">
