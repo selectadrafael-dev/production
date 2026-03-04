@@ -1,88 +1,70 @@
 (function () {
   'use strict';
 
+  console.log('[GIFT CONFIGURATOR] Variant Listener Loaded');
+
   document.addEventListener('DOMContentLoaded', function () {
 
-    const form = document.querySelector('.o_custom_variant_form');
-    if (!form) return;
+    const form = document.querySelector('.oe_website_sale');
+    if (!form) {
+      console.error('[GIFT CONFIGURATOR] oe_website_sale form not found');
+      return;
+    }
 
-    const templateId = form.dataset.productTemplateId;
+    form.addEventListener('change', function (e) {
 
-    form.addEventListener('change', async function (e) {
+      if (!e.target.matches('input[name="product_template_attribute_value_ids"]')) {
+        return;
+      }
 
-      if (!e.target.classList.contains('variant-radio')) return;
+      console.log('[GIFT CONFIGURATOR] Native variant change detected');
 
-      updateSelectedLabels();
+      setTimeout(updateUIFromNativeState, 200);
 
-      const checked = form.querySelectorAll('.variant-radio:checked');
-      if (!checked.length) return;
+    });
 
-      const combination = Array.from(checked).map(r => parseInt(r.value));
+    function updateUIFromNativeState() {
 
-      // ===== CALL ODOO VARIANT API =====
-      const response = await fetch('/website_sale/get_combination_info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_template_id: parseInt(templateId),
-          combination: combination,
-          add_qty: 1,
-        }),
-      });
+      const productIdInput = form.querySelector('input[name="product_id"]');
+      if (!productIdInput) {
+        console.error('[GIFT CONFIGURATOR] product_id input missing');
+        return;
+      }
 
-      const result = await response.json();
-      const data = result.result;
+      const newProductId = productIdInput.value;
+      console.log('[GIFT CONFIGURATOR] Resolved variant ID:', newProductId);
 
-      if (!data || !data.product_id) return;
-
-      // ===== UPDATE IMAGE =====
+      // Update Image
       const mainImage = document.querySelector('.main-product-image');
       if (mainImage) {
         mainImage.src =
           '/web/image/product.product/' +
-          data.product_id +
+          newProductId +
           '/image_1024';
+        console.log('[GIFT CONFIGURATOR] Image updated.');
       }
 
-      // ===== UPDATE PRICE (KEEP SYMBOL) =====
-      const priceEl = document.querySelector('.price');
-      if (priceEl) {
-        const symbol = priceEl.textContent.trim().charAt(0);
-        priceEl.textContent =
-          symbol + parseFloat(data.price).toFixed(2);
+      // Update Price
+      const nativePrice = document.querySelector('.oe_price .oe_currency_value');
+      const customPrice = document.querySelector('.price');
+
+      if (nativePrice && customPrice) {
+        const symbolMatch = customPrice.textContent.trim().match(/^\D+/);
+        const symbol = symbolMatch ? symbolMatch[0] : '';
+
+        const newPrice =
+          symbol + parseFloat(nativePrice.textContent).toFixed(2);
+
+        customPrice.textContent = newPrice;
+        console.log('[GIFT CONFIGURATOR] Price updated.');
       }
 
-      // ===== UPDATE QUOTE BUTTON =====
+      // Update Quote Button
       const quoteBtn = document.querySelector('.js-add-quote');
       if (quoteBtn) {
-        quoteBtn.dataset.productId = data.product_id;
-        quoteBtn.dataset.productImage =
-          '/web/image/product.product/' +
-          data.product_id +
-          '/image_1920';
-        quoteBtn.dataset.productPrice = data.price;
+        quoteBtn.dataset.productId = newProductId;
+        console.log('[GIFT CONFIGURATOR] Quote button synced.');
       }
-
-    });
-
-    // ======================================
-    // UPDATE "Colour: Navy", "Size: 2XS"
-    // ======================================
-    function updateSelectedLabels() {
-
-      const blocks = form.querySelectorAll('.config-block');
-
-      blocks.forEach(block => {
-
-        const selected = block.querySelector('.variant-radio:checked');
-        if (!selected) return;
-
-        const name = selected.dataset.valueName;
-
-        const label = block.querySelector('.selected-value');
-        if (label) label.textContent = name;
-
-      });
 
     }
 

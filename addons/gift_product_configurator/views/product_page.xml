@@ -52,88 +52,95 @@
                     Product Code: <t t-esc="product.default_code"/>
                 </div>
 
-                <!-- COLOUR SELECTOR -->
-                <!--div class="config-block">
-                    <div class="config-header">Colour</div>
-                    <div class="variant-options">
-                        <button class="variant-option active">White</button>
-                        <button class="variant-option">Blue</button>
-                        <button class="variant-option">Black</button>
-                    </div>
-                </div-->
 
                 <!-- DYNAMIC MULTI-ATTRIBUTE VARIANTS -->
                 <t t-if="product.attribute_line_ids">
 
-                <form class="o_custom_variant_form"
-                        t-att-data-product-template-id="product.id">
+<form class="o_custom_variant_form oe_website_sale"
+      t-att-data-product-template-id="product.id"
+      t-att-data-product-id="product.product_variant_id.id">
 
-                    <t t-foreach="product.attribute_line_ids" t-as="line">
+    <!-- REQUIRED HIDDEN FIELDS FOR ODOO -->
+    <input type="hidden"
+           name="product_template_id"
+           t-att-value="product.id"/>
 
-                    <div class="config-block"
-                        t-att-data-attribute-id="line.attribute_id.id">
+    <input type="hidden"
+           name="product_id"
+           t-att-value="product.product_variant_id.id"/>
 
-                        <!-- Header showing selected value -->
-                        <div class="config-header">
-                        <t t-esc="line.attribute_id.name"/>:
-                        <span class="selected-value">
-                            <t t-esc="line.product_template_value_ids[0].name"/>
-                        </span>
-                        </div>
+    <t t-foreach="product.attribute_line_ids" t-as="line">
 
-                        <div class="variant-options">
+        <div class="config-block"
+             t-att-data-attribute-id="line.attribute_id.id">
 
-                        <t t-foreach="line.product_template_value_ids" t-as="ptav">
+            <!-- Header showing selected value -->
+            <div class="config-header">
+                <t t-esc="line.attribute_id.name"/>:
+                <span class="selected-value">
+                    <t t-esc="line.product_template_value_ids[0].name"/>
+                </span>
+            </div>
 
-                            <!-- COLOR ATTRIBUTE (SWATCH) -->
-                            <t t-if="line.attribute_id.display_type == 'color'">
+            <div class="variant-options">
 
-                            <label class="variant-swatch">
+                <t t-foreach="line.product_template_value_ids" t-as="ptav">
 
-                                <input type="radio"
-                                    class="variant-radio"
-                                    name="attr_{{ line.attribute_id.id }}"
-                                    t-att-value="ptav.id"
-                                    t-att-data-value-name="ptav.name"
-                                    t-att-checked="ptav == line.product_template_value_ids[0]"/>
+                    <!-- COLOR ATTRIBUTE (SWATCH STYLE) -->
+                    <t t-if="line.attribute_id.display_type == 'color'">
 
-                                <span class="color-circle"
-                                    t-att-style="'background:' + (ptav.html_color or '#ccc')">
-                                </span>
+                        <label class="variant-swatch">
 
-                            </label>
+                            <input type="radio"
+                                   name="product_template_attribute_value_ids"
+                                   class="variant-radio"
+                                   t-att-value="ptav.id"
+                                   t-att-data-value-name="ptav.name"
+                                   t-att-checked="ptav == line.product_template_value_ids[0]"/>
 
-                            </t>
+                            <span class="color-circle"
+                                  t-att-style="'background:' + (ptav.html_color or '#ccc')">
+                            </span>
 
-                            <!-- NON-COLOR ATTRIBUTES (BUTTON STYLE) -->
-                            <t t-else="">
-
-                            <label class="variant-btn">
-
-                                <input type="radio"
-                                    class="variant-radio"
-                                    name="attr_{{ line.attribute_id.id }}"
-                                    t-att-value="ptav.id"
-                                    t-att-data-value-name="ptav.name"
-                                    t-att-checked="ptav == line.product_template_value_ids[0]"/>
-
-                                <span>
-                                <t t-esc="ptav.name"/>
-                                </span>
-
-                            </label>
-
-                            </t>
-
-                        </t>
-
-                        </div>
-
-                    </div>
+                        </label>
 
                     </t>
 
-                </form>
+                    <!-- OTHER ATTRIBUTES (BUTTON STYLE) -->
+                    <t t-else="">
+
+                        <label class="variant-btn">
+
+                            <input type="radio"
+                                   name="product_template_attribute_value_ids"
+                                   class="variant-radio"
+                                   t-att-value="ptav.id"
+                                   t-att-data-value-name="ptav.name"
+                                   t-att-checked="ptav == line.product_template_value_ids[0]"/>
+
+                            <span class="btn-variant-label">
+                                <t t-esc="ptav.name"/>
+                            </span>
+
+                        </label>
+
+                    </t>
+
+                </t>
+
+            </div>
+
+        </div>
+
+    </t>
+
+    <!-- Hidden native price source (Odoo updates this internally) -->
+    <span class="oe_price" style="display:none">
+        <span class="oe_currency_value"
+              t-field="product.lst_price"/>
+    </span>
+
+</form>
 
                 </t>
 
@@ -167,7 +174,8 @@
                         <div class="tier-card active">
                             <strong>50+</strong>
                             <div id="actual_price">
-                                 <span>£7.71 each</span>
+                                 <!--span>£7.71 each</span-->
+                                 <t t-call="website_sale.product_price" />
                             </div>
                            
                         </div>
