@@ -1,21 +1,16 @@
 (function () {
     'use strict';
-    var relocateElements = function () {
+    var sync = function () {
         var carousel = document.getElementById('o-carousel-product');
-        var variants = document.querySelector('.js_add_cart_variants');
-        var galleryHook = document.getElementById('gift_gallery_hook');
-        var variantHook = document.getElementById('gift_variant_hook');
+        var gHook = document.getElementById('gift_gallery_hook');
 
-        if (carousel && galleryHook && carousel.parentElement !== galleryHook) {
-            galleryHook.appendChild(carousel);
-        }
-        if (variants && variantHook && variants.parentElement !== variantHook) {
-            variantHook.appendChild(variants);
+        if (carousel && gHook && !gHook.contains(carousel)) {
+            gHook.appendChild(carousel);
         }
     };
 
-    window.addEventListener('load', relocateElements);
-    var observer = new MutationObserver(relocateElements);
+    window.addEventListener('load', sync);
+    var observer = new MutationObserver(sync);
     var target = document.getElementById('product_detail');
     if (target) {
         observer.observe(target, { childList: true, subtree: true });

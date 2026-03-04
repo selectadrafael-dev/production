@@ -3,52 +3,60 @@
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
         <xpath expr="//section[@id='product_detail']" position="inside">
             
-            <!-- TOP ORANGE BANNER -->
-            <div class="gift-top-banner text-center py-2 mb-4" style="background-color: #FF8C00; color: white;">
-                <div class="fw-bold">⭐ CLICK HERE FOR OUR MOST POPULAR PICKS ⭐</div>
-                <div class="small">Buy tried and tested items customers love</div>
-            </div>
-
-            <div class="container-fluid px-lg-5 gift-main-body">
+            <div class="container-fluid px-lg-5 gift-custom-layout">
                 <div class="row g-4 align-items-start">
                     
-                    <!-- COLUMN 1: STICKY GALLERY -->
+                    <!-- COLUMN 1: GALLERY -->
                     <div class="col-lg-5 col-12 sticky-gallery">
                         <div class="border rounded p-3 bg-white position-relative shadow-sm text-center">
-                            <span class="badge rounded-pill bg-danger position-absolute top-0 end-0 m-3 p-3" style="font-size: 1.2rem; z-index: 10;">15% OFF</span>
-                            <!-- Placeholder: JS moves original carousel here -->
+                            <!-- JS will move Odoo's functional carousel here -->
                             <div id="gift_gallery_hook"></div>
                         </div>
                     </div>
 
-                    <!-- COLUMN 2: CONFIGURATOR (SCROLLING) -->
+                    <!-- COLUMN 2: CONFIGURATOR (VARIANTS) -->
                     <div class="col-lg-4 col-12">
                         <h1 t-field="product.name" class="h2 fw-bold mb-1" />
                         <div class="text-muted mb-4 small">Product Code: <span t-field="product.default_code" /></div>
                         
-                        <!-- Placeholder: JS moves variant buttons here -->
-                        <div id="gift_variant_hook" class="mb-5"></div>
+                        <!-- DYNAMIC VARIANTS -->
+                        <div id="gift_variant_hook" class="js_add_cart_variants">
+                            <t t-foreach="product.attribute_line_ids" t-as="line">
+                                <div class="variant_attribute mb-4">
+                                    <strong class="d-block mb-2 text-uppercase" t-esc="line.attribute_id.name""")/>>
+                                    <div class="variant-list">
+                                        <t t-foreach="line.product_template_value_ids" t-as="ptav">
+                                            <label t-attf-class="variant-box d-flex justify-content-between align-items-center border rounded p-3 mb-2 cursor-pointer bg-white #{'active border-primary' if ptav == line.product_template_value_ids[0] else ''}">
+                                                <!-- CRITICAL: class="js_variant_change" triggers the update -->
+                                                <input type="radio" 
+                                                       class="js_variant_change d-none" 
+                                                       t-att-name="'attr_%s' % line.attribute_id.id" 
+                                                       t-att-value="ptav.id"
+                                                       t-att-data-value_id="ptav.id"
+                                                       t-att-checked="ptav == line.product_template_value_ids[0]""")/>>
+                                                
+                                                <span class="fw-bold" t-esc="ptav.name""")/>>
+                                                
+                                                <!-- Displays the price extra if applicable -->
+                                                <span t-if="ptav.price_extra" class="badge rounded-pill bg-light text-dark border">
+                                                    + $<t t-esc="'%.2f' % ptav.price_extra""")/>>
+                                                </span>
+                                            </label>
+                                        </t>
+                                    </div>
+                                </div>
+                            </t>
+                        </div>
                     </div>
 
-                    <!-- COLUMN 3: QUOTE PANEL (STICKY) -->
+                    <!-- COLUMN 3: QUOTE PANEL -->
                     <div class="col-lg-3 col-12 sticky-sidebar">
-                        <div class="gift-quote-panel border rounded p-4 bg-white shadow-sm">
-                            <div class="d-flex justify-content-between align-items-start mb-3">
-                                <div class="price-display">
-                                    <div class="h2 fw-bold text-danger mb-0">
-                                        <t t-call="website_sale.product_price" />
-                                    </div>
-                                    <div class="x-small text-muted">per unit (exc. VAT)</div>
-                                </div>
-                                <div class="vat-toggle text-end">
-                                    <div class="small fw-bold">Excludes VAT</div>
-                                    <div class="form-check form-switch d-inline-block">
-                                        <input class="form-check-input" type="checkbox" checked="checked" />
-                                    </div>
-                                </div>
+                        <div class="gift-quote-panel border rounded p-4 bg-white shadow-sm text-center">
+                            <div class="h2 fw-bold text-primary mb-0">
+                                <t t-call="website_sale.product_price" />
                             </div>
-                            <button class="btn btn-primary w-100 py-3 fw-bold mb-2 shadow-sm" style="background-color: #002D5B; border: none;">Add To Quote</button>
-                            <button class="btn btn-warning w-100 py-2 fw-bold mb-2" style="background-color: #FFB800; border: none;">Need Ideas?</button>
+                            <div class="small text-muted mb-4">per unit (exc. VAT)</div>
+                            <button class="btn btn-primary w-100 py-3 fw-bold shadow-sm" style="background-color: #002D5B; border: none;">Add To Quote</button>
                         </div>
                     </div>
                 </div>
