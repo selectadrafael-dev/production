@@ -57,24 +57,24 @@
                 <t t-if="product.attribute_line_ids">
 
 <form class="o_custom_variant_form oe_website_sale"
-      t-att-data-product-template-id="product.id"
-      t-att-data-product-id="product.product_variant_id.id">
+      t-att-data-product-template-id="product.product_tmpl_id.id"
+      t-att-data-product-id="product.id">
 
     <!-- REQUIRED HIDDEN FIELDS FOR ODOO -->
     <input type="hidden"
            name="product_template_id"
-           t-att-value="product.id"/>
+           t-att-value="product.product_tmpl_id.id"/>
 
     <input type="hidden"
            name="product_id"
-           t-att-value="product.product_variant_id.id"/>
+           t-att-value="product.id"/>
 
-    <t t-foreach="product.attribute_line_ids" t-as="line">
+    <t t-foreach="product.product_tmpl_id.attribute_line_ids" t-as="line">
 
         <div class="config-block"
              t-att-data-attribute-id="line.attribute_id.id">
 
-            <!-- Header showing selected value -->
+            <!-- Header -->
             <div class="config-header">
                 <t t-esc="line.attribute_id.name"/>:
                 <span class="selected-value">
@@ -86,7 +86,7 @@
 
                 <t t-foreach="line.product_template_value_ids" t-as="ptav">
 
-                    <!-- COLOR ATTRIBUTE (SWATCH STYLE) -->
+                    <!-- COLOR ATTRIBUTE -->
                     <t t-if="line.attribute_id.display_type == 'color'">
 
                         <label class="variant-swatch">
@@ -96,7 +96,7 @@
                                    class="variant-radio"
                                    t-att-value="ptav.id"
                                    t-att-data-value-name="ptav.name"
-                                   t-att-checked="ptav == line.product_template_value_ids[0]"/>
+                                   t-att-checked="ptav.id in product.product_template_attribute_value_ids.ids"/>
 
                             <span class="color-circle"
                                   t-att-style="'background:' + (ptav.html_color or '#ccc')">
@@ -106,7 +106,7 @@
 
                     </t>
 
-                    <!-- OTHER ATTRIBUTES (BUTTON STYLE) -->
+                    <!-- OTHER ATTRIBUTES -->
                     <t t-else="">
 
                         <label class="variant-btn">
@@ -116,7 +116,7 @@
                                    class="variant-radio"
                                    t-att-value="ptav.id"
                                    t-att-data-value-name="ptav.name"
-                                   t-att-checked="ptav == line.product_template_value_ids[0]"/>
+                                   t-att-checked="ptav.id in product.product_template_attribute_value_ids.ids"/>
 
                             <span class="btn-variant-label">
                                 <t t-esc="ptav.name"/>
@@ -134,18 +134,6 @@
 
     </t>
 
-    <!-- Hidden native price source (Odoo updates this internally) -->
-    <!--span class="oe_price" style="display:none">
-        <span class="oe_currency_value"
-              t-field="product.lst_price"/>
-    </span-->
-
-
-    <!-- Native Odoo price block (hidden but required for VariantMixin) -->
-    <div class="oe_price d-none">
-        <span class="oe_currency_value"
-            t-field="product.product_variant_id.price"/>
-    </div>
 </form>
 
                 </t>
