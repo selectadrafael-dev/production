@@ -19,11 +19,16 @@
 
       console.log('[GIFT CONFIGURATOR] Native variant change detected');
 
+      // Wait for Odoo to update internal state
       setTimeout(updateUIFromNativeState, 200);
 
     });
 
     function updateUIFromNativeState() {
+
+      // ===============================
+      // 1️⃣ GET RESOLVED VARIANT ID
+      // ===============================
 
       const productIdInput = form.querySelector('input[name="product_id"]');
       if (!productIdInput) {
@@ -34,32 +39,48 @@
       const newProductId = productIdInput.value;
       console.log('[GIFT CONFIGURATOR] Resolved variant ID:', newProductId);
 
-      // Update Image
+      // ===============================
+      // 2️⃣ UPDATE IMAGE
+      // ===============================
+
       const mainImage = document.querySelector('.main-product-image');
       if (mainImage) {
         mainImage.src =
           '/web/image/product.product/' +
           newProductId +
           '/image_1024';
+
         console.log('[GIFT CONFIGURATOR] Image updated.');
       }
 
-      // Update Price
-      const nativePrice = document.querySelector('.oe_price .oe_currency_value');
-      const customPrice = document.querySelector('.price');
+      // ===============================
+      // 3️⃣ MIRROR NATIVE PRICE
+      // ===============================
 
-      if (nativePrice && customPrice) {
-        const symbolMatch = customPrice.textContent.trim().match(/^\D+/);
+      const nativePriceEl = document.querySelector('.oe_price .oe_currency_value');
+      const customPriceEl = document.querySelector('.price');
+
+      if (nativePriceEl && customPriceEl) {
+
+        const newPriceValue = nativePriceEl.textContent.trim();
+
+        // Preserve your currency symbol
+        const symbolMatch = customPriceEl.textContent.trim().match(/^\D+/);
         const symbol = symbolMatch ? symbolMatch[0] : '';
 
-        const newPrice =
-          symbol + parseFloat(nativePrice.textContent).toFixed(2);
+        customPriceEl.textContent =
+          symbol + parseFloat(newPriceValue).toFixed(2);
 
-        customPrice.textContent = newPrice;
-        console.log('[GIFT CONFIGURATOR] Price updated.');
+        console.log('[GIFT CONFIGURATOR] Price mirrored:', newPriceValue);
+
+      } else {
+        console.warn('[GIFT CONFIGURATOR] Price elements missing.');
       }
 
-      // Update Quote Button
+      // ===============================
+      // 4️⃣ UPDATE QUOTE BUTTON
+      // ===============================
+
       const quoteBtn = document.querySelector('.js-add-quote');
       if (quoteBtn) {
         quoteBtn.dataset.productId = newProductId;

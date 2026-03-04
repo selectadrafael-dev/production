@@ -135,11 +135,17 @@
     </t>
 
     <!-- Hidden native price source (Odoo updates this internally) -->
-    <span class="oe_price" style="display:none">
+    <!--span class="oe_price" style="display:none">
         <span class="oe_currency_value"
               t-field="product.lst_price"/>
-    </span>
+    </span-->
 
+
+    <!-- Native Odoo price block (hidden but required for VariantMixin) -->
+    <div class="oe_price d-none">
+        <span class="oe_currency_value"
+            t-field="product.product_variant_id.price"/>
+    </div>
 </form>
 
                 </t>
@@ -174,8 +180,8 @@
                         <div class="tier-card active">
                             <strong>50+</strong>
                             <div id="actual_price">
-                                 <!--span>£7.71 each</span-->
-                                 <t t-call="website_sale.product_price" />
+                                 <span>£7.71 each</span>
+                                 <!--t t-call="website_sale.product_price" /-->
                             </div>
                            
                         </div>
