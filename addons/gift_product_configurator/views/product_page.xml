@@ -60,7 +60,6 @@
       t-att-data-product-template-id="product.id"
       t-att-data-product-id="product.product_variant_id.id">
 
-    <!-- REQUIRED HIDDEN FIELDS -->
     <input type="hidden"
            name="product_template_id"
            t-att-value="product.id"/>
@@ -71,8 +70,7 @@
 
     <t t-foreach="product.attribute_line_ids" t-as="line">
 
-        <div class="config-block"
-             t-att-data-attribute-id="line.attribute_id.id">
+        <div class="config-block">
 
             <div class="config-header">
                 <t t-esc="line.attribute_id.name"/>:
@@ -85,17 +83,20 @@
 
                 <t t-foreach="line.product_template_value_ids" t-as="ptav">
 
-                    <!-- COLOR ATTRIBUTE -->
+                    <t t-set="is_checked"
+                       t-value="ptav.id in product.product_variant_id.product_template_attribute_value_ids.ids"/>
+
+                    <!-- COLOR -->
                     <t t-if="line.attribute_id.display_type == 'color'">
 
                         <label class="variant-swatch">
 
                             <input type="radio"
-                                   name="product_template_attribute_value_ids"
+                                   t-att-name="'attribute_%s' % line.attribute_id.id"
                                    class="variant-radio"
                                    t-att-value="ptav.id"
-                                   t-att-data-value-name="ptav.name"
-                                   t-att-checked="ptav.id in product.product_variant_id.product_template_attribute_value_ids.ids"/>
+                                   t-att-data-attribute-value-id="ptav.id"
+                                   t-att-checked="is_checked"/>
 
                             <span class="color-circle"
                                   t-att-style="'background:' + (ptav.html_color or '#ccc')">
@@ -111,11 +112,11 @@
                         <label class="variant-btn">
 
                             <input type="radio"
-                                   name="product_template_attribute_value_ids"
+                                   t-att-name="'attribute_%s' % line.attribute_id.id"
                                    class="variant-radio"
                                    t-att-value="ptav.id"
-                                   t-att-data-value-name="ptav.name"
-                                   t-att-checked="ptav.id in product.product_variant_id.product_template_attribute_value_ids.ids"/>
+                                   t-att-data-attribute-value-id="ptav.id"
+                                   t-att-checked="is_checked"/>
 
                             <span class="btn-variant-label">
                                 <t t-esc="ptav.name"/>
