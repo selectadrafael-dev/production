@@ -168,3 +168,27 @@ div[data-name="Product Page"],
         margin-bottom: 20px;
     }
 }
+
+/*variants styling*/
+/* HIDE DEFAULT ODOO SECTION */
+.gift-custom-hide-default > .row:first-of-type, div#product_detail_main, div[data-name="Product Page"] {
+    display: none !important; position: absolute !important; visibility: hidden !important;
+}
+
+/* STICKY SIDEBARS */
+.sticky-gallery, .sticky-sidebar {
+    position: -webkit-sticky !important; position: sticky !important; top: 20px; align-self: flex-start;
+}
+
+/* COLOR CIRCLES */
+.variant-circle {
+    transition: 0.2s; border-width: 2px !important;
+    &.active, &:has(input:checked) { border-color: #002D5B !important; padding: 2px !important; }
+}
+
+/* BOX BUTTONS */
+.variant-box {
+    min-width: 60px; text-align: center; font-size: 0.9rem;
+    &.active, &:has(input:checked) { border-color: #002D5B !important; background-color: #f0f7ff !important; box-shadow: 0 0 0 1px #002D5B; }
+}
+
