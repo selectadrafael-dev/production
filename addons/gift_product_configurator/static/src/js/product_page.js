@@ -1,94 +1,132 @@
 (function () {
-  'use strict';
+'use strict';
 
-  console.log('[GIFT CONFIGURATOR] Variant Listener Loaded');
+console.log('[GIFT CONFIGURATOR] Script Loaded');
 
-  document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function () {
 
-    const form = document.querySelector('.oe_website_sale');
+    console.log('[GIFT CONFIGURATOR] DOM Ready');
+
+    // ======================================
+    // Locate the native Odoo product form
+    // ======================================
+
+    const form = document.querySelector('form[action="/shop/cart/update"]');
+
     if (!form) {
-      console.error('[GIFT CONFIGURATOR] oe_website_sale form not found');
-      return;
+        console.error('[GIFT CONFIGURATOR] Product form not found');
+        return;
     }
+
+    console.log('[GIFT CONFIGURATOR] Product form detected');
+
+    // ======================================
+    // Listen for variant change
+    // ======================================
 
     form.addEventListener('change', function (e) {
 
-      if (!e.target.matches('input[name="product_template_attribute_value_ids"]')) {
-        return;
-      }
+        if (!e.target.classList.contains('js_variant_change')) {
+            return;
+        }
 
-      console.log('[GIFT CONFIGURATOR] Native variant change detected');
+        console.log('[GIFT CONFIGURATOR] Variant change detected:', e.target.value);
 
-      // Wait for Odoo to update internal state
-      setTimeout(updateUIFromNativeState, 200);
+        // Allow Odoo VariantMixin to update internally first
+        setTimeout(updateUIFromNativeState, 200);
 
     });
 
+    // ======================================
+    // Sync custom UI with Odoo state
+    // ======================================
+
     function updateUIFromNativeState() {
 
-      // ===============================
-      // 1️⃣ GET RESOLVED VARIANT ID
-      // ===============================
+        console.log('[GIFT CONFIGURATOR] Syncing UI from native variant state');
 
-      const productIdInput = form.querySelector('input[name="product_id"]');
-      if (!productIdInput) {
-        console.error('[GIFT CONFIGURATOR] product_id input missing');
-        return;
-      }
+        // ----------------------------------
+        // 1️⃣ Get resolved variant ID
+        // ----------------------------------
 
-      const newProductId = productIdInput.value;
-      console.log('[GIFT CONFIGURATOR] Resolved variant ID:', newProductId);
+        const productIdInput = form.querySelector('input[name="product_id"]');
 
-      // ===============================
-      // 2️⃣ UPDATE IMAGE
-      // ===============================
+        if (!productIdInput) {
+            console.error('[GIFT CONFIGURATOR] product_id input missing');
+            return;
+        }
 
-      const mainImage = document.querySelector('.main-product-image');
-      if (mainImage) {
-        mainImage.src =
-          '/web/image/product.product/' +
-          newProductId +
-          '/image_1024';
+        const newProductId = productIdInput.value;
 
-        console.log('[GIFT CONFIGURATOR] Image updated.');
-      }
+        console.log('[GIFT CONFIGURATOR] Active Variant ID:', newProductId);
 
-      // ===============================
-      // 3️⃣ MIRROR NATIVE PRICE
-      // ===============================
+        // ----------------------------------
+        // 2️⃣ Update product image
+        // ----------------------------------
 
-      const nativePriceEl = document.querySelector('.oe_price .oe_currency_value');
-      const customPriceEl = document.querySelector('.price');
+        const mainImage = document.querySelector('.main-product-image');
 
-      if (nativePriceEl && customPriceEl) {
+        if (mainImage) {
 
-        const newPriceValue = nativePriceEl.textContent.trim();
+            mainImage.src =
+                '/web/image/product.product/' +
+                newProductId +
+                '/image_1024';
 
-        // Preserve your currency symbol
-        const symbolMatch = customPriceEl.textContent.trim().match(/^\D+/);
-        const symbol = symbolMatch ? symbolMatch[0] : '';
+            console.log('[GIFT CONFIGURATOR] Image updated');
 
-        customPriceEl.textContent =
-          symbol + parseFloat(newPriceValue).toFixed(2);
+        } else {
 
-        console.log('[GIFT CONFIGURATOR] Price mirrored:', newPriceValue);
+            console.warn('[GIFT CONFIGURATOR] Main image not found');
 
-      } else {
-        console.warn('[GIFT CONFIGURATOR] Price elements missing.');
-      }
+        }
 
-      // ===============================
-      // 4️⃣ UPDATE QUOTE BUTTON
-      // ===============================
+        // ----------------------------------
+        // 3️⃣ Mirror native price
+        // ----------------------------------
 
-      const quoteBtn = document.querySelector('.js-add-quote');
-      if (quoteBtn) {
-        quoteBtn.dataset.productId = newProductId;
-        console.log('[GIFT CONFIGURATOR] Quote button synced.');
-      }
+        const nativePriceEl = document.querySelector('.oe_price .oe_currency_value');
+        const customPriceEl = document.querySelector('.price');
+
+        if (nativePriceEl && customPriceEl) {
+
+            const nativePrice = nativePriceEl.textContent.trim();
+
+            const symbolMatch = customPriceEl.textContent.trim().match(/^\D+/);
+            const symbol = symbolMatch ? symbolMatch[0] : '';
+
+            const numericPrice = parseFloat(nativePrice.replace(/[^\d.]/g, ''));
+
+            if (!isNaN(numericPrice)) {
+
+                customPriceEl.textContent = symbol + numericPrice.toFixed(2);
+
+                console.log('[GIFT CONFIGURATOR] Price updated:', numericPrice);
+
+            }
+
+        } else {
+
+            console.warn('[GIFT CONFIGURATOR] Price elements missing');
+
+        }
+
+        // ----------------------------------
+        // 4️⃣ Sync quote button
+        // ----------------------------------
+
+        const quoteBtn = document.querySelector('.js-add-quote');
+
+        if (quoteBtn) {
+
+            quoteBtn.dataset.productId = newProductId;
+
+            console.log('[GIFT CONFIGURATOR] Quote button updated');
+
+        }
 
     }
 
-  });
+});
 
 })();
