@@ -1,3 +1,8 @@
+/*hidden default product*/
+#product_detail > .row:first-of-type {
+    display: none !important;
+}
+
 /* 1. Main Layout & Scrolling Behavior */
 #product_detail.oe_website_sale {
     background-color: #f8f9fa;
