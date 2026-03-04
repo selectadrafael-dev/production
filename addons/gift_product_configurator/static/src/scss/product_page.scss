@@ -3,7 +3,7 @@ Hide default Odoo product layout safely
 ===================================== */
 .oe_website_sale [data-name="Product Page"],
 #product_detail_main {
-display: none !important;
+/*display: none !important;*/
 }
 
 /* =========================================
