@@ -52,6 +52,16 @@
                     Product Code: <t t-esc="product.default_code"/>
                 </div>
 
+                <!-- COLOUR SELECTOR -->
+                <!--div class="config-block">
+                    <div class="config-header">Colour</div>
+                    <div class="variant-options">
+                        <button class="variant-option active">White</button>
+                        <button class="variant-option">Blue</button>
+                        <button class="variant-option">Black</button>
+                    </div>
+                </div-->
+
                 <!-- DYNAMIC MULTI-ATTRIBUTE VARIANTS -->
                 <t t-if="product.attribute_line_ids">
 
@@ -157,7 +167,7 @@
                         <div class="tier-card active">
                             <strong>50+</strong>
                             <div id="actual_price">
-                                 <span class="price">£7.71</span>
+                                 <span>£7.71 each</span>
                             </div>
                            
                         </div>
@@ -197,10 +207,9 @@
             <!-- RIGHT: QUOTE PANEL -->
             <!-- ===================================== -->
             <div class="gift-quote-panel">
-                <!--product price-->
+
                 <div class="price-display">
-                    <!--span class="price">£7.71</span-->
-                    <span class="price">£</span><t t-call="website_sale.product_price" />
+                    <span class="price">£7.71</span>
                     <div class="per-unit">per unit (exc. VAT)</div>
                 </div>
 
