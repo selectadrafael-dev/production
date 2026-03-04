@@ -1,7 +1,24 @@
 /*hidden default product*/
-#product_detail > .row:first-of-type {
+/* 1. HIDE DEFAULT ODOO SECTION (TARGET BY ID OR DATA-NAME) */
+div#product_detail_main, 
+div[data-name="Product Page"],
+.oe_website_sale > .row:first-of-type,
+#product_details {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important; /* Move out of flow to prevent stacking */
+    pointer-events: none !important;
 }
+
+/* 2. ENSURE CUSTOM LAYOUT IS VISIBLE */
+.gift-main-body, .gift-top-banner {
+    display: block !important;
+    visibility: visible !important;
+    position: relative !important;
+}
+
 
 /* 1. Main Layout & Scrolling Behavior */
 #product_detail.oe_website_sale {
