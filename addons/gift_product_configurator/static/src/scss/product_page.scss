@@ -1,3 +1,11 @@
+/* =====================================
+Hide default Odoo product layout safely
+===================================== */
+.oe_website_sale [data-name="Product Page"],
+#product_detail_main {
+display: none !important;
+}
+
 /* =========================================
 MAIN LAYOUT — 3 COLUMN CONFIGURATOR
 ========================================= */
@@ -284,45 +292,10 @@ padding: 12px;
 border-radius: 999px;
 cursor: pointer;
 }
-/* =====================================
-Hide default Odoo product layout safely
-===================================== */
-/*#product_detail .oe_structure > *:not(.gift-product-layout) {
-display: none !important;
-}*/
-
-
-/* Hide original product page content 
-#product_detail .o_wsale_product_page,
-#product_detail .oe_website_sale {
-display: none !important;
-}
-
-/* Ensure our layout stays visible 
-.gift-product-layout {
-display: grid !important;
-}
-.print-method-dropdown {
-width: 100%;
-padding: 12px;
-border-radius: 8px;
-border: 1px solid #d6dae6;
-background: white;
-font-size: 14px;
-}
-
-*/
 
 /* =========================================
 Hide original Odoo product page (Odoo 18)
 ========================================= */
-
-/* Scoped to website sale product pages */
-
-.oe_website_sale [data-name="Product Page"],
-#product_detail_main {
-display: none !important;
-}
 
 /* Ensure custom layout displays */
 .gift-product-layout {
