@@ -1,32 +1,17 @@
-.variant-swatch input,
-.variant-btn input {
-  display: none;
+/* 1. HIDE DEFAULT ODOO SECTION (Targeting by ID or Data-Name) */
+div#product_detail_main, 
+div[data-name="Product Page"],
+.oe_website_sale > .row:first-of-type,
+#product_details {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    pointer-events: none !important;
 }
 
-.variant-swatch .color-circle {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: inline-block;
-  border: 2px solid #ddd;
-  cursor: pointer;
-}
-
-.variant-btn span {
-  padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  cursor: pointer;
-  display: inline-block;
-}
-
-/* Selected styles */
-.variant-radio:checked + span,
-.variant-radio:checked + .color-circle {
-  border: 2px solid #2b6cb0;
-}
-
-/* STICKY BEHAVIOR */
+/* 2. STICKY SIDEBARS LOGIC */
 .sticky-gallery, .sticky-sidebar {
     position: -webkit-sticky !important;
     position: sticky !important;
@@ -34,7 +19,7 @@
     align-self: flex-start;
 }
 
-/* RE-STYLE ODOO VARIANT BUTTONS */
+/* 3. VARIANT BUTTON STYLING */
 #gift_variant_hook .variant_attribute label {
     border: 1px solid #ced4da;
     padding: 10px 18px;
@@ -44,15 +29,13 @@
     background: #fff;
 }
 
-#gift_variant_hook .variant_attribute label:has(input:checked),
-#gift_variant_hook .variant_attribute label.active {
+#gift_variant_hook .variant_attribute label:has(input:checked) {
     border-color: #002D5B !important;
     background-color: #f0f7ff !important;
     color: #002D5B;
     box-shadow: 0 0 0 1px #002D5B;
-    font-weight: 600;
 }
 
 #gift_variant_hook input[type="radio"] {
-    display: none; /* Hide Odoo dots */
+    display: none;
 }
