@@ -39,30 +39,30 @@
                                             <span class="selected-value text-muted small"><t t-esc="line.product_template_value_ids[0].name"/></span>
                                         </div>
 
-                                        <div class="variant-options d-flex flex-wrap gap-2">
+                                         <div class="variant-options d-flex flex-wrap gap-2">
                                             <t t-foreach="line.product_template_value_ids" t-as="ptav">
-                                                <!-- COLOR CIRCLES -->
-                                                <t t-if="line.attribute_id.display_type == 'color'">
-                                                    <label t-attf-class="variant-circle border rounded-circle p-1 cursor-pointer #{'active' if ptav == line.product_template_value_ids[0] else ''}">
-                                                        <input type="radio" class="js_variant_change d-none" 
-                                                               t-att-name="'attr_%s' % line.attribute_id.id" 
-                                                               t-att-value="ptav.id" t-att-data-value_name="ptav.name"
-                                                               t-att-checked="ptav == line.product_template_value_ids[0]"/>
-                                                        <span class="d-block rounded-circle" t-att-style="'width:30px; height:30px; background:' + (ptav.html_color or '#ccc')"></span>
-                                                    </label>
-                                                </t>
-                                                <!-- BOX BUTTONS (Size, etc) -->
-                                                <t t-else="">
-                                                    <label t-attf-class="variant-box border rounded p-2 px-3 cursor-pointer bg-white #{'active' if ptav == line.product_template_value_ids[0] else ''}">
-                                                        <input type="radio" class="js_variant_change d-none" 
-                                                               t-att-name="'attr_%s' % line.attribute_id.id" 
-                                                               t-att-value="ptav.id" t-att-data-value_name="ptav.name"
-                                                               t-att-checked="ptav == line.product_template_value_ids[0]"/>
+                                                <label t-attf-class="variant-btn #{'active' if ptav == line.product_template_value_ids[0] else ''}">
+                                                    <!-- CRITICAL: class="js_variant_change" is required to trigger updates -->
+                                                    <input type="radio"
+                                                        class="js_variant_change d-none"
+                                                        t-att-name="'attr_%s' % line.attribute_id.id"
+                                                        t-att-value="ptav.id"
+                                                        t-att-data-value_id="ptav.id"
+                                                        t-att-data-value_name="ptav.name"
+                                                        t-att-checked="ptav == line.product_template_value_ids[0]"/>
+                                                    
+                                                    <!-- Custom styling for color vs other attributes -->
+                                                    <t t-if="line.attribute_id.display_type == 'color'">
+                                                        <span class="color-circle d-inline-block rounded-circle border" 
+                                                            t-att-style="'width:24px; height:24px; background:' + (ptav.html_color or '#ccc')"></span>
+                                                    </t>
+                                                    <t t-else="">
                                                         <span t-esc="ptav.name"/>
-                                                    </label>
-                                                </t>
+                                                    </t>
+                                                </label>
                                             </t>
                                         </div>
+                                       
                                     </div>
                                 </t>
                             </form>
@@ -91,7 +91,7 @@
                             <div class="d-flex justify-content-between align-items-start mb-3">
                                 <div class="price-display">
                                     <div class="text-muted text-decoration-line-through small">£29.15</div>
-                                    <div class="h2 fw-bold text-danger mb-0">
+                                    <div class="h2 fw-bold text-danger mb-0 price-display">
                                         <t t-call="website_sale.product_price" />
                                     </div>
                                     <div class="x-small text-muted">per unit (exc. VAT)</div>
