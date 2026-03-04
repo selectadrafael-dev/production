@@ -1,18 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <template id="gift_custom_product_page" inherit_id="website_sale.product">
-        
-        <!-- 1. HIDE default details sidebar -->
-        <xpath expr="//div[@id='product_details']" position="attributes">
-            <attribute name="class" add="d-none" separator=" " />
-        </xpath>
-
-        <!-- 2. HIDE default gallery -->
-        <xpath expr="//div[@id='o-carousel-product']/.." position="attributes">
-            <attribute name="class" add="d-none" separator=" " />
-        </xpath>
-
-        <!-- 3. INJECT custom layout inside the main section -->
         <xpath expr="//section[@id='product_detail']" position="inside">
             
             <!-- TOP ORANGE BANNER -->
@@ -28,6 +16,7 @@
                     <div class="col-lg-5 col-12 sticky-gallery">
                         <div class="border rounded p-3 bg-white position-relative shadow-sm text-center">
                             <span class="badge rounded-pill bg-danger position-absolute top-0 end-0 m-3 p-3" style="font-size: 1.2rem; z-index: 10;">15% OFF</span>
+                            <!-- Placeholder for Carousel -->
                             <div id="gift_gallery_hook"></div>
                         </div>
                     </div>
@@ -37,7 +26,7 @@
                         <h1 t-field="product.name" class="h2 fw-bold mb-1" />
                         <div class="text-muted mb-4 small">Product Code: <span t-field="product.default_code" /></div>
                         
-                        <!-- JS moves variant buttons here -->
+                        <!-- Placeholder for Variant Buttons -->
                         <div id="gift_variant_hook" class="mb-5"></div>
 
                         <!-- QUANTITY TIERS GRID -->
@@ -77,18 +66,15 @@
                             </div>
                             <button class="btn btn-primary w-100 py-3 fw-bold mb-2 shadow-sm" style="background-color: #002D5B; border: none;">Add To Quote</button>
                             <button class="btn btn-warning w-100 py-2 fw-bold mb-2" style="background-color: #FFB800; border: none;">Need Ideas?</button>
-                            <div class="text-center small text-muted my-2">OR</div>
-                            <button class="btn btn-outline-secondary w-100 py-2 mb-3">Buy 1 Sample</button>
-
+                            
                             <div class="satisfaction-box mt-4 pt-3 border-top text-start">
                                 <div class="small fw-bold text-primary mb-1">EverythingBranded Satisfaction Guaranteed</div>
                                 <div class="small text-muted mb-2">Over 20,000+ reviews ⭐⭐⭐⭐⭐</div>
-                                <button class="btn btn-light btn-sm w-100 mt-2 border">Chat Now</button>
                             </div>
                         </div>
-                    </div> <!-- End Col 3 -->
-                </div> <!-- End Row -->
-            </div> <!-- End Container -->
+                    </div>
+                </div>
+            </div>
         </xpath>
     </template>
 </odoo>
