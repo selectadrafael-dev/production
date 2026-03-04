@@ -1,9 +1,16 @@
 /* =====================================
 Hide default Odoo product layout safely
 ===================================== */
-.oe_website_sale [data-name="Product Page"],
-#product_detail_main {
-/*display: none !important;*/
+div#product_detail_main, 
+div[data-name="Product Page"],
+.oe_website_sale > .row:first-of-type,
+#product_details {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    pointer-events: none !important;
 }
 
 /* =========================================

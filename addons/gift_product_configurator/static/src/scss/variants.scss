@@ -1,16 +1,3 @@
-/* 1. HIDE DEFAULT ODOO SECTION (Targeting by ID or Data-Name) */
-div#product_detail_main, 
-div[data-name="Product Page"],
-.oe_website_sale > .row:first-of-type,
-#product_details {
-    display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    position: absolute !important;
-    pointer-events: none !important;
-}
-
 /* 2. STICKY SIDEBARS LOGIC */
 .sticky-gallery, .sticky-sidebar {
     position: -webkit-sticky !important;
