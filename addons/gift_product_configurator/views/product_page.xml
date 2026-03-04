@@ -27,7 +27,7 @@
                         <div class="text-muted mb-4 small">Product Code: <span t-field="product.default_code" /></div>
                         
                         <!-- Placeholder for Variant Buttons -->
-                        <div id="gift_variant_hook" class="mb-5"></div>
+                        <!--div id="gift_variant_hook" class="mb-5"></div-->
 
                         <!-- DYNAMIC VARIANTS LOOP -->
                         <div id="gift_variant_container" class="js_add_cart_variants">
