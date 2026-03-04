@@ -61,7 +61,11 @@
                                t-att-value="product.id"/>
 
                         <!-- VARIANTS -->
-                        <ul class="list-unstyled js_add_cart_variants">
+                        <!--ul class="list-unstyled js_add_cart_variants"-->
+                        <ul class="list-unstyled js_add_cart_variants"
+                                t-att-data-attribute_exclusions="product._get_attribute_exclusions()"
+                                t-att-data-parent_exclusions="{}"
+                                t-att-data-archived_combinations="[]">
 
                             <t t-foreach="product.attribute_line_ids" t-as="line">
 
