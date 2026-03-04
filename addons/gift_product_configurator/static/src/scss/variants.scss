@@ -25,3 +25,34 @@
 .variant-radio:checked + .color-circle {
   border: 2px solid #2b6cb0;
 }
+
+/* STICKY BEHAVIOR */
+.sticky-gallery, .sticky-sidebar {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 20px;
+    align-self: flex-start;
+}
+
+/* RE-STYLE ODOO VARIANT BUTTONS */
+#gift_variant_hook .variant_attribute label {
+    border: 1px solid #ced4da;
+    padding: 10px 18px;
+    border-radius: 4px;
+    margin-right: 6px;
+    cursor: pointer;
+    background: #fff;
+}
+
+#gift_variant_hook .variant_attribute label:has(input:checked),
+#gift_variant_hook .variant_attribute label.active {
+    border-color: #002D5B !important;
+    background-color: #f0f7ff !important;
+    color: #002D5B;
+    box-shadow: 0 0 0 1px #002D5B;
+    font-weight: 600;
+}
+
+#gift_variant_hook input[type="radio"] {
+    display: none; /* Hide Odoo dots */
+}
