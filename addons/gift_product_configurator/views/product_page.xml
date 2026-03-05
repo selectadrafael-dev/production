@@ -41,6 +41,8 @@
                     Product Code: <t t-esc="product.default_code"/>
                 </div>
 
+                <div id="product_option_blocks" style="display:none"></div>
+
                 <!-- REAL ODOO PRODUCT FORM -->
 <div class="js_product js_main_product"
      t-att-data-product-template-id="product.id">
