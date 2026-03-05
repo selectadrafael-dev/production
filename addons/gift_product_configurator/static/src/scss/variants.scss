@@ -35,15 +35,16 @@
 
 
 /* hide radio */
-
-.variant_attribute:not([data-attribute_name="color"]) input[type="radio"]{
-    display:none;
+.variant_attribute:not([data-attribute_name="Color"]) input[type="radio"],
+.variant_attribute:not([data-attribute_name="color"])  input[type="radio"]{
+ display:none;
 }
 
 
 /* clickable label */
 
-.variant_attribute:not([data-attribute_name="color"]) label{
+.variant_attribute:not([data-attribute_name="color"]) label, 
+.variant_attribute:not([data-attribute_name="Color"]) label{
     width:100%;
     cursor:pointer;
 }
@@ -51,7 +52,8 @@
 
 /* button design */
 
-.variant_attribute:not([data-attribute_name="color"]) .radio_input_value{
+.variant_attribute:not([data-attribute_name="color"]) .radio_input_value,
+.variant_attribute:not([data-attribute_name="Color"]) .radio_input_value{
     display:flex;
     justify-content:center;
     align-items:center;
@@ -72,14 +74,16 @@
 
 /* hover */
 
-.variant_attribute:not([data-attribute_name="color"]) label:hover .radio_input_value{
+.variant_attribute:not([data-attribute_name="color"]) label:hover .radio_input_value,
+.variant_attribute:not([data-attribute_name="Color"]) label:hover .radio_input_value{
     border-color:#000;
 }
 
 
 /* selected */
 
-.variant_attribute:not([data-attribute_name="color"]) input[type="radio"]:checked + .radio_input_value{
+.variant_attribute:not([data-attribute_name="color"]) input[type="radio"]:checked + .radio_input_value,
+variant_attribute:not([data-attribute_name="Color"]) input[type="radio"]:checked + .radio_input_value{
     border-color:#0d6efd;
     background:#e9f3ff;
 }
@@ -91,7 +95,8 @@
    (explicit reset)
 ========================================= */
 
-.variant_attribute[data-attribute_name="color"] ul{
+.variant_attribute[data-attribute_name="color"] ul,
+.variant_attribute[data-attribute_name="Color"] ul{
     display:flex !important;
     flex-wrap:wrap;
     gap:10px;
@@ -100,14 +105,16 @@
 
 /* ensure color radios visible */
 
-.variant_attribute[data-attribute_name="color"] input[type="radio"]{
+.variant_attribute[data-attribute_name="color"] input[type="radio"],
+.variant_attribute[data-attribute_name="Color"] input[type="radio"]{
     display:inline-block !important;
 }
 
 
 /* remove button styles */
 
-.variant_attribute[data-attribute_name="color"] .radio_input_value{
+.variant_attribute[data-attribute_name="color"] .radio_input_value,
+.variant_attribute[data-attribute_name="Color"] .radio_input_value{
     display:inline-flex;
     border:none !important;
     padding:0 !important;
@@ -134,7 +141,8 @@
 
 @media(max-width:768px){
 
-.variant_attribute:not([data-attribute_name="color"]) > ul{
+.variant_attribute:not([data-attribute_name="color"]) > ul, 
+.variant_attribute:not([data-attribute_name="Color"]) > ul{
     grid-template-columns:repeat(auto-fill,minmax(70px,1fr));
 }
 
