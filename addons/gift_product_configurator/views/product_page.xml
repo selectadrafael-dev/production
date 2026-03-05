@@ -5,7 +5,7 @@
 
     <xpath expr="//div[@id='product_detail_main']" position="inside">
 
-        <!-- Your custom wrapper -->
+        <!--Your custom wrapper-->
          <div class="gift-top-banner">
 
               <a href="/bestsellers"
