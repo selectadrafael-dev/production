@@ -51,20 +51,17 @@
 
 
             <!-- ODOO PRODUCT FORM -->
-           <!-- ODOO PRODUCT WRAPPER -->
-<div class="js_product js_main_product"
+          <div class="js_product js_main_product"
      t-att-data-product-template-id="product.id">
 
 <form action="/shop/cart/update"
       method="POST"
       class="oe_website_sale">
 
-    <!-- CSRF -->
     <input type="hidden"
            name="csrf_token"
            t-att-value="request.csrf_token()"/>
 
-    <!-- REQUIRED -->
     <input type="hidden"
            name="product_template_id"
            t-att-value="product.id"/>
@@ -73,11 +70,11 @@
            name="product_id"
            t-att-value="product.product_variant_id.id"/>
 
-    <!-- REQUIRED ODOO HOOK -->
+    <!-- Odoo hooks -->
     <div id="product_option_block"></div>
     <div id="product_option_blocks"></div>
 
-    <!-- VARIANTS -->
+    <!-- variants -->
     <ul class="list-unstyled js_add_cart_variants"
         t-att-data-attribute_exclusions="product._get_attribute_exclusions()"
         t-att-data-parent_exclusions="{}"
@@ -86,42 +83,24 @@
         <t t-foreach="product.attribute_line_ids" t-as="line">
 
             <li class="variant_attribute"
-                t-att-data-attribute_id="line.attribute_id.id"
-                t-att-data-attribute_display_type="line.attribute_id.display_type">
+                t-att-data-attribute_id="line.attribute_id.id">
 
-                <div class="config-block">
+                <t t-foreach="line.product_template_value_ids" t-as="ptav">
 
-                    <div class="config-header">
-                        <t t-esc="line.attribute_id.name"/>
-                    </div>
+                    <label>
 
-                    <div class="variant-options">
+                        <input type="radio"
+                               class="js_variant_change"
+                               t-att-name="'ptal-%s' % line.attribute_id.id"
+                               t-att-value="ptav.id"/>
 
-                        <t t-foreach="line.product_template_value_ids" t-as="ptav">
+                        <span>
+                            <t t-esc="ptav.name"/>
+                        </span>
 
-                            <t t-set="checked"
-                               t-value="ptav.id in product.product_variant_id.product_template_attribute_value_ids.ids"/>
+                    </label>
 
-                            <label class="variant-btn">
-
-                                <input type="radio"
-                                       class="js_variant_change"
-                                       t-att-name="'ptal-%s' % line.attribute_id.id"
-                                       t-att-value="ptav.id"
-                                       t-att-data-attribute_value_id="ptav.id"
-                                       t-att-checked="checked"/>
-
-                                <span>
-                                    <t t-esc="ptav.name"/>
-                                </span>
-
-                            </label>
-
-                        </t>
-
-                    </div>
-
-                </div>
+                </t>
 
             </li>
 
@@ -130,8 +109,8 @@
     </ul>
 
 </form>
-</div>
 
+</div>
 
             <!-- PRINT METHOD -->
             <div class="config-block">
