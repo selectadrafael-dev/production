@@ -74,6 +74,7 @@
            t-att-value="product.product_variant_id.id"/>
 
     <!-- REQUIRED ODOO HOOK -->
+    <div id="product_option_block"></div>
     <div id="product_option_blocks"></div>
 
     <!-- VARIANTS -->
