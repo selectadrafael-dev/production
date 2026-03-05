@@ -13,6 +13,10 @@ div[data-name="Product Page"],
     pointer-events: none !important;*/
 }
 
+#product_detail > .row:first-child {
+    display:none;
+}
+
 /* =========================================
 MAIN LAYOUT — 3 COLUMN CONFIGURATOR
 ========================================= */
