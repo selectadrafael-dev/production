@@ -17,7 +17,7 @@
               </a>
             </div>
 
-             <div id="middle_content_container_main" class="middle_content_container_main">
+<div id="middle_content_container_main"    class="middle_content_container_main">
                 <div class="gift-configurator">
                     <form method="post">
                         <!-- PRINT METHOD -->
@@ -85,7 +85,7 @@
                          <!-- QUANTITY TIERS -->
                     </form>
                 </div>
-            </div>
+</div>
 
              <!-- ===================================== -->
             <!-- RIGHT: QUOTE PANEL -->

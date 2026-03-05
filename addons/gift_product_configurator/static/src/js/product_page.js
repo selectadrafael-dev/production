@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const banner = productSection.querySelector(".gift-top-banner");
 
-    if (banner) {
+    if (banner && productSection.firstElementChild !== banner) {
         productSection.insertBefore(banner, productSection.firstElementChild);
     }
 
@@ -21,91 +21,64 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!mainRow) return;
 
     /* -------------------------------------------------
-       3. CREATE 3 COLUMN WRAPPERS
+       3. SAVE EXISTING NODES BEFORE CHANGING DOM
+    ------------------------------------------------- */
+
+    const images = mainRow.querySelector(".o_wsale_product_images");
+    const details = mainRow.querySelector("#product_details");
+    const quoteDeal = document.querySelector("#add-to-quote-deal");
+    const middleContainer = document.querySelector("#middle_content_container_main");
+
+    /* -------------------------------------------------
+       4. CREATE 3 COLUMN WRAPPERS
     ------------------------------------------------- */
 
     const leftCol = document.createElement("div");
     const middleCol = document.createElement("div");
     const rightCol = document.createElement("div");
 
-    leftCol.setAttribute("id", "gift-product-left");
-    middleCol.setAttribute("id", "gift-product-middle");
-    rightCol.setAttribute("id", "gift-product-right");
+    leftCol.id = "gift-product-left";
+    middleCol.id = "gift-product-middle";
+    rightCol.id = "gift-product-right";
 
     leftCol.className = "gift-product-column";
     middleCol.className = "gift-product-column";
     rightCol.className = "gift-product-column";
 
     /* -------------------------------------------------
-       4. TARGET EXISTING ODOO BLOCKS
+       5. CLEAR ORIGINAL ROW
     ------------------------------------------------- */
 
-    const images = mainRow.querySelector(".o_wsale_product_images");
-    const details = mainRow.querySelector("#product_details");
-    const quoteDeal = document.querySelector("#add-to-quote-deal");
+    mainRow.innerHTML = "";
 
     /* -------------------------------------------------
-       5. MOVE ELEMENTS INTO NEW COLUMNS
+       6. BUILD NEW STRUCTURE
     ------------------------------------------------- */
 
     if (images) leftCol.appendChild(images);
 
     if (details) middleCol.appendChild(details);
 
+    if (middleContainer) middleCol.appendChild(middleContainer);
+
     if (quoteDeal) rightCol.appendChild(quoteDeal);
-
-    /* -------------------------------------------------
-       6. CLEAN ORIGINAL ROW
-    ------------------------------------------------- */
-
-    mainRow.innerHTML = "";
 
     mainRow.appendChild(leftCol);
     mainRow.appendChild(middleCol);
     mainRow.appendChild(rightCol);
 
     /* -------------------------------------------------
-       7. MOVE EXISTING MIDDLE CONTENT CONTAINER
+       7. PLACE CONTAINER INSIDE CTA WRAPPER
     ------------------------------------------------- */
-   function moveMiddleContainer() {
 
     const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
-   // const middleContainer = document.querySelector("#middle-content-container-main");
-
-    const middleContainer = document.querySelector("#middle_content_container_main");
-
-    if (!ctaWrapper || !middleContainer) return;
-
-    /* already in correct position */
-    if (ctaWrapper.firstElementChild === middleContainer) return;
-
-    ctaWrapper.insertBefore(middleContainer, ctaWrapper.firstElementChild);
-}
-
-
-/* ---------------------------------------
-   OBSERVE ODOO DOM CHANGES
---------------------------------------- */
-
-const observer = new MutationObserver(function () {
-
-    const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
-    const middleContainer = document.querySelector("#middle-content-container-main");
 
     if (ctaWrapper && middleContainer) {
 
-        moveMiddleContainer();
+        if (ctaWrapper.firstElementChild !== middleContainer) {
+            ctaWrapper.prepend(middleContainer);
+        }
 
-        /* stop observing once successful */
-        observer.disconnect();
     }
-
-});
-
-observer.observe(document.body, {
-    childList: true,
-    subtree: true
-});
-   
 
 });
