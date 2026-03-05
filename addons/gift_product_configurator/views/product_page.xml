@@ -4,9 +4,9 @@
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
 
     <!-- Insert custom layout safely -->
-    <xpath expr="//section[@id='product_detail']" position="inside">
+   <xpath expr="//div[@id='product_detail_main']" position="replace">
 
-    <section id="gift_custom_wrapper">
+    <section id="gift_custom_wrapper" class="oe_website_sale container my-3 my-lg-4">
 
     <div class="oe_website_sale container my-3 my-lg-4">
 
