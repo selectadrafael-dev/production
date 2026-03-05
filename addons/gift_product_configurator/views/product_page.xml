@@ -3,7 +3,7 @@
 
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
     <!-- Replace default product layout -->
-    <xpath expr="//section[@id='product_detail']/*" position="replace">
+    <xpath expr="//section[@id='product_detail']" position="replace">
 
 
     <!--section id="product_detail" class="oe_website_sale container my-3 my-lg-4"-->
