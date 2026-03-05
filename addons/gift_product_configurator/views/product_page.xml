@@ -6,7 +6,16 @@
     <xpath expr="//div[@id='product_detail_main']" position="inside">
 
         <!-- Your custom wrapper -->
-        <div id="gift-custom-layout"></div>
+         <div class="gift-top-banner">
+
+              <a href="/bestsellers"
+              class="banner-link">
+
+                  ⭐ CLICK HERE FOR OUR MOST POPULAR PICKS ⭐
+                  <span>Buy tried and tested items customers love</span>
+
+              </a>
+            </div>
 
     </xpath>
 
