@@ -34,6 +34,19 @@ Hide default Odoo product layout safely
     top:120px;
 }
 
+#gift-product-left {
+    align-self: flex-start;
+}
+
+#gift-product-left .o_wsale_product_images {
+    position: sticky;
+    top: 120px;
+}
+#product_detail_main,
+#gift-product-left {
+    overflow: visible;
+}
+
 @media(max-width:991px){
 
     #product_detail_main{
