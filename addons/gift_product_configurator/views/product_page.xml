@@ -17,12 +17,109 @@
               </a>
             </div>
 
-             <div id="add-to-quote-deal">
-                quote btn
-            </div>
-           
              <div id="middle-content-container-main">
-               middle contents
+                <div class="gift-configurator">
+                    <form method="post">
+                        <!-- PRINT METHOD -->
+                        <div class="config-block">
+                            <div class="config-header">Print Method</div>
+                            <select class="form-select">
+                                <option>Branded</option>
+                                <option>Digital</option>
+                                <option>Screen Print</option>
+                            </select>
+                        </div> 
+
+                         <!-- LOGO COLOURS -->
+                        <div class="config-block">
+                            <div class="config-header">Logo Colours</div>
+                            <select class="form-select">
+                                <option>1 colour</option>
+                                <option>2 colours</option>
+                                <option>Full colour</option>
+                            </select>
+                        </div>
+
+                            <!-- QUANTITY TIERS -->
+                        <div class="config-block">
+
+                            <div class="config-header">Quantity</div>
+
+                            <div id="qty_tiers">
+
+                                <div class="tier-card active">
+                                    <strong>50+</strong>
+                                    <div id="actual_price">
+                                        <span class="price">£7.71</span>
+                                    </div>
+                                
+                                </div>
+
+                                <div class="tier-card popular">
+                                    <strong>100+</strong>
+                                    <span>£5.40 each</span>
+                                </div>
+
+                                <div class="tier-card">
+                                    <strong>250+</strong>
+                                    <span>£4.80 each</span>
+                                </div>
+
+                                <div class="tier-card">
+                                    <strong>500+</strong>
+                                    <span>£4.10 each</span>
+                                </div>
+
+                            </div>
+
+                            <div class="divider">OR</div>
+
+                            <!-- MANUAL QTY -->
+                            <div class="custom-qty">
+                                <button type="button" class="qty-minus">−</button>
+                                <input type="number" value="50"/>
+                                <button type="button" class="qty-plus">+</button>
+                            </div>
+
+                        </div>
+                         <!-- QUANTITY TIERS -->
+                    </form>
+                </div>
+            </div>
+
+             <!-- ===================================== -->
+            <!-- RIGHT: QUOTE PANEL -->
+            <!-- ===================================== -->
+            <div id="add-to-quote-deal">
+                 <div class="gift-quote-panel">
+                <!--product price-->
+                <div class="price-display">
+                    <!--span class="price">£7.71</span-->
+                    <span class="price">£</span><t t-call="website_sale.product_price" />
+                    <div class="per-unit">per unit (exc. VAT)</div>
+                </div>
+
+                <button
+                class="js-add-quote btn-quote"
+                t-att-data-product-id="product.product_variant_id.id"
+                t-att-data-product-name="product.name"
+                t-att-data-product-image="product.image_1920 and ('/web/image/product.product/' + str(product.product_variant_id.id) + '/image_1920')"
+                data-product-price="7.71"
+                >
+                Create Quote
+                </button>
+
+                <button class="btn-ideas">
+                    Need Ideas?
+                </button>
+
+                <div class="divider">OR</div>
+
+                <button class="btn-sample">
+                    Buy 1 Sample
+                </button>
+
+            </div>
             </div>
 
     </xpath>

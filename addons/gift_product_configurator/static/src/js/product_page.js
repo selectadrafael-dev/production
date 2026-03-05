@@ -1,7 +1,6 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     const productSection = document.querySelector("section#product_detail.oe_website_sale");
-
     if (!productSection) return;
 
     /* -------------------------------------------------
@@ -19,7 +18,6 @@ document.addEventListener("DOMContentLoaded", function () {
     ------------------------------------------------- */
 
     const mainRow = document.querySelector("#product_detail_main");
-
     if (!mainRow) return;
 
     /* -------------------------------------------------
@@ -67,17 +65,15 @@ document.addEventListener("DOMContentLoaded", function () {
     mainRow.appendChild(rightCol);
 
     /* -------------------------------------------------
-       7. INSERT MIDDLE CONTENT CONTAINER
+       7. MOVE EXISTING MIDDLE CONTENT CONTAINER
     ------------------------------------------------- */
 
     const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
+    const middleContainer = document.querySelector("#middle-content-container-main");
 
-    if (ctaWrapper && !document.querySelector("#middle-content-container-main")) {
+    if (ctaWrapper && middleContainer) {
 
-        const middleContainer = document.createElement("div");
-
-        middleContainer.setAttribute("id", "middle-content-container-main");
-
+        /* move existing div */
         ctaWrapper.insertBefore(middleContainer, ctaWrapper.firstChild);
 
     }
