@@ -67,15 +67,29 @@ document.addEventListener("DOMContentLoaded", function () {
     /* -------------------------------------------------
        7. MOVE EXISTING MIDDLE CONTENT CONTAINER
     ------------------------------------------------- */
+/* -------------------------------------------------
+   7. MOVE EXISTING MIDDLE CONTENT CONTAINER
+------------------------------------------------- */
 
-    const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
-    const middleContainer = document.querySelector("#middle-content-container-main");
+    function moveMiddleContainer(){
 
-    if (ctaWrapper && middleContainer) {
+        const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
+        const middleContainer = document.querySelector("#middle-content-container-main");
 
-        /* move existing div */
-        ctaWrapper.insertBefore(middleContainer, ctaWrapper.firstChild);
+        if(!ctaWrapper || !middleContainer) return;
 
+        /* if already in correct place do nothing */
+        if(ctaWrapper.firstElementChild === middleContainer) return;
+
+        if(ctaWrapper.firstElementChild){
+            ctaWrapper.insertBefore(middleContainer, ctaWrapper.firstElementChild);
+        }else{
+            ctaWrapper.appendChild(middleContainer);
+        }
     }
+
+    /* run after page load */
+    window.addEventListener("load", moveMiddleContainer);
+   
 
 });

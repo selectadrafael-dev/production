@@ -95,7 +95,7 @@
                 <!--product price-->
                 <div class="price-display">
                     <!--span class="price">£7.71</span-->
-                    <span class="price">£</span><t t-call="website_sale.product_price" />
+                    <span class="price"></span><t t-call="website_sale.product_price" />
                     <div class="per-unit">per unit (exc. VAT)</div>
                 </div>
 
