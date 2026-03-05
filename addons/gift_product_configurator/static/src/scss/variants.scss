@@ -1,8 +1,10 @@
 /* =========================================
-   PRODUCT VARIANT BUTTON SYSTEM
-   ========================================= */
+   PRODUCT VARIANT SYSTEM
+   Safe for Odoo VariantMixin
+========================================= */
 
-/* ATTRIBUTE GROUP SPACING */
+
+/* ATTRIBUTE GROUP */
 
 .variant_attribute{
     margin-bottom:20px;
@@ -19,11 +21,10 @@
 }
 
 
+
 /* =========================================
    NON-COLOR VARIANTS → BUTTON STYLE
-   ========================================= */
-
-/* grid layout */
+========================================= */
 
 .variant_attribute:not([data-attribute_display_type="color"]) ul{
     display:grid;
@@ -40,7 +41,7 @@
 }
 
 
-/* clickable labels */
+/* clickable label */
 
 .variant_attribute:not([data-attribute_display_type="color"]) label{
     width:100%;
@@ -48,7 +49,7 @@
 }
 
 
-/* button appearance */
+/* button look */
 
 .variant_attribute:not([data-attribute_display_type="color"]) .radio_input_value{
     display:flex;
@@ -76,54 +77,67 @@
 }
 
 
-/* active state */
+/* selected */
 
 .variant_attribute:not([data-attribute_display_type="color"]) input[type="radio"]:checked + .radio_input_value{
     border-color:#0d6efd;
     background:#e9f3ff;
-    color:#000;
 }
 
 
+
 /* =========================================
-   COLOR VARIANTS (KEEP NATIVE SWATCHES)
-   ========================================= */
+   COLOR VARIANTS
+   (leave Odoo default behaviour)
+========================================= */
 
 .variant_attribute[data-attribute_display_type="color"] ul{
     display:flex;
     flex-wrap:wrap;
-    gap:10px;
+    gap:12px;
+    padding:0;
 }
 
 
-/* ensure radios remain visible */
+/* ensure color radios stay visible */
 
 .variant_attribute[data-attribute_display_type="color"] input[type="radio"]{
     display:inline-block;
 }
 
 
-/* remove button styling */
+/* reset styles applied by button layout */
+
+.variant_attribute[data-attribute_display_type="color"] label{
+    width:auto;
+    cursor:pointer;
+}
+
+
+/* remove button styling completely */
 
 .variant_attribute[data-attribute_display_type="color"] .radio_input_value{
+    display:inline-flex;
     border:none;
     padding:0;
     background:transparent;
 }
 
 
+
 /* =========================================
-   FIX LABEL ALIGNMENT
-   ========================================= */
+   LABEL ALIGNMENT FIX
+========================================= */
 
 .variant_attribute label{
     margin:0;
 }
 
 
+
 /* =========================================
-   OPTIONAL: MOBILE IMPROVEMENT
-   ========================================= */
+   MOBILE IMPROVEMENT
+========================================= */
 
 @media(max-width:768px){
 
