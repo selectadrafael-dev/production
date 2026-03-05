@@ -1,17 +1,15 @@
 /* =========================================
-   PRODUCT VARIANT SYSTEM
-   Safe for Odoo VariantMixin
+   VARIANT BASE SPACING
 ========================================= */
-
-
-/* ATTRIBUTE GROUP */
 
 .variant_attribute{
     margin-bottom:20px;
 }
 
 
-/* ATTRIBUTE TITLE */
+/* =========================================
+   ATTRIBUTE TITLE
+========================================= */
 
 .variant_attribute .attribute_name{
     display:flex;
@@ -23,10 +21,12 @@
 
 
 /* =========================================
-   NON-COLOR VARIANTS → BUTTON STYLE
+   NON-COLOR VARIANTS → BUTTONS
 ========================================= */
 
-.variant_attribute:not([data-attribute_display_type="color"]) ul{
+/* layout */
+
+.variant_attribute:not([data-attribute_display_type="color"]) > ul{
     display:grid;
     grid-template-columns:repeat(auto-fill,minmax(90px,1fr));
     gap:10px;
@@ -34,7 +34,7 @@
 }
 
 
-/* hide radios ONLY for non-color */
+/* hide radio */
 
 .variant_attribute:not([data-attribute_display_type="color"]) input[type="radio"]{
     display:none;
@@ -49,7 +49,7 @@
 }
 
 
-/* button look */
+/* button design */
 
 .variant_attribute:not([data-attribute_display_type="color"]) .radio_input_value{
     display:flex;
@@ -88,60 +88,53 @@
 
 /* =========================================
    COLOR VARIANTS
-   (leave Odoo default behaviour)
+   (explicit reset)
 ========================================= */
 
 .variant_attribute[data-attribute_display_type="color"] ul{
-    display:flex;
+    display:flex !important;
     flex-wrap:wrap;
-    gap:12px;
-    padding:0;
+    gap:10px;
 }
 
 
-/* ensure color radios stay visible */
+/* ensure color radios visible */
 
 .variant_attribute[data-attribute_display_type="color"] input[type="radio"]{
-    display:inline-block;
+    display:inline-block !important;
 }
 
 
-/* reset styles applied by button layout */
-
-.variant_attribute[data-attribute_display_type="color"] label{
-    width:auto;
-    cursor:pointer;
-}
-
-
-/* remove button styling completely */
+/* remove button styles */
 
 .variant_attribute[data-attribute_display_type="color"] .radio_input_value{
     display:inline-flex;
-    border:none;
-    padding:0;
-    background:transparent;
+    border:none !important;
+    padding:0 !important;
+    background:none !important;
 }
 
 
 
 /* =========================================
-   LABEL ALIGNMENT FIX
+   FIX ODOO COLOR SWATCH SIZE
 ========================================= */
 
-.variant_attribute label{
-    margin:0;
+.css_attribute_color{
+    width:32px;
+    height:32px;
+    border-radius:50%;
 }
 
 
 
 /* =========================================
-   MOBILE IMPROVEMENT
+   MOBILE
 ========================================= */
 
 @media(max-width:768px){
 
-.variant_attribute:not([data-attribute_display_type="color"]) ul{
+.variant_attribute:not([data-attribute_display_type="color"]) > ul{
     grid-template-columns:repeat(auto-fill,minmax(70px,1fr));
 }
 
