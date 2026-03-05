@@ -67,29 +67,43 @@ document.addEventListener("DOMContentLoaded", function () {
     /* -------------------------------------------------
        7. MOVE EXISTING MIDDLE CONTENT CONTAINER
     ------------------------------------------------- */
-/* -------------------------------------------------
-   7. MOVE EXISTING MIDDLE CONTENT CONTAINER
-------------------------------------------------- */
+   function moveMiddleContainer() {
 
-    function moveMiddleContainer(){
+    const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
+    const middleContainer = document.querySelector("#middle-content-container-main");
 
-        const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
-        const middleContainer = document.querySelector("#middle-content-container-main");
+    if (!ctaWrapper || !middleContainer) return;
 
-        if(!ctaWrapper || !middleContainer) return;
+    /* already in correct position */
+    if (ctaWrapper.firstElementChild === middleContainer) return;
 
-        /* if already in correct place do nothing */
-        if(ctaWrapper.firstElementChild === middleContainer) return;
+    ctaWrapper.insertBefore(middleContainer, ctaWrapper.firstElementChild);
+}
 
-        if(ctaWrapper.firstElementChild){
-            ctaWrapper.insertBefore(middleContainer, ctaWrapper.firstElementChild);
-        }else{
-            ctaWrapper.appendChild(middleContainer);
-        }
+
+/* ---------------------------------------
+   OBSERVE ODOO DOM CHANGES
+--------------------------------------- */
+
+const observer = new MutationObserver(function () {
+
+    const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
+    const middleContainer = document.querySelector("#middle-content-container-main");
+
+    if (ctaWrapper && middleContainer) {
+
+        moveMiddleContainer();
+
+        /* stop observing once successful */
+        observer.disconnect();
     }
 
-    /* run after page load */
-    window.addEventListener("load", moveMiddleContainer);
+});
+
+observer.observe(document.body, {
+    childList: true,
+    subtree: true
+});
    
 
 });
