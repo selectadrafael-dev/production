@@ -8,10 +8,19 @@ document.addEventListener('DOMContentLoaded', function () {
     console.log('[GIFT CONFIGURATOR] DOM Ready');
 
     // ======================================
-    // Locate the native Odoo product form
+    // Find product container
     // ======================================
 
-    const form = document.querySelector('form[action="/shop/cart/update"]');
+    const productContainer = document.querySelector('.js_product');
+
+    if (!productContainer) {
+        console.error('[GIFT CONFIGURATOR] js_product container not found');
+        return;
+    }
+
+    console.log('[GIFT CONFIGURATOR] Product container detected');
+
+    const form = productContainer.querySelector('form');
 
     if (!form) {
         console.error('[GIFT CONFIGURATOR] Product form not found');
@@ -24,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Listen for variant change
     // ======================================
 
-    form.addEventListener('change', function (e) {
+    productContainer.addEventListener('change', function (e) {
 
         if (!e.target.classList.contains('js_variant_change')) {
             return;
@@ -32,7 +41,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         console.log('[GIFT CONFIGURATOR] Variant change detected:', e.target.value);
 
-        // Allow Odoo VariantMixin to update internally first
+        // allow Odoo VariantMixin to finish first
         setTimeout(updateUIFromNativeState, 200);
 
     });
@@ -45,10 +54,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         console.log('[GIFT CONFIGURATOR] Syncing UI from native variant state');
 
-        // ----------------------------------
-        // 1️⃣ Get resolved variant ID
-        // ----------------------------------
-
+        // 1️⃣ Get variant ID
         const productIdInput = form.querySelector('input[name="product_id"]');
 
         if (!productIdInput) {
@@ -60,10 +66,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         console.log('[GIFT CONFIGURATOR] Active Variant ID:', newProductId);
 
-        // ----------------------------------
         // 2️⃣ Update product image
-        // ----------------------------------
-
         const mainImage = document.querySelector('.main-product-image');
 
         if (mainImage) {
@@ -81,10 +84,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         }
 
-        // ----------------------------------
-        // 3️⃣ Mirror native price
-        // ----------------------------------
-
+        // 3️⃣ Sync price
         const nativePriceEl = document.querySelector('.oe_price .oe_currency_value');
         const customPriceEl = document.querySelector('.price');
 
@@ -98,11 +98,8 @@ document.addEventListener('DOMContentLoaded', function () {
             const numericPrice = parseFloat(nativePrice.replace(/[^\d.]/g, ''));
 
             if (!isNaN(numericPrice)) {
-
                 customPriceEl.textContent = symbol + numericPrice.toFixed(2);
-
                 console.log('[GIFT CONFIGURATOR] Price updated:', numericPrice);
-
             }
 
         } else {
@@ -111,18 +108,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
         }
 
-        // ----------------------------------
-        // 4️⃣ Sync quote button
-        // ----------------------------------
-
+        // 4️⃣ Update quote button
         const quoteBtn = document.querySelector('.js-add-quote');
 
         if (quoteBtn) {
-
             quoteBtn.dataset.productId = newProductId;
-
             console.log('[GIFT CONFIGURATOR] Quote button updated');
-
         }
 
     }
