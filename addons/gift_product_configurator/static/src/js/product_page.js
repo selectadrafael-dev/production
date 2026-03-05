@@ -70,7 +70,9 @@ document.addEventListener("DOMContentLoaded", function () {
    function moveMiddleContainer() {
 
     const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
-    const middleContainer = document.querySelector("#middle-content-container-main");
+   // const middleContainer = document.querySelector("#middle-content-container-main");
+
+    const middleContainer = document.querySelector("#middle_content_container_main");
 
     if (!ctaWrapper || !middleContainer) return;
 
