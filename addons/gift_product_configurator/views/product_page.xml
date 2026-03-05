@@ -17,6 +17,14 @@
               </a>
             </div>
 
+             <div id="add-to-quote-deal">
+                quote btn
+            </div>
+           
+             <div id="middle-content-container-main">
+               middle contents
+            </div>
+
     </xpath>
 
 </template>

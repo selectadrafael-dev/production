@@ -1,123 +1,85 @@
-(function () {
-'use strict';
+document.addEventListener("DOMContentLoaded", function () {
 
-console.log('[GIFT CONFIGURATOR] Script Loaded');
+    const productSection = document.querySelector("section#product_detail.oe_website_sale");
 
-document.addEventListener('DOMContentLoaded', function () {
+    if (!productSection) return;
 
-    console.log('[GIFT CONFIGURATOR] DOM Ready');
+    /* -------------------------------------------------
+       1. ENSURE BANNER IS FIRST ELEMENT
+    ------------------------------------------------- */
 
-    // ======================================
-    // Find product container
-    // ======================================
+    const banner = productSection.querySelector(".gift-top-banner");
 
-    const productContainer = document.querySelector('.js_product');
-
-    if (!productContainer) {
-        console.error('[GIFT CONFIGURATOR] js_product container not found');
-        return;
+    if (banner) {
+        productSection.insertBefore(banner, productSection.firstElementChild);
     }
 
-    console.log('[GIFT CONFIGURATOR] Product container detected');
+    /* -------------------------------------------------
+       2. GET MAIN PRODUCT ROW
+    ------------------------------------------------- */
 
-    const form = productContainer.querySelector('form');
+    const mainRow = document.querySelector("#product_detail_main");
 
-    if (!form) {
-        console.error('[GIFT CONFIGURATOR] Product form not found');
-        return;
-    }
+    if (!mainRow) return;
 
-    console.log('[GIFT CONFIGURATOR] Product form detected');
+    /* -------------------------------------------------
+       3. CREATE 3 COLUMN WRAPPERS
+    ------------------------------------------------- */
 
-    // ======================================
-    // Listen for variant change
-    // ======================================
+    const leftCol = document.createElement("div");
+    const middleCol = document.createElement("div");
+    const rightCol = document.createElement("div");
 
-    productContainer.addEventListener('change', function (e) {
+    leftCol.setAttribute("id", "gift-product-left");
+    middleCol.setAttribute("id", "gift-product-middle");
+    rightCol.setAttribute("id", "gift-product-right");
 
-        if (!e.target.classList.contains('js_variant_change')) {
-            return;
-        }
+    leftCol.className = "gift-product-column";
+    middleCol.className = "gift-product-column";
+    rightCol.className = "gift-product-column";
 
-        console.log('[GIFT CONFIGURATOR] Variant change detected:', e.target.value);
+    /* -------------------------------------------------
+       4. TARGET EXISTING ODOO BLOCKS
+    ------------------------------------------------- */
 
-        // allow Odoo VariantMixin to finish first
-        setTimeout(updateUIFromNativeState, 200);
+    const images = mainRow.querySelector(".o_wsale_product_images");
+    const details = mainRow.querySelector("#product_details");
+    const quoteDeal = document.querySelector("#add-to-quote-deal");
 
-    });
+    /* -------------------------------------------------
+       5. MOVE ELEMENTS INTO NEW COLUMNS
+    ------------------------------------------------- */
 
-    // ======================================
-    // Sync custom UI with Odoo state
-    // ======================================
+    if (images) leftCol.appendChild(images);
 
-    function updateUIFromNativeState() {
+    if (details) middleCol.appendChild(details);
 
-        console.log('[GIFT CONFIGURATOR] Syncing UI from native variant state');
+    if (quoteDeal) rightCol.appendChild(quoteDeal);
 
-        // 1️⃣ Get variant ID
-        const productIdInput = form.querySelector('input[name="product_id"]');
+    /* -------------------------------------------------
+       6. CLEAN ORIGINAL ROW
+    ------------------------------------------------- */
 
-        if (!productIdInput) {
-            console.error('[GIFT CONFIGURATOR] product_id input missing');
-            return;
-        }
+    mainRow.innerHTML = "";
 
-        const newProductId = productIdInput.value;
+    mainRow.appendChild(leftCol);
+    mainRow.appendChild(middleCol);
+    mainRow.appendChild(rightCol);
 
-        console.log('[GIFT CONFIGURATOR] Active Variant ID:', newProductId);
+    /* -------------------------------------------------
+       7. INSERT MIDDLE CONTENT CONTAINER
+    ------------------------------------------------- */
 
-        // 2️⃣ Update product image
-        const mainImage = document.querySelector('.main-product-image');
+    const ctaWrapper = document.querySelector("#o_wsale_cta_wrapper");
 
-        if (mainImage) {
+    if (ctaWrapper && !document.querySelector("#middle-content-container-main")) {
 
-            mainImage.src =
-                '/web/image/product.product/' +
-                newProductId +
-                '/image_1024';
+        const middleContainer = document.createElement("div");
 
-            console.log('[GIFT CONFIGURATOR] Image updated');
+        middleContainer.setAttribute("id", "middle-content-container-main");
 
-        } else {
-
-            console.warn('[GIFT CONFIGURATOR] Main image not found');
-
-        }
-
-        // 3️⃣ Sync price
-        const nativePriceEl = document.querySelector('.oe_price .oe_currency_value');
-        const customPriceEl = document.querySelector('.price');
-
-        if (nativePriceEl && customPriceEl) {
-
-            const nativePrice = nativePriceEl.textContent.trim();
-
-            const symbolMatch = customPriceEl.textContent.trim().match(/^\D+/);
-            const symbol = symbolMatch ? symbolMatch[0] : '';
-
-            const numericPrice = parseFloat(nativePrice.replace(/[^\d.]/g, ''));
-
-            if (!isNaN(numericPrice)) {
-                customPriceEl.textContent = symbol + numericPrice.toFixed(2);
-                console.log('[GIFT CONFIGURATOR] Price updated:', numericPrice);
-            }
-
-        } else {
-
-            console.warn('[GIFT CONFIGURATOR] Price elements missing');
-
-        }
-
-        // 4️⃣ Update quote button
-        const quoteBtn = document.querySelector('.js-add-quote');
-
-        if (quoteBtn) {
-            quoteBtn.dataset.productId = newProductId;
-            console.log('[GIFT CONFIGURATOR] Quote button updated');
-        }
+        ctaWrapper.insertBefore(middleContainer, ctaWrapper.firstChild);
 
     }
 
 });
-
-})();

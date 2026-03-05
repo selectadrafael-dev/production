@@ -1,20 +1,31 @@
 /* =====================================
 Hide default Odoo product layout safely
 ===================================== */
-div#product_detail_main, 
-div[data-name="Product Page"],
-.oe_website_sale > .row:first-of-type,
-#product_details {
-    /*display: none !important;
-    visibility: hidden !important;
-    height: 0 !important;
-    overflow: hidden !important;
-    position: absolute !important;
-    pointer-events: none !important;*/
+#product_detail_main{
+    display:flex;
+    gap:30px;
 }
 
-#product_detail_main > .row:first-child{
-    display:none;
+/* LEFT */
+
+#gift-product-left{
+    flex:1;
+}
+
+/* MIDDLE (WIDER) */
+
+#gift-product-middle{
+    flex:1.5;
+}
+
+/* RIGHT */
+
+#gift-product-right{
+    flex:1;
+}
+
+.gift-product-column{
+    min-width:0;
 }
 
 /* =========================================
