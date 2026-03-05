@@ -4,179 +4,81 @@
 <template id="gift_custom_product_page" inherit_id="website_sale.product">
 
     <!-- Insert custom layout safely -->
-   <xpath expr="//div[@id='product_detail_main']" position="replace">
-
-    <section id="gift_custom_wrapper" class="oe_website_sale container my-3 my-lg-4">
-
-    <div class="oe_website_sale container my-3 my-lg-4">
-
-        <!-- TOP PROMO BANNER -->
-        <div class="gift-top-banner">
-            <a href="/bestsellers" class="banner-link">
-                ⭐ CLICK HERE FOR OUR MOST POPULAR PICKS ⭐
-                <span>Buy tried and tested items customers love</span>
-            </a>
-        </div>
-
-        <div class="gift-product-layout">
-
-        <!-- LEFT: PRODUCT IMAGE -->
-        <div class="gift-gallery">
-
-            <div class="product-image-wrapper">
-
-                <span class="flag-badge">🇬🇧</span>
-                <span class="offer-badge">SPECIAL OFFER</span>
-
-                <img
-                    t-att-src="'/web/image/product.template/%s/image_1024' % product.id"
-                    class="main-product-image"/>
-
-                <button class="nav-arrow left">‹</button>
-                <button class="nav-arrow right">›</button>
-
-            </div>
-
-        </div>
-
-
-        <!-- CENTER: PRODUCT CONFIGURATOR -->
-        <div class="gift-configurator">
-
-            <h1 t-field="product.name"/>
-
-            <div class="product-code">
-                Product Code: <t t-esc="product.default_code"/>
-            </div>
-
-
-            <!-- ODOO PRODUCT FORM -->
-<div class="js_product js_main_product" 
-     t-att-data-product-template-id="product.id" 
-     t-att-data-product-id="product.id">
-    
-    <form action="/shop/cart/update" method="POST" class="oe_website_sale">
-        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+    <xpath expr="//div[@id='product_detail_main']" position="replace">
+    <!-- Odoo JS REQUIRES #product_detail to find the layout 'dataset' -->
+    <section id="product_detail" class="oe_website_sale container my-3 my-lg-4" 
+             t-att-data-view-track-id="view_track_id" 
+             t-att-data-product-tracking-info="json.dumps(product_tracking_info) if product_tracking_info else None">
         
-        <!-- IMPORTANT: Odoo JS looks for this specific name and value to avoid the singleton error -->
-        <input type="hidden" class="product_template_id" name="product_template_id" t-att-value="product.id"/>
-        <input type="hidden" class="product_id" name="product_id" t-att-value="product_variant.id if product_variant else product.product_variant_id.id"/>
+        <div class="row" id="product_detail_main">
+            <!-- LEFT: PRODUCT IMAGE -->
+            <div class="col-md-6 gift-gallery">
+                <div class="product-image-wrapper">
+                    <span class="flag-badge">🇬🇧</span>
+                    <span class="offer-badge">SPECIAL OFFER</span>
 
-        <!-- Odoo hooks -->
-        <div id="product_option_block"></div>
-        <div id="product_option_blocks"></div>
-
-        <!-- variants -->
-        <ul class="list-unstyled js_add_cart_variants"
-            t-att-data-attribute_exclusions="product._get_attribute_exclusions()"
-            t-att-data-parent_exclusions="{}"
-            t-att-data-archived_combinations="[]">
-
-            <t t-foreach="product.attribute_line_ids" t-as="line">
-                <li class="variant_attribute" t-att-data-attribute_id="line.attribute_id.id">
-                    <strong t-field="line.attribute_id.name"/>
-                    <t t-foreach="line.product_template_value_ids" t-as="ptav">
-                        <label>
-                            <input type="radio"
-                                   class="js_variant_change"
-                                   t-att-checked="'checked' if ptav in combination else None"
-                                   t-att-name="'ptal-%s' % line.attribute_id.id"
-                                   t-att-value="ptav.id"
-                                   t-att-data-value_id="ptav.id"
-                                   t-att-data-value_name="ptav.name"/>
-                            <span>
-                                <t t-esc="ptav.name"/>
-                            </span>
-                        </label>
-                    </t>
-                </li>
-            </t>
-        </ul>
-    </form>
-</div>
-
-
-
-            <!-- PRINT METHOD -->
-            <div class="config-block">
-
-                <div class="config-header">Print Method</div>
-
-                <select class="form-select">
-                    <option>Branded</option>
-                    <option>Digital</option>
-                    <option>Screen Print</option>
-                </select>
-
+                    <!-- Odoo JS REQUIRES 'product_detail_img' class to update variant images -->
+                    <img t-if="product.image_1024"
+                         t-att-src="image_data_uri(product.image_1024)"
+                         class="img img-fluid product_detail_img main-product-image"
+                         alt="Product Image"/>
+                    
+                    <button class="nav-arrow left">‹</button>
+                    <button class="nav-arrow right">›</button>
+                </div>
             </div>
 
-
-            <!-- LOGO COLOURS -->
-            <div class="config-block">
-
-                <div class="config-header">Logo Colours</div>
-
-                <select class="form-select">
-                    <option>1 colour</option>
-                    <option>2 colours</option>
-                    <option>Full colour</option>
-                </select>
-
-            </div>
-
-        </div>
-
-
-        <!-- RIGHT: QUOTE PANEL -->
-        <div class="gift-quote-panel">
-
-            <div class="price-display">
-
-                <span class="price">
-                    <t t-call="website_sale.product_price"/>
-                </span>
-
-                <div class="per-unit">
-                    per unit (exc. VAT)
+            <!-- CENTER: PRODUCT CONFIGURATOR -->
+            <div class="col-md-6 gift-configurator">
+                <h1 t-field="product.name"/>
+                <div class="product-code" t-if="product.default_code">
+                    Product Code: <span t-field="product.default_code"/>
                 </div>
 
+                <!-- JS_PRODUCT CONTAINER -->
+                <div class="js_product js_main_product" 
+                     t-att-data-product-template-id="product.id" 
+                     t-att-data-product-id="product.id">
+                    
+                    <form action="/shop/cart/update" method="POST" class="oe_website_sale">
+                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+                        <input type="hidden" class="product_template_id" name="product_template_id" t-att-value="product.id"/>
+                        <input type="hidden" class="product_id" name="product_id" t-att-value="product_variant.id if product_variant else product.product_variant_id.id"/>
+
+                        <div id="product_option_block"></div>
+                        <div id="product_option_blocks"></div>
+
+                        <ul class="list-unstyled js_add_cart_variants" t-att-data-attribute_exclusions="product._get_attribute_exclusions()">
+                            <t t-foreach="product.attribute_line_ids" t-as="line">
+                                <li class="variant_attribute" t-att-data-attribute_id="line.attribute_id.id">
+                                    <strong t-field="line.attribute_id.name"/>
+                                    <t t-foreach="line.product_template_value_ids" t-as="ptav">
+                                        <label class="form-check-label">
+                                            <input type="radio"
+                                                   class="js_variant_change"
+                                                   t-att-checked="'checked' if ptav in combination else None"
+                                                   t-att-name="'ptal-%s' % line.attribute_id.id"
+                                                   t-att-value="ptav.id"
+                                                   t-att-data-value_id="ptav.id"/>
+                                            <span t-field="ptav.name"/>
+                                        </label>
+                                    </t>
+                                </li>
+                            </t>
+                        </ul>
+                    </form>
+                </div>
+                
+                <!-- Your Custom Selects (Print Method, etc) -->
+                <div class="config-block">
+                    <div class="config-header">Print Method</div>
+                    <select class="form-select"><option>Branded</option></select>
+                </div>
             </div>
-
-
-            <button class="js-add-quote btn-quote"
-                    t-att-data-product-id="product.product_variant_id.id"
-                    t-att-data-product-name="product.name">
-
-                Create Quote
-
-            </button>
-
-
-            <button class="btn-ideas">
-                Need Ideas?
-            </button>
-
-
-            <div class="divider">OR</div>
-
-
-            <button class="btn-sample">
-                Buy 1 Sample
-            </button>
-
         </div>
-
-        </div>
-
-
-        <!-- REQUIRED BY OTHER ODOO VIEWS -->
         <div id="o_product_terms_and_share" style="display:none"></div>
-    </div>
-
     </section>
-
-    </xpath>
-
+</xpath>
 </template>
 
 </odoo>
