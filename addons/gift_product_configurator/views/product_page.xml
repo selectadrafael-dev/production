@@ -1,3 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
 <template id="gift_custom_product_page"
           inherit_id="website_sale.product">
 
@@ -9,3 +11,4 @@
     </xpath>
 
 </template>
+</odoo>
