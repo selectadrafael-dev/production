@@ -61,7 +61,7 @@
                name="product_template_id"
                t-att-value="product.id"/>
 
-        <!-- ODOO NATIVE VARIANTS -->
+        <!--ODOO NATIVE VARIANTS -->
         <t t-call="website_sale.product_variants"/>
 
     </form>
