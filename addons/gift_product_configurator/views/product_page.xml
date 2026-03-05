@@ -7,7 +7,7 @@
 
 
     <!--section id="product_detail" class="oe_website_sale container my-3 my-lg-4"-->
-    <div class="oe_website_sale container my-3 my-lg-4">
+    <section class="oe_website_sale container my-3 my-lg-4">
 
         <!-- ===== TOP PROMO BANNER ===== -->
         <div class="gift-top-banner">
@@ -202,7 +202,9 @@
 
         </div>
 
-    </div>
+        <div id="o_product_terms_and_share" style="display:none"></div>
+
+    </section>
 
     </xpath>
 
