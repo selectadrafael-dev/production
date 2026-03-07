@@ -29,9 +29,10 @@
                             </select>
                         </div> 
 
+                       <div class="branding-fields">
                          <!-- LOGO COLOURS -->
-                        <div class="config-block branding-fields">
-                            <div class="config-header">Logo Colours</div>
+                            <div class="config-block">
+                                <div class="config-header">Logo Colours</div>
                                 <select class="form-select">
                                     <option>1 colour</option>
                                     <option>2 colours</option>
@@ -39,48 +40,50 @@
                                 </select>
                             </div>
 
-                        <!-- QUANTITY TIERS -->
-                        <div class="config-block">
+                            <!-- QUANTITY TIERS -->
+                            <div class="config-block">
 
-                            <div class="config-header">Quantity</div>
+                                <div class="config-header">Quantity</div>
 
-                            <div id="qty_tiers">
-                                <div class="tier-card active">
-                                    <strong>50+</strong>
-                                    <div id="actual_price">
-                                        <span class="price">
-                                          <t t-call="website_sale.product_price" />
-                                        </span>
+                                <div id="qty_tiers">
+                                    <div class="tier-card active">
+                                        <strong>50+</strong>
+                                        <div id="actual_price">
+                                            <span class="price">
+                                            <t t-call="website_sale.product_price" />
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="tier-card popular">
+                                        <strong>100+</strong>
+                                        <span class="price">£5.40 each</span>
+                                    </div>
+
+                                    <div class="tier-card">
+                                        <strong>250+</strong>
+                                        <span class="price">£4.80 each</span>
+                                    </div>
+
+                                    <div class="tier-card">
+                                        <strong>500+</strong>
+                                        <span class="price">£4.10 each</span>
                                     </div>
                                 </div>
 
-                                <div class="tier-card popular">
-                                    <strong>100+</strong>
-                                    <span class="price">£5.40 each</span>
-                                </div>
+                                <div class="divider">OR</div>
 
-                                <div class="tier-card">
-                                    <strong>250+</strong>
-                                    <span class="price">£4.80 each</span>
-                                </div>
-
-                                <div class="tier-card">
-                                    <strong>500+</strong>
-                                    <span class="price">£4.10 each</span>
+                                <!-- MANUAL QTY -->
+                                <div class="custom-qty">
+                                    <button type="button" class="qty-minus">−</button>
+                                    <input type="number" value="50"/>
+                                    <button type="button" class="qty-plus">+</button>
                                 </div>
                             </div>
+                            <!-- QUANTITY TIERS -->
 
-                            <div class="divider">OR</div>
-
-                            <!-- MANUAL QTY -->
-                            <div class="custom-qty">
-                                <button type="button" class="qty-minus">−</button>
-                                <input type="number" value="50"/>
-                                <button type="button" class="qty-plus">+</button>
-                            </div>
+                            <!--/form-->
                         </div>
-                         <!-- QUANTITY TIERS -->
-                    <!--/form-->
                 </div>
 </div>
 
