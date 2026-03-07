@@ -25,7 +25,7 @@ option.classList.add('active');
 QUANTITY STEPPER (+ / −)
 ========================================= */
 
-document.addEventListener('click', function (e) {
+/*document.addEventListener('click', function (e) {
 
 const plus = e.target.closest('.qty-plus');
 const minus = e.target.closest('.qty-minus');
@@ -46,6 +46,7 @@ if (minus && value > 1) value--;
 input.value = value;
 
 });
+*/
 
 /* =========================================
 TIER SELECTION → SET QUANTITY
@@ -69,8 +70,8 @@ const qty = parseInt(
   card.querySelector('strong')?.textContent
 );
 
-const input = document.querySelector('.custom-qty input');
-if (input && qty) input.value = qty;
+//const input = document.querySelector('.custom-qty input');
+//if (input && qty) input.value = qty;
 
 });
 

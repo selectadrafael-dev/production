@@ -48,7 +48,9 @@
                                 <div class="tier-card active">
                                     <strong>50+</strong>
                                     <div id="actual_price">
-                                        <span class="price">£7.71</span>
+                                        <span class="price">
+                                          <t t-call="website_sale.product_price" />
+                                        </span>
                                     </div>
                                 </div>
 
