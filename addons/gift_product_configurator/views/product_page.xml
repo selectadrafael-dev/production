@@ -19,7 +19,7 @@
 
 <div id="middle_content_container_main"    class="middle_content_container_main">
                 <div class="gift-configurator">
-                    <form method="post">
+                    <!--form method="post"-->
                         <!-- PRINT METHOD -->
                         <div class="config-block">
                             <div class="config-header">Print Method</div>
@@ -30,7 +30,7 @@
                         </div> 
 
                          <!-- LOGO COLOURS -->
-                        <div class="config-block">
+                        <div class="config-block branding-fields">
                             <div class="config-header">Logo Colours</div>
                                 <select class="form-select">
                                     <option>1 colour</option>
@@ -40,7 +40,7 @@
                             </div>
 
                         <!-- QUANTITY TIERS -->
-                        <div class="config-block branding-fields">
+                        <div class="config-block">
 
                             <div class="config-header">Quantity</div>
 
@@ -80,7 +80,7 @@
                             </div>
                         </div>
                          <!-- QUANTITY TIERS -->
-                    </form>
+                    <!--/form-->
                 </div>
 </div>
 
