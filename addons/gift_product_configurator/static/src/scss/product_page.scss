@@ -26,6 +26,14 @@ Hide default Odoo product layout safely
     max-width:100% !important;
 }
 
+#gift-product-middle .css_quantity{
+   display: none!important;
+}
+
+#gift-product-middle .add_to_cart_wrap{
+   display: none!important;
+}
+
 @media (max-width: 992px) {
     // .product_details{
     //     width: 100%!important;
