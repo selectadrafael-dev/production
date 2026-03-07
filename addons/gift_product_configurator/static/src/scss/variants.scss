@@ -94,9 +94,7 @@ variant_attribute:not([data-attribute_name="Color"]) input[type="radio"]:checked
    COLOR VARIANTS
    (explicit reset)
 ========================================= */
-
-.variant_attribute[data-attribute_name="color"] ul,
-.variant_attribute[data-attribute_name="Color"] ul{
+.variant_attribute ul{
     display:flex !important;
     flex-wrap:wrap;
     gap:10px;
@@ -141,38 +139,8 @@ variant_attribute:not([data-attribute_name="Color"]) input[type="radio"]:checked
 
 @media(max-width:768px){
 
-.variant_attribute:not([data-attribute_name="color"]) > ul, 
-.variant_attribute:not([data-attribute_name="Color"]) > ul{
+.variant_attribute > ul{
     grid-template-columns:repeat(auto-fill,minmax(70px,1fr));
 }
 
 }
-
-/* 2. STICKY SIDEBARS LOGIC
-.sticky-gallery, .sticky-sidebar {
-    position: -webkit-sticky !important;
-    position: sticky !important;
-    top: 20px;
-    align-self: flex-start;
-}
-
-#gift_variant_hook .variant_attribute label {
-    border: 1px solid #ced4da;
-    padding: 10px 18px;
-    border-radius: 4px;
-    margin-right: 6px;
-    cursor: pointer;
-    background: #fff;
-}
-
-#gift_variant_hook .variant_attribute label:has(input:checked) {
-    border-color: #002D5B !important;
-    background-color: #f0f7ff !important;
-    color: #002D5B;
-    box-shadow: 0 0 0 1px #002D5B;
-}
-
-#gift_variant_hook input[type="radio"] {
-    display: none;
-}
-*/
