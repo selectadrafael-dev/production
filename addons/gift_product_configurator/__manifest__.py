@@ -31,6 +31,7 @@
         "gift_product_configurator/static/src/scss/category_hero.scss",
         "gift_product_configurator/static/src/scss/variants.scss",
         "gift_product_configurator/static/src/js/configurator.js",
+        "gift_product_configurator/static/src/js/product_update.js",
     ],
 },
  'installable': True,
