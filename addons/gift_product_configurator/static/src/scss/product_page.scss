@@ -548,3 +548,8 @@ pointer-events: none;
 .variant-radio:checked + .color-circle {
   border: 2px solid #2b6cb0;
 }
+
+/*brand selection toogle*/
+.branding-hidden {
+    display: none !important;
+}

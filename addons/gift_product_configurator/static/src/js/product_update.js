@@ -7,7 +7,7 @@
     const printMethod = document.getElementById('print_method_select');
     if (!printMethod) return;
 
-    const brandingFields = document.querySelectorAll('.branding-fields');
+    const brandingBlocks = document.querySelectorAll('.branding-fields');
 
     function toggleBranding() {
 
@@ -15,19 +15,19 @@
 
       if (value === 'non-branded') {
 
-        /* Hide fields */
-        brandingFields.forEach(el => {
-          el.style.display = 'none';
+        // hide branding fields
+        brandingBlocks.forEach(el => {
+          el.classList.add('branding-hidden');
         });
 
       } else {
 
-        /* Show fields */
-        brandingFields.forEach(el => {
-          el.style.display = '';
+        // restore layout properly
+        brandingBlocks.forEach(el => {
+          el.classList.remove('branding-hidden');
         });
 
-        /* Refresh only when returning to branded */
+        // refresh ONLY when returning to branded
         setTimeout(() => {
           window.location.reload();
         }, 150);
