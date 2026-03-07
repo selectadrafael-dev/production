@@ -18,12 +18,18 @@ Hide default Odoo product layout safely
 #gift-product-middle{
     flex:1.5;
 }
+
 .product_details{
     width: 100%!important;
 }
 
-/* RIGHT */
+@media (max-width: 992px) {
+    .product_details{
+        width: 100%!important;
+    }
+}
 
+/* RIGHT */
 #gift-product-right{
     flex:1;
 }
@@ -66,9 +72,7 @@ Hide default Odoo product layout safely
         position:relative;
         top:auto;
     }
-
-}
-
+ }
 /* =========================================
 MAIN LAYOUT — 3 COLUMN CONFIGURATOR
 ========================================= */
