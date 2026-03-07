@@ -19,14 +19,17 @@ Hide default Odoo product layout safely
     flex:1.5;
 }
 
-.product_details{
-    width: 100%!important;
+#gift-product-middle #product_details, 
+#gift-product-left .o_wsale_product_images{
+    width:100% !important;
+    flex:0 0 100% !important;
+    max-width:100% !important;
 }
 
 @media (max-width: 992px) {
-    .product_details{
-        width: 100%!important;
-    }
+    // .product_details{
+    //     width: 100%!important;
+    // }
 }
 
 /* RIGHT */
