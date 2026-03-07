@@ -1,8 +1,7 @@
 (function () {
   'use strict';
 
-    //controling toggle middle contents
-    
+ //controling toggle middle contents
   document.addEventListener('DOMContentLoaded', function () {
 
     const printMethod = document.getElementById('print_method_select');
@@ -16,22 +15,24 @@
 
       if (value === 'non-branded') {
 
+        /* Hide fields */
         brandingFields.forEach(el => {
           el.style.display = 'none';
         });
 
       } else {
 
+        /* Show fields */
         brandingFields.forEach(el => {
           el.style.display = '';
         });
 
-      }
+        /* Refresh only when returning to branded */
+        setTimeout(() => {
+          window.location.reload();
+        }, 150);
 
-      // refresh page (like reference site)
-      setTimeout(() => {
-        window.location.reload();
-      }, 200);
+      }
 
     }
 
@@ -39,13 +40,17 @@
 
   });
 
+
   //product quantity price update
-  document.addEventListener('DOMContentLoaded', function () {
+   document.addEventListener('DOMContentLoaded', function () {
 
     const tierCards = document.querySelectorAll('#qty_tiers .tier-card');
-    const mainPrice = document.getElementById('dynamic_main_price');
+    const mainPrice = document.querySelector('.price-display .price');
 
     if (!tierCards.length || !mainPrice) return;
+
+    /* store original QWeb price */
+    const defaultPriceHTML = mainPrice.innerHTML;
 
     tierCards.forEach(card => {
 
@@ -53,20 +58,27 @@
 
         /* remove active state */
         tierCards.forEach(c => c.classList.remove('active'));
-
-        /* activate clicked card */
         this.classList.add('active');
 
-        /* get price from clicked tier */
+        /* detect if default tier */
+        const qwebPrice = this.querySelector('#actual_price');
+
+        if (qwebPrice) {
+
+          /* restore original QWeb price */
+          mainPrice.innerHTML = defaultPriceHTML;
+          return;
+
+        }
+
+        /* other tiers */
         const priceElement = this.querySelector('.price');
         if (!priceElement) return;
 
-        let priceText = priceElement.textContent;
+        let priceText = priceElement.textContent
+          .replace('each', '')
+          .trim();
 
-        /* remove "each" if present */
-        priceText = priceText.replace('each', '').trim();
-
-        /* update top product price */
         mainPrice.textContent = priceText;
 
       });
