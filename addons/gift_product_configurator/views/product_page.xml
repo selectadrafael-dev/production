@@ -23,53 +23,49 @@
                         <!-- PRINT METHOD -->
                         <div class="config-block">
                             <div class="config-header">Print Method</div>
-                            <select class="form-select">
-                                <option>Branded</option>
-                                <option>Digital</option>
-                                <option>Screen Print</option>
+                            <select class="form-select" id="print_method_select">
+                                <option value="branded" >Branded</option>
+                                <option value="non-branded">Non-Branded</option>
                             </select>
                         </div> 
 
                          <!-- LOGO COLOURS -->
                         <div class="config-block">
                             <div class="config-header">Logo Colours</div>
-                            <select class="form-select">
-                                <option>1 colour</option>
-                                <option>2 colours</option>
-                                <option>Full colour</option>
-                            </select>
-                        </div>
+                                <select class="form-select">
+                                    <option>1 colour</option>
+                                    <option>2 colours</option>
+                                    <option>Full colour</option>
+                                </select>
+                            </div>
 
-                            <!-- QUANTITY TIERS -->
-                        <div class="config-block">
+                        <!-- QUANTITY TIERS -->
+                        <div class="config-block branding-fields">
 
                             <div class="config-header">Quantity</div>
 
                             <div id="qty_tiers">
-
                                 <div class="tier-card active">
                                     <strong>50+</strong>
                                     <div id="actual_price">
                                         <span class="price">£7.71</span>
                                     </div>
-                                
                                 </div>
 
                                 <div class="tier-card popular">
                                     <strong>100+</strong>
-                                    <span>£5.40 each</span>
+                                    <span class="price">£5.40 each</span>
                                 </div>
 
                                 <div class="tier-card">
                                     <strong>250+</strong>
-                                    <span>£4.80 each</span>
+                                    <span class="price">£4.80 each</span>
                                 </div>
 
                                 <div class="tier-card">
                                     <strong>500+</strong>
-                                    <span>£4.10 each</span>
+                                    <span class="price">£4.10 each</span>
                                 </div>
-
                             </div>
 
                             <div class="divider">OR</div>
@@ -80,7 +76,6 @@
                                 <input type="number" value="50"/>
                                 <button type="button" class="qty-plus">+</button>
                             </div>
-
                         </div>
                          <!-- QUANTITY TIERS -->
                     </form>
@@ -95,7 +90,8 @@
                 <!--product price-->
                 <div class="price-display">
                     <!--span class="price">£7.71</span-->
-                    <span class="price"></span><t t-call="website_sale.product_price" />
+                   <span id="dynamic_main_price" class="price"></span>
+                    <t t-call="website_sale.product_price" />
                     <div class="per-unit">per unit (exc. VAT)</div>
                 </div>
 
