@@ -103,9 +103,24 @@ font-weight:600;
 margin-top:15px;
 }
 
+
+.main-input div{
+  padding-bottom : 4rem;
+}
+
 .qty-input{
-width:200px;
-margin-bottom:10px;
+/*width:200px;
+margin-bottom:10px;*/
+background-color: #fff;
+    border: 1px solid #cecece;
+    border-radius: 4px;
+    color: #111;
+    display: inline-block;
+    font-weight: 300;
+    line-height: 1;
+    outline: 0;
+    padding: 15px;
+    transition: outline .2s ease-in-out;
 }
 
 .details-title{
