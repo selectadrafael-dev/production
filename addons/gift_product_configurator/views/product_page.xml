@@ -71,6 +71,13 @@
                                             <span class="price">$4.10 each</span>
                                         </div>
                                     </div>
+                                <!--larger qty-->
+                                <div>
+                                    <span>Larger order?</span>
+                                    <a href="#">Get an express quote now →</a>
+                                </div>
+                            </div>
+                            <!-- QUANTITY TIERS -->
 
                                     <div class="qty_divider">OR</div>
 
@@ -81,14 +88,6 @@
                                         <button type="button" class="qty-plus">+</button>
                                     </div>
                                 </div>
-
-                                <!--larger qty-->
-                                <div>
-                                    <span>Larger order?</span>
-                                    <a href="#">Get an express quote now →</a>
-                                </div>
-                            </div>
-                            <!-- QUANTITY TIERS -->
                         </div>
                 </div>
 </div>
