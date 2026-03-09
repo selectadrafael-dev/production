@@ -51,16 +51,17 @@
                 <input class="form-control"/>
             </div>
 
-            <div class="qty-group">
-                <label>First name *</label>
-                <input class="form-control"/>
-            </div>
+            <div class="row main-input">
+                <div class="col-md-6 qty-group">
+                    <label>First name *</label>
+                    <input class="form-control"/>
+                </div>
 
-            <div class="qty-group">
-                <label>Last name *</label>
-                <input class="form-control"/>
+                <div class="col-md-6 qty-group">
+                    <label>Last name *</label>
+                    <input class="form-control"/>
+                </div>
             </div>
-          
 
              <div class="qty-group">
                 <label>Email Address *</label>
