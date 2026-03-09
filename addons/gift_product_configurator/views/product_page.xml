@@ -46,7 +46,7 @@
                                 <div class="config-header">Quantity</div>
 
                             <div class="qty_wrapper d-flex">
-                                <div id="qty_tiers_wrap">
+                                <div id="qty_tiers">
                                         <div class="tier-card active qty_tiers_card">
                                             <strong>1000+</strong>
                                             <div id="actual_price">
