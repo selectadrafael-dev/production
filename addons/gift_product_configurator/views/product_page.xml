@@ -47,7 +47,7 @@
 
                                 <div id="qty_tiers">
                                     <div class="tier-card active">
-                                        <strong>50+</strong>
+                                        <strong>1000+</strong>
                                         <div id="actual_price">
                                             <span class="price">
                                             <t t-call="website_sale.product_price" />
@@ -56,22 +56,22 @@
                                     </div>
 
                                     <div class="tier-card popular">
-                                        <strong>100+</strong>
+                                        <strong>2000+</strong>
                                         <span class="price">£5.40 each</span>
                                     </div>
 
                                     <div class="tier-card">
-                                        <strong>250+</strong>
+                                        <strong>3000+</strong>
                                         <span class="price">£4.80 each</span>
                                     </div>
 
                                     <div class="tier-card">
-                                        <strong>500+</strong>
+                                        <strong>4000+</strong>
                                         <span class="price">£4.10 each</span>
                                     </div>
                                 </div>
 
-                                <div class="divider">OR</div>
+                                <div class="qty_divider">OR</div>
 
                                 <!-- MANUAL QTY -->
                                 <div class="custom-qty">
@@ -113,7 +113,7 @@
                     Need Ideas?
                 </button>
 
-                <div class="divider">OR</div>
+                <div class="qty_divider">OR</div>
 
                 <button class="btn-sample">
                     Buy 1 Sample

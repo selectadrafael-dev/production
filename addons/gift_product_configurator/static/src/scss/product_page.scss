@@ -64,6 +64,10 @@ Hide default Odoo product layout safely
     overflow: visible;
 }
 
+#actual_price .mb3{
+    margin-bottom: 0!important;
+}
+
 @media(max-width:991px){
 
     #product_detail_main{
@@ -514,7 +518,6 @@ pointer-events: none;
 /* ===== MOBILE ===== */
 
 @media (max-width: 992px) {
-
 .gift-product-layout {
     grid-template-columns: 1fr;
 }
@@ -524,6 +527,12 @@ pointer-events: none;
     position: static;
 }
 
+ @media (max-width: 991px) {
+    #gift-product-left .o_wsale_product_images
+    {
+    top: 0!important;
+    }
+ }
 }
 
 .variant-swatch input,
@@ -557,4 +566,23 @@ pointer-events: none;
 /*brand selection toogle*/
 .branding-hidden {
     display: none !important;
+}
+
+/*divider*/
+.qty_divider{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    color:#777;
+    margin:20px 0;
+    position:relative;
+}
+
+.qty_divider::before,
+.qty_divider::after{
+    content:"";
+    flex:1;
+    border-bottom:1px solid #ddd;
+    margin:0 10px;
 }
