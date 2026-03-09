@@ -5,7 +5,7 @@
 VARIANT SELECTION (highlight active)
 ========================================= */
 
-document.addEventListener('click', function (e) {
+/*document.addEventListener('click', function (e) {
 
 const option = e.target.closest('.variant-option');
 if (!option) return;
@@ -19,13 +19,14 @@ container
 
 option.classList.add('active');
 
-});
+});*/
+
 
 /* =========================================
 QUANTITY STEPPER (+ / −)
 ========================================= */
 
-/*document.addEventListener('click', function (e) {
+document.addEventListener('click', function (e) {
 
 const plus = e.target.closest('.qty-plus');
 const minus = e.target.closest('.qty-minus');
@@ -46,7 +47,6 @@ if (minus && value > 1) value--;
 input.value = value;
 
 });
-*/
 
 /* =========================================
 TIER SELECTION → SET QUANTITY
