@@ -70,12 +70,18 @@
                                             <strong>4000+</strong>
                                             <span class="price">$4.10 each</span>
                                         </div>
+
+                                         <!--larger qty-->
+                                        <div>
+                                            <a href="#">
+                                                <div>
+                                                    <span>Larger order?</span>
+                                                    <span> Get an express quote now →<span>
+                                                </div>
+                                            </a>
+                                        </div>
                                     </div>
-                                <!--larger qty-->
-                                <div>
-                                    <span>Larger order?</span>
-                                    <a href="#">Get an express quote now →</a>
-                                </div>
+                               
                             </div>
                             <!-- QUANTITY TIERS -->
 
