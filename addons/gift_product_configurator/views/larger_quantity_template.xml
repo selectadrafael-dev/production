@@ -35,7 +35,7 @@
         <!-- LEFT SIDE -->
         <div class="col-lg-8 lq-form">
 
-            <h4>Your quantity</h4>
+            <h4 class="mb-4">Your quantity</h4>
 
             <input type="number" class="form-control qty-input" value="50"/>
 

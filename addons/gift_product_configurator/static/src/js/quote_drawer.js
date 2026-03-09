@@ -69,7 +69,7 @@
     }
   });
 
-  // TAB SWITCHING
+
 // TAB SWITCHING
 document.addEventListener('click', function (ev) {
 
