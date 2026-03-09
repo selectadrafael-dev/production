@@ -33,11 +33,8 @@ Hide default Odoo product layout safely
 #gift-product-middle #add_to_cart_wrap{
    display: none!important;
 }
-
-@media (max-width: 992px) {
-    // .product_details{
-    //     width: 100%!important;
-    // }
+#gift-product-middle .o_wsale_cta_wrapper{
+  display: block !important;
 }
 
 /* RIGHT */

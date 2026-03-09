@@ -70,8 +70,8 @@ const qty = parseInt(
   card.querySelector('strong')?.textContent
 );
 
-//const input = document.querySelector('.custom-qty input');
-//if (input && qty) input.value = qty;
+const input = document.querySelector('.custom-qty input');
+  if (input && qty) input.value = qty;
 
 });
 
