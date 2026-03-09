@@ -41,8 +41,8 @@ if (!input) return;
 
 let value = parseInt(input.value) || 0;
 
-if (plus) value++;
-if (minus && value > 1) value--;
+if (plus) value+10;
+if (minus && value > 1) value-10;
 
 input.value = value;
 
