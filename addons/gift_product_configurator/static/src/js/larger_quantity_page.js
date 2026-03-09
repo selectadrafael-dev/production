@@ -61,20 +61,47 @@ function initProductPage() {
 
         const tier = e.target.closest(".tier-card");
 
-        if (!tier) return;
+        if (tier){
 
-        document.querySelectorAll(".tier-card").forEach(el => {
-            el.classList.remove("active");
-        });
+            document.querySelectorAll(".tier-card").forEach(el=>{
+                el.classList.remove("active");
+            });
 
-        tier.classList.add("active");
+            tier.classList.add("active");
 
-        lastQtySource = "tier";
+            lastQtySource = "tier";
+
+            return;
+        }
+
+
+        /* COUNTER BUTTONS */
+
+        const counterBtn = e.target.closest(".qty-plus, .qty-minus");
+
+        if (counterBtn){
+
+            lastQtySource = "manual";
+
+        }
+
+
+        /* NAVIGATION TO LARGE QUANTITY PAGE */
+
+        const link = e.target.closest('a[href="/larger-quantity"]');
+
+        if (link){
+
+            const qty = getSelectedQty();
+
+            sessionStorage.setItem("selected_large_qty", qty);
+
+        }
 
     });
 
 
-    /* MANUAL INPUT */
+    /* MANUAL INPUT TYPING */
 
     document.addEventListener("input", function (e) {
 
@@ -83,21 +110,6 @@ function initProductPage() {
         if (!input) return;
 
         lastQtySource = "manual";
-
-    });
-
-
-    /* STORE QUANTITY BEFORE NAVIGATION */
-
-    document.addEventListener("click", function (e) {
-
-        const link = e.target.closest('a[href="/larger-quantity"]');
-
-        if (!link) return;
-
-        const qty = getSelectedQty();
-
-        sessionStorage.setItem("selected_large_qty", qty);
 
     });
 
