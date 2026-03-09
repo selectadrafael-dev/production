@@ -3,33 +3,90 @@ padding:40px 0;
 }
 
 /* Progress bar */
+/* PROGRESS WRAPPER */
 
-.lq-progress{
-display:flex;
-justify-content:space-between;
-margin-bottom:40px;
+.lq-progress-wrapper{
+width:100%;
+background:#f3f4f6;
+padding:30px 0;
 }
 
+/* PROGRESS BAR */
+
+.lq-progress{
+position:relative;
+display:flex;
+justify-content:space-between;
+align-items:center;
+}
+
+/* background line */
+
+.lq-progress::before{
+content:"";
+position:absolute;
+top:16px;
+left:0;
+right:0;
+height:6px;
+background:#d1d5db;
+z-index:0;
+border-radius:10px;
+}
+
+/* progress active line */
+
+.lq-progress::after{
+content:"";
+position:absolute;
+top:16px;
+left:0;
+width:50%;
+height:6px;
+background:#6b7280;
+z-index:1;
+border-radius:10px;
+}
+
+/* step */
+
 .lq-progress .step{
+position:relative;
+z-index:2;
 text-align:center;
 flex:1;
 }
 
-.lq-progress span{
-width:32px;
-height:32px;
+.lq-progress .step span{
 display:inline-flex;
+width:34px;
+height:34px;
+border-radius:50%;
+background:#9ca3af;
+color:white;
 align-items:center;
 justify-content:center;
-border-radius:50%;
-background:#9aa3af;
-color:white;
 font-weight:600;
 }
 
-.lq-progress .active span{
+/* completed */
+
+.lq-progress .step.done span{
 background:#ef4444;
 }
+
+/* active */
+
+.lq-progress .step.active span{
+background:#ef4444;
+}
+
+.lq-progress p{
+margin-top:8px;
+font-size:14px;
+color:#374151;
+}
+
 
 /* layout */
 

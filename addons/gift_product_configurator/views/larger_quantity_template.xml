@@ -6,8 +6,11 @@
 <div class="container larger-quantity-page">
 
     <!-- Progress Bar -->
-    <div class="lq-progress">
-        <div class="step active">
+    <div class="lq-progress-wrapper">
+
+    <div class="lq-progress container">
+
+        <div class="step done">
             <span>1</span>
             <p>Review</p>
         </div>
@@ -21,7 +24,11 @@
             <span>3</span>
             <p>Confirmation</p>
         </div>
+
     </div>
+
+</div>
+
 
     <div class="row lq-wrapper">
 
