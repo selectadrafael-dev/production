@@ -45,39 +45,47 @@
 
                                 <div class="config-header">Quantity</div>
 
+                            <div class="qty_wrapper d-flex">
                                 <div id="qty_tiers">
-                                    <div class="tier-card active">
-                                        <strong>1000+</strong>
-                                        <div id="actual_price">
-                                            <span class="price">
-                                            <t t-call="website_sale.product_price" />
-                                            </span>
+                                        <div class="tier-card active">
+                                            <strong>1000+</strong>
+                                            <div id="actual_price">
+                                                <span class="price">
+                                                <t t-call="website_sale.product_price" />
+                                                </span> each
+                                            </div>
+                                        </div>
+
+                                        <div class="tier-card popular">
+                                            <strong>2000+</strong>
+                                            <span class="price">$5.40 each</span>
+                                        </div>
+
+                                        <div class="tier-card">
+                                            <strong>3000+</strong>
+                                            <span class="price">$4.80 each</span>
+                                        </div>
+
+                                        <div class="tier-card">
+                                            <strong>4000+</strong>
+                                            <span class="price">$4.10 each</span>
                                         </div>
                                     </div>
 
-                                    <div class="tier-card popular">
-                                        <strong>2000+</strong>
-                                        <span class="price">£5.40 each</span>
-                                    </div>
+                                    <div class="qty_divider">OR</div>
 
-                                    <div class="tier-card">
-                                        <strong>3000+</strong>
-                                        <span class="price">£4.80 each</span>
-                                    </div>
-
-                                    <div class="tier-card">
-                                        <strong>4000+</strong>
-                                        <span class="price">£4.10 each</span>
+                                    <!-- MANUAL QTY -->
+                                    <div class="custom-qty">
+                                        <button type="button" class="qty-minus">−</button>
+                                        <input type="number" value="50"/>
+                                        <button type="button" class="qty-plus">+</button>
                                     </div>
                                 </div>
 
-                                <div class="qty_divider">OR</div>
-
-                                <!-- MANUAL QTY -->
-                                <div class="custom-qty">
-                                    <button type="button" class="qty-minus">−</button>
-                                    <input type="number" value="50"/>
-                                    <button type="button" class="qty-plus">+</button>
+                                <!--larger qty-->
+                                <div>
+                                    <span>Larger order?</span>
+                                    <a href="#">Get an express quote now →<a>
                                 </div>
                             </div>
                             <!-- QUANTITY TIERS -->

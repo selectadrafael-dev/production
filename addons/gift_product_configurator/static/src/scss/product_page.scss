@@ -302,11 +302,26 @@ font-size: 18px;
 cursor: pointer;
 }
 
+.custom-qty{
+  display: flex;
+}
+@media (max-width: 768px) {
+   .custom-qty{
+        display: block;
+    }
+}
 .custom-qty input {
 width: 100%;
 text-align: center;
 border: none;
 font-size: 16px;
+}
+
+.qty_wrapper span{
+ display: block;
+}
+.qty_wrapper a{
+ color: white;
 }
 
 /* =========================================
