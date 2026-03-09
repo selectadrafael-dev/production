@@ -1,0 +1,132 @@
+<odoo>
+
+<template id="larger_quantity_page" name="Larger Quantity Page">
+<t t-call="website.layout">
+
+<div class="container larger-quantity-page">
+
+    <!-- Progress Bar -->
+    <div class="lq-progress">
+        <div class="step active">
+            <span>1</span>
+            <p>Review</p>
+        </div>
+
+        <div class="step active">
+            <span>2</span>
+            <p>Information</p>
+        </div>
+
+        <div class="step">
+            <span>3</span>
+            <p>Confirmation</p>
+        </div>
+    </div>
+
+    <div class="row lq-wrapper">
+
+        <!-- LEFT SIDE -->
+        <div class="col-lg-8 lq-form">
+
+            <h4>Your quantity</h4>
+
+            <input type="number" class="form-control qty-input" value="50"/>
+
+            <p class="qty-note">
+                Final quote may vary depending on your preferred print method,
+                number of print colours, delivery and VAT.
+            </p>
+
+            <h3 class="details-title">Your details</h3>
+
+            <div class="form-group">
+                <label>Company name</label>
+                <input class="form-control"/>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <label>First name *</label>
+                    <input class="form-control"/>
+                </div>
+
+                <div class="col-md-6">
+                    <label>Last name *</label>
+                    <input class="form-control"/>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Email Address *</label>
+                <input class="form-control"/>
+            </div>
+
+            <div class="form-group">
+                <label>Telephone / mobile number *</label>
+                <input class="form-control"/>
+            </div>
+
+            <div class="form-group">
+                <label>Telephone Extension</label>
+                <input class="form-control"/>
+            </div>
+
+            <div class="form-group">
+                <label>Postcode *</label>
+                <input class="form-control"/>
+            </div>
+
+            <div class="form-group">
+                <label>Order required by? (optional)</label>
+                <input class="form-control"/>
+            </div>
+
+            <div class="form-group">
+                <label>Additional information (optional)</label>
+                <textarea class="form-control"></textarea>
+            </div>
+
+        </div>
+
+        <!-- RIGHT SIDE -->
+        <div class="col-lg-4 lq-summary">
+
+            <h5>Request a quote for</h5>
+
+            <div class="product-summary">
+                <img src="/website/static/src/img/product_placeholder.png"/>
+
+                <div>
+                    <strong>BRANDED A5 ULTIMATE NOTEBOOK</strong>
+                    <p>in Blue</p>
+                    <p>100 x £2.82</p>
+                    <p>1 colour print</p>
+                </div>
+            </div>
+
+            <h5>Upload your logo</h5>
+
+            <input type="file"/>
+
+            <small>
+                Formats we accept .ai, .eps, .pdf, .png, .jpg
+            </small>
+
+            <button class="btn lq-btn">
+                Get an express quote
+            </button>
+
+            <p class="terms">
+                By submitting this form I agree to the terms and conditions.
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+
+</t>
+</template>
+
+</odoo>

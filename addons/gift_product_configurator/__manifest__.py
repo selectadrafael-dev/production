@@ -20,6 +20,7 @@
     'data/sequence.xml',
     'views/quote_drawer_template.xml',
      "views/quote_scripts.xml",
+     "views/larger_quantity_template.xml",
     #'security/ir.model.access.csv'
 ],
 "assets": {
@@ -30,6 +31,7 @@
         "gift_product_configurator/static/src/scss/shop_hero.scss",
         "gift_product_configurator/static/src/scss/category_hero.scss",
         "gift_product_configurator/static/src/scss/variants.scss",
+        "gift_product_configurator/static/src/scss/larger_quantity.scss",
         "gift_product_configurator/static/src/js/configurator.js",
         #"gift_product_configurator/static/src/js/product_update.js",
     ],
