@@ -615,5 +615,27 @@ pointer-events: none;
 
 .variant_attribute .radio_input_value.form-check-label{
    min-height: 30px!important;
+   padding-left: 8px!important;
 }
 
+.col-form-label .form-check{
+    padding-left: 0!important;
+}
+
+/*modern product styling new*/
+#product_detail {
+    background: linear-gradient(180deg,#f6f8fb 0%,#ffffff 100%);
+    padding: 50px 0;
+}
+/* PRODUCT IMAGE SHOWCASE */
+.o_wsale_product_images {
+    background:#fff;
+    border-radius:14px;
+    padding:40px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.06);
+}
+#product_details hr{
+    border:none;
+    border-top:1px solid #eee;
+    margin:25px 0;
+}
