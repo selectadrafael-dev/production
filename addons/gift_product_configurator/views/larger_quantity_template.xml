@@ -101,24 +101,43 @@
             <h5>Request a quote for</h5>
 
             <div class="product-summary">
-                <img src="/website/static/src/img/product_placeholder.png"/>
 
-                <div>
-                    <strong>BRANDED A5 ULTIMATE NOTEBOOK</strong>
-                    <p>in Blue</p>
-                    <p>100 x £2.82</p>
-                    <p>1 colour print</p>
+                <div class="product-summary-list">
+
+                    <div class="product-summary-item">
+                        <img src="/website/static/src/img/product_placeholder.png"/>
+
+                        <div>
+                            <strong>BRANDED A5 ULTIMATE NOTEBOOK</strong>
+                            <p>in Blue</p>
+                            <p>100 x £2.82</p>
+                            <p>1 colour print</p>
+                        </div>
+                    </div>
+
                 </div>
+
             </div>
 
-            <h5>Upload your logo</h5>
+            <!--h5>Upload your logo</h5-->
             <!--product info-->
-            <input type="hidden" name="product_id" id="product_id"/>
+            <!--input type="hidden" name="product_id" id="product_id"/>
             <input type="hidden" name="product_name" id="product_name"/>
             <input type="hidden" name="product_image" id="product_image"/>
-            <input type="hidden" name="product_price" id="product_price"/>
+            <input type="hidden" name="product_price" id="product_price"/-->
 
-           <input type="file" name="logo"/>
+            <h5>Upload your logo</h5>
+
+            <div class="logo-upload-wrapper">
+
+                <input type="hidden" name="product_id" id="product_id"/>
+                <input type="hidden" name="product_name" id="product_name"/>
+                <input type="hidden" name="product_image" id="product_image"/>
+                <input type="hidden" name="product_price" id="product_price"/>
+
+                <input type="file" name="logo"/>
+
+            </div>
 
             <small>
                 Formats we accept .ai, .eps, .pdf, .png, .jpg

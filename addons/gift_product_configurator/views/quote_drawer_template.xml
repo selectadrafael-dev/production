@@ -84,9 +84,9 @@
             <!--p>Quote items will appear here</p-->
             <div class="quote-items"></div>
 
-            <button class="drawer-primary">
+          <button id="drawer-quote-btn" class="drawer-primary">
               Place Your Quote Now
-            </button>
+          </button>
 
             <button class="drawer-secondary">
               Continue Shopping

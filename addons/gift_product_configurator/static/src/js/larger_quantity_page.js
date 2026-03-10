@@ -50,6 +50,39 @@ window.getSelectedQty = getSelectedQty;
 
 
 /* =====================================================
+TRACK ENTRY SOURCE
+===================================================== */
+
+function trackEntrySource(){
+
+    document.addEventListener("click", function(e){
+
+        const quoteBtn = e.target.closest("#drawer-quote-btn");
+
+        if(quoteBtn){
+
+            sessionStorage.setItem("quote_source","drawer");
+
+            window.location.href = "/larger-quantity";
+
+            return;
+
+        }
+
+        const largerBtn = e.target.closest('a[href="/larger-quantity"]');
+
+        if(largerBtn){
+
+            sessionStorage.setItem("quote_source","single");
+
+        }
+
+    });
+
+}
+
+
+/* =====================================================
 PRODUCT PAGE LOGIC
 ===================================================== */
 
@@ -118,43 +151,78 @@ function initProductPage() {
 LARGER QUANTITY PAGE - PRODUCT PREVIEW
 ===================================================== */
 
-function updateQuotePreview() {
+function updateQuotePreview(){
 
-    if (!window.QuoteCart) return;
+    if(!window.QuoteCart) return;
 
     const cart = QuoteCart.getCart();
 
-    if (!cart || cart.length === 0) return;
+    if(!cart || !cart.length) return;
 
-    const lastItem = cart[cart.length - 1];
+    const container = document.querySelector(".product-summary-list");
 
+    if(!container) return;
 
-    /* IMAGE */
+    const source = sessionStorage.getItem("quote_source");
 
-    const img = document.querySelector(".product-summary img");
+    container.innerHTML = "";
 
-    if (img && lastItem.image) {
-        img.src = lastItem.image;
+    /* SINGLE PRODUCT MODE */
+
+    if(source === "single"){
+
+        const item = cart[cart.length - 1];
+
+        container.innerHTML = `
+            <div class="product-summary-item">
+                <img src="${item.image}" />
+                <div>
+                    <strong>${item.name}</strong>
+                    <p>${item.qty || 1} × £${item.price}</p>
+                </div>
+            </div>
+        `;
+
+        return;
     }
 
+    /* CART MODE */
 
-    /* PRODUCT NAME */
+    if(source === "drawer"){
 
-    const name = document.querySelector(".product-summary strong");
+        cart.forEach(item => {
 
-    if (name && lastItem.name) {
-        name.textContent = lastItem.name;
+            container.innerHTML += `
+                <div class="product-summary-item">
+                    <img src="${item.image}" />
+                    <div>
+                        <strong>${item.name}</strong>
+                        <p>${item.qty || 1} × £${item.price}</p>
+                    </div>
+                </div>
+            `;
+
+        });
+
     }
 
+}
 
-    /* QUANTITY */
 
-    const qtyInput = document.querySelector(".qty-input");
+/* =====================================================
+LOGO SECTION CONTROL
+===================================================== */
 
-    const storedQty = sessionStorage.getItem("selected_large_qty");
+function toggleLogoSection(){
 
-    if (qtyInput && storedQty) {
-        qtyInput.value = storedQty;
+    const source = sessionStorage.getItem("quote_source");
+
+    const logoSection = document.querySelector(".logo-upload-wrapper");
+
+    if(!logoSection) return;
+
+    if(source === "drawer"){
+        logoSection.style.display = "none";
     }
 
 }
@@ -194,11 +262,9 @@ FORM SUBMISSION
 function submitLargeQtyForm(){
 
     const form = document.querySelector(".larger-quantity-page");
-
     if (!form) return;
 
     const btn = document.querySelector(".lq-btn");
-
     if (!btn) return;
 
     btn.addEventListener("click", function(){
@@ -222,7 +288,6 @@ function submitLargeQtyForm(){
             order_required_by: form.querySelector('[name="order_required_by"]')?.value,
 
             product_name: document.querySelector(".product-summary strong")?.innerText
-
         };
 
 
@@ -231,13 +296,12 @@ function submitLargeQtyForm(){
         if(!data.first_name || !data.last_name || !data.email){
 
             alert("Please complete required fields");
-
             return;
 
         }
 
 
-        /* SEND TO SERVER */
+        /* SEND REQUEST */
 
         fetch("/larger-quantity/submit", {
 
@@ -289,15 +353,17 @@ PROGRESS BAR STEP 3
 
 function activateStep3(){
 
-    const url = new URL(window.location.href);
-
-    if(url.searchParams.get("submitted") !== "1") return;
-
     const steps = document.querySelectorAll(".lq-progress .step");
 
-    if(steps.length >= 3){
-        steps[2].classList.add("active");
-    }
+    if(!steps.length || steps.length < 3) return;
+
+    steps[0].classList.remove("active");
+    steps[0].classList.add("done");
+
+    steps[1].classList.remove("active");
+    steps[1].classList.add("done");
+
+    steps[2].classList.add("active");
 
 }
 
@@ -334,6 +400,8 @@ INIT
 
 document.addEventListener("DOMContentLoaded", function () {
 
+    trackEntrySource();
+
     if (isProductPage()) {
         initProductPage();
     }
@@ -341,6 +409,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (isLargeQtyPage()) {
 
         updateQuotePreview();
+
+        toggleLogoSection();
 
         populateProductInfo();
 
