@@ -134,13 +134,26 @@
 
                 <div class="modal-body">
 
+                   <!-- progress bar -->
+                 <div id="uploadProgressWrapper" class="progress mb-3 d-none">
+                  <div id="uploadProgressBar"
+                      class="progress-bar"
+                      role="progressbar"
+                      style="width:0%">
+                  </div>
+                </div>
+
                   <!-- ERROR BOX -->
-                  <div id="vendorErrorBox" class="alert alert-danger d-none"></div>
+                  <div id="vendorSuccessBox"
+                      class="alert alert-success d-none mb-3">
+                  </div>
+
+                  <div id="vendorErrorBox"
+                      class="alert alert-danger d-none mb-3">
+                  </div>
                   
                   <form id="vendorDataForm"
-                  action="/vendor-data/submit"
-                  method="post"
-                  enctype="multipart/form-data">
+                      enctype="multipart/form-data">
 
                     <input type="hidden"
                     name="csrf_token"

@@ -96,4 +96,73 @@
 
     });
 
+    //form submission logic
+    document.addEventListener("DOMContentLoaded", function () {
+
+    const form = document.getElementById("vendorDataForm");
+    const successBox = document.getElementById("vendorSuccessBox");
+    const errorBox = document.getElementById("vendorErrorBox");
+
+    if (!form) return;
+
+    form.addEventListener("submit", function (e) {
+
+        e.preventDefault();
+
+        successBox.classList.add("d-none");
+        errorBox.classList.add("d-none");
+
+        const formData = new FormData(form);
+
+        fetch("/vendor-data/submit", {
+            method: "POST",
+            body: formData,
+        })
+
+        .then(response => response.json())
+
+        .then(data => {
+
+            if (data.error) {
+
+                errorBox.innerText = data.error;
+                errorBox.classList.remove("d-none");
+
+                scrollModalTop();
+
+                return;
+            }
+
+            successBox.innerText = data.message;
+            successBox.classList.remove("d-none");
+
+            scrollModalTop();
+
+            form.reset();
+
+        })
+
+        .catch(() => {
+
+            errorBox.innerText = "Upload failed. Please try again.";
+            errorBox.classList.remove("d-none");
+
+            scrollModalTop();
+
+        });
+
+    });
+
+    function scrollModalTop() {
+
+        const modalBody = document.querySelector("#vendorDataModal .modal-body");
+
+        if (modalBody) {
+            modalBody.scrollTop = 0;
+        }
+
+    }
+
+});
+
 })();
