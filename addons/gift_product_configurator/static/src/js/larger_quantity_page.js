@@ -376,7 +376,6 @@ function submitLargeQtyForm(){
             if (res.status === "success") {
 
                 showQuoteConfirmation();
-                showQuoteError();
                 activateStep3();
                 scrollToTop();   // 👈 scroll user to banner
 
@@ -387,7 +386,7 @@ function submitLargeQtyForm(){
 
             console.error("Quote submission error:", error);
 
-            alert("Something went wrong submitting the quote.");
+            showQuoteError();
             scrollToTop();   // 👈 bring user to top
 
         });

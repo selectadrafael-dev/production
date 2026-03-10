@@ -257,26 +257,95 @@ margin-bottom:20px;
 VISUAL SWITCH
 ===================================================== */
 
+// .visual-toggle-wrapper{
+// display:flex;
+// align-items:center;
+// gap:10px;
+// margin-top:15px;
+// margin-bottom:10px;
+// }
+
+// .visual-switch{
+// position:relative;
+// display:inline-block;
+// width:46px;
+// height:24px;
+// }
+
+// .visual-switch input{
+// opacity:0;
+// width:0;
+// height:0;
+// }
+
+// .slider{
+// position:absolute;
+// cursor:pointer;
+// top:0;
+// left:0;
+// right:0;
+// bottom:0;
+// background:#9ca3af;
+// transition:.3s;
+// border-radius:20px;
+// }
+
+// .slider:before{
+// position:absolute;
+// content:"";
+// height:18px;
+// width:18px;
+// left:3px;
+// bottom:3px;
+// background:white;
+// transition:.3s;
+// border-radius:50%;
+// }
+
+// .visual-switch input:checked + .slider{
+// background:#1f2937;
+// }
+
+// .visual-switch input:checked + .slider:before{
+// transform:translateX(22px);
+// }
+
+// .visual-text{
+// font-size:14px;
+// font-weight:600;
+// color:#111827;
+// }
+
+
+/* =====================================
+VISUAL TOGGLE SWITCH
+===================================== */
+
 .visual-toggle-wrapper{
 display:flex;
 align-items:center;
-gap:10px;
+gap:12px;
 margin-top:15px;
-margin-bottom:10px;
 }
+
+/* switch container */
 
 .visual-switch{
 position:relative;
 display:inline-block;
-width:46px;
-height:24px;
+width:52px;
+height:28px;
 }
+
+/* hide checkbox */
 
 .visual-switch input{
 opacity:0;
 width:0;
 height:0;
 }
+
+/* slider track */
 
 .slider{
 position:absolute;
@@ -285,35 +354,42 @@ top:0;
 left:0;
 right:0;
 bottom:0;
-background:#9ca3af;
-transition:.3s;
-border-radius:20px;
+background:#d1d5db;
+border-radius:40px;
+transition:0.3s;
 }
+
+/* slider circle */
 
 .slider:before{
 position:absolute;
 content:"";
-height:18px;
-width:18px;
+height:22px;
+width:22px;
 left:3px;
 bottom:3px;
 background:white;
-transition:.3s;
 border-radius:50%;
+transition:0.3s;
+box-shadow:0 2px 5px rgba(0,0,0,0.2);
 }
 
+/* checked state */
+
 .visual-switch input:checked + .slider{
-background:#1f2937;
+background:#111827;
 }
 
 .visual-switch input:checked + .slider:before{
-transform:translateX(22px);
+transform:translateX(24px);
 }
+
+/* label text */
 
 .visual-text{
 font-size:14px;
 font-weight:600;
-color:#111827;
+color:#1f2937;
 }
 
 

@@ -601,3 +601,19 @@ pointer-events: none;
     border-bottom:1px solid #ddd;
     margin:0 10px;
 }
+
+/*variant badge*/
+.variant_attribute .radio_input_value .badge, .variant_attribute select .badge, .variant_attribute label .badge, .js_attribute_value .badge
+{
+   display: none!important;
+}
+
+.variant_attribute .form-check input{
+    width: 30px!important;
+    height: 30px!important;
+}
+
+.variant_attribute .radio_input_value.form-check-label{
+   min-height: 30px!important;
+}
+
