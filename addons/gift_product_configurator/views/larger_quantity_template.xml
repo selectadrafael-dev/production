@@ -141,7 +141,7 @@
                 <input type="hidden" name="product_image" id="product_image"/>
                 <input type="hidden" name="product_price" id="product_price"/>
 
-                <input type="file" name="logo">
+                <input type="file" name="logo" />
 
                 <small>
                     Formats we accept .ai, .eps, .pdf, .png, .jpg
