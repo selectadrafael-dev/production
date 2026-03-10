@@ -239,27 +239,42 @@ function submitLargeQtyForm(){
 
         /* SEND TO SERVER */
 
-        fetch("/larger-quantity/submit",{
+        fetch("/larger-quantity/submit", {
 
-            method:"POST",
+            method: "POST",
 
-            headers:{
-                "Content-Type":"application/json"
+            headers: {
+                "Content-Type": "application/json"
             },
 
-            body:JSON.stringify(data)
+            body: JSON.stringify(data)
 
         })
-       .then(r => r.json())
+        .then(response => {
+
+            if (!response.ok) {
+                throw new Error("Server error: " + response.status);
+            }
+
+            return response.json();
+
+        })
         .then(res => {
 
-            if(res.status === "success"){
+            if (res.status === "success") {
 
                 showQuoteConfirmation();
 
                 activateStep3();
 
             }
+
+        })
+        .catch(error => {
+
+            console.error("Quote submission error:", error);
+
+            alert("Something went wrong submitting the quote.");
 
         });
 
