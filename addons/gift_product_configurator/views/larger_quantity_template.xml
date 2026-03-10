@@ -1,0 +1,186 @@
+<odoo>
+
+<template id="larger_quantity_page" name="Larger Quantity Page">
+<t t-call="website.layout">
+<form id="large-quote-form" enctype="multipart/form-data">
+<div class="container larger-quantity-page">
+
+    <!-- Progress Bar -->
+    <div class="lq-progress-wrapper">
+
+    <div class="lq-progress container">
+
+        <div class="step done">
+            <span>1</span>
+            <p>Review</p>
+        </div>
+
+        <div class="step active">
+            <span>2</span>
+            <p>Information</p>
+        </div>
+
+        <div class="step">
+            <span>3</span>
+            <p>Confirmation</p>
+        </div>
+
+    </div>
+
+</div>
+
+
+    <div class="row lq-wrapper">
+
+        <!-- LEFT SIDE -->
+        <div class="col-lg-8 lq-form">
+
+            <h4 class="mb-4">Your quantity</h4>
+
+            <input type="number" name="quantity" class="form-control qty-input" value="50"/>
+
+            <p class="qty-note">
+                Final quote may vary depending on your preferred print method,
+                number of print colours, delivery and VAT.
+            </p>
+
+            <h3 class="details-title">Your details</h3>
+
+             <div class="qty-group">
+                <label>Company name</label>
+                <input class="form-control" name="company_name"/>
+            </div>
+
+            <div class="row main-input">
+                <div class="col-md-6 qty-group">
+                    <label>First name *</label>
+                    <input class="form-control" name="first_name" required="required"/>
+                </div>
+
+                <div class="col-md-6 qty-group">
+                    <label>Last name *</label>
+                    <input class="form-control" name="last_name" required="required" />
+                </div>
+            </div>
+
+             <div class="qty-group">
+                <label>Email Address *</label>
+                <input class="form-control"  name="email" required="required" />
+            </div>
+
+              <div class="qty-group">
+                <label>Telephone / mobile number *</label>
+                <input class="form-control" name="telephone_extension"/>
+            </div>
+
+             <div class="qty-group">
+                <label>Telephone Extension</label>
+                <input class="form-control"/>
+            </div>
+
+             <div class="qty-group">
+                <label>Postcode *</label>
+                <input class="form-control" name="postcode"/>
+            </div>
+
+             <div class="qty-group">
+                <label>Order required by? (optional)</label>
+                <input type="date" class="form-control" name="order_required_by"/>
+            </div>
+
+            <div class="qty-group">
+                <label>Additional information (optional)</label>
+                <textarea class="form-control" rows="8" name="additional_information"></textarea>
+            </div>
+
+        </div>
+
+        <!-- RIGHT SIDE -->
+        <div class="col-lg-4 lq-summary">
+
+            <h5>Request a quote for</h5>
+
+            <div class="product-summary">
+
+                <div class="product-summary-list">
+
+                    <div class="product-summary-item">
+                        <img src="/website/static/src/img/product_placeholder.png"/>
+
+                        <div>
+                            <strong>BRANDED A5 ULTIMATE NOTEBOOK</strong>
+                            <p>in Blue</p>
+                            <p>100 x £2.82</p>
+                            <p>1 colour print</p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <h5>Upload your logo</h5>
+
+            <div class="visual-toggle-wrapper">
+
+                <label class="visual-switch">
+                    <input type="checkbox" id="visual-toggle"/>
+                    <span class="slider"></span>
+                </label>
+
+                <span class="visual-text">
+                    Would you like a free visual?
+                </span>
+
+            </div>
+
+            <div class="logo-upload-wrapper">
+                 <input type="hidden" name="product_id" id="product_id"/>
+                <input type="hidden" name="product_name" id="product_name"/>
+                <input type="hidden" name="product_image" id="product_image"/>
+                <input type="hidden" name="product_price" id="product_price"/>
+
+                <input type="file" name="logo" />
+
+                <small>
+                    Formats we accept .ai, .eps, .pdf, .png, .jpg
+                </small>
+
+            </div>
+          
+            <!--h5>Upload your logo</h5>
+
+            <div class="logo-upload-wrapper">
+
+                <input type="hidden" name="product_id" id="product_id"/>
+                <input type="hidden" name="product_name" id="product_name"/>
+                <input type="hidden" name="product_image" id="product_image"/>
+                <input type="hidden" name="product_price" id="product_price"/>
+
+                <input type="file" name="logo"/>
+
+            </div-->
+
+            <small>
+                Formats we accept .ai, .eps, .pdf, .png, .jpg
+            </small>
+
+            <button type="button" class="btn lq-btn">
+                Get an express quote
+            </button>
+
+            <p class="terms">
+                By submitting this form I agree to the terms and conditions.
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+</form>
+</t>
+</template>
+
+</odoo>

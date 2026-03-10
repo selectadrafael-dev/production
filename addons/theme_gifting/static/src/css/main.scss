@@ -416,3 +416,60 @@
   }
 
 }
+
+/*vendor data*/
+/* Modal container */
+.vendor-modal {
+  border-radius: 16px;
+  border: none;
+  overflow: hidden;
+}
+
+/* Header styling */
+.vendor-modal .modal-header {
+  background: linear-gradient(135deg, #0d6efd, #2a8cff);
+  color: #fff;
+  border-bottom: none;
+}
+
+.vendor-modal .modal-title {
+  font-weight: 600;
+}
+
+/* Upload cards */
+.upload-card {
+  background: #f8fafc;
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.upload-card:hover {
+  border-color: #0d6efd;
+  background: #eef5ff;
+}
+
+.upload-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+/* Footer buttons */
+.vendor-modal .modal-footer {
+  border-top: 1px solid #eee;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+
+  .modal-dialog {
+    margin: 0.75rem;
+  }
+
+  .upload-card {
+    padding: 14px;
+  }
+
+}

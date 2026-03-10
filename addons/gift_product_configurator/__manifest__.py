@@ -20,7 +20,8 @@
     'data/sequence.xml',
     'views/quote_drawer_template.xml',
      "views/quote_scripts.xml",
-    #'security/ir.model.access.csv',
+     "views/larger_quantity_template.xml",
+    #'security/ir.model.access.csv'
 ],
 "assets": {
     "web.assets_frontend": [
@@ -29,11 +30,12 @@
         "gift_product_configurator/static/src/scss/quote_drawer.scss",
         "gift_product_configurator/static/src/scss/shop_hero.scss",
         "gift_product_configurator/static/src/scss/category_hero.scss",
+        "gift_product_configurator/static/src/scss/variants.scss",
+        "gift_product_configurator/static/src/scss/larger_quantity.scss",
+        "gift_product_configurator/static/src/scss/vendor_tool.scss",
         "gift_product_configurator/static/src/js/configurator.js",
-        #"gift_product_configurator/static/src/js/quote_drawer.js",
-        #"gift_product_configurator/static/src/js/quote_cart.js",
-        #"gift_product_configurator/static/src/js/quote_button_logic.js",
-        #"gift_product_configurator/static/src/js/quote_drawer_items.js"
+        #"gift_product_configurator/static/src/js/larger_quantity_page.js",
+        #"gift_product_configurator/static/src/js/product_update.js",
     ],
 },
  'installable': True,

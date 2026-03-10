@@ -1,3 +1,90 @@
+/* =====================================
+Hide default Odoo product layout safely
+===================================== */
+#product_detail_main{
+    display:flex;
+    gap:30px;
+    margin-top: 50px;
+}
+
+/* LEFT */
+
+#gift-product-left{
+    flex:1;
+}
+
+/* MIDDLE (WIDER) */
+
+#gift-product-middle{
+    flex:1.5;
+}
+
+#gift-product-middle #product_details, 
+#gift-product-left .o_wsale_product_images{
+    width:100% !important;
+    flex:0 0 100% !important;
+    max-width:100% !important;
+}
+
+#gift-product-middle .css_quantity{
+   display: none!important;
+}
+
+#gift-product-middle #add_to_cart_wrap{
+   display: none!important;
+}
+#gift-product-middle .o_wsale_cta_wrapper{
+  display: block !important;
+}
+
+/* RIGHT */
+#gift-product-right{
+    flex:1;
+}
+
+.gift-product-column{
+    min-width:0;
+}
+
+.o_wsale_product_images{
+    position:sticky;
+    top:120px;
+}
+
+#gift-product-left {
+    align-self: flex-start;
+}
+
+#gift-product-left .o_wsale_product_images {
+    position: sticky;
+    top: 120px;
+}
+#product_detail_main,
+#gift-product-left {
+    overflow: visible;
+}
+
+#actual_price .mb3{
+    margin-bottom: 0!important;
+}
+
+@media(max-width:991px){
+
+    #product_detail_main{
+        flex-direction:column;
+    }
+
+    #gift-product-left,
+    #gift-product-middle,
+    #gift-product-right{
+        width:100%;
+    }
+
+    .o_wsale_product_images{
+        position:relative;
+        top:auto;
+    }
+ }
 /* =========================================
 MAIN LAYOUT — 3 COLUMN CONFIGURATOR
 ========================================= */
@@ -215,11 +302,26 @@ font-size: 18px;
 cursor: pointer;
 }
 
+/*.custom-qty{
+  display: flex;
+}
+@media (max-width: 768px) {
+   .custom-qty{
+        display: block;
+    }
+}*/
 .custom-qty input {
 width: 100%;
 text-align: center;
 border: none;
 font-size: 16px;
+}
+
+.qty_wrapper span{
+ display: block;
+}
+.qty_wrapper a{
+ color: black;
 }
 
 /* =========================================
@@ -284,45 +386,10 @@ padding: 12px;
 border-radius: 999px;
 cursor: pointer;
 }
-/* =====================================
-Hide default Odoo product layout safely
-===================================== */
-/*#product_detail .oe_structure > *:not(.gift-product-layout) {
-display: none !important;
-}*/
-
-
-/* Hide original product page content 
-#product_detail .o_wsale_product_page,
-#product_detail .oe_website_sale {
-display: none !important;
-}
-
-/* Ensure our layout stays visible 
-.gift-product-layout {
-display: grid !important;
-}
-.print-method-dropdown {
-width: 100%;
-padding: 12px;
-border-radius: 8px;
-border: 1px solid #d6dae6;
-background: white;
-font-size: 14px;
-}
-
-*/
 
 /* =========================================
 Hide original Odoo product page (Odoo 18)
 ========================================= */
-
-/* Scoped to website sale product pages */
-
-.oe_website_sale [data-name="Product Page"],
-#product_detail_main {
-display: none !important;
-}
 
 /* Ensure custom layout displays */
 .gift-product-layout {
@@ -404,7 +471,7 @@ gap: 10px;
 flex-wrap: wrap;
 }
 
-.tier-card {
+.qty_tiers_card {
 border: 1px solid #d6dae6;
 padding: 12px;
 border-radius: 10px;
@@ -463,64 +530,9 @@ z-index: 9999;
 pointer-events: none;
 }
 
-/* Dark overlay 
-.drawer-overlay {
-position: absolute;
-inset: 0;
-background: rgba(0,0,0,0.4);
-opacity: 0;
-transition: .3s;
-}
-
-
-.drawer-panel {
-position: absolute;
-top: 0;
-right: -420px;
-width: 420px;
-height: 100%;
-background: white;
-box-shadow: -6px 0 20px rgba(0,0,0,.2);
-transition: .3s;
-padding: 28px;
-overflow-y: auto;
-}
-
-
-.quote-drawer.active {
-pointer-events: auto;
-}
-
-.quote-drawer.active .drawer-overlay {
-opacity: 1;
-}
-
-.quote-drawer.active .drawer-panel {
-right: 0;
-}
-
-.drawer-close {
-border: none;
-background: none;
-font-size: 22px;
-float: right;
-cursor: pointer;
-}
-
-
-@media (max-width: 768px) {
-
-.drawer-panel {
-    width: 100%;
-}
-
-}
-/*
-
 /* ===== MOBILE ===== */
 
 @media (max-width: 992px) {
-
 .gift-product-layout {
     grid-template-columns: 1fr;
 }
@@ -530,7 +542,100 @@ cursor: pointer;
     position: static;
 }
 
+ @media (max-width: 991px) {
+    #gift-product-left .o_wsale_product_images
+    {
+    top: 0!important;
+    }
+ }
 }
 
+.variant-swatch input,
+.variant-btn input {
+  display: none;
+}
 
+.variant-swatch .color-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 2px solid #ddd;
+  cursor: pointer;
+}
 
+.variant-btn span {
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-block;
+}
+
+/* Selected styles */
+.variant-radio:checked + span,
+.variant-radio:checked + .color-circle {
+  border: 2px solid #2b6cb0;
+}
+
+/*brand selection toogle*/
+.branding-hidden {
+    display: none !important;
+}
+
+/*divider*/
+.qty_divider{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    color:#777;
+    margin:20px 0;
+    position:relative;
+}
+
+.qty_divider::before,
+.qty_divider::after{
+    content:"";
+    flex:1;
+    border-bottom:1px solid #ddd;
+    margin:0 10px;
+}
+
+/*variant badge*/
+.variant_attribute .radio_input_value .badge, .variant_attribute select .badge, .variant_attribute label .badge, .js_attribute_value .badge
+{
+   display: none!important;
+}
+
+.variant_attribute .form-check input{
+    width: 30px!important;
+    height: 30px!important;
+}
+
+.variant_attribute .radio_input_value.form-check-label{
+   min-height: 30px!important;
+   padding-left: 8px!important;
+}
+
+.col-form-label .form-check{
+    padding-left: 0!important;
+}
+
+/*modern product styling new*/
+#product_detail {
+    background: linear-gradient(180deg,#f6f8fb 0%,#ffffff 100%);
+    padding: 50px 0;
+}
+/* PRODUCT IMAGE SHOWCASE */
+.o_wsale_product_images {
+    background:#fff;
+    border-radius:14px;
+    padding:40px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.06);
+}
+#product_details hr{
+    border:none;
+    border-top:1px solid #eee;
+    margin:25px 0;
+}

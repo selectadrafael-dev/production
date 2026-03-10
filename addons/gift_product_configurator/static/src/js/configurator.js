@@ -5,7 +5,7 @@
 VARIANT SELECTION (highlight active)
 ========================================= */
 
-document.addEventListener('click', function (e) {
+/*document.addEventListener('click', function (e) {
 
 const option = e.target.closest('.variant-option');
 if (!option) return;
@@ -19,31 +19,40 @@ container
 
 option.classList.add('active');
 
-});
+});*/
+
 
 /* =========================================
 QUANTITY STEPPER (+ / −)
+STEP SIZE: 10
 ========================================= */
 
 document.addEventListener('click', function (e) {
 
-const plus = e.target.closest('.qty-plus');
-const minus = e.target.closest('.qty-minus');
+    const plus = e.target.closest('.qty-plus');
+    const minus = e.target.closest('.qty-minus');
 
-if (!plus && !minus) return;
+    if (!plus && !minus) return;
 
-const wrapper = e.target.closest('.custom-qty');
-if (!wrapper) return;
+    const wrapper = e.target.closest('.custom-qty');
+    if (!wrapper) return;
 
-const input = wrapper.querySelector('input');
-if (!input) return;
+    const input = wrapper.querySelector('input');
+    if (!input) return;
 
-let value = parseInt(input.value) || 0;
+    let value = parseInt(input.value) || 0;
+    const step = 10;
 
-if (plus) value++;
-if (minus && value > 1) value--;
+    if (plus) {
+        value += step;
+    }
 
-input.value = value;
+    if (minus) {
+        value -= step;
+        if (value < step) value = step;   // prevent going below 10
+    }
+
+    input.value = value;
 
 });
 
@@ -70,7 +79,7 @@ const qty = parseInt(
 );
 
 const input = document.querySelector('.custom-qty input');
-if (input && qty) input.value = qty;
+  if (input && qty) input.value = qty;
 
 });
 
