@@ -2,7 +2,7 @@
 
 <template id="larger_quantity_page" name="Larger Quantity Page">
 <t t-call="website.layout">
-
+<form action="/larger-quantity/submit" method="post" enctype="multipart/form-data">
 <div class="container larger-quantity-page">
 
     <!-- Progress Bar -->
@@ -37,7 +37,7 @@
 
             <h4 class="mb-4">Your quantity</h4>
 
-            <input type="number" class="form-control qty-input" value="50"/>
+            <input type="number" name="quantity" class="form-control qty-input" value="50"/>
 
             <p class="qty-note">
                 Final quote may vary depending on your preferred print method,
@@ -54,23 +54,23 @@
             <div class="row main-input">
                 <div class="col-md-6 qty-group">
                     <label>First name *</label>
-                    <input class="form-control"/>
+                    <input class="form-control" name="first_name" required="required"/>
                 </div>
 
                 <div class="col-md-6 qty-group">
                     <label>Last name *</label>
-                    <input class="form-control"/>
+                    <input class="form-control" name="last_name" required="required" />
                 </div>
             </div>
 
              <div class="qty-group">
                 <label>Email Address *</label>
-                <input class="form-control"/>
+                <input class="form-control"  name="email" required="required" />
             </div>
 
               <div class="qty-group">
                 <label>Telephone / mobile number *</label>
-                <input class="form-control"/>
+                <input class="form-control" name="phone" required="required" />
             </div>
 
              <div class="qty-group">
@@ -80,7 +80,7 @@
 
              <div class="qty-group">
                 <label>Postcode *</label>
-                <input class="form-control"/>
+                <input class="form-control" name="postcode"/>
             </div>
 
              <div class="qty-group">
@@ -90,7 +90,7 @@
 
             <div class="qty-group">
                 <label>Additional information (optional)</label>
-                <textarea class="form-control" rows="8"></textarea>
+                <textarea class="form-control" rows="8" name="additional_information"></textarea>
             </div>
 
         </div>
@@ -112,8 +112,13 @@
             </div>
 
             <h5>Upload your logo</h5>
+            <!--product info-->
+            <input type="hidden" name="product_id" id="product_id"/>
+            <input type="hidden" name="product_name" id="product_name"/>
+            <input type="hidden" name="product_image" id="product_image"/>
+            <input type="hidden" name="product_price" id="product_price"/>
 
-            <input type="file"/>
+           <input type="file" name="logo"/>
 
             <small>
                 Formats we accept .ai, .eps, .pdf, .png, .jpg
@@ -132,7 +137,7 @@
     </div>
 
 </div>
-
+</form>
 </t>
 </template>
 

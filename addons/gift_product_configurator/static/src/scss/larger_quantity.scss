@@ -204,3 +204,12 @@ color:#6b7280;
     }
 
 }
+
+/*progress bar activation*/
+.lq-progress .step.active span{
+background:#ef4444;
+}
+
+.lq-progress .step.active ~ .step span{
+background:#9ca3af;
+}
