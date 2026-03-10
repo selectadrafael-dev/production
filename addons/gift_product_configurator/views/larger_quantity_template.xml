@@ -85,7 +85,7 @@
 
              <div class="qty-group">
                 <label>Order required by? (optional)</label>
-                <input class="form-control" name="order_required_by"/>
+                <input type="date" class="form-control" name="order_required_by"/>
             </div>
 
             <div class="qty-group">
