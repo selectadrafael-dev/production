@@ -171,7 +171,7 @@
                 <div class="col-md-12">
                   <div class="upload-card">
                     <label class="upload-label">Vendor Logo (optional)</label>
-                    <input type="file" name="logo_file" accept="image/*" class="form-control"//>
+                    <input type="file" name="logo_file" accept="image/*" class="form-control"/>
                   </div>
                 </div>
 
