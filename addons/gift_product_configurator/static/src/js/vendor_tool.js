@@ -1,94 +1,99 @@
-document.addEventListener("DOMContentLoaded", function () {
+(function () {
+  'use strict';
 
-    const form = document.getElementById("vendorDataForm");
+    document.addEventListener("DOMContentLoaded", function () {
 
-    if (!form) return;
+        const form = document.getElementById("vendorDataForm");
 
-    const errorBox = document.getElementById("vendorErrorBox");
+        if (!form) return;
 
-    function showError(message) {
-        errorBox.classList.remove("d-none");
-        errorBox.innerText = message;
-    }
+        const errorBox = document.getElementById("vendorErrorBox");
 
-    function clearError() {
-        errorBox.classList.add("d-none");
-        errorBox.innerText = "";
-    }
-
-    form.addEventListener("submit", function (e) {
-
-        clearError();
-
-        const urlInput = form.querySelector("input[name='data_url']");
-        const pdfInput = form.querySelector("input[name='pdf_file']");
-        const excelInput = form.querySelector("input[name='excel_file']");
-
-        const url = urlInput.value.trim();
-        const pdfFile = pdfInput.files[0];
-        const excelFile = excelInput.files[0];
-
-        const urlRegex = /^(https?:\/\/)[^\s$.?#].[^\s]*$/i;
-
-        /* Validate URL */
-
-        if (url && !urlRegex.test(url)) {
-            e.preventDefault();
-            showError("Please provide a valid URL starting with http:// or https://");
-            return;
+        function showError(message) {
+            errorBox.classList.remove("d-none");
+            errorBox.innerText = message;
         }
 
-        /* Validate PDF */
+        function clearError() {
+            errorBox.classList.add("d-none");
+            errorBox.innerText = "";
+        }
 
-        if (pdfFile) {
+        form.addEventListener("submit", function (e) {
 
-            if (pdfFile.type !== "application/pdf") {
+            clearError();
+
+            const urlInput = form.querySelector("input[name='data_url']");
+            const pdfInput = form.querySelector("input[name='pdf_file']");
+            const excelInput = form.querySelector("input[name='excel_file']");
+
+            const url = urlInput.value.trim();
+            const pdfFile = pdfInput.files[0];
+            const excelFile = excelInput.files[0];
+
+            const urlRegex = /^(https?:\/\/)[^\s$.?#].[^\s]*$/i;
+
+            /* Validate URL */
+
+            if (url && !urlRegex.test(url)) {
                 e.preventDefault();
-                showError("Only PDF files are allowed in the PDF field.");
-                pdfInput.value = "";
+                showError("Please provide a valid URL starting with http:// or https://");
                 return;
             }
 
-            if (pdfFile.size > 10 * 1024 * 1024) {
-                e.preventDefault();
-                showError("PDF file exceeds 10MB limit.");
-                return;
+            /* Validate PDF */
+
+            if (pdfFile) {
+
+                if (pdfFile.type !== "application/pdf") {
+                    e.preventDefault();
+                    showError("Only PDF files are allowed in the PDF field.");
+                    pdfInput.value = "";
+                    return;
+                }
+
+                if (pdfFile.size > 10 * 1024 * 1024) {
+                    e.preventDefault();
+                    showError("PDF file exceeds 10MB limit.");
+                    return;
+                }
+
             }
 
-        }
+            /* Validate Excel */
 
-        /* Validate Excel */
+            if (excelFile) {
 
-        if (excelFile) {
+                const allowedExcel = [
+                    "application/vnd.ms-excel",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "text/csv"
+                ];
 
-            const allowedExcel = [
-                "application/vnd.ms-excel",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "text/csv"
-            ];
+                if (!allowedExcel.includes(excelFile.type)) {
+                    e.preventDefault();
+                    showError("Only Excel (.xls, .xlsx) or CSV files allowed.");
+                    excelInput.value = "";
+                    return;
+                }
 
-            if (!allowedExcel.includes(excelFile.type)) {
-                e.preventDefault();
-                showError("Only Excel (.xls, .xlsx) or CSV files allowed.");
-                excelInput.value = "";
-                return;
+                if (excelFile.size > 10 * 1024 * 1024) {
+                    e.preventDefault();
+                    showError("Excel/CSV exceeds 10MB limit.");
+                    return;
+                }
+
             }
 
-            if (excelFile.size > 10 * 1024 * 1024) {
+            /*Require at least one input*/
+
+            if (!url && !pdfFile && !excelFile) {
                 e.preventDefault();
-                showError("Excel/CSV exceeds 10MB limit.");
-                return;
+                showError("Please provide a URL, PDF, or Excel file.");
             }
 
-        }
-
-        /*Require at least one input*/
-
-        if (!url && !pdfFile && !excelFile) {
-            e.preventDefault();
-            showError("Please provide a URL, PDF, or Excel file.");
-        }
+        });
 
     });
 
-});
+})();
