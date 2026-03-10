@@ -173,7 +173,7 @@
                       </div>
 
                     
-                      <div class="col-md-12">
+                      <div class="col-md-12 vendor_logo">
                         <div class="upload-card">
                           <label class="upload-label">Vendor Logo (optional)</label>
                           <input type="file" name="logo_file" accept="image/*" class="form-control"/>
@@ -200,14 +200,6 @@
 
                 </form>
                 </div>
-
-                <!--div class="modal-footer">
-                  <button class="btn btn-outline-secondary"
-                          data-bs-dismiss="modal">Cancel</button>
-                  <button class="btn btn-primary px-4">
-                    Submit Data
-                  </button>
-                </div-->
 
               </div>
             </div>
