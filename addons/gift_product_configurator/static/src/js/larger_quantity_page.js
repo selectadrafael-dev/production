@@ -86,6 +86,19 @@ function trackEntrySource(){
 
 }
 
+/* =====================================================
+SCROLL TO TOP HELPER
+===================================================== */
+
+function scrollToTop(){
+
+    window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+    });
+
+}
+
 
 /* =====================================================
 PRODUCT PAGE LOGIC
@@ -217,19 +230,26 @@ function updateQuotePreview(){
 /* =====================================================
 LOGO SECTION CONTROL
 ===================================================== */
-
 function toggleLogoSection(){
 
     const source = sessionStorage.getItem("quote_source");
 
-    const logoSection = document.querySelector(".logo-upload-wrapper");
+    const uploadSection = document.querySelector(".logo-upload-wrapper");
 
-    if(!logoSection) return;
+    const toggle = document.querySelector("#visual-toggle");
+
+    if(!uploadSection || !toggle) return;
 
     if(source === "drawer"){
-        logoSection.style.display = "none";
+
+        uploadSection.style.display = "none";
+        toggle.checked = false;
+
     } else {
-        logoSection.style.display = "block";
+
+        uploadSection.style.display = "block";
+        toggle.checked = true;
+
     }
 
 }
@@ -249,16 +269,11 @@ function initVisualToggle(){
 
     toggle.addEventListener("change", function(){
 
-        if(toggle.checked){
-            upload.style.display = "block";
-        } else {
-            upload.style.display = "none";
-        }
+        upload.style.display = toggle.checked ? "block" : "none";
 
     });
 
 }
-
 
 /* =====================================================
 POPULATE PRODUCT DATA INTO FORM
@@ -319,7 +334,8 @@ function submitLargeQtyForm(){
 
             order_required_by: form.querySelector('[name="order_required_by"]')?.value,
 
-            product_name: document.querySelector(".product-summary strong")?.innerText
+           // product_name: document.querySelector(".product-summary strong")?.innerText
+            products: window.QuoteCart ? QuoteCart.getCart() : []
         };
 
 
@@ -360,8 +376,9 @@ function submitLargeQtyForm(){
             if (res.status === "success") {
 
                 showQuoteConfirmation();
-
+                showQuoteError();
                 activateStep3();
+                scrollToTop();   // 👈 scroll user to banner
 
             }
 
@@ -371,6 +388,7 @@ function submitLargeQtyForm(){
             console.error("Quote submission error:", error);
 
             alert("Something went wrong submitting the quote.");
+            scrollToTop();   // 👈 bring user to top
 
         });
 
@@ -401,7 +419,7 @@ function activateStep3(){
 
 
 /* =====================================================
-QUOTE CONFIRMATION MESSAGE
+QUOTE SUCCESS CONFIRMATION MESSAGE
 ===================================================== */
 
 function showQuoteConfirmation(){
@@ -418,6 +436,30 @@ function showQuoteConfirmation(){
         <div class="alert alert-success mt-4">
             Your quote request has been submitted successfully.
             Our team will contact you shortly.
+        </div>
+    `;
+
+    container.prepend(msg);
+
+}
+
+/* =====================================================
+QUOTE ERROR CONFIRMATION MESSAGE
+===================================================== */
+
+function showQuoteError(){
+
+    const container = document.querySelector(".larger-quantity-page");
+
+    if(!container) return;
+
+    const msg = document.createElement("div");
+
+    msg.className = "quote-error-message";
+
+    msg.innerHTML = `
+        <div class="alert alert-danger mt-4">
+            Something went wrong submitting the quote. Please try again.
         </div>
     `;
 

@@ -119,14 +119,37 @@
 
             </div>
 
-            <!--h5>Upload your logo</h5-->
-            <!--product info-->
-            <!--input type="hidden" name="product_id" id="product_id"/>
-            <input type="hidden" name="product_name" id="product_name"/>
-            <input type="hidden" name="product_image" id="product_image"/>
-            <input type="hidden" name="product_price" id="product_price"/-->
 
             <h5>Upload your logo</h5>
+
+            <div class="visual-toggle-wrapper">
+
+                <label class="visual-switch">
+                    <input type="checkbox" id="visual-toggle">
+                    <span class="slider"></span>
+                </label>
+
+                <span class="visual-text">
+                    Would you like a free visual?
+                </span>
+
+            </div>
+
+            <div class="logo-upload-wrapper">
+                 <input type="hidden" name="product_id" id="product_id"/>
+                <input type="hidden" name="product_name" id="product_name"/>
+                <input type="hidden" name="product_image" id="product_image"/>
+                <input type="hidden" name="product_price" id="product_price"/>
+
+                <input type="file" name="logo">
+
+                <small>
+                    Formats we accept .ai, .eps, .pdf, .png, .jpg
+                </small>
+
+            </div>
+          
+            <!--h5>Upload your logo</h5>
 
             <div class="logo-upload-wrapper">
 
@@ -137,7 +160,7 @@
 
                 <input type="file" name="logo"/>
 
-            </div>
+            </div-->
 
             <small>
                 Formats we accept .ai, .eps, .pdf, .png, .jpg

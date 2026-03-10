@@ -2,6 +2,7 @@ from odoo import http
 from odoo.http import request
 from odoo.fields import Date
 import json
+import base64
 
 
 class LargeQuantityController(http.Controller):
@@ -64,19 +65,27 @@ class LargeQuantityController(http.Controller):
             # SAFE TYPE CONVERSION
             # ----------------------------------
 
-            product_id = data.get("product_id")
             quantity = data.get("quantity")
-            product_price = data.get("product_price")
-
-            product_id = int(product_id) if product_id else False
             quantity = int(quantity) if quantity else 0
-            product_price = float(product_price) if product_price else 0.0
 
             # ----------------------------------
-            # CREATE GIFTING ORDER
+            # HANDLE LOGO FILE (IF PROVIDED)
             # ----------------------------------
 
-            request.env["custom.gifting.order"].sudo().create({
+            logo_file = request.httprequest.files.get("logo")
+
+            logo_data = False
+            logo_filename = False
+
+            if logo_file:
+                logo_data = base64.b64encode(logo_file.read())
+                logo_filename = logo_file.filename
+
+            # ----------------------------------
+            # CREATE MAIN ORDER
+            # ----------------------------------
+
+            order = request.env["custom.gifting.order"].sudo().create({
 
                 "partner_id": partner.id,
 
@@ -89,11 +98,6 @@ class LargeQuantityController(http.Controller):
                 "phone": data.get("phone"),
                 "postcode": data.get("postcode"),
 
-                "product_id": product_id,
-                "product_name": data.get("product_name"),
-                "product_image": data.get("product_image"),
-                "product_price": product_price,
-
                 "quantity": quantity,
 
                 "additional_information": data.get("additional_information"),
@@ -102,7 +106,37 @@ class LargeQuantityController(http.Controller):
 
                 "purpose": "large_qty_quote",
                 "state": "submitted",
+
+                "logo": logo_data,
+                "logo_filename": logo_filename,
             })
+
+            # ----------------------------------
+            # STORE PRODUCTS FROM SIDEBAR
+            # ----------------------------------
+
+            products = data.get("products", [])
+
+            for p in products:
+
+                product_name = p.get("name")
+                product_image = p.get("image")
+                product_price = float(p.get("price", 0))
+                product_qty = int(p.get("qty", 1))
+
+                request.env["custom.gifting.order.line"].sudo().create({
+
+                    "order_id": order.id,
+
+                    "product_name": product_name,
+
+                    "product_image": product_image,
+
+                    "product_price": product_price,
+
+                    "quantity": product_qty,
+
+                })
 
             # ----------------------------------
             # SUCCESS RESPONSE
