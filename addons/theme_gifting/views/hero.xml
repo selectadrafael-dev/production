@@ -135,11 +135,13 @@
                 <div class="modal-body">
 
                    <!-- progress bar -->
-                 <div id="uploadProgressWrapper" class="progress mb-3 d-none">
+                <div id="uploadProgressWrapper" class="progress mb-3 d-none" style="height:26px;">
                   <div id="uploadProgressBar"
-                      class="progress-bar"
+                      class="progress-bar progress-bar-striped progress-bar-animated"
                       role="progressbar"
                       style="width:0%">
+                      
+                      <span id="uploadPercentText">0%</span>
                   </div>
                 </div>
 

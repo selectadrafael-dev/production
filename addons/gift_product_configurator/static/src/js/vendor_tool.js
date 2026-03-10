@@ -11,36 +11,60 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const progressWrapper = document.getElementById("uploadProgressWrapper");
     const progressBar = document.getElementById("uploadProgressBar");
+    const percentText = document.getElementById("uploadPercentText");
 
     const MAX_SIZE = 10 * 1024 * 1024;
 
     function showError(message) {
+
         console.error("Upload error:", message);
 
-        successBox.classList.add("d-none");
-        errorBox.classList.remove("d-none");
-        errorBox.innerText = message;
+        if (successBox) successBox.classList.add("d-none");
+
+        if (errorBox) {
+            errorBox.classList.remove("d-none");
+            errorBox.innerText = message;
+        }
 
         scrollModalTop();
     }
 
     function showSuccess(message) {
+
         console.log("Upload success:", message);
 
-        errorBox.classList.add("d-none");
-        successBox.classList.remove("d-none");
-        successBox.innerText = message;
+        if (errorBox) errorBox.classList.add("d-none");
+
+        if (successBox) {
+            successBox.classList.remove("d-none");
+            successBox.innerText = message;
+        }
 
         scrollModalTop();
+
+        setTimeout(() => {
+
+            if (progressWrapper) progressWrapper.classList.add("d-none");
+
+            if (progressBar) progressBar.style.width = "0%";
+
+            if (percentText) percentText.innerText = "0%";
+
+            if (successBox) successBox.classList.add("d-none");
+
+        }, 5000);
     }
 
     function clearMessages() {
-        successBox.classList.add("d-none");
-        errorBox.classList.add("d-none");
+
+        if (successBox) successBox.classList.add("d-none");
+        if (errorBox) errorBox.classList.add("d-none");
     }
 
     function scrollModalTop() {
+
         const modalBody = document.querySelector("#vendorDataModal .modal-body");
+
         if (modalBody) modalBody.scrollTop = 0;
     }
 
@@ -57,6 +81,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const urlRegex = /^(https?:\/\/)[^\s$.?#].[^\s]*$/i;
 
         if (url && !urlRegex.test(url)) {
+
             showError("Please provide a valid URL starting with http:// or https://");
             return false;
         }
@@ -64,16 +89,17 @@ document.addEventListener("DOMContentLoaded", function () {
         if (pdfFile) {
 
             if (pdfFile.type !== "application/pdf") {
+
                 showError("Only PDF files are allowed in the PDF field.");
                 pdfInput.value = "";
                 return false;
             }
 
             if (pdfFile.size > MAX_SIZE) {
+
                 showError("PDF file exceeds 10MB limit.");
                 return false;
             }
-
         }
 
         if (excelFile) {
@@ -85,19 +111,21 @@ document.addEventListener("DOMContentLoaded", function () {
             ];
 
             if (!allowedExcel.includes(excelFile.type)) {
+
                 showError("Only Excel (.xls, .xlsx) or CSV files allowed.");
                 excelInput.value = "";
                 return false;
             }
 
             if (excelFile.size > MAX_SIZE) {
+
                 showError("Excel/CSV exceeds 10MB limit.");
                 return false;
             }
-
         }
 
         if (!url && !pdfFile && !excelFile) {
+
             showError("Please provide a URL, PDF, or Excel file.");
             return false;
         }
@@ -116,7 +144,10 @@ document.addEventListener("DOMContentLoaded", function () {
         const formData = new FormData(form);
 
         if (progressWrapper) progressWrapper.classList.remove("d-none");
-        if (progressBar) progressBar.style.width = "10%";
+
+        if (progressBar) progressBar.style.width = "5%";
+
+        if (percentText) percentText.innerText = "5%";
 
         const xhr = new XMLHttpRequest();
 
@@ -126,9 +157,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (event.lengthComputable && progressBar) {
 
-                let percent = (event.loaded / event.total) * 100;
+                let percent = Math.round((event.loaded / event.total) * 100);
 
                 progressBar.style.width = percent + "%";
+
+                if (percentText) percentText.innerText = percent + "%";
             }
         };
 
@@ -146,13 +179,15 @@ document.addEventListener("DOMContentLoaded", function () {
                     console.log("Parsed response:", data);
 
                     if (data.error) {
+
                         showError(data.error);
                         return;
                     }
 
-                    showSuccess(data.message || "Upload successful. Your catalog is being processed.");
-
                     if (progressBar) progressBar.style.width = "100%";
+                    if (percentText) percentText.innerText = "100%";
+
+                    showSuccess(data.message || "Upload successful. Processing started.");
 
                     form.reset();
 
@@ -160,24 +195,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
                     console.error("JSON parse error:", err);
                     showError("Unexpected server response.");
-
                 }
 
             } else {
 
                 console.error("Server returned error status:", xhr.status);
                 showError("Upload failed. Server returned error.");
-
             }
-
         };
 
         xhr.onerror = function () {
 
             console.error("Network error occurred");
-
             showError("Network error. Check browser console.");
-
         };
 
         xhr.send(formData);

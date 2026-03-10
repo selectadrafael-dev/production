@@ -7,3 +7,15 @@
     margin-top: 50px!important;
     margin-bottom: 20px!important;
 }
+#uploadProgressBar {
+    position: relative;
+    font-weight: 600;
+}
+
+#uploadPercentText {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-size: 13px;
+}
