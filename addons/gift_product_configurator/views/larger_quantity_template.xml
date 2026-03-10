@@ -125,7 +125,7 @@
             <div class="visual-toggle-wrapper">
 
                 <label class="visual-switch">
-                    <input type="checkbox" id="visual-toggle">
+                    <input type="checkbox" id="visual-toggle"/>
                     <span class="slider"></span>
                 </label>
 
