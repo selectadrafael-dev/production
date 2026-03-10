@@ -189,16 +189,25 @@
                       <textarea name="extra_info" class="form-control" rows="4"
                         placeholder="Provide pricing notes, MOQ, printing methods, special instructions, etc."></textarea>
                     </div>
+
+                    <div class="modal-footer">
+                      <button type="submit" class="btn btn-outline-secondary"
+                              data-bs-dismiss="modal">Cancel</button>
+                      <button class="btn btn-primary px-4">
+                        Submit Data
+                      </button>
+                    </div>
+
                 </form>
                 </div>
 
-                <div class="modal-footer">
+                <!--div class="modal-footer">
                   <button class="btn btn-outline-secondary"
                           data-bs-dismiss="modal">Cancel</button>
                   <button class="btn btn-primary px-4">
                     Submit Data
                   </button>
-                </div>
+                </div-->
 
               </div>
             </div>
