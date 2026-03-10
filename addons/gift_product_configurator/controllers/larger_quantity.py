@@ -5,23 +5,30 @@ import base64
 
 class LargeQuantityController(http.Controller):
 
-    @http.route('/larger-quantity/submit', type='http', auth='public', website=True, csrf=False)
+    @http.route('/larger-quantity/submit', type='json', auth='public', website=True, csrf=False)
     def submit_large_quantity(self, **post):
 
         email = post.get("email")
+
+        # --------------------------------
+        # CHECK OR CREATE CONTACT
+        # --------------------------------
 
         partner = request.env["res.partner"].sudo().search(
             [("email", "=", email)], limit=1
         )
 
-        # create contact if not exist
         if not partner:
             partner = request.env["res.partner"].sudo().create({
-                "name": f"{post.get('first_name')} {post.get('last_name')}",
+                "name": "%s %s" % (post.get("first_name"), post.get("last_name")),
                 "email": email,
                 "phone": post.get("phone"),
                 "company_name": post.get("company_name"),
             })
+
+        # --------------------------------
+        # HANDLE LOGO UPLOAD
+        # --------------------------------
 
         logo_binary = False
         logo_filename = False
@@ -31,6 +38,10 @@ class LargeQuantityController(http.Controller):
         if logo:
             logo_binary = base64.b64encode(logo.read())
             logo_filename = logo.filename
+
+        # --------------------------------
+        # CREATE GIFTING ORDER RECORD
+        # --------------------------------
 
         request.env["custom.gifting.order"].sudo().create({
 
@@ -48,6 +59,7 @@ class LargeQuantityController(http.Controller):
             "product_name": post.get("product_name"),
             "product_image": post.get("product_image"),
             "product_price": post.get("product_price"),
+
             "quantity": post.get("quantity"),
 
             "print_colour": post.get("print_colour"),
@@ -61,6 +73,10 @@ class LargeQuantityController(http.Controller):
 
             "purpose": "large_qty_quote",
             "state": "submitted",
+
         })
 
-        return request.redirect("/larger-quantity?submitted=1")
+        return {
+            "status": "success",
+            "message": "Quote request submitted successfully"
+        }

@@ -250,10 +250,12 @@ function submitLargeQtyForm(){
             body:JSON.stringify(data)
 
         })
-        .then(r=>r.json())
-        .then(res=>{
+       .then(r => r.json())
+        .then(res => {
 
-            if(res.result?.status === "success"){
+            if(res.status === "success"){
+
+                showQuoteConfirmation();
 
                 activateStep3();
 
@@ -281,6 +283,32 @@ function activateStep3(){
     if(steps.length >= 3){
         steps[2].classList.add("active");
     }
+
+}
+
+
+/* =====================================================
+QUOTE CONFIRMATION MESSAGE
+===================================================== */
+
+function showQuoteConfirmation(){
+
+    const container = document.querySelector(".larger-quantity-page");
+
+    if(!container) return;
+
+    const msg = document.createElement("div");
+
+    msg.className = "quote-success-message";
+
+    msg.innerHTML = `
+        <div class="alert alert-success mt-4">
+            Your quote request has been submitted successfully.
+            Our team will contact you shortly.
+        </div>
+    `;
+
+    container.prepend(msg);
 
 }
 
