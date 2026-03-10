@@ -96,16 +96,13 @@
                         <a href="/my/orders"  t-translation="on">
                            Orders
                         </a>
-                        <!--a href="/vendor-data"  t-translation="on">
+              
+                          <button type="button"
+                                class="vendor-data-link"
+                                data-bs-toggle="modal"
+                                data-bs-target="#vendorDataModal">
                           Vendor Data
-                        </a-->
-
-                        <button type="button"
-                              class="vendor-data-link"
-                              data-bs-toggle="modal"
-                              data-bs-target="#vendorDataModal">
-                        Vendor Data
-                      </button>
+                        </button>
 
 
                         <a href="/web/session/logout"  t-translation="on">
@@ -124,10 +121,8 @@
 
                   </t>
                 </div>
-
-
+                
               </div>
-
           </div>
 
           <!-- ===== SECOND ROW ===== -->
