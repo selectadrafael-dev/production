@@ -1,17 +1,21 @@
+/* =====================================================
+PAGE
+===================================================== */
+
 .larger-quantity-page{
 padding:40px 0;
 }
 
-/* Progress bar */
-/* PROGRESS WRAPPER */
+
+/* =====================================================
+PROGRESS BAR
+===================================================== */
 
 .lq-progress-wrapper{
 width:100%;
 background:#f3f4f6;
 padding:30px 0;
 }
-
-/* PROGRESS BAR */
 
 .lq-progress{
 position:relative;
@@ -34,21 +38,22 @@ z-index:0;
 border-radius:10px;
 }
 
-/* progress active line */
+/* progress line (step1 default) */
 
 .lq-progress::after{
 content:"";
 position:absolute;
 top:16px;
 left:0;
-width:50%;
+width:0%;
 height:6px;
 background:#6b7280;
 z-index:1;
 border-radius:10px;
+transition:width .3s ease;
 }
 
-/* step */
+/* step layout */
 
 .lq-progress .step{
 position:relative;
@@ -69,17 +74,21 @@ justify-content:center;
 font-weight:600;
 }
 
-/* completed */
+/* completed step */
 
 .lq-progress .step.done span{
-background:#ef4444;
+background:#e74c3c;
+color:white;
 }
 
-/* active */
+/* active step */
 
 .lq-progress .step.active span{
-background:#ef4444;
+background:#e74c3c;
+color:white;
 }
+
+/* progress text */
 
 .lq-progress p{
 margin-top:8px;
@@ -88,7 +97,9 @@ color:#374151;
 }
 
 
-/* layout */
+/* =====================================================
+LAYOUT
+===================================================== */
 
 .lq-wrapper{
 background:#f9fafb;
@@ -96,42 +107,38 @@ border-radius:14px;
 padding:30px;
 }
 
-/* form */
+
+/* =====================================================
+FORM
+===================================================== */
 
 .lq-form label{
-    font-weight:600;
-    margin-bottom: 2rem;
-    line-height: 1;
+font-weight:600;
+margin-bottom:8px;
+display:block;
 }
-
 
 .qty-group{
-  padding-bottom : 3rem;
+padding-bottom:2rem;
 }
 
-.lq-form input{
-  background-color: #fff;
-    border: 1px solid #cecece;
-    border-radius: 4px;
-    color: #111;
-    display: inline-block;
-    font-weight: 300;
-    line-height: 1;
-    outline: 0;
-    padding: 15px;
-    transition: outline .2s ease-in-out;
+.lq-form input,
+.lq-form textarea{
+background-color:#fff;
+border:1px solid #cecece;
+border-radius:4px;
+color:#111;
+display:inline-block;
+font-weight:300;
+line-height:1;
+outline:0;
+padding:15px;
+width:100%;
 }
 
 .qty-input{
 width:200px;
 margin-bottom:10px;
-padding: 15px;
- border-radius: 4px;
-    color: #111;
-    display: inline-block;
-    font-weight: 300;
-    line-height: 1;
-    outline: 0;
 }
 
 .details-title{
@@ -139,7 +146,10 @@ margin-top:40px;
 font-weight:700;
 }
 
-/* summary */
+
+/* =====================================================
+RIGHT SUMMARY PANEL
+===================================================== */
 
 .lq-summary{
 background:white;
@@ -147,15 +157,64 @@ padding:25px;
 border-radius:12px;
 }
 
-.product-summary{
+
+/* =====================================================
+PRODUCT SUMMARY
+===================================================== */
+
+.product-summary-list{
 display:flex;
+flex-direction:column;
 gap:15px;
 margin-bottom:20px;
 }
 
-.product-summary img{
-width:60px;
+.product-summary-item{
+display:flex;
+gap:12px;
+align-items:center;
 }
+
+.product-summary-item img{
+width:60px;
+height:60px;
+object-fit:contain;
+border-radius:6px;
+}
+
+.product-summary-item strong{
+font-size:14px;
+display:block;
+}
+
+.product-summary-item p{
+font-size:13px;
+margin:2px 0;
+color:#6b7280;
+}
+
+
+/* =====================================================
+UPLOAD SECTION
+===================================================== */
+
+.logo-upload-wrapper{
+margin-top:10px;
+}
+
+.logo-upload-wrapper input[type="file"]{
+margin-bottom:6px;
+}
+
+.logo-upload-wrapper small{
+font-size:12px;
+color:#6b7280;
+}
+
+
+/* =====================================================
+BUTTON
+===================================================== */
 
 .lq-btn{
 width:100%;
@@ -165,7 +224,18 @@ padding:14px;
 border-radius:30px;
 margin-top:20px;
 font-weight:600;
+border:none;
+cursor:pointer;
 }
+
+.lq-btn:hover{
+background:#059669;
+}
+
+
+/* =====================================================
+TERMS
+===================================================== */
 
 .terms{
 font-size:12px;
@@ -173,61 +243,97 @@ margin-top:10px;
 color:#6b7280;
 }
 
-/* PRODUCT SUMMARY IMAGE */
 
-.product-summary img{
-    width: 100%;
-    max-width: 80px;
-    height: auto;
-    object-fit: contain;
-    border-radius: 6px;
-}
+/* =====================================================
+QUOTE SUCCESS MESSAGE
+===================================================== */
 
-/* product summary layout */
-
-.product-summary{
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-}
-
-.product-summary div{
-    flex: 1;
-}
-
-/* mobile */
-
-@media (max-width: 768px){
-
-    .product-summary img{
-        max-width: 65px;
-    }
-
-}
-
-/*progress bar activation*/
-.lq-progress .step.active span{
-    background:#ef4444;
-}
-
-.lq-progress .step.active ~ .step span{
-    background:#9ca3af;
-}
-
-/*quote confirmation*/
 .quote-success-message{
-    margin-bottom:20px;
+margin-bottom:20px;
 }
 
-.product-summary-item{
-    display:flex;
-    gap:12px;
-    margin-bottom:15px;
-    align-items:center;
+
+/* =====================================================
+VISUAL SWITCH
+===================================================== */
+
+.visual-toggle-wrapper{
+display:flex;
+align-items:center;
+gap:10px;
+margin-top:15px;
+margin-bottom:10px;
+}
+
+.visual-switch{
+position:relative;
+display:inline-block;
+width:46px;
+height:24px;
+}
+
+.visual-switch input{
+opacity:0;
+width:0;
+height:0;
+}
+
+.slider{
+position:absolute;
+cursor:pointer;
+top:0;
+left:0;
+right:0;
+bottom:0;
+background:#9ca3af;
+transition:.3s;
+border-radius:20px;
+}
+
+.slider:before{
+position:absolute;
+content:"";
+height:18px;
+width:18px;
+left:3px;
+bottom:3px;
+background:white;
+transition:.3s;
+border-radius:50%;
+}
+
+.visual-switch input:checked + .slider{
+background:#1f2937;
+}
+
+.visual-switch input:checked + .slider:before{
+transform:translateX(22px);
+}
+
+.visual-text{
+font-size:14px;
+font-weight:600;
+color:#111827;
+}
+
+
+/* =====================================================
+MOBILE
+===================================================== */
+
+@media (max-width:768px){
+
+.lq-wrapper{
+padding:20px;
 }
 
 .product-summary-item img{
-    width:60px;
-    height:60px;
-    object-fit:contain;
+width:55px;
+height:55px;
+}
+
+.qty-input{
+width:100%;
+}
+
 }

@@ -55,6 +55,12 @@ TRACK ENTRY SOURCE
 
 function trackEntrySource(){
 
+    /* ensure default value */
+
+    if(!sessionStorage.getItem("quote_source")){
+        sessionStorage.setItem("quote_source","single");
+    }
+
     document.addEventListener("click", function(e){
 
         const quoteBtn = e.target.closest("#drawer-quote-btn");
@@ -66,7 +72,6 @@ function trackEntrySource(){
             window.location.href = "/larger-quantity";
 
             return;
-
         }
 
         const largerBtn = e.target.closest('a[href="/larger-quantity"]');
@@ -223,7 +228,34 @@ function toggleLogoSection(){
 
     if(source === "drawer"){
         logoSection.style.display = "none";
+    } else {
+        logoSection.style.display = "block";
     }
+
+}
+
+
+/* =====================================================
+VISUAL TOGGLE
+===================================================== */
+
+function initVisualToggle(){
+
+    const toggle = document.querySelector("#visual-toggle");
+
+    const upload = document.querySelector(".logo-upload-wrapper");
+
+    if(!toggle || !upload) return;
+
+    toggle.addEventListener("change", function(){
+
+        if(toggle.checked){
+            upload.style.display = "block";
+        } else {
+            upload.style.display = "none";
+        }
+
+    });
 
 }
 
@@ -412,11 +444,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
         toggleLogoSection();
 
+        initVisualToggle();
+
         populateProductInfo();
 
         submitLargeQtyForm();
-
-        activateStep3();
 
     }
 
