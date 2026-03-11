@@ -3,43 +3,102 @@
 
   document.addEventListener('DOMContentLoaded', function () {
 
-    const btn = document.querySelector('.js-add-quote');
-    if (!btn) return;
+    /* SECURITY CHECKS */
+    const quoteBtn = document.querySelector('.js-add-quote');
+    const sampleBtn = document.querySelector('.js-add-sample');
 
-    const id = parseInt(btn.dataset.productId);
-    const name = btn.dataset.productName;
-    const image = btn.dataset.productImage;
-    const price = parseFloat(btn.dataset.productPrice || 0);
+    if (!quoteBtn && !sampleBtn) return;
 
-    function updateText() {
-      btn.textContent = QuoteCart.isEmpty()
-        ? 'Create Quote'
-        : 'Add To Quote';
+    if (typeof QuoteCart === 'undefined') {
+      console.warn('QuoteCart not loaded');
+      return;
     }
 
-    updateText();
+    /* Ensure drawer mode object exists */
+    window.QuoteDrawerMode = window.QuoteDrawerMode || { type: 'quote' };
 
-    btn.addEventListener('click', function (e) {
-      e.preventDefault();
+    /* ===============================
+       CREATE / ADD QUOTE BUTTON
+    =============================== */
 
-      if (QuoteCart.exists(id)) {
-        document.dispatchEvent(new Event('openQuoteDrawer'));
-        return;
+    if (quoteBtn) {
+
+      const id = parseInt(quoteBtn.dataset.productId || 0);
+      const name = quoteBtn.dataset.productName || '';
+      const image = quoteBtn.dataset.productImage || '';
+      const price = parseFloat(quoteBtn.dataset.productPrice || 0);
+
+      function updateText() {
+        quoteBtn.textContent = QuoteCart.isEmpty()
+          ? 'Create Quote'
+          : 'Add To Quote';
       }
 
-      QuoteCart.add({
-        id,
-        name,
-        image,
-        price,
-        qty: 1
+      updateText();
+
+      quoteBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+
+        if (!id) return;
+
+        const exists = QuoteCart.exists(id);
+
+        /* add product only if not already present */
+        if (!exists) {
+          QuoteCart.add({
+            id: id,
+            name: name,
+            image: image,
+            price: price,
+            qty: 1
+          });
+        }
+
+        /* set drawer mode */
+        QuoteDrawerMode.type = 'quote';
+
+        /* update UI */
+        document.dispatchEvent(new Event('quoteCartUpdated'));
+        document.dispatchEvent(new Event('openQuoteDrawer'));
+
+        updateText();
+      });
+    }
+
+    /* ===============================
+       SAMPLE BUTTON
+    =============================== */
+
+    if (sampleBtn) {
+
+      sampleBtn.addEventListener('click', function (e) {
+
+        e.preventDefault();
+
+        const id = parseInt(sampleBtn.dataset.productId || 0);
+        if (!id) return;
+
+        const product = {
+          id: id,
+          name: sampleBtn.dataset.productName || '',
+          image: sampleBtn.dataset.productImage || '',
+          price: parseFloat(sampleBtn.dataset.productPrice || 0),
+          qty: 1
+        };
+
+        /* clear cart and insert only sample product */
+        localStorage.setItem('quote_cart', JSON.stringify([product]));
+
+        /* switch drawer mode */
+        QuoteDrawerMode.type = 'sample';
+
+        /* update drawer */
+        document.dispatchEvent(new Event('quoteCartUpdated'));
+        document.dispatchEvent(new Event('openQuoteDrawer'));
+
       });
 
-      document.dispatchEvent(new Event('quoteCartUpdated'));
-      document.dispatchEvent(new Event('openQuoteDrawer'));
-
-      updateText();
-    });
+    }
 
   });
 

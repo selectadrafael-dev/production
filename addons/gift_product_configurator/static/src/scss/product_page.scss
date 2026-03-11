@@ -4,7 +4,7 @@ Hide default Odoo product layout safely
 #product_detail_main{
     display:flex;
     gap:30px;
-    margin-top: 50px;
+    margin-top: 30px;
 }
 
 /* LEFT */
@@ -48,7 +48,7 @@ Hide default Odoo product layout safely
 
 .o_wsale_product_images{
     position:sticky;
-    top:120px;
+    top:60px;
 }
 
 #gift-product-left {
@@ -57,7 +57,7 @@ Hide default Odoo product layout safely
 
 #gift-product-left .o_wsale_product_images {
     position: sticky;
-    top: 120px;
+    top: 60px;
 }
 #product_detail_main,
 #gift-product-left {

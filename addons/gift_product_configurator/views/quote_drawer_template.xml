@@ -84,13 +84,31 @@
             <!--p>Quote items will appear here</p-->
             <div class="quote-items"></div>
 
-          <button id="drawer-quote-btn" class="drawer-primary">
+          <!--button id="drawer-quote-btn" class="drawer-primary">
               Place Your Quote Now
           </button>
 
             <button class="drawer-secondary">
               Continue Shopping
-            </button>
+            </button-->
+
+            <div class="drawer-actions">
+
+              <!-- Quote action -->
+              <button class="drawer-primary js-quote-submit" id="drawer-quote-btn">
+                  Place Your Quote Now
+              </button>
+
+              <!-- Sample action -->
+              <button class="drawer-primary js-sample-checkout" style="display:none;">
+                  Continue to Checkout
+              </button>
+
+              <button class="drawer-secondary js-close-quote">
+                  Continue Shopping
+              </button>
+
+          </div>
 
           </div>
 

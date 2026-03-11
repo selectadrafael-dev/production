@@ -3,78 +3,123 @@
 
   function render() {
 
+    /* Ensure drawer exists on page */
     const panel = document.querySelector('[data-panel="quote"]');
     if (!panel) return;
 
     const container = panel.querySelector('.quote-items');
     if (!container) return;
 
+    /* Ensure QuoteCart exists */
+    if (typeof QuoteCart === 'undefined') {
+      console.warn('QuoteCart not loaded');
+      return;
+    }
+
     const cart = QuoteCart.getCart();
 
-    if (cart.length === 0) {
+    /* Empty cart */
+    if (!Array.isArray(cart) || cart.length === 0) {
+
       container.innerHTML = `
         <div class="quote-empty">
           <p>Your quote is empty.</p>
         </div>
       `;
+
       return;
     }
 
+    /* Render items */
+    container.innerHTML = cart.map(function (item) {
 
-        container.innerHTML = cart.map(item => `
-    <div class="quote-item">
+      const image = item.image && item.image !== 'undefined'
+        ? item.image
+        : '/web/static/img/placeholder.png';
 
-        <!-- DELETE -->
-        <button class="quote-remove"
-                data-id="${item.id}">
-        🗑
-        </button>
+      const qty = item.qty && item.qty > 0 ? item.qty : 1;
 
-        <!-- TOP ROW -->
-        <div class="quote-item__top">
+      const price = item.price ? item.price : 0;
 
-        <img src="${item.image || '/web/static/img/placeholder.png'}"
-            class="quote-item__image"/>
+      return `
+        <div class="quote-item">
 
-        <div class="quote-item__info">
-            <div class="quote-item__name">${item.name}</div>
-            <div class="quote-item__meta">${item.code || ''}</div>
+          <!-- DELETE -->
+          <button class="quote-remove"
+                  data-id="${item.id}">
+            🗑
+          </button>
+
+          <!-- TOP -->
+          <div class="quote-item__top">
+
+            <img src="${image}"
+                 class="quote-item__image"/>
+
+            <div class="quote-item__info">
+
+              <div class="quote-item__name">
+                ${item.name || ''}
+              </div>
+
+              <div class="quote-item__meta">
+                ${item.code || ''}
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- DIVIDER -->
+          <div class="quote-item__divider"></div>
+
+          <!-- BOTTOM -->
+          <div class="quote-item__bottom">
+
+            <input type="number"
+                   class="quote-item__qty"
+                   value="${qty}"
+                   min="1">
+
+            <div class="quote-item__price">
+              £${price}
+              <span>per unit</span>
+            </div>
+
+          </div>
+
         </div>
+      `;
 
-        </div>
-
-        <!-- DIVIDER -->
-        <div class="quote-item__divider"></div>
-
-        <!-- BOTTOM ROW -->
-        <div class="quote-item__bottom">
-
-        <input type="number"
-                class="quote-item__qty"
-                value="${item.qty || 1}"
-                min="1">
-
-        <div class="quote-item__price">
-            £${item.price}
-            <span>per unit</span>
-        </div>
-
-        </div>
-
-    </div>
-    `).join('');
+    }).join('');
   }
 
-  document.addEventListener('quoteCartUpdated', render);
+  /* Ensure DOM ready before binding */
+  document.addEventListener('DOMContentLoaded', function () {
 
+    /* Render when cart updates */
+    document.addEventListener('quoteCartUpdated', render);
+
+    /* Render when drawer opens */
+    document.addEventListener('openQuoteDrawer', render);
+
+  });
+
+  /* Remove item */
   document.addEventListener('click', function (e) {
 
     const btn = e.target.closest('.quote-remove');
     if (!btn) return;
 
-    QuoteCart.remove(parseInt(btn.dataset.id));
+    if (typeof QuoteCart === 'undefined') return;
+
+    const id = parseInt(btn.dataset.id);
+    if (!id) return;
+
+    QuoteCart.remove(id);
 
     document.dispatchEvent(new Event('quoteCartUpdated'));
+
   });
 
 })();
