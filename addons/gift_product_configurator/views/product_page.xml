@@ -132,7 +132,7 @@
                 class="btn-sample js-add-sample"
                 t-att-data-product-id="product.product_variant_id.id"
                 t-att-data-product-name="product.name"
-                t-att-data-product-price="product.lst_price"
+                t-att-data-product-price="product.product_variant_id.lst_price"
                 t-att-data-product-image="product.image_1920 and ('/web/image/product.product/' + str(product.product_variant_id.id) + '/image_1920')"
                 >
                 Buy 1 Sample
