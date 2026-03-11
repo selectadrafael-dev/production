@@ -138,15 +138,48 @@
   });
 
   /* SAMPLE CHECKOUT REDIRECT */
- document.addEventListener('click', async function(e){
+//  document.addEventListener('click', async function(e){
 
-  const btn = e.target.closest('.js-sample-checkout');
+//   const btn = e.target.closest('.js-sample-checkout');
+//   if(!btn) return;
+
+//   const cart = QuoteCart.getCart();
+
+//   if(!cart.length){
+//     window.location.href = '/shop/checkout';
+//     return;
+//   }
+
+//   for(const item of cart){
+
+//     await fetch('/shop/cart/update', {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type':'application/json'
+//       },
+//       body: JSON.stringify({
+//         product_id: item.id,
+//         add_qty: item.qty || 1
+//       })
+//     });
+
+//   }
+
+//   window.location.href = '/shop/checkout';
+
+// });
+
+document.addEventListener('click', async function(e){
+
+  const btn = e.target.closest('.js-quote-submit');
   if(!btn) return;
+
+  if(typeof QuoteCart === 'undefined') return;
 
   const cart = QuoteCart.getCart();
 
   if(!cart.length){
-    window.location.href = '/shop/checkout';
+    console.warn('Quote cart empty');
     return;
   }
 
@@ -155,7 +188,7 @@
     await fetch('/shop/cart/update', {
       method: 'POST',
       headers: {
-        'Content-Type':'application/json'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         product_id: item.id,

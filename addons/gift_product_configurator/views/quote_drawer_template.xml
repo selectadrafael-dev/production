@@ -95,7 +95,7 @@
             <div class="drawer-actions">
 
               <!-- Quote action -->
-              <button class="drawer-primary js-quote-submit">
+              <button class="drawer-primary js-quote-submit" id="drawer-quote-btn">
                   Place Your Quote Now
               </button>
 
