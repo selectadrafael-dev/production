@@ -10,19 +10,18 @@
   }
 
   function openDrawer() {
+
     const drawer = getDrawer();
     const overlay = getOverlay();
 
-    if (!drawer || !overlay) {
-      console.warn('Quote drawer not found');
-      return;
-    }
+    if (!drawer || !overlay) return;
 
     drawer.classList.add('is-open');
     overlay.classList.add('is-open');
   }
 
   function closeDrawer() {
+
     const drawer = getDrawer();
     const overlay = getOverlay();
 
@@ -32,12 +31,15 @@
     overlay.classList.remove('is-open');
   }
 
-  // GLOBAL CLICK HANDLER (no DOMContentLoaded)
+  /* Ensure drawer mode exists */
+  window.QuoteDrawerMode = window.QuoteDrawerMode || { type: 'quote' };
+
+  /* GLOBAL CLICK HANDLER */
   document.addEventListener('click', function (ev) {
 
     const target = ev.target;
 
-    // OPEN DRAWER
+    /* OPEN DRAWER */
     if (
       target.closest('.js-open-quote') ||
       target.closest('.js-add-quote')
@@ -47,14 +49,14 @@
       return;
     }
 
-    // CLOSE BUTTON
+    /* CLOSE BUTTON */
     if (target.closest('.js-close-quote')) {
       ev.preventDefault();
       closeDrawer();
       return;
     }
 
-    // OVERLAY CLICK
+    /* OVERLAY CLICK */
     if (target.id === 'quoteDrawerOverlay') {
       closeDrawer();
       return;
@@ -62,104 +64,109 @@
 
   });
 
-  // ESC KEY CLOSE
+  /* ESC CLOSE */
   document.addEventListener('keydown', function (e) {
+
     if (e.key === 'Escape') {
       closeDrawer();
     }
+
   });
 
+  /* OPEN DRAWER EVENT (used by other scripts) */
+  document.addEventListener('openQuoteDrawer', function () {
 
-// TAB SWITCHING
-document.addEventListener('click', function (ev) {
+    openDrawer();
 
-  const tab = ev.target.closest('.drawer-tab');
-  if (!tab) return;
+    const quoteBtn = document.querySelector('.js-quote-submit');
+    const sampleBtn = document.querySelector('.js-sample-checkout');
 
-  const target = tab.dataset.target;
+    if (!quoteBtn || !sampleBtn) return;
 
-  console.log('Tab clicked:', target);
+    if (QuoteDrawerMode.type === 'sample') {
 
-  // Activate tab
-  document.querySelectorAll('.drawer-tab')
-    .forEach(t => t.classList.remove('is-active'));
+      quoteBtn.style.display = 'none';
+      sampleBtn.style.display = 'block';
 
-  tab.classList.add('is-active');
+    } else {
 
-  // Show panel
-  document.querySelectorAll('.drawer-panel')
-    .forEach(p => p.classList.remove('is-active'));
+      quoteBtn.style.display = 'block';
+      sampleBtn.style.display = 'none';
 
-  const panel = document.querySelector(
-    `.drawer-panel[data-panel="${target}"]`
-  );
+    }
 
-  if (panel) panel.classList.add('is-active');
+  });
 
-});
+  /* TAB SWITCHING */
+  document.addEventListener('click', function (ev) {
 
+    const tab = ev.target.closest('.drawer-tab');
+    if (!tab) return;
 
-// FREE VISUAL TOGGLE
-document.addEventListener('change', function (ev) {
+    const target = tab.dataset.target;
 
-  if (ev.target.id !== 'freeVisualSwitch') return;
+    document.querySelectorAll('.drawer-tab')
+      .forEach(t => t.classList.remove('is-active'));
 
-  const upload = document.getElementById('visualUploadArea');
+    tab.classList.add('is-active');
 
-  if (!upload) return;
+    document.querySelectorAll('.drawer-panel')
+      .forEach(p => p.classList.remove('is-active'));
 
-  if (ev.target.checked) {
-    upload.classList.add('show');
-  } else {
-    upload.classList.remove('show');
-  }
+    const panel = document.querySelector(
+      `.drawer-panel[data-panel="${target}"]`
+    );
 
-});
+    if (panel) panel.classList.add('is-active');
 
-//===============================
-// FREE VISUAL TOGGLE (DEBUG MODE)
-//===============================
-document.addEventListener('change', function (ev) {
+  });
 
-  console.log('CHANGE event detected:', ev.target);
+  /* FREE VISUAL SWITCH */
+  document.addEventListener('change', function (ev) {
 
-  if (ev.target.id !== 'freeVisualSwitch') return;
+    if (ev.target.id !== 'freeVisualSwitch') return;
 
-  console.log('Free visual switch toggled');
+    const upload = document.getElementById('visualUploadArea');
+    if (!upload) return;
 
-  const upload = document.getElementById('visualUploadArea');
+    if (ev.target.checked) {
+      upload.classList.add('show');
+    } else {
+      upload.classList.remove('show');
+    }
 
-  console.log('Upload area element:', upload);
+  });
 
-  if (!upload) {
-    console.error('❌ Upload area NOT FOUND in DOM');
+  /* SAMPLE CHECKOUT REDIRECT */
+ document.addEventListener('click', async function(e){
+
+  const btn = e.target.closest('.js-sample-checkout');
+  if(!btn) return;
+
+  const cart = QuoteCart.getCart();
+
+  if(!cart.length){
+    window.location.href = '/shop/checkout';
     return;
   }
 
-  if (ev.target.checked) {
-    console.log('Switch is ON → showing upload area');
-    upload.classList.add('show');
-  } else {
-    console.log('Switch is OFF → hiding upload area');
-    upload.classList.remove('show');
+  for(const item of cart){
+
+    await fetch('/shop/cart/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type':'application/json'
+      },
+      body: JSON.stringify({
+        product_id: item.id,
+        add_qty: item.qty || 1
+      })
+    });
+
   }
 
-});
+  window.location.href = '/shop/checkout';
 
-document.addEventListener('click', function (ev) {
-  if (ev.target.closest('.switch')) {
-    console.log('Switch label clicked');
-  }
-});
-
- document.addEventListener('openQuoteDrawer', function () {
-  const drawer = document.getElementById('quoteDrawer');
-  const overlay = document.getElementById('quoteDrawerOverlay');
-
-  if (drawer && overlay) {
-    drawer.classList.add('is-open');
-    overlay.classList.add('is-open');
-  }
 });
 
 })();

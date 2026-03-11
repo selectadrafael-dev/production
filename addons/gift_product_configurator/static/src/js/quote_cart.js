@@ -1,14 +1,35 @@
 (function () {
   'use strict';
 
+  /* SECURITY: ensure browser environment */
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
+
+  /* prevent overwriting if already loaded */
+  if (window.QuoteCart) {
+    return;
+  }
+
   const KEY = 'quote_cart';
 
   function getCart() {
-    return JSON.parse(localStorage.getItem(KEY) || '[]');
+    try {
+      const data = localStorage.getItem(KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.warn('QuoteCart corrupted data, resetting cart');
+      localStorage.removeItem(KEY);
+      return [];
+    }
   }
 
   function save(cart) {
-    localStorage.setItem(KEY, JSON.stringify(cart));
+    try {
+      localStorage.setItem(KEY, JSON.stringify(cart || []));
+    } catch (e) {
+      console.warn('QuoteCart save failed', e);
+    }
   }
 
   function isEmpty() {
@@ -16,11 +37,17 @@
   }
 
   function exists(id) {
-    return getCart().some(p => p.id === id);
+    if (!id) return false;
+    return getCart().some(function (p) {
+      return p.id === id;
+    });
   }
 
   function add(product) {
+    if (!product || !product.id) return;
+
     const cart = getCart();
+
     if (!exists(product.id)) {
       cart.push(product);
       save(cart);
@@ -28,16 +55,21 @@
   }
 
   function remove(id) {
-    const cart = getCart().filter(p => p.id !== id);
+    if (!id) return;
+
+    const cart = getCart().filter(function (p) {
+      return p.id !== id;
+    });
+
     save(cart);
   }
 
   window.QuoteCart = {
-    getCart,
-    add,
-    remove,
-    exists,
-    isEmpty
+    getCart: getCart,
+    add: add,
+    remove: remove,
+    exists: exists,
+    isEmpty: isEmpty
   };
 
 })();
