@@ -171,7 +171,7 @@
 
 document.addEventListener('click', async function(e){
 
-  const btn = e.target.closest('.js-quote-submit');
+  const btn = e.target.closest('.js-sample-checkout');
   if(!btn) return;
 
   if(typeof QuoteCart === 'undefined') return;
