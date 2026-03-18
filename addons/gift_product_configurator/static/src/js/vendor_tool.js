@@ -61,12 +61,28 @@ document.addEventListener("DOMContentLoaded", function () {
         if (errorBox) errorBox.classList.add("d-none");
     }
 
-    function scrollModalTop() {
+   function scrollModalTop() {
 
-        const modalBody = document.querySelector("#vendorDataModal .modal-body");
+        setTimeout(() => {
 
-        if (modalBody) modalBody.scrollTop = 0;
+            const modal = document.getElementById("vendorDataModal");
+            const modalBody = modal ? modal.querySelector(".modal-body") : null;
+
+            if (modalBody) {
+                modalBody.scrollTo({
+                    top: 0,
+                    behavior: "smooth"
+                });
+            } else if (modal) {
+                modal.scrollTo({
+                    top: 0,
+                    behavior: "smooth"
+                });
+            }
+
+        }, 150); // delay ensures DOM update first
     }
+
 
     function validateForm() {
 
