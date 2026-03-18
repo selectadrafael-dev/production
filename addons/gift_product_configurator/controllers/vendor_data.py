@@ -6,7 +6,7 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-MAX_FILE_SIZE = 100 * 1024 * 1024 #100mb upload allowed
+MAX_FILE_SIZE = 100 * 1024 * 1024 #max 100mb upload allowed
 
 
 class VendorDataController(http.Controller):
