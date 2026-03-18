@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const progressBar = document.getElementById("uploadProgressBar");
     const percentText = document.getElementById("uploadPercentText");
 
-    const MAX_SIZE = 10 * 1024 * 1024;
+    const MAX_SIZE = 100 * 1024 * 1024; //max 100b upload allowed 
 
     function showError(message) {
 
