@@ -61,6 +61,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (errorBox) errorBox.classList.add("d-none");
     }
 
+    //auto scroll to the to of modal
    function scrollModalTop() {
 
         setTimeout(() => {
@@ -113,7 +114,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (pdfFile.size > MAX_SIZE) {
 
-                showError("PDF file exceeds 10MB limit.");
+                showError("PDF file exceeds 100MB limit.");
                 return false;
             }
         }
@@ -135,7 +136,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (excelFile.size > MAX_SIZE) {
 
-                showError("Excel/CSV exceeds 10MB limit.");
+                showError("Excel/CSV exceeds 100MB limit.");
                 return false;
             }
         }
