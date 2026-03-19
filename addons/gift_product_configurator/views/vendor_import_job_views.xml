@@ -1,0 +1,52 @@
+<odoo>
+
+    <!-- Tree View -->
+    <record id="view_vendor_import_job_tree" model="ir.ui.view">
+        <field name="name">vendor.import.job.tree</field>
+        <field name="model">vendor.import.job</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="name"/>
+                <field name="state"/>
+                <field name="create_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_vendor_import_job_form" model="ir.ui.view">
+        <field name="name">vendor.import.job.form</field>
+        <field name="model">vendor.import.job</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="state"/>
+                        <field name="data_url"/>
+                    </group>
+
+                    <group>
+                        <field name="extracted_text"/>
+                        <field name="ai_response"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="action_vendor_import_job" model="ir.actions.act_window">
+        <field name="name">Vendor Imports</field>
+        <field name="res_model">vendor.import.job</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Menu -->
+    <menuitem id="menu_vendor_import_root" name="Vendor Data"/>
+    <menuitem id="menu_vendor_import_job"
+              name="Imports"
+              parent="menu_vendor_import_root"
+              action="action_vendor_import_job"/>
+
+</odoo>

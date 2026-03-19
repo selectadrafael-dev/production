@@ -157,6 +157,10 @@ document.addEventListener("DOMContentLoaded", function () {
         clearMessages();
 
         if (!validateForm()) return;
+            const submitBtn = form.querySelector("button[type='submit']");
+            if (submitBtn) submitBtn.disabled = true;// disbale submit button untill process complete
+        
+        scrollModalTop();// autoscrolling to top
 
         const formData = new FormData(form);
 

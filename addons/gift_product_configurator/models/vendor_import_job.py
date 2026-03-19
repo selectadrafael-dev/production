@@ -41,6 +41,8 @@ class VendorImportJob(models.Model):
 
         try:
 
+            self.extracted_text = self.extracted_text or ""
+
             if self.pdf_file:
                 self.extract_pdf()
 
@@ -62,7 +64,7 @@ class VendorImportJob(models.Model):
             self.state = "error"
 
 
-    # ---------------- PDF EXTRACTION ----------------
+    # ---------------- PDF ----------------
 
     def extract_pdf(self):
 
@@ -80,12 +82,10 @@ class VendorImportJob(models.Model):
                 if content:
                     text += content + "\n"
 
-        self.extracted_text = text[:15000]
-
-        _logger.info("PDF extraction done")
+        self.extracted_text += text[:15000]
 
 
-    # ---------------- EXCEL PARSING ----------------
+    # ---------------- EXCEL ----------------
 
     def parse_excel(self):
 
@@ -98,12 +98,10 @@ class VendorImportJob(models.Model):
 
         df = pd.read_excel(io.BytesIO(excel_bytes))
 
-        self.extracted_text += df.to_string()
-
-        _logger.info("Excel parsing done")
+        self.extracted_text += "\n" + df.to_string()
 
 
-    # ---------------- URL SCRAPING ----------------
+    # ---------------- URL ----------------
 
     def scrape_website(self):
 
@@ -118,9 +116,9 @@ class VendorImportJob(models.Model):
 
             text = soup.get_text()
 
-            self.extracted_text += text[:10000]
+            self.extracted_text += "\n" + text[:10000]
 
-        except Exception as e:
+        except Exception:
             _logger.warning("URL scraping failed")
 
 
@@ -140,32 +138,7 @@ class VendorImportJob(models.Model):
         client = OpenAI(api_key=api_key)
 
         prompt = f"""
-        You are an AI data extraction engine.
-
-        TASK:
-        Extract ONLY product information from the provided catalog or scraped website text.
-
-        STRICT RULES:
-        - Ignore navigation menus, headers, footers, and non-product text
-        - Focus only on actual products
-        - Translate ALL content to English
-        - Return ONLY valid JSON (no explanation, no text outside JSON)
-
-        OUTPUT FORMAT:
-        Return a JSON array of products.
-
-        Each product must contain:
-
-        - name (string)
-        - description (string)
-        - category (string)
-        - material (string, if available)
-        - colors (array of strings, if available)
-
-        IMPORTANT:
-        - If a field is missing, return an empty string or empty array
-        - Do NOT invent data
-        - Do NOT include duplicate products
+        Extract ONLY product data and return valid JSON array.
 
         TEXT:
         {self.extracted_text}
@@ -180,13 +153,27 @@ class VendorImportJob(models.Model):
                 input=prompt
             )
 
-            result = response.output[0].content[0].text
+            result = response.output[0].content[0].text.strip()
 
-            self.ai_response = result
+            # CLEAN RESPONSE
+            if result.startswith("```"):
+                result = result.split("```")[1]
 
-            json.loads(result)
+            if result.lower().startswith("json"):
+                result = result[4:]
 
-            _logger.info("OpenAI processing successful")
+            result = result.strip()
+
+            _logger.info("AI CLEANED RESPONSE: %s", result[:500])
+
+            # SAFE JSON PARSE
+            try:
+                parsed = json.loads(result)
+                self.ai_response = result
+                _logger.info("OpenAI JSON parsed successfully")
+            except Exception:
+                _logger.error("Invalid JSON from OpenAI: %s", result[:500])
+                raise Exception("AI response is not valid JSON")
 
         except Exception as e:
 
@@ -202,10 +189,36 @@ class VendorImportJob(models.Model):
 
     def create_product_drafts(self):
 
-        product_obj = self.env['product.template']
+        if not self.ai_response:
+            _logger.warning("No AI response found, skipping product creation")
+            return
 
-        product_obj.create({
-            'name': 'Imported Vendor Product (Draft)',
-            'sale_ok': False,
-            'website_published': False,
-        })
+        product_obj = self.env['product.template']
+        category_obj = self.env['product.category']
+
+        try:
+            data = json.loads(self.ai_response)
+        except Exception:
+            _logger.error("Invalid JSON, cannot create products")
+            return
+
+        for item in data:
+
+            name = item.get("name", "Unnamed Product")
+            description = item.get("description", "")
+            category_name = item.get("category", "Uncategorized")
+
+            category = category_obj.search([('name', '=', category_name)], limit=1)
+
+            if not category:
+                category = category_obj.create({'name': category_name})
+
+            product = product_obj.create({
+                'name': name,
+                'description_sale': description,
+                'categ_id': category.id,
+                'sale_ok': True,
+                'website_published': False,
+            })
+
+            _logger.info("Product created: %s", name)
