@@ -22,6 +22,7 @@
      "views/quote_scripts.xml",
      "views/larger_quantity_template.xml",
      'views/vendor_import_job_views.xml',
+     'data/cron.xml',
     #'security/ir.model.access.csv'
 ],
 "assets": {

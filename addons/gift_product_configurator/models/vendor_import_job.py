@@ -136,7 +136,8 @@ class VendorImportJob(models.Model):
         def split_text(text, chunk_size=8000):
             return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
 
-        chunks = split_text(self.extracted_text or "")
+        #chunks = split_text(self.extracted_text or "")
+        chunks = split_text((self.extracted_text or "")[:50000])
 
         _logger.info(f"Processing {len(chunks)} chunks")
 
@@ -162,7 +163,8 @@ class VendorImportJob(models.Model):
 
                 response = client.responses.create(
                     model="gpt-4.1-mini",
-                    input=prompt
+                    input=prompt,
+                    timeout=60
                 )
 
                 result = response.output[0].content[0].text.strip()
@@ -193,6 +195,14 @@ class VendorImportJob(models.Model):
                 unique_products[name] = product
 
         final_products = list(unique_products.values())
+
+        # 🔥 ADD THIS (FIRST)
+        if not final_products:
+            _logger.error("No products extracted from AI")
+            raise Exception("No products extracted")
+
+        # 🔥 ADD THIS (SECOND)
+        _logger.info(f"Final products ready: {len(final_products)}")
 
         self.ai_response = json.dumps(final_products)
 
@@ -235,3 +245,9 @@ class VendorImportJob(models.Model):
             })
 
             _logger.info(f"Product created: {name}")
+
+    #-------------async method in MODEL----------------------
+    def _process_async(self):
+        """Run in background-safe way"""
+        for rec in self:
+            rec.with_delay().process_import()

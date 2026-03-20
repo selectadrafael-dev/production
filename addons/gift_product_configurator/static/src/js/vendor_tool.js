@@ -188,8 +188,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         xhr.onload = function () {
 
-            console.log("Upload response status:", xhr.status);
-            console.log("Raw response:", xhr.responseText);
+            console.log("XHR STATUS:", xhr.status);
+            console.log("RAW RESPONSE:", xhr.responseText);
 
             if (xhr.status === 200) {
 
@@ -208,7 +208,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     if (progressBar) progressBar.style.width = "100%";
                     if (percentText) percentText.innerText = "100%";
 
-                    showSuccess(data.message || "Upload successful. Processing started.");
+                    showSuccess(data.message || "Upload successful. Your catalog is being processed. This may take a few minutes.");
 
                     form.reset();
 
