@@ -93,7 +93,10 @@ class VendorImportJob(models.Model):
 
         excel_bytes = base64.b64decode(self.excel_file)
 
-        df = pd.read_excel(io.BytesIO(excel_bytes))
+        try:
+            df = pd.read_excel(io.BytesIO(excel_bytes))
+        except Exception:
+            df = pd.read_csv(io.BytesIO(excel_bytes))
 
         self.extracted_text += "\n" + df.to_string()
 
@@ -136,8 +139,8 @@ class VendorImportJob(models.Model):
         def split_text(text, chunk_size=8000):
             return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
 
-        #chunks = split_text(self.extracted_text or "")
-        chunks = split_text((self.extracted_text or "")[:50000])
+        safe_text = (self.extracted_text or "")[:40000]
+        chunks = split_text(safe_text)
 
         _logger.info(f"Processing {len(chunks)} chunks")
 
@@ -167,7 +170,8 @@ class VendorImportJob(models.Model):
                     timeout=60
                 )
 
-                result = response.output[0].content[0].text.strip()
+                #result = response.output[0].content[0].text.strip()
+                result = response.output_text.strip()
 
                 if result.startswith("```"):
                     result = result.split("```")[1]
@@ -190,7 +194,7 @@ class VendorImportJob(models.Model):
         unique_products = {}
 
         for product in all_products:
-            name = product.get("name", "").strip()
+            name = product.get("name", "").strip().lower()
             if name and name not in unique_products:
                 unique_products[name] = product
 
@@ -224,8 +228,20 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.error("Invalid JSON")
             return
+    
+    #indicating total products extracted
+    _logger.info(f"Total products to create: {len(data)}")
 
-        for item in data:
+    #Split larger extracted products into batches for processes
+    BATCH_SIZE = 100
+
+    for i in range(0, len(data), BATCH_SIZE):
+
+        batch = data[i:i+BATCH_SIZE]
+
+        _logger.info(f"Processing batch {i//BATCH_SIZE + 1} with {len(batch)} products")
+
+        for item in batch:
 
             name = item.get("name", "Unnamed Product")
             description = item.get("description", "")
@@ -245,9 +261,26 @@ class VendorImportJob(models.Model):
             })
 
             _logger.info(f"Product created: {name}")
-
+        
     #-------------async method in MODEL----------------------
     def _process_async(self):
-        """Run in background-safe way"""
+        """Safe async fallback (no queue_job dependency)"""
         for rec in self:
-            rec.with_delay().process_import()
+            rec.process_import()
+
+    #------Cron job to process pending vendor imports---------
+    def run_pending_jobs(self):
+        """Cron job to process pending vendor imports"""
+
+        jobs = self.search([('state', '=', 'processing')])
+
+        _logger.info(f"CRON: Found {len(jobs)} jobs to process")
+
+        for job in jobs:
+            try:
+                _logger.info(f"CRON: Processing job {job.id}")
+                job.process_import()
+
+            except Exception as e:
+                _logger.exception(f"CRON: Job {job.id} failed")
+                job.state = 'error'
