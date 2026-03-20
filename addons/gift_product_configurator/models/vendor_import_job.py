@@ -186,7 +186,7 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"Chunk failed: {str(e)}")
                 continue
 
-        # -------- REMOVE DUPLICATES --------
+        # --------REMOVE DUPLICATES--------
         unique_products = {}
 
         for product in all_products:
