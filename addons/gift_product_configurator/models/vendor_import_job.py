@@ -200,12 +200,12 @@ class VendorImportJob(models.Model):
 
         final_products = list(unique_products.values())
 
-        # 🔥 ADD THIS (FIRST)
+        #🔥 ADD THIS (FIRST)
         if not final_products:
             _logger.error("No products extracted from AI")
             raise Exception("No products extracted")
 
-        # 🔥 ADD THIS (SECOND)
+        #🔥 ADD THIS (SECOND)
         _logger.info(f"Final products ready: {len(final_products)}")
 
         self.ai_response = json.dumps(final_products)
