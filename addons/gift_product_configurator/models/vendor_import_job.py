@@ -228,40 +228,39 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.error("Invalid JSON")
             return
-    
-    #indicating total products extracted
-    _logger.info(f"Total products to create: {len(data)}")
 
-    #Split larger extracted products into batches for processes
-    BATCH_SIZE = 100
+        # ✅ CORRECT LOCATION (INSIDE FUNCTION)
+        _logger.info("Total products to create: %s", len(data))
 
-    for i in range(0, len(data), BATCH_SIZE):
+        BATCH_SIZE = 100
 
-        batch = data[i:i+BATCH_SIZE]
+        for i in range(0, len(data), BATCH_SIZE):
 
-        _logger.info(f"Processing batch {i//BATCH_SIZE + 1} with {len(batch)} products")
+            batch = data[i:i+BATCH_SIZE]
 
-        for item in batch:
+            _logger.info("Processing batch %s", i//BATCH_SIZE + 1)
 
-            name = item.get("name", "Unnamed Product")
-            description = item.get("description", "")
-            category_name = item.get("category", "Uncategorized")
+            for item in batch:
 
-            category = category_obj.search([('name', '=', category_name)], limit=1)
+                name = item.get("name", "Unnamed Product")
+                description = item.get("description", "")
+                category_name = item.get("category", "Uncategorized")
 
-            if not category:
-                category = category_obj.create({'name': category_name})
+                category = category_obj.search([('name', '=', category_name)], limit=1)
 
-            product_obj.create({
-                'name': name,
-                'description_sale': description,
-                'categ_id': category.id,
-                'sale_ok': True,
-                'website_published': False,
-            })
+                if not category:
+                    category = category_obj.create({'name': category_name})
 
-            _logger.info(f"Product created: {name}")
-        
+                product_obj.create({
+                    'name': name,
+                    'description_sale': description,
+                    'categ_id': category.id,
+                    'sale_ok': True,
+                    'website_published': False,
+                })
+
+                _logger.info("Product created: %s", name)
+     
     #-------------async method in MODEL----------------------
     def _process_async(self):
         """Safe async fallback (no queue_job dependency)"""
