@@ -176,10 +176,10 @@ class VendorImportJob(models.Model):
         client = OpenAI(api_key=api_key)
 
         # -------- SPLIT TEXT --------
-        def split_text(text, chunk_size=8000):
+        def split_text(text, chunk_size=6000):
             return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
 
-        safe_text = (self.extracted_text or "")[:40000]
+        safe_text = (self.extracted_text or "")[:25000]
         chunks = split_text(safe_text)
 
         _logger.info(f"Processing {len(chunks)} chunks")
@@ -190,13 +190,35 @@ class VendorImportJob(models.Model):
         for chunk in chunks:
 
             prompt = f"""
-            Extract ALL products from this catalog text.
+            You are a STRICT product extraction engine.
+
+            TASK:
+            Extract ALL products from the catalog text.
 
             RULES:
-            - Each product must be separate
-            - Do NOT skip products
-            - Translate to English
+            - DO NOT skip products
+            - DO NOT merge products
+            - EACH product must be separate
+            - Translate EVERYTHING to English
             - Return ONLY JSON array
+            - NO explanation
+            - NO markdown
+            - NO extra text
+
+            FORMAT:
+            [
+            {{
+                "name": "",
+                "description": "",
+                "category": "",
+                "material": "",
+                "colors": []
+            }}
+            ]
+
+            IMPORTANT:
+            - If field missing → use empty string
+            - NEVER skip a product
 
             TEXT:
             {chunk}
@@ -210,7 +232,6 @@ class VendorImportJob(models.Model):
                     timeout=60
                 )
 
-                #result = response.output[0].content[0].text.strip()
                 result = response.output_text.strip()
 
                 if result.startswith("```"):
@@ -314,14 +335,14 @@ class VendorImportJob(models.Model):
     #------Cron job to process pending vendor imports---------
     def run_pending_jobs(self):
 
-        jobs = self.search([('state', '=', 'processing')])
+        jobs = self.search([('state', '=', 'draft')])
 
         _logger.warning(f"CRON START → Found {len(jobs)} jobs")
 
         for job in jobs:
             try:
                 _logger.warning(f"CRON → Processing job ID {job.id}")
-
+                job.state = 'processing'
                 job.process_import()
 
                 _logger.warning(f"CRON → Job {job.id} completed successfully")
@@ -331,13 +352,14 @@ class VendorImportJob(models.Model):
                 job.state = 'error'
             """Cron job to process pending vendor imports"""
 
-            jobs = self.search([('state', '=', 'processing')])
+            jobs = self.search([('state', '=', 'draft')])
 
             _logger.info(f"CRON: Found {len(jobs)} jobs to process")
 
             for job in jobs:
                 try:
                     _logger.info(f"CRON: Processing job {job.id}")
+                    job.state = 'processing'
                     job.process_import()
 
                 except Exception as e:

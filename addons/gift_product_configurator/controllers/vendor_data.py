@@ -54,7 +54,7 @@ class VendorDataController(http.Controller):
             return request.make_response(
                 json.dumps({
                     "success": True,
-                    "message": "Upload successful. Processing in background. This may take a few minutes."
+                    "message": "Upload successful. Processing in background. This may take 2-5 mins depending on the file size."
                 }),
                 headers=[('Content-Type', 'application/json')]
             )
