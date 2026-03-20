@@ -82,71 +82,102 @@ class VendorImportJob(models.Model):
                 if content:
                     text += content + "\n"
 
-        self.extracted_text += text[:15000]
+        def split_text(self, text, chunk_size=8000):
+            return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
 
 
     # ---------------- EXCEL ----------------
 
-    def parse_excel(self):
+        def parse_excel(self):
 
-        import pandas as pd
-        import io
+            import pandas as pd
+            import io
 
-        _logger.info("Parsing Excel")
+            _logger.info("Parsing Excel")
 
-        excel_bytes = base64.b64decode(self.excel_file)
+            excel_bytes = base64.b64decode(self.excel_file)
 
-        df = pd.read_excel(io.BytesIO(excel_bytes))
+            df = pd.read_excel(io.BytesIO(excel_bytes))
 
-        self.extracted_text += "\n" + df.to_string()
+            self.extracted_text += "\n" + df.to_string()
 
 
     # ---------------- URL ----------------
 
-    def scrape_website(self):
+        def scrape_website(self):
 
-        import requests
-        from bs4 import BeautifulSoup
+            import requests
+            from bs4 import BeautifulSoup
 
-        _logger.info("Scraping URL: %s", self.data_url)
+            _logger.info("Scraping URL: %s", self.data_url)
 
-        try:
-            r = requests.get(self.data_url, timeout=10)
-            soup = BeautifulSoup(r.text, "html.parser")
+            try:
+                r = requests.get(self.data_url, timeout=10)
+                soup = BeautifulSoup(r.text, "html.parser")
 
-            text = soup.get_text()
+                text = soup.get_text()
 
-            self.extracted_text += "\n" + text[:10000]
+                self.extracted_text += "\n" + text[:10000]
 
-        except Exception:
-            _logger.warning("URL scraping failed")
+            except Exception:
+                _logger.warning("URL scraping failed")
 
 
     # ---------------- OPENAI ----------------
 
-    def send_to_openai(self):
+            from openai import OpenAI
 
-        from openai import OpenAI
+            self.state = "ai_processing"
 
-        self.state = "ai_processing"
+            api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
 
-        api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+            if not api_key:
+                raise Exception("OpenAI API key not configured")
 
-        if not api_key:
-            raise Exception("OpenAI API key not configured")
+            client = OpenAI(api_key=api_key)
 
-        client = OpenAI(api_key=api_key)
+    # ---------------- SPLIT TEXT ----------------
+            def split_text(text, chunk_size=8000):
+                return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+
+            chunks = split_text(self.extracted_text or "")
+
+            _logger.info(f"Processing {len(chunks)} chunks with OpenAI")
+
+            all_products = []
+
+    # ---------------- LOOP THROUGH CHUNKS ----------------
+    for chunk in chunks:
 
         prompt = f"""
-        Extract ONLY product data and return valid JSON array.
+        You are an AI data extraction engine.
+
+        TASK:
+        Extract ALL products from this catalog text.
+
+        RULES:
+        - Do NOT skip products
+        - Do NOT merge products
+        - Each product must be separate
+        - Translate to English
+        - Return ONLY JSON array
+
+        FORMAT:
+        [
+          {{
+            "name": "",
+            "description": "",
+            "category": "",
+            "material": "",
+            "colors": []
+          }}
+        ]
 
         TEXT:
-        {self.extracted_text}
+        {chunk}
         """
 
         try:
-
-            _logger.info("Calling OpenAI API")
 
             response = client.responses.create(
                 model="gpt-4.1-mini",
@@ -155,7 +186,7 @@ class VendorImportJob(models.Model):
 
             result = response.output[0].content[0].text.strip()
 
-            # CLEAN RESPONSE
+            # ---------------- CLEAN RESPONSE ----------------
             if result.startswith("```"):
                 result = result.split("```")[1]
 
@@ -164,27 +195,31 @@ class VendorImportJob(models.Model):
 
             result = result.strip()
 
-            _logger.info("AI CLEANED RESPONSE: %s", result[:500])
+            _logger.info("Chunk processed")
 
-            # SAFE JSON PARSE
-            try:
-                parsed = json.loads(result)
-                self.ai_response = result
-                _logger.info("OpenAI JSON parsed successfully")
-            except Exception:
-                _logger.error("Invalid JSON from OpenAI: %s", result[:500])
-                raise Exception("AI response is not valid JSON")
+            parsed = json.loads(result)
+
+            if isinstance(parsed, list):
+                all_products.extend(parsed)
 
         except Exception as e:
+            _logger.warning(f"Chunk failed: {str(e)}")
+            continue
 
-            _logger.error("OpenAI error: %s", str(e))
+    # ---------------- REMOVE DUPLICATES ----------------
+    unique_products = {}
 
-            if "quota" in str(e).lower():
-                raise Exception("Billing issue detected")
+    for product in all_products:
+        name = product.get("name", "").strip()
+        if name and name not in unique_products:
+            unique_products[name] = product
 
-            raise
+    final_products = list(unique_products.values())
 
+    # ---------------- SAVE RESULT ----------------
+    self.ai_response = json.dumps(final_products)
 
+    _logger.info(f"Total products extracted: {len(final_products)}")
     # ---------------- PRODUCT CREATION ----------------
 
     def create_product_drafts(self):
