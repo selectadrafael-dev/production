@@ -24,14 +24,13 @@ class VendorImportJob(models.Model):
     ai_response = fields.Text()
 
     state = fields.Selection([
-        ('draft','Draft'),
-        ('processing','Processing'),
-        ('ai_processing','AI Processing'),
-        ('review','Vendor Review'),
-        ('done','Completed'),
-        ('error','Error')
+        ('draft', 'Draft'),
+        ('processing', 'Processing'),
+        ('ai_processing', 'AI Processing'),
+        ('review', 'Vendor Review'),
+        ('done', 'Completed'),
+        ('error', 'Error')
     ], default='draft')
-
 
     # ---------------- MAIN FLOW ----------------
 
@@ -59,10 +58,9 @@ class VendorImportJob(models.Model):
 
             self.state = "review"
 
-        except Exception as e:
+        except Exception:
             _logger.exception("Processing failed")
             self.state = "error"
-
 
     # ---------------- PDF ----------------
 
@@ -82,8 +80,7 @@ class VendorImportJob(models.Model):
                 if content:
                     text += content + "\n"
 
-        self.extracted_text += text[:15000]
-
+        self.extracted_text += text
 
     # ---------------- EXCEL ----------------
 
@@ -99,7 +96,6 @@ class VendorImportJob(models.Model):
         df = pd.read_excel(io.BytesIO(excel_bytes))
 
         self.extracted_text += "\n" + df.to_string()
-
 
     # ---------------- URL ----------------
 
@@ -121,7 +117,6 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("URL scraping failed")
 
-
     # ---------------- OPENAI ----------------
 
     def send_to_openai(self):
@@ -137,60 +132,78 @@ class VendorImportJob(models.Model):
 
         client = OpenAI(api_key=api_key)
 
-        prompt = f"""
-        Extract ONLY product data and return valid JSON array.
+        # -------- SPLIT TEXT --------
+        def split_text(text, chunk_size=8000):
+            return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
 
-        TEXT:
-        {self.extracted_text}
-        """
+        chunks = split_text(self.extracted_text or "")
 
-        try:
+        _logger.info(f"Processing {len(chunks)} chunks")
 
-            _logger.info("Calling OpenAI API")
+        all_products = []
 
-            response = client.responses.create(
-                model="gpt-4.1-mini",
-                input=prompt
-            )
+        # -------- LOOP --------
+        for chunk in chunks:
 
-            result = response.output[0].content[0].text.strip()
+            prompt = f"""
+            Extract ALL products from this catalog text.
 
-            # CLEAN RESPONSE
-            if result.startswith("```"):
-                result = result.split("```")[1]
+            RULES:
+            - Each product must be separate
+            - Do NOT skip products
+            - Translate to English
+            - Return ONLY JSON array
 
-            if result.lower().startswith("json"):
-                result = result[4:]
+            TEXT:
+            {chunk}
+            """
 
-            result = result.strip()
-
-            _logger.info("AI CLEANED RESPONSE: %s", result[:500])
-
-            # SAFE JSON PARSE
             try:
+
+                response = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=prompt
+                )
+
+                result = response.output[0].content[0].text.strip()
+
+                if result.startswith("```"):
+                    result = result.split("```")[1]
+
+                if result.lower().startswith("json"):
+                    result = result[4:]
+
+                result = result.strip()
+
                 parsed = json.loads(result)
-                self.ai_response = result
-                _logger.info("OpenAI JSON parsed successfully")
-            except Exception:
-                _logger.error("Invalid JSON from OpenAI: %s", result[:500])
-                raise Exception("AI response is not valid JSON")
 
-        except Exception as e:
+                if isinstance(parsed, list):
+                    all_products.extend(parsed)
 
-            _logger.error("OpenAI error: %s", str(e))
+            except Exception as e:
+                _logger.warning(f"Chunk failed: {str(e)}")
+                continue
 
-            if "quota" in str(e).lower():
-                raise Exception("Billing issue detected")
+        # -------- REMOVE DUPLICATES --------
+        unique_products = {}
 
-            raise
+        for product in all_products:
+            name = product.get("name", "").strip()
+            if name and name not in unique_products:
+                unique_products[name] = product
 
+        final_products = list(unique_products.values())
 
-    # ---------------- PRODUCT CREATION ----------------
+        self.ai_response = json.dumps(final_products)
+
+        _logger.info(f"Total products extracted: {len(final_products)}")
+
+    # ----------------PRODUCT CREATION----------------
 
     def create_product_drafts(self):
 
         if not self.ai_response:
-            _logger.warning("No AI response found, skipping product creation")
+            _logger.warning("No AI response found")
             return
 
         product_obj = self.env['product.template']
@@ -199,7 +212,7 @@ class VendorImportJob(models.Model):
         try:
             data = json.loads(self.ai_response)
         except Exception:
-            _logger.error("Invalid JSON, cannot create products")
+            _logger.error("Invalid JSON")
             return
 
         for item in data:
@@ -213,7 +226,7 @@ class VendorImportJob(models.Model):
             if not category:
                 category = category_obj.create({'name': category_name})
 
-            product = product_obj.create({
+            product_obj.create({
                 'name': name,
                 'description_sale': description,
                 'categ_id': category.id,
@@ -221,4 +234,4 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             })
 
-            _logger.info("Product created: %s", name)
+            _logger.info(f"Product created: {name}")
