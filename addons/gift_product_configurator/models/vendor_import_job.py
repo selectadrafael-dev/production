@@ -295,7 +295,7 @@ class VendorImportJob(models.Model):
 
         _logger.info(f"Total products extracted: {len(final_products)}")
 
-    # ----------------PRODUCT CREATION----------------
+    #----------------PRODUCT CREATION----------------
         _logger.warning("ENTERED PRODUCT CREATION")
     def create_product_drafts(self):
 
