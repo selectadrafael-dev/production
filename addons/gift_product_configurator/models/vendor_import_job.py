@@ -42,8 +42,10 @@ class VendorImportJob(models.Model):
 
         try:
 
+            # Ensure text exists
             self.extracted_text = self.extracted_text or ""
 
+            # -------- DATA EXTRACTION --------
             if self.pdf_file:
                 _logger.warning("STEP → Extracting PDF")
                 self.extract_pdf()
@@ -58,49 +60,43 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"TEXT LENGTH → {len(self.extracted_text or '')}")
 
-            if self.extracted_text:
-                _logger.warning("STEP → Sending to OpenAI")
-                self.send_to_openai()
-            else:
+            # -------- STOP IF NO TEXT --------
+            if not self.extracted_text:
                 _logger.error("NO TEXT EXTRACTED → STOPPING")
+                self.state = "error"
                 return
 
+            # -------- TRACK PREVIOUS COUNT (BEFORE AI) --------
+            previous_count = len(json.loads(self.ai_response or "[]"))
+            _logger.warning(f"PREVIOUS COUNT → {previous_count}")
+
+            # -------- OPENAI --------
+            _logger.warning("STEP → Sending to OpenAI")
+            self.send_to_openai()
+
+            # -------- PRODUCT CREATION --------
             _logger.warning("STEP → Creating products")
             self.create_product_drafts()
 
-            self.state = "done"
+            # -------- CHECK PROGRESS --------
+            current_products = json.loads(self.ai_response or "[]")
+            current_count = len(current_products)
 
-            _logger.warning(f"PROCESS DONE → Job {self.id}")
+            _logger.warning(f"CURRENT COUNT → {current_count}")
+
+            # -------- SMART RETRY LOGIC --------
+            if current_count == previous_count:
+                _logger.warning("NO NEW PRODUCTS FOUND → STOPPING")
+                self.state = "review"
+            else:
+                _logger.warning("NEW PRODUCTS FOUND → CONTINUE PROCESSING")
+                self.state = "processing"
+
+            _logger.warning(f"PROCESS END → Job {self.id}")
 
         except Exception as e:
             _logger.exception("PROCESS FAILED")
             self.state = "error"
-
-            self.state = "processing"
-
-            try:
-
-                self.extracted_text = self.extracted_text or ""
-
-                if self.pdf_file:
-                    self.extract_pdf()
-
-                if self.excel_file:
-                    self.parse_excel()
-
-                if self.data_url:
-                    self.scrape_website()
-
-                if self.extracted_text:
-                    self.send_to_openai()
-
-                self.create_product_drafts()
-
-                self.state = "review"
-
-            except Exception:
-                _logger.exception("Processing failed")
-                self.state = "error"
 
     # ---------------- PDF ----------------
 
@@ -210,6 +206,7 @@ class VendorImportJob(models.Model):
             - If unsure → still include it
             - Extract ALL variants (size, color, version)
             - Do NOT summarize
+            - If a page contains multiple products, extract ALL of them
 
             OUTPUT:
             Return ONLY JSON array.
@@ -282,7 +279,18 @@ class VendorImportJob(models.Model):
         #🔥 ADD THIS (SECOND)
         _logger.info(f"Final products ready: {len(final_products)}")
 
-        self.ai_response = json.dumps(final_products)
+        #self.ai_response = json.dumps(final_products)
+        existing = json.loads(self.ai_response or "[]")
+        combined = existing + final_products
+
+        # remove duplicates again
+        unique = {}
+        for p in combined:
+            name = p.get("name", "").strip().lower()
+            if name and name not in unique:
+                unique[name] = p
+
+        self.ai_response = json.dumps(list(unique.values()))
         _logger.warning(f"OpenAI RAW RESPONSE (first 300 chars): {result[:300]}")
 
         _logger.info(f"Total products extracted: {len(final_products)}")
