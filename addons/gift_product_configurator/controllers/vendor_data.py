@@ -30,12 +30,6 @@ class VendorDataController(http.Controller):
                 'state': 'draft'
             })
 
-            # 🔥 SAFE BACKGROUND EXECUTION
-            request.env.cr.commit()  # ensure record saved
-
-            request.env['vendor.import.job'].sudo().browse(job.id)._process_async()
-
-            _logger.info(f"Job created: {job.id}")
 
             # ---------------- FILE HANDLING ----------------
             if pdf:
@@ -47,6 +41,13 @@ class VendorDataController(http.Controller):
             if logo:
                 job.logo_file = base64.b64encode(logo.read())
 
+             # 🔥 SAFE BACKGROUND EXECUTION
+            request.env.cr.commit()  # ensure record saved
+
+            #request.env['vendor.import.job'].sudo().browse(job.id)._process_async()
+
+            _logger.info(f"Job created: {job.id}")
+          
             # 🚫 DO NOT PROCESS HERE (CRITICAL)
             # job.process_import()  ← NEVER CALL THIS
 
