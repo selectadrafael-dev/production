@@ -120,7 +120,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning("EXCEL PARSED")
 
-    # ---------------- URL ----------------
+    #---------------- URL ----------------
 
     def scrape_website(self):
 
@@ -143,7 +143,7 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("URL scraping failed")
 
-    # ---------------- OPENAI ----------------
+    #---------------- OPENAI ----------------
 
     def send_to_openai(self):
 
