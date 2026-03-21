@@ -40,7 +40,6 @@ class VendorImportJob(models.Model):
         self.state = "processing"
 
         try:
-
             self.extracted_text = ""
 
             if self.pdf_file:
@@ -54,6 +53,8 @@ class VendorImportJob(models.Model):
             if self.data_url:
                 _logger.warning("STEP → Scraping URL")
                 self.scrape_website()
+
+            _logger.warning(f"TEXT LENGTH → {len(self.extracted_text or '')}")
 
             if not self.extracted_text:
                 _logger.error("NO TEXT EXTRACTED → STOPPING")
@@ -112,7 +113,12 @@ class VendorImportJob(models.Model):
         except Exception:
             df = pd.read_csv(io.BytesIO(excel_bytes))
 
-        self.extracted_text = df.to_json()
+        self.extracted_text = json.dumps([{
+            "page": 1,
+            "text": df.to_string()
+        }])
+
+        _logger.warning("EXCEL PARSED")
 
     # ---------------- URL ----------------
 
@@ -131,6 +137,8 @@ class VendorImportJob(models.Model):
                 "page": 1,
                 "text": text[:15000]
             }])
+
+            _logger.warning("URL SCRAPED")
 
         except Exception:
             _logger.warning("URL scraping failed")
@@ -152,6 +160,8 @@ class VendorImportJob(models.Model):
 
         pages = json.loads(self.extracted_text or "[]")
 
+        _logger.warning(f"TOTAL PAGES TO PROCESS → {len(pages)}")
+
         all_products = []
 
         for page in pages:
@@ -159,21 +169,20 @@ class VendorImportJob(models.Model):
             page_no = page.get("page")
             text = page.get("text", "")
 
-            if not text.strip():
+            # 🔥 SKIP BAD PAGES
+            if not text or len(text.strip()) < 50:
+                _logger.warning(f"PAGE {page_no} → SKIPPED (LOW TEXT)")
                 continue
 
             _logger.warning(f"AI → PAGE {page_no}")
 
             prompt = f"""
-            Extract ALL products from this catalog page.
+            Extract ALL products from this page.
 
-            Rules:
-            - Do NOT skip products
-            - Do NOT merge products
-            - Each product must be separate
-            - Include variants
-
-            Return ONLY JSON array.
+            RULES:
+            - Return ONLY JSON array
+            - No explanation
+            - If none, return []
 
             TEXT:
             {text}
@@ -188,7 +197,22 @@ class VendorImportJob(models.Model):
 
                 result = response.output_text.strip()
 
-                parsed = json.loads(result)
+                _logger.warning(f"RAW AI RESPONSE PAGE {page_no} → {result[:200]}")
+
+                # CLEAN
+                if "```" in result:
+                    result = result.split("```")[1]
+
+                if result.lower().startswith("json"):
+                    result = result[4:]
+
+                result = result.strip()
+
+                try:
+                    parsed = json.loads(result)
+                except Exception:
+                    _logger.warning(f"INVALID JSON → PAGE {page_no}")
+                    continue
 
                 if isinstance(parsed, list):
                     _logger.warning(f"PAGE {page_no} → {len(parsed)} products")
@@ -197,6 +221,8 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
+
+        _logger.warning(f"TOTAL RAW PRODUCTS → {len(all_products)}")
 
         # -------- REMOVE DUPLICATES --------
         unique = {}
@@ -208,32 +234,42 @@ class VendorImportJob(models.Model):
 
         final_products = list(unique.values())
 
-        _logger.warning(f"FINAL PRODUCT COUNT → {len(final_products)}")
+        _logger.warning(f"AFTER DEDUPE → {len(final_products)}")
 
         if not final_products:
             raise Exception("No products extracted")
 
         self.ai_response = json.dumps(final_products)
 
+        _logger.warning(f"FINAL PRODUCTS STORED → {len(final_products)}")
+        _logger.warning(f"AI RESPONSE SAMPLE → {self.ai_response[:300]}")
+
     # ---------------- PRODUCT CREATION ----------------
 
     def create_product_drafts(self):
 
         if not self.ai_response:
+            _logger.warning("NO AI RESPONSE → SKIPPING PRODUCT CREATION")
+            return
+
+        try:
+            data = json.loads(self.ai_response)
+        except Exception:
+            _logger.error("INVALID AI JSON")
             return
 
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
 
-        data = json.loads(self.ai_response)
-
         _logger.warning(f"CREATING {len(data)} PRODUCTS")
 
-        for item in data:
+        for i, item in enumerate(data, start=1):
 
             name = item.get("name", "Unnamed Product")
             description = item.get("description", "")
             category_name = item.get("category", "Uncategorized")
+
+            _logger.warning(f"[{i}] Creating → {name}")
 
             category = category_obj.search([('name', '=', category_name)], limit=1)
 
@@ -248,19 +284,17 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             })
 
-            _logger.info(f"Product created: {name}")
-
     # ---------------- CRON ----------------
 
     def run_pending_jobs(self):
 
-        jobs = self.search([('state', '=', 'draft')])
+        jobs = self.search([('state', '=', 'processing')])
 
         _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
         for job in jobs:
             try:
-                job.state = 'processing'
+                _logger.warning(f"CRON → Processing job {job.id}")
                 job.process_import()
             except Exception:
                 _logger.exception("CRON FAILED")
