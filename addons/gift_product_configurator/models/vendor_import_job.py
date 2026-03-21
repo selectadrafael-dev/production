@@ -176,10 +176,18 @@ class VendorImportJob(models.Model):
         client = OpenAI(api_key=api_key)
 
         # -------- SPLIT TEXT --------
-        def split_text(text, chunk_size=6000):
-            return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+        def split_text(text, chunk_size=6000, overlap=500):
+            chunks = []
+            i = 0
 
-        safe_text = (self.extracted_text or "")[:25000]
+            while i < len(text):
+                chunk = text[i:i+chunk_size]
+                chunks.append(chunk)
+                i += chunk_size - overlap
+
+            return chunks
+
+        safe_text = (self.extracted_text or "")[:35000]
         chunks = split_text(safe_text)
 
         _logger.info(f"Processing {len(chunks)} chunks")
@@ -190,20 +198,21 @@ class VendorImportJob(models.Model):
         for chunk in chunks:
 
             prompt = f"""
-            You are a STRICT product extraction engine.
+            You are a HIGH PRECISION product extraction engine.
 
             TASK:
-            Extract ALL products from the catalog text.
+            Extract EVERY SINGLE product from the catalog text.
 
-            RULES:
-            - DO NOT skip products
+            STRICT RULES:
+            - DO NOT skip any product
             - DO NOT merge products
-            - EACH product must be separate
-            - Translate EVERYTHING to English
-            - Return ONLY JSON array
-            - NO explanation
-            - NO markdown
-            - NO extra text
+            - EVEN similar products must be separate
+            - If unsure → still include it
+            - Extract ALL variants (size, color, version)
+            - Do NOT summarize
+
+            OUTPUT:
+            Return ONLY JSON array.
 
             FORMAT:
             [
@@ -216,9 +225,10 @@ class VendorImportJob(models.Model):
             }}
             ]
 
-            IMPORTANT:
-            - If field missing → use empty string
-            - NEVER skip a product
+            CRITICAL:
+            - If 2 products look similar → treat them as DIFFERENT
+            - If product appears twice → include once
+            - MAXIMIZE product count, do NOT minimize
 
             TEXT:
             {chunk}
@@ -256,7 +266,7 @@ class VendorImportJob(models.Model):
         unique_products = {}
 
         for product in all_products:
-            name = product.get("name", "").strip().lower()
+            name = product.get("name", "").strip()
             if name and name not in unique_products:
                 unique_products[name] = product
                 _logger.warning(f"CREATING PRODUCT: {name}")
