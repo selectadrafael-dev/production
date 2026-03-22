@@ -250,7 +250,7 @@ class VendorImportJob(models.Model):
 
         self.ai_response = json.dumps(final_products)
 
-    # ---------------- PRODUCT CREATION ----------------
+    #---------------- PRODUCT CREATION ----------------
 
     def create_product_drafts(self):
 
