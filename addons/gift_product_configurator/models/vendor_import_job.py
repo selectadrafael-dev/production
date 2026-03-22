@@ -281,6 +281,20 @@ class VendorImportJob(models.Model):
 
             category = category_obj.search([('name', '=', category_name)], limit=1)
 
+            #product image
+            image_url = item.get("image_url")
+
+            image_base64 = False
+
+            if image_url:
+                try:
+                    response = requests.get(image_url, timeout=10)
+                    if response.status_code == 200:
+                        image_base64 = base64.b64encode(response.content)
+                        _logger.warning(f"IMAGE DOWNLOADED → {product.get('name')}")
+                except Exception as e:
+                    _logger.warning(f"IMAGE FAILED → {e}")
+
             if not category:
                 category = category_obj.create({'name': category_name})
 
@@ -288,6 +302,7 @@ class VendorImportJob(models.Model):
                 'name': name,
                 'description_sale': description,
                 'categ_id': category.id,
+                "image_1920": image_base64,
                 'sale_ok': True,
                 'website_published': False,
             })
