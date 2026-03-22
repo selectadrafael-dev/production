@@ -2,6 +2,7 @@ from odoo import models, fields
 import base64
 import logging
 import json
+import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -64,7 +65,8 @@ class VendorImportJob(models.Model):
             self.send_to_openai()
 
             _logger.warning("STEP → Creating products")
-            self.create_product_drafts()
+            #self.create_product_drafts()
+            self.create_product_drafts(images_map)
 
             self.state = "done"
 
@@ -78,23 +80,48 @@ class VendorImportJob(models.Model):
 
     def extract_pdf(self):
 
-        import pdfplumber, io
+        import fitz  # PyMuPDF
+        import io
 
         pdf_bytes = base64.b64decode(self.pdf_file)
 
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
         pages = []
+        images_map = {}
 
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for i, page in enumerate(pdf.pages):
-                content = page.extract_text()
+        for i, page in enumerate(doc):
 
-                if content:
-                    pages.append({
-                        "page": i + 1,
-                        "text": content
-                    })
+            text = page.get_text()
 
-        self.extracted_text = json.dumps(pages)
+            image_list = page.get_images(full=True)
+
+            page_images = []
+
+            for img_index, img in enumerate(image_list):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+
+                image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+
+                image_id = f"page_{i+1}_img_{img_index+1}"
+
+                images_map[image_id] = image_base64
+                page_images.append(image_id)
+
+            pages.append({
+                "page": i + 1,
+                "text": text,
+                "images": page_images
+            })
+
+            _logger.warning(f"PDF PAGE {i+1} → {len(page_images)} images")
+
+        self.extracted_text = json.dumps({
+            "pages": pages,
+            "images": images_map
+        })
 
         _logger.warning(f"TOTAL PAGES → {len(pages)}")
 
@@ -150,7 +177,10 @@ class VendorImportJob(models.Model):
 
         client = OpenAI(api_key=api_key)
 
-        pages = json.loads(self.extracted_text or "[]")
+        #pages = json.loads(self.extracted_text or "[]")
+        data = json.loads(self.extracted_text or "{}")
+        pages = data.get("pages", [])
+        images_map = data.get("images", {})
 
         all_products = []
 
@@ -181,6 +211,8 @@ class VendorImportJob(models.Model):
             - No markdown
             - No text outside JSON
             - If no products found, return []
+            - If product matches an image, return the image_id
+            - image_url should be image_id (not URL)
 
 
             FORMAT:
@@ -195,6 +227,9 @@ class VendorImportJob(models.Model):
 
             TEXT:
             {text}
+
+            AVAILABLE IMAGE IDS:
+            {page.get("images", [])}
             """
 
             try:
@@ -254,7 +289,10 @@ class VendorImportJob(models.Model):
 
     #---------------- PRODUCT CREATION ----------------
 
-    def create_product_drafts(self):
+    def create_product_drafts(self, images_map=None):
+
+        if not images_map:
+            images_map = {}
 
         if not self.ai_response:
             return
@@ -281,19 +319,36 @@ class VendorImportJob(models.Model):
 
             category = category_obj.search([('name', '=', category_name)], limit=1)
 
-            #product image
-            image_url = item.get("image_url")
-
+            # product image
+            image_ref = item.get("image_url")
             image_base64 = False
 
+            if image_ref:
+                image_base64 = images_map.get(image_ref)
+            image_base64 = False
+
+            # 🔥 TRY ORIGINAL IMAGE FIRST
             if image_url:
                 try:
                     response = requests.get(image_url, timeout=10)
                     if response.status_code == 200:
                         image_base64 = base64.b64encode(response.content)
-                        _logger.warning(f"IMAGE DOWNLOADED → {product.get('name')}")
+                        _logger.warning(f"IMAGE DOWNLOADED → {name}")
                 except Exception as e:
                     _logger.warning(f"IMAGE FAILED → {e}")
+
+            # 🔥 FALLBACK (IF NO IMAGE FROM AI)
+            if not image_base64:
+                try:
+                    search_url = f"https://source.unsplash.com/600x600/?{name.replace(' ', '+')}"
+                    response = requests.get(search_url, timeout=10)
+
+                    if response.status_code == 200:
+                        image_base64 = base64.b64encode(response.content)
+                        _logger.warning(f"FALLBACK IMAGE USED → {name}")
+
+                except Exception as e:
+                    _logger.warning(f"FALLBACK IMAGE FAILED → {e}")
 
             if not category:
                 category = category_obj.create({'name': category_name})
