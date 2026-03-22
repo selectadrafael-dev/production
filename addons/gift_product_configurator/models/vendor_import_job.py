@@ -176,6 +176,7 @@ class VendorImportJob(models.Model):
             - Do NOT merge products
             - Each product must be separate
             - Translate to English
+            - Extract product image URL if available, else null
             - No explanation
             - No markdown
             - No text outside JSON
@@ -187,7 +188,8 @@ class VendorImportJob(models.Model):
             {{
                 "name": "",
                 "description": "",
-                "category": ""
+                "category": "",
+                "image_url": ""
             }}
             ]
 
