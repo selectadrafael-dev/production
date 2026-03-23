@@ -2,6 +2,8 @@ from odoo import models, fields
 import base64
 import logging
 import json
+# 🔥 ONLY ADD THIS IMPORT AT TOP
+import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -84,35 +86,58 @@ class VendorImportJob(models.Model):
 
         pages = []
 
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            for i, page in enumerate(pdf.pages):
-                content = page.extract_text()
+        try:
+            # 🔥 TRY FLASK IMAGE EXTRACTION (OPTIONAL)
+            files = {'file': ('catalog.pdf', pdf_bytes, 'application/pdf')}
+            res = requests.post("http://localhost:5000/extract", files=files, timeout=60)
 
-                if content:
+            if res.status_code == 200:
+                flask_pages = res.json()
+
+                for p in flask_pages:
                     pages.append({
-                        "page": i + 1,
-                        "text": content
+                        "page": p.get("page"),
+                        "text": p.get("text", ""),
+                        "images": p.get("images", [])
                     })
+
+                _logger.warning("PDF EXTRACTED VIA FLASK (WITH IMAGES)")
+
+            else:
+                raise Exception("Flask failed")
+
+        except Exception:
+            _logger.warning("FALLBACK → USING PDFPLUMBER (NO IMAGES)")
+
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                for i, page in enumerate(pdf.pages):
+                    content = page.extract_text()
+
+                    if content:
+                        pages.append({
+                            "page": i + 1,
+                            "text": content,
+                            "images": []
+                        })
 
         self.extracted_text = json.dumps(pages)
 
         _logger.warning(f"TOTAL PAGES → {len(pages)}")
+        # ---------------- EXCEL ----------------
 
-    # ---------------- EXCEL ----------------
+        def parse_excel(self):
 
-    def parse_excel(self):
+            import pandas as pd
+            import io
 
-        import pandas as pd
-        import io
+            excel_bytes = base64.b64decode(self.excel_file)
 
-        excel_bytes = base64.b64decode(self.excel_file)
+            try:
+                df = pd.read_excel(io.BytesIO(excel_bytes))
+            except Exception:
+                df = pd.read_csv(io.BytesIO(excel_bytes))
 
-        try:
-            df = pd.read_excel(io.BytesIO(excel_bytes))
-        except Exception:
-            df = pd.read_csv(io.BytesIO(excel_bytes))
-
-        self.extracted_text = df.to_json()
+            self.extracted_text = df.to_json()
 
     # ---------------- URL ----------------
 
@@ -245,7 +270,7 @@ class VendorImportJob(models.Model):
 
         self.ai_response = json.dumps(final_products)
 
-    # ---------------- PRODUCT CREATION ----------------
+    #---------------- PRODUCT CREATION ----------------
 
     def create_product_drafts(self):
 
@@ -256,6 +281,7 @@ class VendorImportJob(models.Model):
         category_obj = self.env['product.category']
 
         data = json.loads(self.ai_response)
+        pages = json.loads(self.extracted_text or "[]")
 
         _logger.warning(f"CREATING {len(data)} PRODUCTS")
 
@@ -270,13 +296,28 @@ class VendorImportJob(models.Model):
             if not category:
                 category = category_obj.create({'name': category_name})
 
-            product_obj.create({
+            # 🔥 FIND IMAGE (SIMPLE MATCH)
+            image_base64 = None
+
+            for page in pages:
+                if name.lower() in (page.get("text") or "").lower():
+                    imgs = page.get("images") or []
+                    if imgs:
+                        image_base64 = imgs[0]
+                        break
+
+            vals = {
                 'name': name,
                 'description_sale': description,
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
-            })
+            }
+
+            if image_base64:
+                vals['image_1920'] = image_base64
+
+            product_obj.create(vals)
 
             _logger.info(f"Product created: {name}")
 
