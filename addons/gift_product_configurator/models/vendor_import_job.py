@@ -287,21 +287,7 @@ class VendorImportJob(models.Model):
             if not category:
                 category = category_obj.create({'name': category_name})
 
-
-            # ---------------- IMAGE FALLBACK ----------------
-            image_base64 = None
-            try:
-                import requests
-                url = f"https://source.unsplash.com/600x600/?{name.replace(' ', '+')}"
-                res = requests.get(url, timeout=10)
-                if res.status_code == 200:
-                    image_base64 = base64.b64encode(res.content)
-                    _logger.warning(f"FALLBACK IMAGE USED → {name}")
-            except Exception as e:
-                _logger.warning(f"IMAGE FETCH FAILED → {str(e)}")
-
             product_obj.create({
-                'image_1920': image_base64,
                 'name': name,
                 'description_sale': description,
                 'categ_id': category.id,
