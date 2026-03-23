@@ -13,7 +13,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const progressBar = document.getElementById("uploadProgressBar");
     const percentText = document.getElementById("uploadPercentText");
 
-    const MAX_SIZE = 10 * 1024 * 1024;
+    const MAX_SIZE = 100 * 1024 * 1024; //max 100b upload allowed 
 
     function showError(message) {
 
@@ -61,12 +61,29 @@ document.addEventListener("DOMContentLoaded", function () {
         if (errorBox) errorBox.classList.add("d-none");
     }
 
-    function scrollModalTop() {
+    //auto scroll to the to of modal
+   function scrollModalTop() {
 
-        const modalBody = document.querySelector("#vendorDataModal .modal-body");
+        setTimeout(() => {
 
-        if (modalBody) modalBody.scrollTop = 0;
+            const modal = document.getElementById("vendorDataModal");
+            const modalBody = modal ? modal.querySelector(".modal-body") : null;
+
+            if (modalBody) {
+                modalBody.scrollTo({
+                    top: 0,
+                    behavior: "smooth"
+                });
+            } else if (modal) {
+                modal.scrollTo({
+                    top: 0,
+                    behavior: "smooth"
+                });
+            }
+
+        }, 150); // delay ensures DOM update first
     }
+
 
     function validateForm() {
 
@@ -97,7 +114,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (pdfFile.size > MAX_SIZE) {
 
-                showError("PDF file exceeds 10MB limit.");
+                showError("PDF file exceeds 100MB limit.");
                 return false;
             }
         }
@@ -119,7 +136,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
             if (excelFile.size > MAX_SIZE) {
 
-                showError("Excel/CSV exceeds 10MB limit.");
+                showError("Excel/CSV exceeds 100MB limit.");
                 return false;
             }
         }
@@ -140,6 +157,10 @@ document.addEventListener("DOMContentLoaded", function () {
         clearMessages();
 
         if (!validateForm()) return;
+            const submitBtn = form.querySelector("button[type='submit']");
+            if (submitBtn) submitBtn.disabled = true;// disbale submit button untill process complete
+        
+        scrollModalTop();// autoscrolling to top
 
         const formData = new FormData(form);
 
@@ -167,8 +188,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
         xhr.onload = function () {
 
-            console.log("Upload response status:", xhr.status);
-            console.log("Raw response:", xhr.responseText);
+            console.log("XHR STATUS:", xhr.status);
+            console.log("RAW RESPONSE:", xhr.responseText);
 
             if (xhr.status === 200) {
 
@@ -187,7 +208,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     if (progressBar) progressBar.style.width = "100%";
                     if (percentText) percentText.innerText = "100%";
 
-                    showSuccess(data.message || "Upload successful. Processing started.");
+                    showSuccess(data.message || "Upload successful. Your catalog is being processed. This may take a few minutes.");
 
                     form.reset();
 

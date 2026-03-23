@@ -1,0 +1,5 @@
+pdfplumber
+pandas
+openai>=1.0.0
+beautifulsoup4
+requests
