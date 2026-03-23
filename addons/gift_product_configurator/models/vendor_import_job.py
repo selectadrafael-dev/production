@@ -253,7 +253,7 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
 
-        # -------- REMOVE DUPLICATES --------
+        #-------- REMOVE DUPLICATES --------
         unique = {}
 
         for p in all_products:
