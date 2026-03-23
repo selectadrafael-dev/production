@@ -77,68 +77,38 @@ class VendorImportJob(models.Model):
             self.state = "error"
 
     # ---------------- PDF ----------------
-
     def extract_pdf(self):
 
-        import pdfplumber, io
+        import requests
+        import json
 
         pdf_bytes = base64.b64decode(self.pdf_file)
 
-        pages = []
-
         try:
-            # 🔥 TRY FLASK IMAGE EXTRACTION (OPTIONAL)
-            files = {'file': ('catalog.pdf', pdf_bytes, 'application/pdf')}
-            res = requests.post("http://localhost:5000/extract", files=files, timeout=60)
+            _logger.warning("CALLING RENDER FLASK API")
 
-            if res.status_code == 200:
-                flask_pages = res.json()
+            response = requests.post(
+                "https://pdf-extractor-staging.onrender.com/extract",
+                files={"file": ("catalog.pdf", pdf_bytes, "application/pdf")},
+                timeout=180
+            )
 
-                for p in flask_pages:
-                    pages.append({
-                        "page": p.get("page"),
-                        "text": p.get("text", ""),
-                        "images": p.get("images", [])
-                    })
+            if response.status_code != 200:
+                _logger.error(f"FLASK ERROR: {response.text}")
+                self.state = "error"
+                return
 
-                _logger.warning("PDF EXTRACTED VIA FLASK (WITH IMAGES)")
+            pages = response.json()
 
-            else:
-                raise Exception("Flask failed")
+            _logger.warning(f"RECEIVED {len(pages)} PAGES FROM FLASK")
 
-        except Exception:
-            _logger.warning("FALLBACK → USING PDFPLUMBER (NO IMAGES)")
+            # ✅ IMPORTANT: Keep full structure (text + images)
+            self.extracted_text = json.dumps(pages)
 
-            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-                for i, page in enumerate(pdf.pages):
-                    content = page.extract_text()
-
-                    if content:
-                        pages.append({
-                            "page": i + 1,
-                            "text": content,
-                            "images": []
-                        })
-
-        self.extracted_text = json.dumps(pages)
-
-        _logger.warning(f"TOTAL PAGES → {len(pages)}")
-        # ---------------- EXCEL ----------------
-
-        def parse_excel(self):
-
-            import pandas as pd
-            import io
-
-            excel_bytes = base64.b64decode(self.excel_file)
-
-            try:
-                df = pd.read_excel(io.BytesIO(excel_bytes))
-            except Exception:
-                df = pd.read_csv(io.BytesIO(excel_bytes))
-
-            self.extracted_text = df.to_json()
-
+        except Exception as e:
+            _logger.exception("FLASK CALL FAILED")
+            self.state = "error"
+   
     # ---------------- URL ----------------
 
     def scrape_website(self):
@@ -271,21 +241,63 @@ class VendorImportJob(models.Model):
         self.ai_response = json.dumps(final_products)
 
     #---------------- PRODUCT CREATION ----------------
-
     def create_product_drafts(self):
 
-        if not self.ai_response:
+        if not self.ai_response or not self.extracted_text:
             return
 
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
 
-        data = json.loads(self.ai_response)
-        pages = json.loads(self.extracted_text or "[]")
+        products = json.loads(self.ai_response)
+        pages = json.loads(self.extracted_text)
 
-        _logger.warning(f"CREATING {len(data)} PRODUCTS")
+        _logger.warning(f"CREATING {len(products)} PRODUCTS")
 
-        for item in data:
+        product_index = 0
+
+        for page in pages:
+
+            page_images = page.get("images", [])
+
+            for img in page_images:
+
+                if product_index >= len(products):
+                    break
+
+                item = products[product_index]
+
+                name = item.get("name", "Unnamed Product")
+                description = item.get("description", "")
+                category_name = item.get("category", "Uncategorized")
+
+                category = category_obj.search([('name', '=', category_name)], limit=1)
+
+                if not category:
+                    category = category_obj.create({'name': category_name})
+
+                vals = {
+                    'name': name,
+                    'description_sale': description,
+                    'categ_id': category.id,
+                    'sale_ok': True,
+                    'website_published': False,
+                }
+
+                # ✅ IMAGE ASSIGNMENT
+                if img:
+                    vals['image_1920'] = img
+
+                product_obj.create(vals)
+
+                _logger.info(f"Product created: {name} (with image)")
+
+                product_index += 1
+
+        # remaining products without images
+        while product_index < len(products):
+
+            item = products[product_index]
 
             name = item.get("name", "Unnamed Product")
             description = item.get("description", "")
@@ -296,30 +308,17 @@ class VendorImportJob(models.Model):
             if not category:
                 category = category_obj.create({'name': category_name})
 
-            # 🔥 FIND IMAGE (SIMPLE MATCH)
-            image_base64 = None
-
-            for page in pages:
-                if name.lower() in (page.get("text") or "").lower():
-                    imgs = page.get("images") or []
-                    if imgs:
-                        image_base64 = imgs[0]
-                        break
-
-            vals = {
+            product_obj.create({
                 'name': name,
                 'description_sale': description,
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
-            }
+            })
 
-            if image_base64:
-                vals['image_1920'] = image_base64
+            _logger.info(f"Product created: {name} (no image)")
 
-            product_obj.create(vals)
-
-            _logger.info(f"Product created: {name}")
+            product_index += 1
 
     # ---------------- CRON ----------------
 
