@@ -4,6 +4,8 @@ import logging
 import json
 # 🔥 ONLY ADD THIS IMPORT AT TOP
 import requests
+import time
+
 
 _logger = logging.getLogger(__name__)
 
@@ -79,41 +81,42 @@ class VendorImportJob(models.Model):
     # ---------------- PDF ----------------
     def extract_pdf(self):
 
-        import requests
-        import json
-
         pdf_bytes = base64.b64decode(self.pdf_file)
 
-        try:
-            _logger.warning("CALLING RENDER FLASK API")
+        for attempt in range(2):
 
-            response = requests.post(
-                "https://pdf-extractor-staging.onrender.com/extract",
-                files={"file": ("catalog.pdf", pdf_bytes, "application/pdf")},
-                timeout=180
-            )
+            try:
+                _logger.warning(f"FLASK CALL ATTEMPT {attempt + 1}")
 
-            if response.status_code != 200:
-                _logger.error(f"FLASK ERROR: {response.text}")
-                self.state = "error"
-                return
+                response = requests.post(
+                    "https://pdf-extractor-staging.onrender.com/extract",
+                    files={"file": ("catalog.pdf", pdf_bytes, "application/pdf")},
+                    timeout=180
+                )
 
-            pages = response.json()
+                if response.status_code == 200:
+                    pages = response.json()
 
-            _logger.warning(f"RECEIVED {len(pages)} PAGES FROM FLASK")
+                    _logger.warning(f"RECEIVED {len(pages)} PAGES FROM FLASK")
 
-            # ✅ IMPORTANT: Keep full structure (text + images)
-            self.extracted_text = json.dumps(pages)
+                    self.extracted_text = json.dumps(pages)
 
-        except Exception as e:
-            _logger.exception("FLASK CALL FAILED")
-            self.state = "error"
-   
+                    return
+
+                else:
+                    _logger.warning(f"FLASK ERROR: {response.status_code}")
+
+            except Exception:
+                _logger.exception("FLASK CALL FAILED")
+
+            time.sleep(7)
+
+        self.state = "error"
+
     # ---------------- URL ----------------
 
     def scrape_website(self):
 
-        import requests
         from bs4 import BeautifulSoup
 
         try:
@@ -246,6 +249,21 @@ class VendorImportJob(models.Model):
         if not self.ai_response or not self.extracted_text:
             return
 
+        import base64
+
+        def is_valid_product_image(img_base64):
+            try:
+                img_bytes = base64.b64decode(img_base64)
+
+                # 🔥 filter small images (logos/icons)
+                if len(img_bytes) < 5000:
+                    return False
+
+                return True
+
+            except Exception:
+                return False
+
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
 
@@ -258,7 +276,14 @@ class VendorImportJob(models.Model):
 
         for page in pages:
 
-            page_images = page.get("images", [])
+            raw_images = page.get("images", [])
+
+            # ✅ FILTER IMAGES
+            page_images = [img for img in raw_images if is_valid_product_image(img)]
+
+            _logger.warning(
+                f"PAGE {page.get('page')} → {len(page_images)} VALID IMAGES (from {len(raw_images)})"
+            )
 
             for img in page_images:
 
@@ -284,13 +309,14 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                # ✅ IMAGE ASSIGNMENT
+                # ✅ IMAGE ASSIGNMENT + LOGGING
                 if img:
                     vals['image_1920'] = img
+                    _logger.warning(f"IMAGE ASSIGNED → {name}")
+                else:
+                    _logger.warning(f"NO IMAGE → {name}")
 
                 product_obj.create(vals)
-
-                _logger.info(f"Product created: {name} (with image)")
 
                 product_index += 1
 
@@ -316,9 +342,86 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             })
 
-            _logger.info(f"Product created: {name} (no image)")
+            _logger.warning(f"NO IMAGE LEFT → {name}")
 
             product_index += 1
+
+            if not self.ai_response or not self.extracted_text:
+                return
+
+            product_obj = self.env['product.template']
+            category_obj = self.env['product.category']
+
+            products = json.loads(self.ai_response)
+            pages = json.loads(self.extracted_text)
+
+            _logger.warning(f"CREATING {len(products)} PRODUCTS")
+
+            product_index = 0
+
+            for page in pages:
+
+                page_images = page.get("images", [])
+
+                for img in page_images:
+
+                    if product_index >= len(products):
+                        break
+
+                    item = products[product_index]
+
+                    name = item.get("name", "Unnamed Product")
+                    description = item.get("description", "")
+                    category_name = item.get("category", "Uncategorized")
+
+                    category = category_obj.search([('name', '=', category_name)], limit=1)
+
+                    if not category:
+                        category = category_obj.create({'name': category_name})
+
+                    vals = {
+                        'name': name,
+                        'description_sale': description,
+                        'categ_id': category.id,
+                        'sale_ok': True,
+                        'website_published': False,
+                    }
+
+                    # ✅ IMAGE ASSIGNMENT
+                    if img:
+                        vals['image_1920'] = img
+
+                    product_obj.create(vals)
+
+                    _logger.info(f"Product created: {name} (with image)")
+
+                    product_index += 1
+
+            # remaining products without images
+            while product_index < len(products):
+
+                item = products[product_index]
+
+                name = item.get("name", "Unnamed Product")
+                description = item.get("description", "")
+                category_name = item.get("category", "Uncategorized")
+
+                category = category_obj.search([('name', '=', category_name)], limit=1)
+
+                if not category:
+                    category = category_obj.create({'name': category_name})
+
+                product_obj.create({
+                    'name': name,
+                    'description_sale': description,
+                    'categ_id': category.id,
+                    'sale_ok': True,
+                    'website_published': False,
+                })
+
+                _logger.info(f"Product created: {name} (no image)")
+
+                product_index += 1
 
     # ---------------- CRON ----------------
 
@@ -335,3 +438,11 @@ class VendorImportJob(models.Model):
             except Exception:
                 _logger.exception("CRON FAILED")
                 job.state = 'error'  
+    
+    def ping_flask_server(self):
+      
+        try:
+            requests.get("https://pdf-extractor-staging.onrender.com", timeout=10)
+            _logger.info("FLASK PING SUCCESS")
+        except Exception:
+            _logger.warning("FLASK PING FAILED")
