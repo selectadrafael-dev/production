@@ -23,9 +23,6 @@ class VendorImportJob(models.Model):
     extracted_text = fields.Text()
     ai_response = fields.Text()
 
-    # 🔥 NEW (TRACK PROGRESS)
-    processed_pages = fields.Integer(default=0)
-
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -44,20 +41,19 @@ class VendorImportJob(models.Model):
 
         try:
 
-            # Only extract once
-            if not self.extracted_text:
+            self.extracted_text = ""
 
-                if self.pdf_file:
-                    _logger.warning("STEP → Extracting PDF")
-                    self.extract_pdf()
+            if self.pdf_file:
+                _logger.warning("STEP → Extracting PDF")
+                self.extract_pdf()
 
-                if self.excel_file:
-                    _logger.warning("STEP → Parsing Excel")
-                    self.parse_excel()
+            if self.excel_file:
+                _logger.warning("STEP → Parsing Excel")
+                self.parse_excel()
 
-                if self.data_url:
-                    _logger.warning("STEP → Scraping URL")
-                    self.scrape_website()
+            if self.data_url:
+                _logger.warning("STEP → Scraping URL")
+                self.scrape_website()
 
             if not self.extracted_text:
                 _logger.error("NO TEXT EXTRACTED → STOPPING")
@@ -69,6 +65,8 @@ class VendorImportJob(models.Model):
 
             _logger.warning("STEP → Creating products")
             self.create_product_drafts()
+
+            self.state = "done"
 
             _logger.warning(f"PROCESS DONE → Job {self.id}")
 
@@ -156,14 +154,7 @@ class VendorImportJob(models.Model):
 
         all_products = []
 
-        # 🔥 PROCESS ONLY 10 PAGES PER RUN
-        MAX_PAGES = 10
-        start = self.processed_pages
-        end = start + MAX_PAGES
-
-        _logger.warning(f"PROCESSING PAGES → {start} to {end}")
-
-        for page in pages[start:end]:
+        for page in pages:
 
             page_no = page.get("page")
             text = page.get("text", "")
@@ -173,22 +164,18 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI → PAGE {page_no}")
 
+
             prompt = f"""
             You are a product extraction engine.
 
             Extract ALL products from this page.
 
-             IMPORTANT:
+            IMPORTANT:
             - Return ONLY valid JSON
-            - Do NOT skip products
-            - Do NOT merge products
-            - Each product must be separate
-            - Translate to English
             - No explanation
             - No markdown
             - No text outside JSON
             - If no products found, return []
-
 
             FORMAT:
             [
@@ -202,7 +189,7 @@ class VendorImportJob(models.Model):
             TEXT:
             {text}
             """
-           
+
             try:
                 response = client.responses.create(
                     model="gpt-4.1-mini",
@@ -210,17 +197,28 @@ class VendorImportJob(models.Model):
                     timeout=60
                 )
 
+                #result = response.output_text.strip()
+
+                #parsed = json.loads(result)
+
                 result = response.output_text.strip()
+                _logger.warning(f"RAW AI RESPONSE PAGE {page_no} → {result[:200]}")
 
-                _logger.warning(f"RAW AI PAGE {page_no} → {result[:200]}")
-
+                # 🔥 CLEAN RESPONSE
                 if "```" in result:
                     result = result.split("```")[1]
 
                 if result.lower().startswith("json"):
                     result = result[4:]
 
-                parsed = json.loads(result)
+                result = result.strip()
+
+                # 🔥 SAFE PARSE
+                try:
+                    parsed = json.loads(result)
+                except Exception:
+                    _logger.warning(f"INVALID JSON → PAGE {page_no}")
+                    continue
 
                 if isinstance(parsed, list):
                     _logger.warning(f"PAGE {page_no} → {len(parsed)} products")
@@ -230,11 +228,9 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
 
-        # 🔥 UPDATE PROGRESS
-        self.processed_pages = end
-
-        # 🔥 DEDUPLICATE
+        # -------- REMOVE DUPLICATES --------
         unique = {}
+
         for p in all_products:
             name = p.get("name", "").strip().lower()
             if name and name not in unique:
@@ -244,16 +240,10 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"FINAL PRODUCT COUNT → {len(final_products)}")
 
-        if final_products:
-            self.ai_response = json.dumps(final_products)
+        if not final_products:
+            raise Exception("No products extracted")
 
-        # 🔥 CONTROL FLOW
-        if self.processed_pages >= len(pages):
-            _logger.warning("ALL PAGES DONE")
-            self.state = "done"
-        else:
-            _logger.warning("MORE PAGES REMAIN")
-            self.state = "processing"
+        self.ai_response = json.dumps(final_products)
 
     # ---------------- PRODUCT CREATION ----------------
 
@@ -272,13 +262,6 @@ class VendorImportJob(models.Model):
         for item in data:
 
             name = item.get("name", "Unnamed Product")
-
-            # 🔥 PREVENT DUPLICATES
-            existing = product_obj.search([('name', 'ilike', name)], limit=1)
-            if existing:
-                _logger.warning(f"SKIPPING DUPLICATE → {name}")
-                continue
-
             description = item.get("description", "")
             category_name = item.get("category", "Uncategorized")
 
@@ -301,13 +284,14 @@ class VendorImportJob(models.Model):
 
     def run_pending_jobs(self):
 
-        jobs = self.search([('state', '=', 'processing')])
+        jobs = self.search([('state', '=', 'draft')])
 
         _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
         for job in jobs:
             try:
+                job.state = 'processing'
                 job.process_import()
             except Exception:
                 _logger.exception("CRON FAILED")
-                job.state = 'error'
+                job.state = 'error'  
