@@ -2,7 +2,6 @@ from odoo import models, fields
 import base64
 import logging
 import json
-import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -24,6 +23,9 @@ class VendorImportJob(models.Model):
     extracted_text = fields.Text()
     ai_response = fields.Text()
 
+    # 🔥 NEW (TRACK PROGRESS)
+    processed_pages = fields.Integer(default=0)
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -42,19 +44,20 @@ class VendorImportJob(models.Model):
 
         try:
 
-            self.extracted_text = ""
+            # Only extract once
+            if not self.extracted_text:
 
-            if self.pdf_file:
-                _logger.warning("STEP → Extracting PDF")
-                self.extract_pdf()
+                if self.pdf_file:
+                    _logger.warning("STEP → Extracting PDF")
+                    self.extract_pdf()
 
-            if self.excel_file:
-                _logger.warning("STEP → Parsing Excel")
-                self.parse_excel()
+                if self.excel_file:
+                    _logger.warning("STEP → Parsing Excel")
+                    self.parse_excel()
 
-            if self.data_url:
-                _logger.warning("STEP → Scraping URL")
-                self.scrape_website()
+                if self.data_url:
+                    _logger.warning("STEP → Scraping URL")
+                    self.scrape_website()
 
             if not self.extracted_text:
                 _logger.error("NO TEXT EXTRACTED → STOPPING")
@@ -65,10 +68,7 @@ class VendorImportJob(models.Model):
             self.send_to_openai()
 
             _logger.warning("STEP → Creating products")
-            #self.create_product_drafts()
-            self.create_product_drafts(images_map)
-
-            self.state = "done"
+            self.create_product_drafts()
 
             _logger.warning(f"PROCESS DONE → Job {self.id}")
 
@@ -80,48 +80,23 @@ class VendorImportJob(models.Model):
 
     def extract_pdf(self):
 
-        import fitz  # PyMuPDF
-        import io
+        import pdfplumber, io
 
         pdf_bytes = base64.b64decode(self.pdf_file)
 
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-
         pages = []
-        images_map = {}
 
-        for i, page in enumerate(doc):
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for i, page in enumerate(pdf.pages):
+                content = page.extract_text()
 
-            text = page.get_text()
+                if content:
+                    pages.append({
+                        "page": i + 1,
+                        "text": content
+                    })
 
-            image_list = page.get_images(full=True)
-
-            page_images = []
-
-            for img_index, img in enumerate(image_list):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-
-                image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-
-                image_id = f"page_{i+1}_img_{img_index+1}"
-
-                images_map[image_id] = image_base64
-                page_images.append(image_id)
-
-            pages.append({
-                "page": i + 1,
-                "text": text,
-                "images": page_images
-            })
-
-            _logger.warning(f"PDF PAGE {i+1} → {len(page_images)} images")
-
-        self.extracted_text = json.dumps({
-            "pages": pages,
-            "images": images_map
-        })
+        self.extracted_text = json.dumps(pages)
 
         _logger.warning(f"TOTAL PAGES → {len(pages)}")
 
@@ -177,14 +152,18 @@ class VendorImportJob(models.Model):
 
         client = OpenAI(api_key=api_key)
 
-        #pages = json.loads(self.extracted_text or "[]")
-        data = json.loads(self.extracted_text or "{}")
-        pages = data.get("pages", [])
-        images_map = data.get("images", {})
+        pages = json.loads(self.extracted_text or "[]")
 
         all_products = []
 
-        for page in pages:
+        # 🔥 PROCESS ONLY 10 PAGES PER RUN
+        MAX_PAGES = 10
+        start = self.processed_pages
+        end = start + MAX_PAGES
+
+        _logger.warning(f"PROCESSING PAGES → {start} to {end}")
+
+        for page in pages[start:end]:
 
             page_no = page.get("page")
             text = page.get("text", "")
@@ -194,25 +173,21 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI → PAGE {page_no}")
 
-            #old
             prompt = f"""
             You are a product extraction engine.
 
             Extract ALL products from this page.
 
-            IMPORTANT:
+             IMPORTANT:
             - Return ONLY valid JSON
             - Do NOT skip products
             - Do NOT merge products
             - Each product must be separate
             - Translate to English
-            - Extract product image URL if available, else null
             - No explanation
             - No markdown
             - No text outside JSON
             - If no products found, return []
-            - If product matches an image, return the image_id
-            - image_url should be image_id (not URL)
 
 
             FORMAT:
@@ -220,18 +195,14 @@ class VendorImportJob(models.Model):
             {{
                 "name": "",
                 "description": "",
-                "category": "",
-                "image_url": ""
+                "category": ""
             }}
             ]
 
             TEXT:
             {text}
-
-            AVAILABLE IMAGE IDS:
-            {page.get("images", [])}
             """
-
+           
             try:
                 response = client.responses.create(
                     model="gpt-4.1-mini",
@@ -239,28 +210,17 @@ class VendorImportJob(models.Model):
                     timeout=60
                 )
 
-                #result = response.output_text.strip()
-
-                #parsed = json.loads(result)
-
                 result = response.output_text.strip()
-                _logger.warning(f"RAW AI RESPONSE PAGE {page_no} → {result[:200]}")
 
-                # 🔥 CLEAN RESPONSE
+                _logger.warning(f"RAW AI PAGE {page_no} → {result[:200]}")
+
                 if "```" in result:
                     result = result.split("```")[1]
 
                 if result.lower().startswith("json"):
                     result = result[4:]
 
-                result = result.strip()
-
-                # 🔥 SAFE PARSE
-                try:
-                    parsed = json.loads(result)
-                except Exception:
-                    _logger.warning(f"INVALID JSON → PAGE {page_no}")
-                    continue
+                parsed = json.loads(result)
 
                 if isinstance(parsed, list):
                     _logger.warning(f"PAGE {page_no} → {len(parsed)} products")
@@ -270,9 +230,11 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
 
-        # -------- REMOVE DUPLICATES --------
-        unique = {}
+        # 🔥 UPDATE PROGRESS
+        self.processed_pages = end
 
+        # 🔥 DEDUPLICATE
+        unique = {}
         for p in all_products:
             name = p.get("name", "").strip().lower()
             if name and name not in unique:
@@ -282,17 +244,20 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"FINAL PRODUCT COUNT → {len(final_products)}")
 
-        if not final_products:
-            raise Exception("No products extracted")
+        if final_products:
+            self.ai_response = json.dumps(final_products)
 
-        self.ai_response = json.dumps(final_products)
+        # 🔥 CONTROL FLOW
+        if self.processed_pages >= len(pages):
+            _logger.warning("ALL PAGES DONE")
+            self.state = "done"
+        else:
+            _logger.warning("MORE PAGES REMAIN")
+            self.state = "processing"
 
-    #---------------- PRODUCT CREATION ----------------
+    # ---------------- PRODUCT CREATION ----------------
 
-    def create_product_drafts(self, images_map=None):
-
-        if not images_map:
-            images_map = {}
+    def create_product_drafts(self):
 
         if not self.ai_response:
             return
@@ -319,45 +284,27 @@ class VendorImportJob(models.Model):
 
             category = category_obj.search([('name', '=', category_name)], limit=1)
 
-            # product image
-            image_ref = item.get("image_url")
-            image_base64 = False
-
-            if image_ref:
-                image_base64 = images_map.get(image_ref)
-            image_base64 = False
-
-            # 🔥 TRY ORIGINAL IMAGE FIRST
-            if image_url:
-                try:
-                    response = requests.get(image_url, timeout=10)
-                    if response.status_code == 200:
-                        image_base64 = base64.b64encode(response.content)
-                        _logger.warning(f"IMAGE DOWNLOADED → {name}")
-                except Exception as e:
-                    _logger.warning(f"IMAGE FAILED → {e}")
-
-            # 🔥 FALLBACK (IF NO IMAGE FROM AI)
-            if not image_base64:
-                try:
-                    search_url = f"https://source.unsplash.com/600x600/?{name.replace(' ', '+')}"
-                    response = requests.get(search_url, timeout=10)
-
-                    if response.status_code == 200:
-                        image_base64 = base64.b64encode(response.content)
-                        _logger.warning(f"FALLBACK IMAGE USED → {name}")
-
-                except Exception as e:
-                    _logger.warning(f"FALLBACK IMAGE FAILED → {e}")
-
             if not category:
                 category = category_obj.create({'name': category_name})
 
+
+            # ---------------- IMAGE FALLBACK ----------------
+            image_base64 = None
+            try:
+                import requests
+                url = f"https://source.unsplash.com/600x600/?{name.replace(' ', '+')}"
+                res = requests.get(url, timeout=10)
+                if res.status_code == 200:
+                    image_base64 = base64.b64encode(res.content)
+                    _logger.warning(f"FALLBACK IMAGE USED → {name}")
+            except Exception as e:
+                _logger.warning(f"IMAGE FETCH FAILED → {str(e)}")
+
             product_obj.create({
+                'image_1920': image_base64,
                 'name': name,
                 'description_sale': description,
                 'categ_id': category.id,
-                "image_1920": image_base64,
                 'sale_ok': True,
                 'website_published': False,
             })
@@ -368,13 +315,12 @@ class VendorImportJob(models.Model):
 
     def run_pending_jobs(self):
 
-        jobs = self.search([('state', '=', 'draft')])
+        jobs = self.search([('state', '=', 'processing')])
 
         _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
         for job in jobs:
             try:
-                job.state = 'processing'
                 job.process_import()
             except Exception:
                 _logger.exception("CRON FAILED")
