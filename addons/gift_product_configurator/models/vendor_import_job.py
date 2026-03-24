@@ -351,6 +351,33 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
+     #-----------scoring image to pick---------------------------
+
+    def pick_best_image(images):
+
+        def score(img):
+            try:
+                img_bytes = base64.b64decode(img)
+
+                size_score = len(img_bytes)
+
+                # bonus for reasonable size
+                if 20000 < size_score < 500000:
+                    size_score += 50000
+
+                return size_score
+
+            except:
+                return 0
+
+        if not images:
+            return None
+
+        # 🔥 pick highest score
+        best = sorted(images, key=score, reverse=True)[0]
+
+        return best
+
     #---------------- PRODUCT CREATION ----------------
     def create_product_drafts(self):
 
@@ -420,10 +447,11 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                # ✅ safe image mapping
-                if i < len(images):
-                    vals['image_1920'] = images[i]
-                    _logger.warning(f"IMAGE MATCHED → {name}")
+                best_image = pick_best_image(images)
+
+                if best_image:
+                    vals['image_1920'] = best_image
+                    _logger.warning(f"BEST IMAGE SELECTED → {name}")
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
 
