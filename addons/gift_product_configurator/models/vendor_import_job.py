@@ -11,9 +11,6 @@ from openpyxl import load_workbook
 from PIL import Image
 from io import BytesIO
 
-
-
-
 _logger = logging.getLogger(__name__)
 
 
@@ -49,17 +46,17 @@ class VendorImportJob(models.Model):
 
         excel_bytes = base64.b64decode(self.excel_file)
 
-        # ---------------- LOAD DATAFRAME ----------------
+        #---------------- LOAD DATAFRAME ----------------
         try:
             df = pd.read_excel(io.BytesIO(excel_bytes))
         except Exception:
             df = pd.read_csv(io.BytesIO(excel_bytes))
 
-        # ---------------- LOAD WORKBOOK (FOR IMAGES) ----------------
+        #---------------- LOAD WORKBOOK (FOR IMAGES) ----------------
         wb = load_workbook(filename=BytesIO(excel_bytes))
         ws = wb.active
 
-        # ---------------- EXTRACT EMBEDDED IMAGES ----------------
+        #---------------- EXTRACT EMBEDDED IMAGES ----------------
         image_map = {}  # row_index → [base64 images]
 
         for image in getattr(ws, '_images', []):
