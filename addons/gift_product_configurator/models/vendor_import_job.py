@@ -494,25 +494,39 @@ class VendorImportJob(models.Model):
                 }
 
                 # ✅ FIX: smarter image assignment (no duplication)
-                selected_image = None
 
                 row_data = page_data.get("images", [])
 
-                if row_data and i < len(row_data):
-                    row_images = row_data[i].get("images", [])
+                selected_image = None
 
-                    # filter valid images
-                    valid_images = [
-                        img for img in row_images
-                        if is_valid_product_image(img)
-                    ]
+                if row_data:
 
-                    if valid_images:
-                        selected_image = valid_images[0]  # first image per row
+                    # ✅ CASE 1: Excel (row-based)
+                    if row_data and isinstance(row_data[0], dict):
+                        if i < len(row_data):
+                            row_images = row_data[i].get("images", [])
+
+                            valid_images = [
+                                img for img in row_images
+                                if is_valid_product_image(img)
+                            ]
+
+                            if valid_images:
+                                selected_image = self.pick_best_image(valid_images)
+
+                    # ✅ CASE 2: PDF (flat list)
+                    elif row_data and isinstance(row_data[0], str):
+                        valid_images = [
+                            img for img in row_data
+                            if is_valid_product_image(img)
+                        ]
+
+                        if valid_images:
+                            selected_image = self.pick_best_image(valid_images)
 
                 if selected_image:
                     vals['image_1920'] = selected_image
-                    _logger.warning(f"EXCEL IMAGE → {name}")
+                    _logger.warning(f"IMAGE ASSIGNED → {name}")
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
 
@@ -523,7 +537,7 @@ class VendorImportJob(models.Model):
 
         # ✅ FIX: final confirmation (VERY IMPORTANT FOR DEBUGGING)
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
-   
+
     #---------------- CRON ----------------
 
     def run_pending_jobs(self):
