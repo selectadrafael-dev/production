@@ -379,6 +379,46 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
+     #-----------clean image-------------
+     
+    def is_clean_product_image(self, img_base64):
+        """
+        Heuristic filter:
+        Reject lifestyle / human / clutter images
+        Prefer clean product shots
+        """
+        try:
+            import base64
+            from PIL import Image
+            import io
+
+            img_bytes = base64.b64decode(img_base64)
+            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+
+            width, height = img.size
+
+            # ❌ reject tiny / icon images
+            if width < 200 or height < 200:
+                return False
+
+            pixels = list(img.getdata())
+
+            # sample pixels (performance safe)
+            sample = pixels[:: max(1, len(pixels)//5000)]
+
+            # count bright pixels (white-ish background)
+            bright = sum(1 for r,g,b in sample if r > 200 and g > 200 and b > 200)
+            ratio = bright / len(sample)
+
+            # ✅ if mostly bright → likely clean background
+            if ratio > 0.6:
+                return True
+
+            return False
+
+        except Exception:
+            return False
+     
      #-----------scoring image before picking best/quality image-------------
 
     def pick_best_image(self, images):
@@ -467,6 +507,8 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
+            used_images = set()
+            
             for i, product in enumerate(products):
 
                 name = product.get("name")
@@ -490,43 +532,82 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                # ================= IMAGE LOGIC =================
+                # ================= IMAGE LOGIC (STRICT QUALITY ENGINE) =================
 
-                row_data = page_data.get("images", [])
-                selected_image = None
+            row_data = page_data.get("images", [])
+            selected_image = None
 
-                if row_data:
+            # ✅ track used images per page
+            if "used_images" not in locals():
+                used_images = set()
 
-                    # ✅ CASE 1: Excel (row-based)
-                    if isinstance(row_data[0], dict):
-                        if i < len(row_data):
-                            row_images = row_data[i].get("images", [])
+            if row_data:
 
-                            valid_images = [
-                                img for img in row_images
-                                if is_valid_product_image(img)
-                            ]
+                # ================= EXCEL =================
+                if isinstance(row_data[0], dict):
 
-                            if valid_images:
-                                selected_image = self.pick_best_image(valid_images)
+                    if i < len(row_data):
+                        row_images = row_data[i].get("images", [])
 
-                    # ✅ CASE 2: PDF (flat list)
-                    elif isinstance(row_data[0], str):
+                        # 🔥 STEP 1: filter valid
                         valid_images = [
-                            img for img in row_data
+                            img for img in row_images
                             if is_valid_product_image(img)
                         ]
 
-                        if valid_images:
-                            selected_image = self.pick_best_image(valid_images)
+                        # 🔥 STEP 2: prefer CLEAN images
+                        clean_images = [
+                            img for img in valid_images
+                            if self.is_clean_product_image(img) and img not in used_images
+                        ]
 
-                # ================= APPLY IMAGE =================
+                        if clean_images:
+                            selected_image = clean_images[0]
 
-                if selected_image:
-                    vals['image_1920'] = selected_image
-                    _logger.warning(f"IMAGE ASSIGNED → {name}")
-                else:
-                    _logger.warning(f"NO IMAGE → {name}")
+                        else:
+                            # fallback (no clean image)
+                            fallback = [
+                                img for img in valid_images
+                                if img not in used_images
+                            ]
+                            if fallback:
+                                selected_image = fallback[0]
+
+                # ================= PDF =================
+                elif isinstance(row_data[0], str):
+
+                    valid_images = [
+                        img for img in row_data
+                        if is_valid_product_image(img)
+                    ]
+
+                    # 🔥 STEP 1: clean images first
+                    clean_images = [
+                        img for img in valid_images
+                        if self.is_clean_product_image(img) and img not in used_images
+                    ]
+
+                    if i < len(clean_images):
+                        selected_image = clean_images[i]
+
+                    else:
+                        # 🔥 fallback to unused valid images
+                        fallback = [
+                            img for img in valid_images
+                            if img not in used_images
+                        ]
+
+                        if fallback:
+                            selected_image = fallback[0]
+
+            # ================= APPLY IMAGE =================
+
+            if selected_image:
+                vals['image_1920'] = selected_image
+                used_images.add(selected_image)  # 🚨 prevent reuse
+                _logger.warning(f"IMAGE ASSIGNED (CLEAN FIRST) → {name}")
+            else:
+                _logger.warning(f"NO IMAGE → {name}")
 
                 # ================= CREATE PRODUCT =================
 
