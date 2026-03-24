@@ -42,6 +42,7 @@ class VendorImportJob(models.Model):
     ], default='draft')
 
     #------excel processing methof---------------
+
     def parse_excel(self):
 
         _logger.warning("EXCEL → START PARSING")
@@ -60,7 +61,9 @@ class VendorImportJob(models.Model):
         for image in getattr(ws, '_images', []):
             try:
                 row_excel = image.anchor._from.row  # 0-based
-                row_index = row_excel  # align directly
+
+                # ✅ FIX: align Excel row index with pandas index
+                row_index = row_excel - 1  # IMPORTANT FIX
 
                 img_bytes = image._data()
 
@@ -99,8 +102,8 @@ class VendorImportJob(models.Model):
                 if not val:
                     continue
 
-                # 🔥 IMPROVED URL DETECTION
-                if val.startswith("http"):
+                # ✅ FIX: stricter image URL detection
+                if val.startswith("http") and any(ext in val.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     try:
                         response = requests.get(val, timeout=10)
 
@@ -126,9 +129,10 @@ class VendorImportJob(models.Model):
 
             row_text = " | ".join(row_text_parts)
 
-            # 🔴 DO NOT SKIP ROWS
-            if not row_text:
-                _logger.warning(f"ROW {idx} EMPTY TEXT → FORCED KEEP")
+            # ✅ FIX: ensure row always meaningful for AI
+            if not row_text and row_images:
+                row_text = f"Product Row {idx}"
+                _logger.warning(f"ROW {idx} HAD NO TEXT → GENERATED PLACEHOLDER")
 
             # 🔍 DEBUG IMAGE COUNT
             _logger.warning(f"ROW {idx} → IMAGES: {len(row_images)}")
@@ -164,6 +168,11 @@ class VendorImportJob(models.Model):
             for r in page["rows"]:
                 combined_images.extend(r["images"])
 
+            # ✅ FIX: debug page-level summary
+            _logger.warning(
+                f"PAGE {page['page']} → ROWS: {len(page['rows'])}, IMAGES: {len(combined_images)}"
+            )
+
             final_pages.append({
                 "page": page["page"],
                 "text": combined_text,
@@ -173,7 +182,7 @@ class VendorImportJob(models.Model):
         self.extracted_text = json.dumps(final_pages)
 
         _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
-    
+        
 
     # ---------------- MAIN FLOW ----------------
 
@@ -313,6 +322,8 @@ class VendorImportJob(models.Model):
             - No markdown
             - No text outside JSON
             - If no products found, return []
+            - If content looks like structured rows (Excel style),
+            treat EACH LINE as ONE product.
 
             FORMAT:
             [
@@ -364,14 +375,15 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
 
-                 # ✅ SAVE AI RESULT
-            self.ai_response = json.dumps(page_products)
 
-            _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
+        # ✅ CORRECT POSITION (OUTSIDE LOOP)
+        self.ai_response = json.dumps(page_products)
+
+        _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
      #-----------scoring image before picking best/quality image-------------
 
-    def pick_best_image(images):
+    def pick_best_image(self, images):
 
         def score(img):
             try:
@@ -397,8 +409,8 @@ class VendorImportJob(models.Model):
         return best
 
     #---------------- PRODUCT CREATION ----------------
+   
     def create_product_drafts(self):
-
         if not self.ai_response or not self.extracted_text:
             return
 
@@ -442,6 +454,9 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
+            # ✅ FIX: track used images to avoid reuse
+            used_images = set()
+
             for i, product in enumerate(products):
 
                 name = product.get("name")
@@ -465,11 +480,28 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                best_image = pick_best_image(images)
+                # ✅ FIX: smarter image assignment (no duplication)
+                selected_image = None
 
-                if best_image:
-                    vals['image_1920'] = best_image
-                    _logger.warning(f"BEST IMAGE SELECTED → {name}")
+                if images:
+                    # try position-based first
+                    if i < len(images) and images[i] not in used_images:
+                        selected_image = images[i]
+                    else:
+                        # fallback: pick best unused image
+                        for img in images:
+                            if img not in used_images:
+                                selected_image = img
+                                break
+
+                        # final fallback: best image
+                        if not selected_image:
+                            selected_image = self.pick_best_image(images)
+
+                if selected_image:
+                    vals['image_1920'] = selected_image
+                    used_images.add(selected_image)
+                    _logger.warning(f"IMAGE ASSIGNED → {name}")
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
 
@@ -477,6 +509,10 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(f"CREATED → {name}")
                 _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
+
+        # ✅ FIX: final confirmation (VERY IMPORTANT FOR DEBUGGING)
+        _logger.warning("PRODUCT CREATION LOOP COMPLETED")
+   
     #---------------- CRON ----------------
 
     def run_pending_jobs(self):
