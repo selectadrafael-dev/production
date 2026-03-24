@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 from PIL import Image
 from io import BytesIO
 
+
 _logger = logging.getLogger(__name__)
 
 
@@ -42,91 +43,107 @@ class VendorImportJob(models.Model):
 
     #------excel processing methof---------------
     def parse_excel(self):
-        _logger.warning("PROCESSING EXCEL FILE (WITH IMAGE SUPPORT)")
+
+        _logger.warning("EXCEL → START PARSING")
 
         excel_bytes = base64.b64decode(self.excel_file)
 
-        #---------------- LOAD DATAFRAME ----------------
-        try:
-            df = pd.read_excel(io.BytesIO(excel_bytes))
-        except Exception:
-            df = pd.read_csv(io.BytesIO(excel_bytes))
+        # ---------------- LOAD DATA ----------------
+        df = pd.read_excel(io.BytesIO(excel_bytes)).fillna("")
 
-        #---------------- LOAD WORKBOOK (FOR IMAGES) ----------------
         wb = load_workbook(filename=BytesIO(excel_bytes))
         ws = wb.active
 
-        #---------------- EXTRACT EMBEDDED IMAGES ----------------
-        image_map = {}  # row_index → [base64 images]
+        # ---------------- EXTRACT EMBEDDED IMAGES ----------------
+        image_map = {}
 
         for image in getattr(ws, '_images', []):
             try:
-                row = image.anchor._from.row  # row position
+                row_excel = image.anchor._from.row  # 0-based
+                row_index = row_excel  # align directly
+
                 img_bytes = image._data()
 
-                # ✅ FILTER HERE
-                if len(img_bytes) > 5000:
-                    img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                    image_map.setdefault(row, []).append(img_base64)
+                # ✅ FILTER SMALL IMAGES
+                if len(img_bytes) < 5000:
+                    continue
 
-            except Exception:
-                continue
+                img_base64 = base64.b64encode(img_bytes).decode("utf-8")
 
-        _logger.warning(f"EMBEDDED IMAGES FOUND: {len(image_map)} ROWS")
+                image_map.setdefault(row_index, []).append(img_base64)
+
+            except Exception as e:
+                _logger.warning(f"IMAGE MAP ERROR → {str(e)}")
+
+        _logger.warning(f"EMBEDDED IMAGE ROWS: {len(image_map)}")
 
         # ---------------- PROCESS ROWS ----------------
         pages = []
-        page_size = 20
         current_page = []
         page_number = 1
+        page_size = 20
 
         for idx, row in df.iterrows():
 
             row_text_parts = []
             row_images = []
 
-            # 🔹 TEXT + URL EXTRACTION
+            # 🔍 DEBUG START
+            _logger.warning(f"ROW {idx} PROCESSING")
+
+            # -------- TEXT + URL --------
             for col in df.columns:
-                val = str(row[col])
 
-                if val and val != "nan":
+                val = str(row[col]).strip()
 
-                    # detect image URL
-                    if val.startswith("http") and any(ext in val.lower() for ext in [".jpg", ".png", ".jpeg", ".webp"]):
-                        try:
-                            response = requests.get(val, timeout=10)
+                if not val:
+                    continue
 
-                            if response.status_code == 200:
-                                img_bytes = response.content
+                # 🔥 IMPROVED URL DETECTION
+                if val.startswith("http"):
+                    try:
+                        response = requests.get(val, timeout=10)
 
-                                # ✅ FILTER HERE
-                                if len(img_bytes) > 5000:
-                                    img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                                    row_images.append(img_base64)
-                        except Exception:
-                            pass
-                    else:
-                        row_text_parts.append(val)
+                        if response.status_code == 200:
+                            img_bytes = response.content
 
-            # 🔹 EMBEDDED IMAGES
+                            if len(img_bytes) > 5000:
+                                img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                                row_images.append(img_base64)
+
+                                _logger.warning(f"ROW {idx} → URL IMAGE OK")
+
+                    except Exception:
+                        _logger.warning(f"ROW {idx} → URL FAILED")
+
+                else:
+                    row_text_parts.append(val)
+
+            # -------- EMBEDDED IMAGES --------
             if idx in image_map:
                 row_images.extend(image_map[idx])
+                _logger.warning(f"ROW {idx} → EMBED IMAGE FOUND")
 
             row_text = " | ".join(row_text_parts)
+
+            # 🔴 DO NOT SKIP ROWS
+            if not row_text:
+                _logger.warning(f"ROW {idx} EMPTY TEXT → FORCED KEEP")
+
+            # 🔍 DEBUG IMAGE COUNT
+            _logger.warning(f"ROW {idx} → IMAGES: {len(row_images)}")
 
             current_page.append({
                 "text": row_text,
                 "images": row_images
             })
 
-            # ---------------- PAGINATION ----------------
+            # -------- PAGINATION --------
             if len(current_page) >= page_size:
-
                 pages.append({
                     "page": page_number,
                     "rows": current_page
                 })
-
                 current_page = []
                 page_number += 1
 
@@ -136,7 +153,7 @@ class VendorImportJob(models.Model):
                 "rows": current_page
             })
 
-        # ---------------- CONVERT TO STANDARD FORMAT ----------------
+        # ---------------- FINAL FORMAT ----------------
         final_pages = []
 
         for page in pages:
@@ -155,7 +172,8 @@ class VendorImportJob(models.Model):
 
         self.extracted_text = json.dumps(final_pages)
 
-        _logger.warning(f"EXCEL PARSED → {len(final_pages)} PAGES (WITH IMAGES)")
+        _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
+    
 
     # ---------------- MAIN FLOW ----------------
 
@@ -351,7 +369,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
-     #-----------scoring image to pick---------------------------
+     #-----------scoring image before picking best/quality image-------------
 
     def pick_best_image(images):
 
