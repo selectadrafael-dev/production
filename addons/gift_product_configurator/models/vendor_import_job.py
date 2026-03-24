@@ -375,6 +375,7 @@ class VendorImportJob(models.Model):
         ai_pages = json.loads(self.ai_response)
 
         _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
+        _logger.warning(f"AI PAGES COUNT: {len(ai_pages)}")
 
         for page_data in pages:
 
@@ -383,19 +384,28 @@ class VendorImportJob(models.Model):
             raw_images = page_data.get("images", [])
             images = [img for img in raw_images if is_valid_product_image(img)]
 
-            # find matching AI page
-            ai_page = next((p for p in ai_pages if p["page"] == page_no), None)
+            # ✅ find matching AI page
+            ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
 
             if not ai_page:
+                _logger.warning(f"NO AI DATA FOR PAGE {page_no}")
                 continue
 
             products = ai_page.get("products", [])
 
-            _logger.warning(f"PAGE {page_no} → {len(products)} products | {len(images)} images")
+            if not products:
+                _logger.warning(f"NO PRODUCTS FOUND ON PAGE {page_no}")
+                continue
+
+            _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
             for i, product in enumerate(products):
 
-                name = product.get("name", "Unnamed Product")
+                name = product.get("name")
+                if not name:
+                    _logger.warning("SKIPPING EMPTY PRODUCT")
+                    continue
+
                 description = product.get("description", "")
                 category_name = product.get("category", "Uncategorized")
 
@@ -412,7 +422,7 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                # ✅ PERFECT MATCH: index within page
+                # ✅ safe image mapping
                 if i < len(images):
                     vals['image_1920'] = images[i]
                     _logger.warning(f"IMAGE MATCHED → {name}")
@@ -420,6 +430,9 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"NO IMAGE → {name}")
 
                 product_obj.create(vals)
+
+                _logger.warning(f"CREATED → {name}")
+                _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
     #---------------- CRON ----------------
 
     def run_pending_jobs(self):
