@@ -450,8 +450,7 @@ class VendorImportJob(models.Model):
 
             page_no = page_data.get("page")
 
-            raw_images = page_data.get("images", [])
-            images = [img for img in raw_images if is_valid_product_image(img)]
+            # ✅ IMPORTANT: DO NOT PROCESS images here (Excel/PDF handled below)
 
             # ✅ find matching AI page
             ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
@@ -467,8 +466,6 @@ class VendorImportJob(models.Model):
                 continue
 
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
-
-            # ✅ FIX: track used images to avoid reuse
 
             for i, product in enumerate(products):
 
@@ -493,16 +490,15 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                # ✅ FIX: smarter image assignment (no duplication)
+                # ================= IMAGE LOGIC =================
 
                 row_data = page_data.get("images", [])
-
                 selected_image = None
 
                 if row_data:
 
                     # ✅ CASE 1: Excel (row-based)
-                    if row_data and isinstance(row_data[0], dict):
+                    if isinstance(row_data[0], dict):
                         if i < len(row_data):
                             row_images = row_data[i].get("images", [])
 
@@ -515,7 +511,7 @@ class VendorImportJob(models.Model):
                                 selected_image = self.pick_best_image(valid_images)
 
                     # ✅ CASE 2: PDF (flat list)
-                    elif row_data and isinstance(row_data[0], str):
+                    elif isinstance(row_data[0], str):
                         valid_images = [
                             img for img in row_data
                             if is_valid_product_image(img)
@@ -524,20 +520,23 @@ class VendorImportJob(models.Model):
                         if valid_images:
                             selected_image = self.pick_best_image(valid_images)
 
+                # ================= APPLY IMAGE =================
+
                 if selected_image:
                     vals['image_1920'] = selected_image
                     _logger.warning(f"IMAGE ASSIGNED → {name}")
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
 
+                # ================= CREATE PRODUCT =================
+
                 product_obj.create(vals)
 
                 _logger.warning(f"CREATED → {name}")
                 _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
 
-        # ✅ FIX: final confirmation (VERY IMPORTANT FOR DEBUGGING)
+        # ✅ FINAL CONFIRMATION
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
-
 
     #---------------- CRON ----------------
 
