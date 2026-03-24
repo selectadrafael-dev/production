@@ -319,10 +319,6 @@ class VendorImportJob(models.Model):
                     timeout=60
                 )
 
-                #result = response.output_text.strip()
-
-                #parsed = json.loads(result)
-
                 result = response.output_text.strip()
                 _logger.warning(f"RAW AI RESPONSE PAGE {page_no} → {result[:200]}")
 
@@ -352,6 +348,11 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
+
+                 # ✅ SAVE AI RESULT
+            self.ai_response = json.dumps(page_products)
+
+            _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
     #---------------- PRODUCT CREATION ----------------
     def create_product_drafts(self):
