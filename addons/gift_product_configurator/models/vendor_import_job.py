@@ -298,15 +298,22 @@ class VendorImportJob(models.Model):
 
         page_products = []
 
-        for page in pages:
+        # ✅ FIX 1: batch processing (prevents missing products)
+        batch_size = 3
 
-            page_no = page.get("page")
-            text = page.get("text", "")
+        for i in range(0, len(pages), batch_size):
 
-            if not text.strip():
+            batch = pages[i:i + batch_size]
+
+            combined_text = "\n\n".join([
+                f"PAGE {p.get('page')}:\n{p.get('text','')}"
+                for p in batch if p.get("text", "").strip()
+            ])
+
+            if not combined_text.strip():
                 continue
 
-            _logger.warning(f"AI → PAGE {page_no}")
+            _logger.warning(f"AI → PROCESSING BATCH {i // batch_size + 1}")
 
             prompt = f"""
             You are a product extraction engine.
@@ -318,17 +325,19 @@ class VendorImportJob(models.Model):
             - No explanation
             - No markdown
             - No text outside JSON
-            - If content looks like structured rows (Excel style),
-            treat EACH LINE as ONE product.
 
             IMPORTANT LOGIC:
-            1. If page shows MANY small items (catalog grid):
-            → extract EACH item as separate product
+            1. If content looks like structured rows (Excel):
+            → EACH LINE = ONE product
 
-            2. If page shows ONE large product with description:
-            → extract ONLY ONE product
+            2. If catalog grid:
+            → extract ALL items
 
-            3. DO NOT duplicate products
+            3. If single product page:
+            → extract ONE product
+
+            4. DO NOT merge products
+            5. DO NOT skip products
 
             FORMAT:
             [
@@ -351,7 +360,8 @@ class VendorImportJob(models.Model):
                 )
 
                 result = response.output_text.strip()
-                _logger.warning(f"RAW AI RESPONSE PAGE {page_no} → {result[:200]}")
+
+                _logger.warning(f"RAW AI RESPONSE → {result[:200]}")
 
                 # 🔥 CLEAN RESPONSE
                 if "```" in result:
@@ -366,22 +376,23 @@ class VendorImportJob(models.Model):
                 try:
                     parsed = json.loads(result)
                 except Exception:
-                    _logger.warning(f"INVALID JSON → PAGE {page_no}")
+                    _logger.warning("INVALID JSON → SKIPPED")
                     continue
 
                 if isinstance(parsed, list) and parsed:
-                    _logger.warning(f"PAGE {page_no} → {len(parsed)} products")
+                    _logger.warning(f"BATCH → {len(parsed)} products extracted")
+
+                    # ✅ IMPORTANT: map batch to FIRST page only (stable mapping)
                     page_products.append({
                         "page": batch[0].get("page"),
                         "products": parsed
                     })
 
             except Exception as e:
-                _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
+                _logger.warning(f"BATCH FAILED → {str(e)}")
                 continue
 
-
-        # ✅ CORRECT POSITION (OUTSIDE LOOP)
+        # ✅ SAVE AFTER LOOP (CRITICAL)
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
