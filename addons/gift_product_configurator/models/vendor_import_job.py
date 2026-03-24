@@ -150,7 +150,7 @@ class VendorImportJob(models.Model):
 
         pages = json.loads(self.extracted_text or "[]")
 
-        all_products = []
+        page_products = []
 
         for page in pages:
 
@@ -220,28 +220,14 @@ class VendorImportJob(models.Model):
 
                 if isinstance(parsed, list):
                     _logger.warning(f"PAGE {page_no} → {len(parsed)} products")
-                    all_products.extend(parsed)
+                    page_products.append({
+                        "page": page_no,
+                        "products": parsed
+                    })
 
             except Exception as e:
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
-
-        #-------- REMOVE DUPLICATES --------
-        unique = {}
-
-        for p in all_products:
-            name = p.get("name", "").strip().lower()
-            if name and name not in unique:
-                unique[name] = p
-
-        final_products = list(unique.values())
-
-        _logger.warning(f"FINAL PRODUCT COUNT → {len(final_products)}")
-
-        if not final_products:
-            raise Exception("No products extracted")
-
-        self.ai_response = json.dumps(final_products)
 
     #---------------- PRODUCT CREATION ----------------
     def create_product_drafts(self):
@@ -254,49 +240,40 @@ class VendorImportJob(models.Model):
         def is_valid_product_image(img_base64):
             try:
                 img_bytes = base64.b64decode(img_base64)
-
-                if len(img_bytes) < 5000:
-                    return False
-
-                return True
-
+                return len(img_bytes) > 5000
             except Exception:
                 return False
 
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
 
-        products = json.loads(self.ai_response)
         pages = json.loads(self.extracted_text)
+        ai_pages = json.loads(self.ai_response)
 
-        _logger.warning(f"CREATING {len(products)} PRODUCTS")
+        _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
 
-        product_index = 0
-        used_images = set()  # ✅ prevent reuse
+        for page_data in pages:
 
-        for page in pages:
+            page_no = page_data.get("page")
 
-            raw_images = page.get("images", [])
-            page_images = [img for img in raw_images if is_valid_product_image(img)]
+            raw_images = page_data.get("images", [])
+            images = [img for img in raw_images if is_valid_product_image(img)]
 
-            _logger.warning(
-                f"PAGE {page.get('page')} → {len(page_images)} VALID IMAGES"
-            )
+            # find matching AI page
+            ai_page = next((p for p in ai_pages if p["page"] == page_no), None)
 
-            for img in page_images:
+            if not ai_page:
+                continue
 
-                if product_index >= len(products):
-                    break
+            products = ai_page.get("products", [])
 
-                # ✅ skip used images
-                if img in used_images:
-                    continue
+            _logger.warning(f"PAGE {page_no} → {len(products)} products | {len(images)} images")
 
-                item = products[product_index]
+            for i, product in enumerate(products):
 
-                name = item.get("name", "Unnamed Product")
-                description = item.get("description", "")
-                category_name = item.get("category", "Uncategorized")
+                name = product.get("name", "Unnamed Product")
+                description = product.get("description", "")
+                category_name = product.get("category", "Uncategorized")
 
                 category = category_obj.search([('name', '=', category_name)], limit=1)
 
@@ -311,41 +288,14 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                # ✅ assign ONE image per product
-                vals['image_1920'] = img
-                used_images.add(img)
-
-                _logger.warning(f"IMAGE ASSIGNED → {name}")
+                # ✅ PERFECT MATCH: index within page
+                if i < len(images):
+                    vals['image_1920'] = images[i]
+                    _logger.warning(f"IMAGE MATCHED → {name}")
+                else:
+                    _logger.warning(f"NO IMAGE → {name}")
 
                 product_obj.create(vals)
-
-                product_index += 1
-
-        # remaining products without images
-        while product_index < len(products):
-
-            item = products[product_index]
-
-            name = item.get("name", "Unnamed Product")
-            description = item.get("description", "")
-            category_name = item.get("category", "Uncategorized")
-
-            category = category_obj.search([('name', '=', category_name)], limit=1)
-
-            if not category:
-                category = category_obj.create({'name': category_name})
-
-            product_obj.create({
-                'name': name,
-                'description_sale': description,
-                'categ_id': category.id,
-                'sale_ok': True,
-                'website_published': False,
-            })
-
-            _logger.warning(f"NO IMAGE → {name}")
-
-            product_index += 1
     #---------------- CRON ----------------
 
     def run_pending_jobs(self):
