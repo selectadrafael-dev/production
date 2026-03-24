@@ -422,7 +422,7 @@ class VendorImportJob(models.Model):
 
         return best_img
 
-    #---------------- PRODUCT CREATION ----------------
+    #----------------PRODUCT CREATION ----------------
    
     def create_product_drafts(self):
         if not self.ai_response or not self.extracted_text:
@@ -537,6 +537,7 @@ class VendorImportJob(models.Model):
 
         # ✅ FIX: final confirmation (VERY IMPORTANT FOR DEBUGGING)
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
+
 
     #---------------- CRON ----------------
 
