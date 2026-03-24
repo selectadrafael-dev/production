@@ -163,12 +163,10 @@ class VendorImportJob(models.Model):
         for page in pages:
 
             combined_text = "\n".join([r["text"] for r in page["rows"]])
-            combined_images = []
 
-            for r in page["rows"]:
-                combined_images.extend(r["images"])
+            # ✅ FIX: KEEP ROW STRUCTURE (DO NOT MERGE)
+            combined_images = page["rows"]
 
-            # ✅ FIX: debug page-level summary
             _logger.warning(
                 f"PAGE {page['page']} → ROWS: {len(page['rows'])}, IMAGES: {len(combined_images)}"
             )
@@ -384,29 +382,45 @@ class VendorImportJob(models.Model):
      #-----------scoring image before picking best/quality image-------------
 
     def pick_best_image(self, images):
+        import base64
 
-        def score(img):
+        best_img = None
+        best_score = 0
+
+        for img in images:
             try:
                 img_bytes = base64.b64decode(img)
+                size = len(img_bytes)
 
-                size_score = len(img_bytes)
+                # ❌ skip tiny images (icons, logos)
+                if size < 8000:
+                    continue
 
-                # bonus for reasonable size
-                if 20000 < size_score < 500000:
-                    size_score += 50000
+                score = 0
 
-                return size_score
+                # ✅ 1. Prefer large images
+                score += size / 1000
 
-            except:
-                return 0
+                # ✅ 2. Penalize overly large (full-page lifestyle)
+                if size > 500000:
+                    score -= 200
 
-        if not images:
-            return None
+                # ✅ 3. Prefer medium size (typical product image)
+                if 20000 < size < 200000:
+                    score += 200
 
-        # 🔥 pick highest score
-        best = sorted(images, key=score, reverse=True)[0]
+                # ✅ 4. Penalize duplicates (same image reused)
+                if best_img and img == best_img:
+                    score -= 300
 
-        return best
+                if score > best_score:
+                    best_score = score
+                    best_img = img
+
+            except Exception:
+                continue
+
+        return best_img
 
     #---------------- PRODUCT CREATION ----------------
    
@@ -455,7 +469,6 @@ class VendorImportJob(models.Model):
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
             # ✅ FIX: track used images to avoid reuse
-            used_images = set()
 
             for i, product in enumerate(products):
 
@@ -483,25 +496,23 @@ class VendorImportJob(models.Model):
                 # ✅ FIX: smarter image assignment (no duplication)
                 selected_image = None
 
-                if images:
-                    # try position-based first
-                    if i < len(images) and images[i] not in used_images:
-                        selected_image = images[i]
-                    else:
-                        # fallback: pick best unused image
-                        for img in images:
-                            if img not in used_images:
-                                selected_image = img
-                                break
+                row_data = page_data.get("images", [])
 
-                        # final fallback: best image
-                        if not selected_image:
-                            selected_image = self.pick_best_image(images)
+                if row_data and i < len(row_data):
+                    row_images = row_data[i].get("images", [])
+
+                    # filter valid images
+                    valid_images = [
+                        img for img in row_images
+                        if is_valid_product_image(img)
+                    ]
+
+                    if valid_images:
+                        selected_image = valid_images[0]  # first image per row
 
                 if selected_image:
                     vals['image_1920'] = selected_image
-                    used_images.add(selected_image)
-                    _logger.warning(f"IMAGE ASSIGNED → {name}")
+                    _logger.warning(f"EXCEL IMAGE → {name}")
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
 
