@@ -5,6 +5,13 @@ import json
 # 🔥 ONLY ADD THIS IMPORT AT TOP
 import requests
 import time
+import pandas as pd
+import io
+from openpyxl import load_workbook
+from PIL import Image
+from io import BytesIO
+
+
 
 
 _logger = logging.getLogger(__name__)
@@ -35,6 +42,123 @@ class VendorImportJob(models.Model):
         ('done', 'Completed'),
         ('error', 'Error')
     ], default='draft')
+
+    #------excel processing methof---------------
+    def parse_excel(self):
+        _logger.warning("PROCESSING EXCEL FILE (WITH IMAGE SUPPORT)")
+
+        excel_bytes = base64.b64decode(self.excel_file)
+
+        # ---------------- LOAD DATAFRAME ----------------
+        try:
+            df = pd.read_excel(io.BytesIO(excel_bytes))
+        except Exception:
+            df = pd.read_csv(io.BytesIO(excel_bytes))
+
+        # ---------------- LOAD WORKBOOK (FOR IMAGES) ----------------
+        wb = load_workbook(filename=BytesIO(excel_bytes))
+        ws = wb.active
+
+        # ---------------- EXTRACT EMBEDDED IMAGES ----------------
+        image_map = {}  # row_index → [base64 images]
+
+        for image in getattr(ws, '_images', []):
+            try:
+                row = image.anchor._from.row  # row position
+                img_bytes = image._data()
+
+                # ✅ FILTER HERE
+                if len(img_bytes) > 5000:
+                    img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                    image_map.setdefault(row, []).append(img_base64)
+
+            except Exception:
+                continue
+
+        _logger.warning(f"EMBEDDED IMAGES FOUND: {len(image_map)} ROWS")
+
+        # ---------------- PROCESS ROWS ----------------
+        pages = []
+        page_size = 20
+        current_page = []
+        page_number = 1
+
+        for idx, row in df.iterrows():
+
+            row_text_parts = []
+            row_images = []
+
+            # 🔹 TEXT + URL EXTRACTION
+            for col in df.columns:
+                val = str(row[col])
+
+                if val and val != "nan":
+
+                    # detect image URL
+                    if val.startswith("http") and any(ext in val.lower() for ext in [".jpg", ".png", ".jpeg", ".webp"]):
+                        try:
+                            response = requests.get(val, timeout=10)
+
+                            if response.status_code == 200:
+                                img_bytes = response.content
+
+                                # ✅ FILTER HERE
+                                if len(img_bytes) > 5000:
+                                    img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                                    row_images.append(img_base64)
+                        except Exception:
+                            pass
+                    else:
+                        row_text_parts.append(val)
+
+            # 🔹 EMBEDDED IMAGES
+            if idx in image_map:
+                row_images.extend(image_map[idx])
+
+            row_text = " | ".join(row_text_parts)
+
+            current_page.append({
+                "text": row_text,
+                "images": row_images
+            })
+
+            # ---------------- PAGINATION ----------------
+            if len(current_page) >= page_size:
+
+                pages.append({
+                    "page": page_number,
+                    "rows": current_page
+                })
+
+                current_page = []
+                page_number += 1
+
+        if current_page:
+            pages.append({
+                "page": page_number,
+                "rows": current_page
+            })
+
+        # ---------------- CONVERT TO STANDARD FORMAT ----------------
+        final_pages = []
+
+        for page in pages:
+
+            combined_text = "\n".join([r["text"] for r in page["rows"]])
+            combined_images = []
+
+            for r in page["rows"]:
+                combined_images.extend(r["images"])
+
+            final_pages.append({
+                "page": page["page"],
+                "text": combined_text,
+                "images": combined_images
+            })
+
+        self.extracted_text = json.dumps(final_pages)
+
+        _logger.warning(f"EXCEL PARSED → {len(final_pages)} PAGES (WITH IMAGES)")
 
     # ---------------- MAIN FLOW ----------------
 
