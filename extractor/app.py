@@ -3,6 +3,8 @@ import fitz
 import base64
 import logging
 import os
+from PIL import Image
+import io
 
 app = Flask(__name__)
 
@@ -43,20 +45,42 @@ def extract():
 
         images = page.get_images(full=True)
 
-        for img in images:
+        MAX_IMAGES_PER_PAGE = 5  # 🔥 limit images per page
+
+        for img_data in images:
             try:
-                xref = img[0]
+                if len(image_list) >= MAX_IMAGES_PER_PAGE:
+                    break  # better than continue
+
+                xref = img_data[0]
                 base_image = doc.extract_image(xref)
                 image_bytes = base_image.get("image")
 
                 if not image_bytes:
                     continue
 
-                image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-                image_list.append(image_base64)
+                try:
+                    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+                    # 🔥 resize to reduce payload
+                    img.thumbnail((800, 800))
+
+                    buffer = io.BytesIO()
+                    img.save(buffer, format="JPEG", quality=70)
+
+                    compressed_bytes = buffer.getvalue()
+
+                    image_base64 = base64.b64encode(compressed_bytes).decode("utf-8")
+
+                    image_list.append(image_base64)
+
+                except Exception:
+                    continue
 
             except Exception:
                 continue
+
+        _logger.info(f"PAGE {page_number+1} → IMAGES KEPT: {len(image_list)}")
 
         pages_data.append({
             "page": page_number + 1,
