@@ -308,20 +308,27 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI → PAGE {page_no}")
 
-
             prompt = f"""
             You are a product extraction engine.
 
-            Extract ALL products from this page.
+            Extract ALL distinct products.
 
-            IMPORTANT:
+            RULES:
             - Return ONLY valid JSON
             - No explanation
             - No markdown
             - No text outside JSON
-            - If no products found, return []
             - If content looks like structured rows (Excel style),
             treat EACH LINE as ONE product.
+
+            IMPORTANT LOGIC:
+            1. If page shows MANY small items (catalog grid):
+            → extract EACH item as separate product
+
+            2. If page shows ONE large product with description:
+            → extract ONLY ONE product
+
+            3. DO NOT duplicate products
 
             FORMAT:
             [
@@ -333,7 +340,7 @@ class VendorImportJob(models.Model):
             ]
 
             TEXT:
-            {text}
+            {combined_text}
             """
 
             try:
@@ -362,10 +369,10 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"INVALID JSON → PAGE {page_no}")
                     continue
 
-                if isinstance(parsed, list):
+                if isinstance(parsed, list) and parsed:
                     _logger.warning(f"PAGE {page_no} → {len(parsed)} products")
                     page_products.append({
-                        "page": page_no,
+                        "page": batch[0].get("page"),
                         "products": parsed
                     })
 
@@ -473,7 +480,7 @@ class VendorImportJob(models.Model):
         def is_valid_product_image(img_base64):
             try:
                 img_bytes = base64.b64decode(img_base64)
-                return len(img_bytes) > 5000
+                return len(img_bytes) > 1500
             except Exception:
                 return False
 
