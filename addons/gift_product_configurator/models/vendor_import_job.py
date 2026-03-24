@@ -255,7 +255,6 @@ class VendorImportJob(models.Model):
             try:
                 img_bytes = base64.b64decode(img_base64)
 
-                # 🔥 filter small images (logos/icons)
                 if len(img_bytes) < 5000:
                     return False
 
@@ -273,22 +272,25 @@ class VendorImportJob(models.Model):
         _logger.warning(f"CREATING {len(products)} PRODUCTS")
 
         product_index = 0
+        used_images = set()  # ✅ prevent reuse
 
         for page in pages:
 
             raw_images = page.get("images", [])
-
-            # ✅ FILTER IMAGES
             page_images = [img for img in raw_images if is_valid_product_image(img)]
 
             _logger.warning(
-                f"PAGE {page.get('page')} → {len(page_images)} VALID IMAGES (from {len(raw_images)})"
+                f"PAGE {page.get('page')} → {len(page_images)} VALID IMAGES"
             )
 
             for img in page_images:
 
                 if product_index >= len(products):
                     break
+
+                # ✅ skip used images
+                if img in used_images:
+                    continue
 
                 item = products[product_index]
 
@@ -309,12 +311,11 @@ class VendorImportJob(models.Model):
                     'website_published': False,
                 }
 
-                # ✅ IMAGE ASSIGNMENT + LOGGING
-                if img:
-                    vals['image_1920'] = img
-                    _logger.warning(f"IMAGE ASSIGNED → {name}")
-                else:
-                    _logger.warning(f"NO IMAGE → {name}")
+                # ✅ assign ONE image per product
+                vals['image_1920'] = img
+                used_images.add(img)
+
+                _logger.warning(f"IMAGE ASSIGNED → {name}")
 
                 product_obj.create(vals)
 
@@ -342,87 +343,9 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             })
 
-            _logger.warning(f"NO IMAGE LEFT → {name}")
+            _logger.warning(f"NO IMAGE → {name}")
 
             product_index += 1
-
-            if not self.ai_response or not self.extracted_text:
-                return
-
-            product_obj = self.env['product.template']
-            category_obj = self.env['product.category']
-
-            products = json.loads(self.ai_response)
-            pages = json.loads(self.extracted_text)
-
-            _logger.warning(f"CREATING {len(products)} PRODUCTS")
-
-            product_index = 0
-
-            for page in pages:
-
-                page_images = page.get("images", [])
-
-                for img in page_images:
-
-                    if product_index >= len(products):
-                        break
-
-                    item = products[product_index]
-
-                    name = item.get("name", "Unnamed Product")
-                    description = item.get("description", "")
-                    category_name = item.get("category", "Uncategorized")
-
-                    category = category_obj.search([('name', '=', category_name)], limit=1)
-
-                    if not category:
-                        category = category_obj.create({'name': category_name})
-
-                    vals = {
-                        'name': name,
-                        'description_sale': description,
-                        'categ_id': category.id,
-                        'sale_ok': True,
-                        'website_published': False,
-                    }
-
-                    # ✅ IMAGE ASSIGNMENT
-                    if img:
-                        vals['image_1920'] = img
-
-                    product_obj.create(vals)
-
-                    _logger.info(f"Product created: {name} (with image)")
-
-                    product_index += 1
-
-            # remaining products without images
-            while product_index < len(products):
-
-                item = products[product_index]
-
-                name = item.get("name", "Unnamed Product")
-                description = item.get("description", "")
-                category_name = item.get("category", "Uncategorized")
-
-                category = category_obj.search([('name', '=', category_name)], limit=1)
-
-                if not category:
-                    category = category_obj.create({'name': category_name})
-
-                product_obj.create({
-                    'name': name,
-                    'description_sale': description,
-                    'categ_id': category.id,
-                    'sale_ok': True,
-                    'website_published': False,
-                })
-
-                _logger.info(f"Product created: {name} (no image)")
-
-                product_index += 1
-
     # ---------------- CRON ----------------
 
     def run_pending_jobs(self):
