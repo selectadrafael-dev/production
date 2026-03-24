@@ -346,7 +346,7 @@ class VendorImportJob(models.Model):
             _logger.warning(f"NO IMAGE → {name}")
 
             product_index += 1
-    # ---------------- CRON ----------------
+    #---------------- CRON ----------------
 
     def run_pending_jobs(self):
 
