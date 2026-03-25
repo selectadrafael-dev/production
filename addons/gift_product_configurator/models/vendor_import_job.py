@@ -527,115 +527,228 @@ class VendorImportJob(models.Model):
 
             used_images = set()
             
-            for i, product in enumerate(products):
+            # for i, product in enumerate(products):
 
-                name = product.get("name")
-                if not name:
-                    _logger.warning("SKIPPING EMPTY PRODUCT")
+            #     name = product.get("name")
+            #     if not name:
+            #         _logger.warning("SKIPPING EMPTY PRODUCT")
+            #         continue
+
+            #     description = product.get("description", "")
+            #     category_name = product.get("category", "Uncategorized")
+
+            #     category = category_obj.search([('name', '=', category_name)], limit=1)
+
+            #     if not category:
+            #         category = category_obj.create({'name': category_name})
+
+            #     vals = {
+            #         'name': name,
+            #         'description_sale': description,
+            #         'categ_id': category.id,
+            #         'sale_ok': True,
+            #         'website_published': False,
+            #     }
+
+            #     # ================= IMAGE LOGIC (STRICT QUALITY ENGINE) =================
+
+            #     row_data = page_data.get("images", [])
+            #     selected_image = None
+
+            #     # ✅ track used images per page
+            #     if "used_images" not in locals():
+            #         used_images = set()
+
+            #     if row_data:
+
+            #         # ================= EXCEL =================
+            #         if isinstance(row_data[0], dict):
+
+            #             if i < len(row_data):
+            #                 row_images = row_data[i].get("images", [])
+
+            #                 # 🔥 STEP 1: filter valid
+            #                 valid_images = [
+            #                     img for img in row_images
+            #                     if is_valid_product_image(img)
+            #                 ]
+
+            #                 # 🔥 STEP 2: prefer CLEAN images
+            #                 clean_images = [
+            #                     img for img in valid_images
+            #                     if self.is_clean_product_image(img) and img not in used_images
+            #                 ]
+
+            #                 if clean_images:
+            #                     selected_image = clean_images[0]
+
+            #                 else:
+            #                     # fallback (no clean image)
+            #                     fallback = [
+            #                         img for img in valid_images
+            #                         if img not in used_images
+            #                     ]
+            #                     if fallback:
+            #                         selected_image = fallback[0]
+
+            #     # ================= PDF =================
+            #     elif isinstance(row_data[0], str):
+
+            #         valid_images = [
+            #             img for img in row_data
+            #             if is_valid_product_image(img)
+            #         ]
+
+            #         # 🔥 STEP 1: clean images first
+            #         clean_images = [
+            #             img for img in valid_images
+            #             if self.is_clean_product_image(img) and img not in used_images
+            #         ]
+
+            #         if i < len(clean_images):
+            #             selected_image = clean_images[i]
+
+            #         else:
+            #             # 🔥 fallback to unused valid images
+            #             fallback = [
+            #                 img for img in valid_images
+            #                 if img not in used_images
+            #             ]
+
+            #             if fallback:
+            #                 selected_image = fallback[0]
+
+            # # ================= APPLY IMAGE =================
+
+            #         if selected_image:
+            #             vals['image_1920'] = selected_image
+            #             used_images.add(selected_image)
+            #             _logger.warning(f"IMAGE ASSIGNED (CLEAN FIRST) → {name}")
+            #         else:
+            #             _logger.warning(f"NO IMAGE → {name}")
+
+            for page_data in pages:
+
+                page_no = page_data.get("page")
+
+                # ---------------- AI MATCH ----------------
+                ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
+
+                if not ai_page:
+                    _logger.warning(f"NO AI DATA FOR PAGE {page_no}")
                     continue
 
-                description = product.get("description", "")
-                category_name = product.get("category", "Uncategorized")
+                products = ai_page.get("products", [])
 
-                category = category_obj.search([('name', '=', category_name)], limit=1)
+                if not products:
+                    _logger.warning(f"NO PRODUCTS FOUND ON PAGE {page_no}")
+                    continue
 
-                if not category:
-                    category = category_obj.create({'name': category_name})
+                _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
-                vals = {
-                    'name': name,
-                    'description_sale': description,
-                    'categ_id': category.id,
-                    'sale_ok': True,
-                    'website_published': False,
-                }
-
-                # ================= IMAGE LOGIC (STRICT QUALITY ENGINE) =================
-
-            row_data = page_data.get("images", [])
-            selected_image = None
-
-            # ✅ track used images per page
-            if "used_images" not in locals():
+                # ✅ ONE used_images PER PAGE (NOT inside product loop)
                 used_images = set()
 
-            if row_data:
+                # ================= LOOP 2 (PRODUCT LOOP) =================
+                for i, product in enumerate(products):
 
-                # ================= EXCEL =================
-                if isinstance(row_data[0], dict):
+                    name = product.get("name")
+                    if not name:
+                        _logger.warning("SKIPPING EMPTY PRODUCT")
+                        continue
 
-                    if i < len(row_data):
-                        row_images = row_data[i].get("images", [])
+                    description = product.get("description", "")
+                    category_name = product.get("category", "Uncategorized")
 
-                        # 🔥 STEP 1: filter valid
-                        valid_images = [
-                            img for img in row_images
-                            if is_valid_product_image(img)
-                        ]
+                    category = category_obj.search([('name', '=', category_name)], limit=1)
+                    if not category:
+                        category = category_obj.create({'name': category_name})
 
-                        # 🔥 STEP 2: prefer CLEAN images
-                        clean_images = [
-                            img for img in valid_images
-                            if self.is_clean_product_image(img) and img not in used_images
-                        ]
+                    vals = {
+                        'name': name,
+                        'description_sale': description,
+                        'categ_id': category.id,
+                        'sale_ok': True,
+                        'website_published': False,
+                    }
 
-                        if clean_images:
-                            selected_image = clean_images[0]
+                    # ================= IMAGE LOGIC (INSIDE PRODUCT LOOP) =================
+                    row_data = page_data.get("images", [])
+                    selected_image = None
 
-                        else:
-                            # fallback (no clean image)
-                            fallback = [
-                                img for img in valid_images
-                                if img not in used_images
+                    if row_data:
+
+                        # ================= EXCEL =================
+                        if isinstance(row_data[0], dict):
+
+                            if i < len(row_data):
+                                row_images = row_data[i].get("images", [])
+
+                                valid_images = [
+                                    img for img in row_images
+                                    if is_valid_product_image(img)
+                                ]
+
+                                clean_images = [
+                                    img for img in valid_images
+                                    if self.is_clean_product_image(img) and img not in used_images
+                                ]
+
+                                if clean_images:
+                                    selected_image = clean_images[0]
+                                else:
+                                    fallback = [
+                                        img for img in valid_images
+                                        if img not in used_images
+                                    ]
+                                    if fallback:
+                                        selected_image = fallback[0]
+
+                        # ================= PDF =================
+                        elif isinstance(row_data[0], str):
+
+                            valid_images = [
+                                img for img in row_data
+                                if is_valid_product_image(img)
                             ]
-                            if fallback:
-                                selected_image = fallback[0]
 
-                # ================= PDF =================
-                elif isinstance(row_data[0], str):
+                            clean_images = [
+                                img for img in valid_images
+                                if self.is_clean_product_image(img) and img not in used_images
+                            ]
 
-                    valid_images = [
-                        img for img in row_data
-                        if is_valid_product_image(img)
-                    ]
+                            if i < len(clean_images):
+                                selected_image = clean_images[i]
+                            else:
+                                fallback = [
+                                    img for img in valid_images
+                                    if img not in used_images
+                                ]
+                                if fallback:
+                                    selected_image = fallback[0]
 
-                    # 🔥 STEP 1: clean images first
-                    clean_images = [
-                        img for img in valid_images
-                        if self.is_clean_product_image(img) and img not in used_images
-                    ]
-
-                    if i < len(clean_images):
-                        selected_image = clean_images[i]
-
+                    # ================= APPLY IMAGE =================
+                    if selected_image:
+                        vals['image_1920'] = selected_image
+                        used_images.add(selected_image)
+                        _logger.warning(f"IMAGE ASSIGNED (CLEAN FIRST) → {name}")
                     else:
-                        # 🔥 fallback to unused valid images
-                        fallback = [
-                            img for img in valid_images
-                            if img not in used_images
-                        ]
+                        _logger.warning(f"NO IMAGE → {name}")
 
-                        if fallback:
-                            selected_image = fallback[0]
+                    # ✅ ALWAYS CREATE PRODUCT (CRITICAL FIX)
+                    product_obj.create(vals)
 
-            # ================= APPLY IMAGE =================
+                    _logger.warning(f"CREATED → {name}")
 
-            if selected_image:
-                vals['image_1920'] = selected_image
-                used_images.add(selected_image)  # 🚨 prevent reuse
-                _logger.warning(f"IMAGE ASSIGNED (CLEAN FIRST) → {name}")
-            else:
-                _logger.warning(f"NO IMAGE → {name}")
+                    # ================= CREATE PRODUCT =================
 
-                # ================= CREATE PRODUCT =================
+                    product_obj.create(vals)
 
-                product_obj.create(vals)
+                    _logger.warning(f"CREATED → {name}")
+                    _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
 
-                _logger.warning(f"CREATED → {name}")
-                _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
-
-        # ✅ FINAL CONFIRMATION
-        _logger.warning("PRODUCT CREATION LOOP COMPLETED")
+            # ✅ FINAL CONFIRMATION
+            _logger.warning("PRODUCT CREATION LOOP COMPLETED")
 
     #---------------- CRON ----------------
 
