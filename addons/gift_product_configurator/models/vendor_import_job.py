@@ -108,7 +108,33 @@ class VendorImportJob(models.Model):
                         response = requests.get(val, timeout=10)
 
                         if response.status_code == 200:
-                            img_bytes = response.content
+
+                            img_bytes = response.content  # ✅ RESTORE THIS
+
+                            # 🔥 send to extractor (optional but good)
+                            try:
+                                files = {"file": ("image.jpg", img_bytes)}
+
+                                res = requests.post(
+                                    "https://pdf-extractor-staging.onrender.com/extract",
+                                    files=files,
+                                    timeout=15
+                                )
+
+                                if res.status_code == 200:
+                                    data = res.json()
+                                    if data and data[0].get("images"):
+                                        row_images.extend(data[0]["images"])
+                                        _logger.warning(f"ROW {idx} → IMAGE VIA EXTRACTOR")
+
+                            except Exception:
+                                _logger.warning(f"ROW {idx} → EXTRACTOR FAILED")
+
+                            # ✅ ALSO KEEP DIRECT IMAGE (fallback)
+                            if len(img_bytes) > 5000:
+                                img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+                                row_images.append(img_base64)
+                                _logger.warning(f"ROW {idx} → URL IMAGE OK")
 
                             if len(img_bytes) > 5000:
                                 img_base64 = base64.b64encode(img_bytes).decode("utf-8")
@@ -128,6 +154,10 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"ROW {idx} → EMBED IMAGE FOUND")
 
             row_text = " | ".join(row_text_parts)
+            _logger.warning(f"ROW {idx} → FINAL IMAGES COUNT: {len(row_images)}")
+
+            if not row_images:
+                _logger.warning(f"❌ ROW {idx} HAS NO IMAGE (CHECK SOURCE)")
 
             # ✅ FIX: ensure row always meaningful for AI
             if not row_text and row_images:
@@ -157,30 +187,34 @@ class VendorImportJob(models.Model):
                 "rows": current_page
             })
 
-        # ---------------- FINAL FORMAT ----------------
+       # ---------------- FINAL FORMAT ----------------
         final_pages = []
 
         for page in pages:
 
             combined_text = "\n".join([r["text"] for r in page["rows"]])
 
-            # ✅ FIX: KEEP ROW STRUCTURE (DO NOT MERGE)
-            combined_images = page["rows"]
+            # ✅ STRICT STRUCTURE (DO NOT FLATTEN)
+            structured_images = []
+
+            for r in page["rows"]:
+                structured_images.append({
+                    "images": r.get("images", [])
+                })
 
             _logger.warning(
-                f"PAGE {page['page']} → ROWS: {len(page['rows'])}, IMAGES: {len(combined_images)}"
+                f"PAGE {page['page']} → ROWS: {len(page['rows'])}, STRUCTURED IMAGES: {len(structured_images)}"
             )
 
             final_pages.append({
                 "page": page["page"],
                 "text": combined_text,
-                "images": combined_images
+                "images": structured_images
             })
 
         self.extracted_text = json.dumps(final_pages)
 
         _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
-        
 
     # ---------------- MAIN FLOW ----------------
 
@@ -579,37 +613,42 @@ class VendorImportJob(models.Model):
               
                 if row_data:
 
-                    # ================= EXCEL =================
                     if isinstance(row_data[0], dict):
 
                         if i < len(row_data):
+
                             row_images = row_data[i].get("images", [])
+                            
+                            _logger.warning(f"ROW {i} → STRUCTURED IMAGES OBJECT: {type(row_images)}")
+                            _logger.warning(f"ROW {i} → IMAGE SAMPLE SIZE: {[len(img) for img in row_images[:2]]}")
+
+                            _logger.warning(f"PRODUCT {i} → RAW IMAGES: {len(row_images)}")
+                        
 
                             valid_images = [
                                 img for img in row_images
                                 if is_valid_product_image(img)
                             ]
 
+                            _logger.warning(f"PRODUCT {i} → VALID IMAGES: {len(valid_images)}")
+
                             clean_images = [
                                 img for img in valid_images
                                 if self.is_clean_product_image(img) and img not in used_images
                             ]
 
-                            # ✅ PRIORITY: clean images
+                            _logger.warning(f"PRODUCT {i} → CLEAN IMAGES: {len(clean_images)}")
+
                             if clean_images:
                                 selected_image = clean_images[0]
 
+                            elif valid_images:
+                                selected_image = valid_images[0]
 
-                            # 🔥 fallback (still avoid reuse)
                             else:
-                                fallback = [
-                                    img for img in valid_images
-                                    if img not in used_images
-                                ]
-                                if fallback:
-                                    selected_image = fallback[0]
+                                _logger.warning(f"❌ PRODUCT {i} → NO IMAGE AFTER FILTER")
 
-                    # ================= PDF =================
+                    # # ================= PDF =================
                     elif isinstance(row_data[0], str):
 
                         valid_images = [
