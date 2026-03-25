@@ -578,8 +578,8 @@ class VendorImportJob(models.Model):
                     if existing:
                         _logger.warning(f"SKIPPED DUPLICATE → {name}")
                         continue
-                    
-                    # ================= IMAGE LOGIC (INSIDE PRODUCT LOOP) =================
+
+                    #================= IMAGE LOGIC (INSIDE PRODUCT LOOP) =================
                     row_data = page_data.get("images", [])
                     selected_image = None
 
