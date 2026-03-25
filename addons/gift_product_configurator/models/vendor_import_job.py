@@ -398,13 +398,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
      #-----------clean image-------------
-     
     def is_clean_product_image(self, img_base64):
-        """
-        Heuristic filter:
-        Reject lifestyle / human / clutter images
-        Prefer clean product shots
-        """
         try:
             import base64
             from PIL import Image
@@ -415,29 +409,47 @@ class VendorImportJob(models.Model):
 
             width, height = img.size
 
-            # ❌ reject tiny / icon images
+            # ❌ reject tiny images (logos/icons)
             if width < 200 or height < 200:
                 return False
 
             pixels = list(img.getdata())
+            total_pixels = len(pixels)
 
-            # sample pixels (performance safe)
-            sample = pixels[:: max(1, len(pixels)//5000)]
+            # 🔥 detect dominant color (logos usually 1 color)
+            color_counts = {}
+            for p in pixels[::100]:  # sample pixels (faster)
+                color_counts[p] = color_counts.get(p, 0) + 1
 
-            # count bright pixels (white-ish background)
-            bright = sum(1 for r,g,b in sample if r > 200 and g > 200 and b > 200)
-            ratio = bright / len(sample)
+            dominant_ratio = max(color_counts.values()) / (total_pixels / 100)
 
-            # ✅ if mostly bright → likely clean background
-            if ratio > 0.6:
+            # ❌ too uniform → likely logo
+            if dominant_ratio > 0.6:
+                return False
+
+            # 🔥 detect white background ratio
+            white_pixels = sum(1 for p in pixels if p[0] > 240 and p[1] > 240 and p[2] > 240)
+            white_ratio = white_pixels / total_pixels
+
+            # ✅ prefer clean product shots (white bg)
+            if white_ratio > 0.4:
                 return True
 
-            return False
+            # ❌ reject lifestyle/human images
+            if width > 1000 and height > 1000:
+                return False
+
+            return True
 
         except Exception:
             return False
      
-     #-----------scoring image before picking best/quality image-------------
+     #-----------scoring image before picking best/quality image (inage logic)-------------
+    _logger.warning(f"PAGE {page_no} IMAGE TYPE → {type(row_data)}")
+
+    if row_data:
+        _logger.warning(f"FIRST IMAGE TYPE → {type(row_data[0])}")
+
 
     def pick_best_image(self, images):
         import base64
