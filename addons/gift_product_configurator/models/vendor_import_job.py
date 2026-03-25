@@ -445,11 +445,6 @@ class VendorImportJob(models.Model):
             return False
      
      #-----------scoring image before picking best/quality image (inage logic)-------------
-    _logger.warning(f"PAGE {page_no} IMAGE TYPE → {type(row_data)}")
-
-    if row_data:
-        _logger.warning(f"FIRST IMAGE TYPE → {type(row_data[0])}")
-
 
     def pick_best_image(self, images):
         import base64
@@ -571,7 +566,16 @@ class VendorImportJob(models.Model):
 
                 # ================= IMAGE LOGIC =================
                 row_data = page_data.get("images", [])
+
+                _logger.warning(f"PAGE {page_no} IMAGE TYPE → {type(row_data)}")
+
+                if row_data:
+                    _logger.warning(f"FIRST IMAGE TYPE → {type(row_data[0])}")
+
                 selected_image = None
+
+              
+
 
                 if row_data:
 
