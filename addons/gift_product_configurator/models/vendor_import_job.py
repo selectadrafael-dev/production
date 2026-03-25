@@ -527,106 +527,6 @@ class VendorImportJob(models.Model):
 
             used_images = set()
             
-            # for i, product in enumerate(products):
-
-            #     name = product.get("name")
-            #     if not name:
-            #         _logger.warning("SKIPPING EMPTY PRODUCT")
-            #         continue
-
-            #     description = product.get("description", "")
-            #     category_name = product.get("category", "Uncategorized")
-
-            #     category = category_obj.search([('name', '=', category_name)], limit=1)
-
-            #     if not category:
-            #         category = category_obj.create({'name': category_name})
-
-            #     vals = {
-            #         'name': name,
-            #         'description_sale': description,
-            #         'categ_id': category.id,
-            #         'sale_ok': True,
-            #         'website_published': False,
-            #     }
-
-            #     # ================= IMAGE LOGIC (STRICT QUALITY ENGINE) =================
-
-            #     row_data = page_data.get("images", [])
-            #     selected_image = None
-
-            #     # ✅ track used images per page
-            #     if "used_images" not in locals():
-            #         used_images = set()
-
-            #     if row_data:
-
-            #         # ================= EXCEL =================
-            #         if isinstance(row_data[0], dict):
-
-            #             if i < len(row_data):
-            #                 row_images = row_data[i].get("images", [])
-
-            #                 # 🔥 STEP 1: filter valid
-            #                 valid_images = [
-            #                     img for img in row_images
-            #                     if is_valid_product_image(img)
-            #                 ]
-
-            #                 # 🔥 STEP 2: prefer CLEAN images
-            #                 clean_images = [
-            #                     img for img in valid_images
-            #                     if self.is_clean_product_image(img) and img not in used_images
-            #                 ]
-
-            #                 if clean_images:
-            #                     selected_image = clean_images[0]
-
-            #                 else:
-            #                     # fallback (no clean image)
-            #                     fallback = [
-            #                         img for img in valid_images
-            #                         if img not in used_images
-            #                     ]
-            #                     if fallback:
-            #                         selected_image = fallback[0]
-
-            #     # ================= PDF =================
-            #     elif isinstance(row_data[0], str):
-
-            #         valid_images = [
-            #             img for img in row_data
-            #             if is_valid_product_image(img)
-            #         ]
-
-            #         # 🔥 STEP 1: clean images first
-            #         clean_images = [
-            #             img for img in valid_images
-            #             if self.is_clean_product_image(img) and img not in used_images
-            #         ]
-
-            #         if i < len(clean_images):
-            #             selected_image = clean_images[i]
-
-            #         else:
-            #             # 🔥 fallback to unused valid images
-            #             fallback = [
-            #                 img for img in valid_images
-            #                 if img not in used_images
-            #             ]
-
-            #             if fallback:
-            #                 selected_image = fallback[0]
-
-            # # ================= APPLY IMAGE =================
-
-            #         if selected_image:
-            #             vals['image_1920'] = selected_image
-            #             used_images.add(selected_image)
-            #             _logger.warning(f"IMAGE ASSIGNED (CLEAN FIRST) → {name}")
-            #         else:
-            #             _logger.warning(f"NO IMAGE → {name}")
-
             for page_data in pages:
 
                 page_no = page_data.get("page")
@@ -671,7 +571,14 @@ class VendorImportJob(models.Model):
                         'sale_ok': True,
                         'website_published': False,
                     }
+                    
 
+                    existing = product_obj.search([('name', '=', name)], limit=1)
+
+                    if existing:
+                        _logger.warning(f"SKIPPED DUPLICATE → {name}")
+                        continue
+                    
                     # ================= IMAGE LOGIC (INSIDE PRODUCT LOOP) =================
                     row_data = page_data.get("images", [])
                     selected_image = None
@@ -736,10 +643,7 @@ class VendorImportJob(models.Model):
                         _logger.warning(f"NO IMAGE → {name}")
 
                     # ✅ ALWAYS CREATE PRODUCT (CRITICAL FIX)
-                    product_obj.create(vals)
-
-                    _logger.warning(f"CREATED → {name}")
-
+                  
                     # ================= CREATE PRODUCT =================
 
                     product_obj.create(vals)
@@ -747,6 +651,8 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"CREATED → {name}")
                     _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
 
+                    self.env.cr.commit()
+                    _logger.warning("DB COMMIT DONE")
             # ✅ FINAL CONFIRMATION
             _logger.warning("PRODUCT CREATION LOOP COMPLETED")
 
@@ -760,11 +666,20 @@ class VendorImportJob(models.Model):
 
         for job in jobs:
             try:
+                _logger.warning(f"CRON → START JOB {job.id}")
+
                 job.state = 'processing'
+
                 job.process_import()
+
+                # ✅ VERY IMPORTANT — mark as done
+                job.state = 'done'
+
+                _logger.warning(f"CRON → JOB {job.id} DONE")
+
             except Exception:
                 _logger.exception("CRON FAILED")
-                job.state = 'error'  
+                job.state = 'error'
     
     def ping_flask_server(self):
       
