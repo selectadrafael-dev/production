@@ -393,7 +393,7 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"BATCH FAILED → {str(e)}")
                 continue
 
-        # ✅ SAVE AFTER LOOP (CRITICAL)
+        #✅ SAVE AFTER LOOP (CRITICAL)
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
