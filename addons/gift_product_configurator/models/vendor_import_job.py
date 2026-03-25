@@ -42,7 +42,6 @@ class VendorImportJob(models.Model):
     ], default='draft')
 
     #------excel processing methof---------------
-
     def parse_excel(self):
 
         _logger.warning("EXCEL → START PARSING")
@@ -63,7 +62,8 @@ class VendorImportJob(models.Model):
                 row_excel = image.anchor._from.row  # 0-based
 
                 # ✅ FIX: align Excel row index with pandas index
-                row_index = row_excel - 1  # IMPORTANT FIX
+                #row_index = row_excel - 1  # IMPORTANT FIX
+                row_index = max(0, row_excel - 1)
 
                 img_bytes = image._data()
 
@@ -383,10 +383,11 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"BATCH → {len(parsed)} products extracted")
 
                     # ✅ IMPORTANT: map batch to FIRST page only (stable mapping)
-                    page_products.append({
-                        "page": batch[0].get("page"),
-                        "products": parsed
-                    })
+                    for p in batch:
+                        page_products.append({
+                            "page": p.get("page"),
+                            "products": parsed
+                        })
 
             except Exception as e:
                 _logger.warning(f"BATCH FAILED → {str(e)}")
@@ -425,6 +426,9 @@ class VendorImportJob(models.Model):
 
             # ❌ too uniform → likely logo
             if dominant_ratio > 0.6:
+                return False
+            
+            if abs(width - height) < 50 and width < 400:
                 return False
 
             # 🔥 detect white background ratio
@@ -539,6 +543,9 @@ class VendorImportJob(models.Model):
             for i, product in enumerate(products):
 
                 name = product.get("name")
+
+                _logger.warning(f"PRODUCT {i} → {name}")
+
                 if not name:
                     _logger.warning("SKIPPING EMPTY PRODUCT")
                     continue
@@ -564,19 +571,12 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"SKIPPED DUPLICATE → {name}")
                     continue
 
-                # ================= IMAGE LOGIC =================
+                # ================= IMAGE ENGINE (FINAL) =================
+
                 row_data = page_data.get("images", [])
-
-                _logger.warning(f"PAGE {page_no} IMAGE TYPE → {type(row_data)}")
-
-                if row_data:
-                    _logger.warning(f"FIRST IMAGE TYPE → {type(row_data[0])}")
-
                 selected_image = None
 
               
-
-
                 if row_data:
 
                     # ================= EXCEL =================
@@ -595,8 +595,12 @@ class VendorImportJob(models.Model):
                                 if self.is_clean_product_image(img) and img not in used_images
                             ]
 
+                            # ✅ PRIORITY: clean images
                             if clean_images:
                                 selected_image = clean_images[0]
+
+
+                            # 🔥 fallback (still avoid reuse)
                             else:
                                 fallback = [
                                     img for img in valid_images
@@ -618,8 +622,11 @@ class VendorImportJob(models.Model):
                             if self.is_clean_product_image(img) and img not in used_images
                         ]
 
-                        if i < len(clean_images):
-                            selected_image = clean_images[i]
+                        # ✅ position-aware mapping
+                        if clean_images:
+                            selected_image = clean_images.pop(0)
+
+                        # 🔥 fallback (no duplication)
                         else:
                             fallback = [
                                 img for img in valid_images
@@ -629,19 +636,21 @@ class VendorImportJob(models.Model):
                                 selected_image = fallback[0]
 
                 # ================= APPLY IMAGE =================
+
                 if selected_image:
                     vals['image_1920'] = selected_image
                     used_images.add(selected_image)
-                    _logger.warning(f"IMAGE ASSIGNED (CLEAN FIRST) → {name}")
+                    _logger.warning(f"✅ IMAGE → {name}")
                 else:
-                    _logger.warning(f"NO IMAGE → {name}")
-
+                    _logger.warning(f"❌ NO IMAGE → {name}")
+               
                 # ================= CREATE PRODUCT =================
                 product_obj.create(vals)
                 created_count += 1
 
                 _logger.warning(f"CREATED → {name}")
                 _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
+            _logger.warning(f"PAGE {page_no} DONE")
 
         # ================= FINAL COMMIT (ONLY ONCE) =================
         self.env.cr.commit()
