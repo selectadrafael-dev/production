@@ -455,54 +455,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
      #-----------clean image-------------
-    def is_clean_product_image(self, img_base64):
-        try:
-            import base64
-            from PIL import Image
-            import io
-
-            img_bytes = base64.b64decode(img_base64)
-            img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-
-            width, height = img.size
-
-            # ❌ reject tiny images (logos/icons)
-            if width < 200 or height < 200:
-                return False
-
-            pixels = list(img.getdata())
-            total_pixels = len(pixels)
-
-            # 🔥 detect dominant color (logos usually 1 color)
-            color_counts = {}
-            for p in pixels[::100]:  # sample pixels (faster)
-                color_counts[p] = color_counts.get(p, 0) + 1
-
-            dominant_ratio = max(color_counts.values()) / (total_pixels / 100)
-
-            # ❌ too uniform → likely logo
-            if dominant_ratio > 0.6:
-                return False
-            
-            if abs(width - height) < 50 and width < 400:
-                return False
-
-            # 🔥 detect white background ratio
-            white_pixels = sum(1 for p in pixels if p[0] > 240 and p[1] > 240 and p[2] > 240)
-            white_ratio = white_pixels / total_pixels
-
-            # ✅ prefer clean product shots (white bg)
-            if white_ratio > 0.4:
-                return True
-
-            # ❌ reject lifestyle/human images
-            if width > 1000 and height > 1000:
-                return False
-
-            return True
-
-        except Exception:
-            return False
      
      #-----------scoring image before picking best/quality image (inage logic)-------------
 
@@ -554,12 +506,12 @@ class VendorImportJob(models.Model):
 
         import base64
 
-        def is_valid_product_image(img_base64):
-            try:
-                img_bytes = base64.b64decode(img_base64)
-                return len(img_bytes) > 1500
-            except Exception:
-                return False
+        # def is_valid_product_image(img_base64):
+        #     try:
+        #         img_bytes = base64.b64decode(img_base64)
+        #         return len(img_bytes) > 1500
+        #     except Exception:
+        #         return False
 
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
@@ -629,57 +581,27 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"SKIPPED DUPLICATE → {name}")
                     continue
 
-                # ================= IMAGE ENGINE (FINAL SAFE + DEBUG) =================
+                # ================= FINAL IMAGE ENGINE (DETERMINISTIC) =================
 
                 row_data = page_data.get("images", [])
                 selected_image = None
 
-                _logger.warning(f"IMAGE INDEX → {i} / TOTAL IMAGES → {len(row_data)}")
+                _logger.warning(f"IMAGE INDEX → {i} / TOTAL ROWS → {len(row_data)}")
 
-                if row_data:
+                if row_data and i < len(row_data):
 
-                    _logger.warning(f"RAW IMAGES → {len(row_data)}")
+                    row = row_data[i]
+                    row_images = row.get("images", [])
 
-                    # ✅ VALID IMAGES
-                    valid_images = [
-                        img for img in row_data
-                        if is_valid_product_image(img)
-                    ]
+                    _logger.warning(f"ROW {i} → IMAGE COUNT: {len(row_images)}")
 
-                    _logger.warning(f"VALID IMAGES → {len(valid_images)}")
+                    if row_images:
+                        selected_image = row_images[0]
 
-                    # ✅ CLEAN IMAGES (preferred)
-                    clean_images = [
-                        img for img in valid_images
-                        if self.is_clean_product_image(img) and img not in used_images
-                    ]
-
-                    _logger.warning(f"CLEAN IMAGES → {len(clean_images)}")
-
-                    # 🔥 PRIORITY 1 — CLEAN + POSITION MATCH
-                    if i < len(clean_images):
-                        selected_image = clean_images[i]
-                        _logger.warning(f"USING CLEAN INDEX → {i}")
-
-                    # 🔥 PRIORITY 2 — VALID + POSITION MATCH
-                    elif i < len(valid_images):
-                        selected_image = valid_images[i]
-                        _logger.warning(f"USING VALID INDEX → {i}")
-
-                    # 🔥 PRIORITY 3 — CYCLIC FALLBACK (VERY IMPORTANT)
-                    elif valid_images:
-                        selected_image = valid_images[i % len(valid_images)]
-                        _logger.warning(f"FALLBACK CYCLIC → {i % len(valid_images)}")
-
-                else:
-                    _logger.warning("NO ROW DATA FOUND")
-
-                # ================= APPLY IMAGE =================
-
+                # ✅ APPLY IMAGE
                 if selected_image:
                     vals['image_1920'] = selected_image
-                    used_images.add(selected_image)
-                    _logger.warning(f"✅ IMAGE → {name}")
+                    _logger.warning(f"✅ IMAGE ASSIGNED → {name}")
                 else:
                     _logger.warning(f"❌ NO IMAGE → {name}")
                
