@@ -1,15 +1,14 @@
 from odoo import models, fields
 import base64
 import logging
-import json
-# 🔥 ONLY ADD THIS IMPORT AT TOP
-import requests
-import time
-import pandas as pd
 import io
-from openpyxl import load_workbook
-from PIL import Image
+import requests
+import pandas as pd
+
 from io import BytesIO
+from openpyxl import load_workbook
+from openpyxl_image_loader import SheetImageLoader
+from PIL import Image
 
 
 _logger = logging.getLogger(__name__)
@@ -42,91 +41,117 @@ class VendorImportJob(models.Model):
     ], default='draft')
 
     #------excel processing methof---------------
+
     def parse_excel(self):
 
         _logger.warning("EXCEL → START PARSING")
 
         excel_bytes = base64.b64decode(self.excel_file)
 
-        df = pd.read_excel(io.BytesIO(excel_bytes)).fillna("")
         wb = load_workbook(filename=BytesIO(excel_bytes))
-        ws = wb.active
+        sheet = wb.active
 
-        # ---------------- EXTRACT ALL IMAGES ----------------
-        all_images = []
+        image_loader = SheetImageLoader(sheet)
 
-        for image in getattr(ws, '_images', []):
+        # 🔥 NEW: fallback image pool
+        global_images = []
+        for img in getattr(sheet, "_images", []):
             try:
-                img_bytes = image._data()
+                img_bytes = img._data()
+                if img_bytes and len(img_bytes) > 5000:
+                    global_images.append(
+                        base64.b64encode(img_bytes).decode("utf-8")
+                    )
+            except Exception:
+                continue
 
-                if len(img_bytes) < 5000:
-                    continue
+        _logger.warning(f"GLOBAL IMAGES FOUND → {len(global_images)}")
 
-                img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                all_images.append(img_base64)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+        }
 
-            except Exception as e:
-                _logger.warning(f"IMAGE EXTRACT ERROR → {str(e)}")
-
-        _logger.warning(f"TOTAL EXTRACTED IMAGES: {len(all_images)}")
-
-        # ---------------- PROCESS ROWS ----------------
         pages = []
         current_page = []
         page_number = 1
         page_size = 20
 
-        for idx, row in df.iterrows():
+        global_img_index = 0  # 🔥 pointer
+
+        for idx, row in enumerate(sheet.iter_rows()):
 
             _logger.warning(f"ROW {idx} PROCESSING")
 
             row_text_parts = []
             row_images = []
 
-            for col in df.columns:
-
-                val = str(row[col]).strip()
-
-                if not val:
-                    continue
-
-                # IMAGE URL
-                if val.startswith("http") and any(ext in val.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-                    try:
-                        response = requests.get(val, timeout=10)
-
-                        if response.status_code == 200:
-                            img_bytes = response.content
-
-                            if len(img_bytes) > 5000:
-                                img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                                row_images.append(img_base64)
-
-                                _logger.warning(f"ROW {idx} → URL IMAGE OK")
-
-                    except Exception:
-                        _logger.warning(f"ROW {idx} → URL FAILED")
-
-                else:
+            for cell in row:
+                val = str(cell.value or "").strip()
+                if val:
                     row_text_parts.append(val)
 
-            # ✅ BUILD ROW TEXT (OUTSIDE COLUMN LOOP)
             row_text = " ".join(row_text_parts).strip()
 
             if not row_text:
-                row_text = " ".join([
-                    str(row[col]) for col in df.columns
-                    if str(row[col]).strip()
-                ])
+                continue
 
-            _logger.warning(f"ROW {idx} TEXT → {row_text[:100]}")
+            # -------- 1️⃣ EMBED (CELL-BOUND) --------
+            for cell in row:
+                try:
+                    if image_loader.image_in(cell.coordinate):
+                        pil_img = image_loader.get(cell.coordinate)
+
+                        buffer = BytesIO()
+                        pil_img.save(buffer, format="JPEG")
+
+                        row_images.append(
+                            base64.b64encode(buffer.getvalue()).decode("utf-8")
+                        )
+
+                        _logger.warning(f"ROW {idx} → CELL IMAGE")
+                        break
+                except Exception:
+                    continue
+
+            # -------- 2️⃣ GLOBAL FALLBACK --------
+            if not row_images and global_img_index < len(global_images):
+
+                row_images.append(global_images[global_img_index])
+                global_img_index += 1
+
+                _logger.warning(f"ROW {idx} → GLOBAL IMAGE USED")
+
+            # -------- 3️⃣ URL FALLBACK --------
+            if not row_images:
+
+                for cell in row:
+                    val = str(cell.value or "").strip()
+
+                    if val.startswith("http"):
+
+                        try:
+                            response = requests.get(val, headers=headers, timeout=10)
+
+                            if response.status_code == 200 and "image" in response.headers.get("Content-Type", ""):
+
+                                if len(response.content) > 5000:
+                                    row_images.append(
+                                        base64.b64encode(response.content).decode("utf-8")
+                                    )
+
+                                    _logger.warning(f"ROW {idx} → URL IMAGE")
+                                    break
+
+                        except Exception:
+                            continue
+
+            _logger.warning(f"ROW {idx} → FINAL IMAGE COUNT: {len(row_images)}")
 
             current_page.append({
                 "text": row_text,
                 "images": row_images
             })
 
-            # PAGINATION
             if len(current_page) >= page_size:
                 pages.append({
                     "page": page_number,
@@ -135,38 +160,25 @@ class VendorImportJob(models.Model):
                 current_page = []
                 page_number += 1
 
-        # ✅ ADD LAST PAGE (CRITICAL)
         if current_page:
             pages.append({
                 "page": page_number,
                 "rows": current_page
             })
 
-        # ---------------- FINAL FORMAT ----------------
         final_pages = []
 
         for page in pages:
-
             combined_text = "\n".join([r["text"] for r in page["rows"]])
-
-            page_images = []
-            for r in page["rows"]:
-                page_images.extend(r.get("images", []))
-
-            if not page_images:
-                page_images = all_images
-
-            _logger.warning(
-                f"PAGE {page['page']} → ROWS: {len(page['rows'])}, IMAGES: {len(page_images)}"
-            )
 
             final_pages.append({
                 "page": page["page"],
                 "text": combined_text,
-                "images": page_images
+                "images": page["rows"]
             })
 
-        # ✅ CRITICAL (YOU MISSED THIS)
+            _logger.warning(f"PAGE {page['page']} → ROWS: {len(page['rows'])}")
+
         self.extracted_text = json.dumps(final_pages)
 
         _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
