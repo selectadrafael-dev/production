@@ -504,31 +504,14 @@ class VendorImportJob(models.Model):
         return best_img
 
     #----------------PRODUCT CREATION ----------------
+
     def create_product_drafts(self):
-         # ✅ ADD THIS BLOCK RIGHT HERE
-        # def is_valid_product_image(img_base64):
-        #     try:
-        #             if not img_base64:
-        #                 return False
-
-        #             img_bytes = base64.b64decode(img_base64)
-
-        #             # filter tiny / noise images
-        #             if len(img_bytes) < 1500:
-        #                 return False
-
-        #             return True
-
-        #     except Exception:
-        #         return False
 
         def is_valid_product_image(img_base64):
             return True
 
         if not self.ai_response or not self.extracted_text:
             return
-
-        import base64
 
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
@@ -539,14 +522,13 @@ class VendorImportJob(models.Model):
         _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
         _logger.warning(f"AI PAGES COUNT: {len(ai_pages)}")
 
-        created_count = 0  # ✅ debug counter
+        created_count = 0
 
         # ================= LOOP 1 (PAGES) =================
         for page_data in pages:
 
             page_no = page_data.get("page")
 
-            # ---------------- AI MATCH ----------------
             ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
 
             if not ai_page:
@@ -561,7 +543,6 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
-            # ✅ ONE used_images PER PAGE
             used_images = set()
 
             # ================= LOOP 2 (PRODUCTS) =================
@@ -570,7 +551,6 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"---- PRODUCT LOOP START → INDEX {i} ----")
 
                 name = product.get("name")
-
                 _logger.warning(f"PRODUCT {i} → {name}")
 
                 if not name:
@@ -598,27 +578,18 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"SKIPPED DUPLICATE → {name}")
                     continue
 
-                # ================= SMART IMAGE ENGINE (FINAL FIX) =================
-
+                # ================= IMAGE ENGINE (FIXED) =================
                 row_data = page_data.get("images", [])
                 selected_image = None
 
-                # ✅ INIT used_images ONCE PER PAGE (VERY IMPORTANT)
-                if i == 0:
-                    used_images = set()
-
                 if row_data:
 
-                    # ================= PDF (FLAT LIST) =================
+                    # ================= PDF MODE =================
                     if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
 
                         _logger.warning(f"PDF IMAGE MODE → {len(row_data)} images available")
 
-                        valid_images = [
-                            img for img in row_data
-                            if is_valid_product_image(img)
-                        ]
-
+                        valid_images = [img for img in row_data if is_valid_product_image(img)]
                         available = [img for img in valid_images if img not in used_images]
 
                         if available:
@@ -627,25 +598,26 @@ class VendorImportJob(models.Model):
                         else:
                             _logger.warning("PDF → NO UNUSED IMAGES LEFT")
 
-                    # ================= EXCEL (ROW STRUCTURE) =================
+                    # ================= EXCEL MODE (FIXED HERE) =================
                     elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
 
-                        _logger.warning(f"EXCEL IMAGE MODE → {len(row_data)} rows")
+                        total_rows = len(row_data)
 
-                        if i < len(row_data):
+                        _logger.warning(f"EXCEL IMAGE MODE → {total_rows} rows")
 
-                            row_images = row_data[i].get("images", [])
+                        # ✅ CYCLIC INDEX (KEY FIX)
+                        row_index = i % total_rows
+                        row_images = row_data[row_index].get("images", [])
 
-                            valid_images = [
-                                img for img in row_images
-                                if is_valid_product_image(img)
-                            ]
+                        _logger.warning(f"EXCEL → USING ROW INDEX {row_index} FOR PRODUCT INDEX {i}")
 
-                            if valid_images:
-                                selected_image = valid_images[0]
-                                _logger.warning(f"EXCEL IMAGE SELECTED → INDEX {i}")
-                            else:
-                                _logger.warning(f"EXCEL → NO VALID IMAGE AT ROW {i}")
+                        valid_images = [img for img in row_images if is_valid_product_image(img)]
+
+                        if valid_images:
+                            selected_image = valid_images[0]
+                            _logger.warning(f"EXCEL IMAGE SELECTED → ROW {row_index}")
+                        else:
+                            _logger.warning(f"EXCEL → NO VALID IMAGE AT ROW {row_index}")
 
                 # ================= APPLY IMAGE =================
                 if selected_image:
@@ -654,23 +626,21 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"IMAGE ASSIGNED → {name}")
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
-               
+
                 # ================= CREATE PRODUCT =================
                 product_obj.create(vals)
                 created_count += 1
 
                 _logger.warning(f"CREATED → {name}")
-                _logger.warning(f"AI RESPONSE SAMPLE: {self.ai_response[:500]}")
+
             _logger.warning(f"PAGE {page_no} DONE")
 
-        # ================= FINAL COMMIT (ONLY ONCE) =================
+        # ================= FINAL COMMIT =================
         self.env.cr.commit()
         _logger.warning("DB COMMIT DONE")
 
-        # ================= FINAL LOG =================
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
-    
 
     #---------------- CRON ----------------
 
