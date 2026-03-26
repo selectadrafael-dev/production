@@ -242,26 +242,22 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"PROCESS START → Job {self.id}")
 
+        # ✅ DEBUG (keep temporarily)
+        _logger.warning(f"AVAILABLE FIELDS → {list(self._fields.keys())}")
+
         try:
 
-            # ✅ SAFE filename detection
-            filename = (self.file_filename or "").lower()
-
-            if not filename:
-                raise Exception("No filename found")
-
-            # ---------------- EXCEL ----------------
-            if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            # ---------------- FILE TYPE ----------------
+            if self.excel_file:
                 _logger.warning("STEP → Parsing Excel")
                 self.parse_excel()
 
-            # ---------------- PDF ----------------
-            elif filename.endswith(".pdf"):
+            elif self.pdf_file:
                 _logger.warning("STEP → Extracting PDF")
                 self.extract_pdf()
 
             else:
-                raise Exception(f"Unsupported file type → {filename}")
+                raise Exception("No file found (excel/pdf missing)")
 
             # ---------------- VALIDATION ----------------
             if not self.extracted_text:
