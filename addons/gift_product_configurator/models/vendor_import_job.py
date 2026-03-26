@@ -506,13 +506,6 @@ class VendorImportJob(models.Model):
 
         import base64
 
-        # def is_valid_product_image(img_base64):
-        #     try:
-        #         img_bytes = base64.b64decode(img_base64)
-        #         return len(img_bytes) > 1500
-        #     except Exception:
-        #         return False
-
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
 
@@ -581,19 +574,25 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"SKIPPED DUPLICATE → {name}")
                     continue
 
-                # ================= FINAL IMAGE ENGINE (DETERMINISTIC) =================
+                # ================= SMART IMAGE ENGINE (FINAL FIX) =================
 
                 row_data = page_data.get("images", [])
                 selected_image = None
 
-                _logger.warning(f"IMAGE INDEX → {i} / TOTAL ROWS → {len(row_data)}")
+                # 🔥 STEP 1: FILTER OUT EMPTY ROWS
+                valid_rows = [r for r in row_data if r.get("images")]
 
-                if row_data and i < len(row_data):
+                _logger.warning(f"TOTAL ROWS: {len(row_data)} | VALID ROWS: {len(valid_rows)}")
 
-                    row = row_data[i]
+                # 🔥 STEP 2: SAFE INDEX (NO OVERFLOW)
+                if valid_rows:
+
+                    safe_index = i % len(valid_rows)   # 👈 THIS FIXES YOUR PROBLEM
+
+                    row = valid_rows[safe_index]
                     row_images = row.get("images", [])
 
-                    _logger.warning(f"ROW {i} → IMAGE COUNT: {len(row_images)}")
+                    _logger.warning(f"PRODUCT {i} → USING ROW {safe_index} → IMAGE COUNT: {len(row_images)}")
 
                     if row_images:
                         selected_image = row_images[0]
