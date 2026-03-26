@@ -142,7 +142,16 @@ class VendorImportJob(models.Model):
                     row_text_parts.append(val)
 
            # -------- BUILD ROW STRUCTURE (CRITICAL FIX) --------
+            
+                # 🔥 FORCE TEXT (CRITICAL FIX)
                 row_text = " ".join(row_text_parts).strip()
+                _logger.warning(f"ROW {idx} if not self.extracted_text → {row_text[:100]}")
+                # ✅ fallback: use entire row if empty
+                if not row_text:
+                    row_text = " ".join([
+                        str(row[col]) for col in df.columns
+                        if str(row[col]).strip()
+                    ])
 
                 current_page.append({
                     "text": row_text,
@@ -207,7 +216,10 @@ class VendorImportJob(models.Model):
                 _logger.warning("STEP → Scraping URL")
                 self.scrape_website()
 
-            if not self.extracted_text:
+            # if not self.extracted_text:
+            if not self.extracted_text or self.extracted_text == "[]":
+                # ✅ DEBUG BEFORE STOP (ADD HERE)
+                _logger.warning(f"EXTRACTED TEXT SAMPLE → {str(self.extracted_text)[:500]}")
                 _logger.error("NO TEXT EXTRACTED → STOPPING")
                 self.state = "error"
                 return
