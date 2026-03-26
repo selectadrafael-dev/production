@@ -48,14 +48,11 @@ class VendorImportJob(models.Model):
 
         excel_bytes = base64.b64decode(self.excel_file)
 
-        # ---------------- LOAD DATA ----------------
         df = pd.read_excel(io.BytesIO(excel_bytes)).fillna("")
-
         wb = load_workbook(filename=BytesIO(excel_bytes))
         ws = wb.active
 
-        # ---------------- EXTRACT EMBEDDED IMAGES ----------------
-
+        # ---------------- EXTRACT ALL IMAGES ----------------
         all_images = []
 
         for image in getattr(ws, '_images', []):
@@ -81,13 +78,11 @@ class VendorImportJob(models.Model):
 
         for idx, row in df.iterrows():
 
+            _logger.warning(f"ROW {idx} PROCESSING")
+
             row_text_parts = []
             row_images = []
 
-            # 🔍 DEBUG START
-            _logger.warning(f"ROW {idx} PROCESSING")
-
-            # -------- TEXT + URL --------
             for col in df.columns:
 
                 val = str(row[col]).strip()
@@ -95,39 +90,13 @@ class VendorImportJob(models.Model):
                 if not val:
                     continue
 
-                # ✅ FIX: stricter image URL detection
+                # IMAGE URL
                 if val.startswith("http") and any(ext in val.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
                     try:
                         response = requests.get(val, timeout=10)
 
                         if response.status_code == 200:
-
-                            img_bytes = response.content  # ✅ RESTORE THIS
-
-                            # 🔥 send to extractor (optional but good)
-                            try:
-                                files = {"file": ("image.jpg", img_bytes)}
-
-                                res = requests.post(
-                                    "https://pdf-extractor-staging.onrender.com/extract",
-                                    files=files,
-                                    timeout=15
-                                )
-
-                                if res.status_code == 200:
-                                    data = res.json()
-                                    if data and data[0].get("images"):
-                                        row_images.extend(data[0]["images"])
-                                        _logger.warning(f"ROW {idx} → IMAGE VIA EXTRACTOR")
-
-                            except Exception:
-                                _logger.warning(f"ROW {idx} → EXTRACTOR FAILED")
-
-                            # ✅ ALSO KEEP DIRECT IMAGE (fallback)
-                            if len(img_bytes) > 5000:
-                                img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-                                row_images.append(img_base64)
-                                _logger.warning(f"ROW {idx} → URL IMAGE OK")
+                            img_bytes = response.content
 
                             if len(img_bytes) > 5000:
                                 img_base64 = base64.b64encode(img_bytes).decode("utf-8")
@@ -141,45 +110,49 @@ class VendorImportJob(models.Model):
                 else:
                     row_text_parts.append(val)
 
-           # -------- BUILD ROW STRUCTURE (CRITICAL FIX) --------
-            
-                # 🔥 FORCE TEXT (CRITICAL FIX)
-                row_text = " ".join(row_text_parts).strip()
-                _logger.warning(f"ROW {idx} if not self.extracted_text → {row_text[:100]}")
-                # ✅ fallback: use entire row if empty
-                if not row_text:
-                    row_text = " ".join([
-                        str(row[col]) for col in df.columns
-                        if str(row[col]).strip()
-                    ])
+            # ✅ BUILD ROW TEXT (OUTSIDE COLUMN LOOP)
+            row_text = " ".join(row_text_parts).strip()
 
-                current_page.append({
-                    "text": row_text,
-                    "images": row_images  # ✅ row-level images
+            if not row_text:
+                row_text = " ".join([
+                    str(row[col]) for col in df.columns
+                    if str(row[col]).strip()
+                ])
+
+            _logger.warning(f"ROW {idx} TEXT → {row_text[:100]}")
+
+            current_page.append({
+                "text": row_text,
+                "images": row_images
+            })
+
+            # PAGINATION
+            if len(current_page) >= page_size:
+                pages.append({
+                    "page": page_number,
+                    "rows": current_page
                 })
+                current_page = []
+                page_number += 1
 
-                # -------- PAGINATION --------
-                if len(current_page) >= page_size:
-                    pages.append({
-                        "page": page_number,
-                        "rows": current_page
-                    })
-                    current_page = []
-                    page_number += 1
-       # ---------------- FINAL FORMAT ----------------
-      
+        # ✅ ADD LAST PAGE (CRITICAL)
+        if current_page:
+            pages.append({
+                "page": page_number,
+                "rows": current_page
+            })
+
+        # ---------------- FINAL FORMAT ----------------
         final_pages = []
 
         for page in pages:
 
             combined_text = "\n".join([r["text"] for r in page["rows"]])
 
-            # ✅ FLATTEN ALL ROW IMAGES
             page_images = []
             for r in page["rows"]:
                 page_images.extend(r.get("images", []))
 
-            # ✅ fallback to embedded images if none found
             if not page_images:
                 page_images = all_images
 
@@ -192,6 +165,11 @@ class VendorImportJob(models.Model):
                 "text": combined_text,
                 "images": page_images
             })
+
+        # ✅ CRITICAL (YOU MISSED THIS)
+        self.extracted_text = json.dumps(final_pages)
+
+        _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
 
     #---------------- MAIN FLOW ----------------
 
