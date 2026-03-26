@@ -505,6 +505,26 @@ class VendorImportJob(models.Model):
 
     #----------------PRODUCT CREATION ----------------
     def create_product_drafts(self):
+         # ✅ ADD THIS BLOCK RIGHT HERE
+        # def is_valid_product_image(img_base64):
+        #     try:
+        #             if not img_base64:
+        #                 return False
+
+        #             img_bytes = base64.b64decode(img_base64)
+
+        #             # filter tiny / noise images
+        #             if len(img_bytes) < 1500:
+        #                 return False
+
+        #             return True
+
+        #     except Exception:
+        #         return False
+
+        def is_valid_product_image(img_base64):
+            return True
+
         if not self.ai_response or not self.extracted_text:
             return
 
@@ -684,3 +704,5 @@ class VendorImportJob(models.Model):
             _logger.info("FLASK PING SUCCESS")
         except Exception:
             _logger.warning("FLASK PING FAILED")
+
+    #def create_product_drafts(self):
