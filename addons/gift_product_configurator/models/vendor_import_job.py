@@ -41,7 +41,8 @@ class VendorImportJob(models.Model):
         ('ai_processing', 'AI Processing'),
         ('review', 'Vendor Review'),
         ('done', 'Completed'),
-        ('error', 'Error')
+        ('error', 'Error'),
+         ('failed', 'Failed'),
     ], default='draft')
 
     #------excel processing methof---------------
@@ -243,23 +244,24 @@ class VendorImportJob(models.Model):
 
         try:
 
-            # ---------------- DETECT FILE TYPE ----------------
-            filename = (self.file_name or "").lower()
+            # ✅ SAFE filename detection
+            filename = (self.file_filename or "").lower()
 
-            # ---------------- EXCEL FLOW ----------------
+            if not filename:
+                raise Exception("No filename found")
+
+            # ---------------- EXCEL ----------------
             if filename.endswith(".xlsx") or filename.endswith(".xls"):
-
                 _logger.warning("STEP → Parsing Excel")
                 self.parse_excel()
 
-            # ---------------- PDF FLOW ----------------
+            # ---------------- PDF ----------------
             elif filename.endswith(".pdf"):
-
                 _logger.warning("STEP → Extracting PDF")
                 self.extract_pdf()
 
             else:
-                raise Exception("Unsupported file type")
+                raise Exception(f"Unsupported file type → {filename}")
 
             # ---------------- VALIDATION ----------------
             if not self.extracted_text:
@@ -268,7 +270,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"EXTRACTED TEXT SAMPLE → {self.extracted_text[:200]}")
 
-            # ---------------- AI STEP ----------------
+            # ---------------- AI ----------------
             _logger.warning("STEP → Sending to OpenAI")
             self.send_to_openai()
 
@@ -276,7 +278,7 @@ class VendorImportJob(models.Model):
                 _logger.error("NO AI RESPONSE → STOPPING")
                 return
 
-            # 🔥 CRITICAL FIX — ALWAYS RUN THIS
+            # ---------------- CREATE ----------------
             _logger.warning("STEP → Creating products")
             self.create_product_drafts()
 
