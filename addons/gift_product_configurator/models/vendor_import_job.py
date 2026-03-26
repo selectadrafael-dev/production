@@ -583,30 +583,57 @@ class VendorImportJob(models.Model):
                 row_data = page_data.get("images", [])
                 selected_image = None
 
-                # 🔥 STEP 1: FILTER OUT EMPTY ROWS
-                valid_rows = [r for r in row_data if r.get("images")]
+                # ✅ INIT used_images ONCE PER PAGE (VERY IMPORTANT)
+                if i == 0:
+                    used_images = set()
 
-                _logger.warning(f"TOTAL ROWS: {len(row_data)} | VALID ROWS: {len(valid_rows)}")
+                if row_data:
 
-                # 🔥 STEP 2: SAFE INDEX (NO OVERFLOW)
-                if valid_rows:
+                    # ================= PDF (FLAT LIST) =================
+                    if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
 
-                    safe_index = i % len(valid_rows)   # 👈 THIS FIXES YOUR PROBLEM
+                        _logger.warning(f"PDF IMAGE MODE → {len(row_data)} images available")
 
-                    row = valid_rows[safe_index]
-                    row_images = row.get("images", [])
+                        valid_images = [
+                            img for img in row_data
+                            if is_valid_product_image(img)
+                        ]
 
-                    _logger.warning(f"PRODUCT {i} → USING ROW {safe_index} → IMAGE COUNT: {len(row_images)}")
+                        available = [img for img in valid_images if img not in used_images]
 
-                    if row_images:
-                        selected_image = row_images[0]
+                        if available:
+                            selected_image = available[0]
+                            _logger.warning(f"PDF IMAGE SELECTED → INDEX {i}")
+                        else:
+                            _logger.warning("PDF → NO UNUSED IMAGES LEFT")
 
-                # ✅ APPLY IMAGE
+                    # ================= EXCEL (ROW STRUCTURE) =================
+                    elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
+
+                        _logger.warning(f"EXCEL IMAGE MODE → {len(row_data)} rows")
+
+                        if i < len(row_data):
+
+                            row_images = row_data[i].get("images", [])
+
+                            valid_images = [
+                                img for img in row_images
+                                if is_valid_product_image(img)
+                            ]
+
+                            if valid_images:
+                                selected_image = valid_images[0]
+                                _logger.warning(f"EXCEL IMAGE SELECTED → INDEX {i}")
+                            else:
+                                _logger.warning(f"EXCEL → NO VALID IMAGE AT ROW {i}")
+
+                # ================= APPLY IMAGE =================
                 if selected_image:
                     vals['image_1920'] = selected_image
-                    _logger.warning(f"✅ IMAGE ASSIGNED → {name}")
+                    used_images.add(selected_image)
+                    _logger.warning(f"IMAGE ASSIGNED → {name}")
                 else:
-                    _logger.warning(f"❌ NO IMAGE → {name}")
+                    _logger.warning(f"NO IMAGE → {name}")
                
                 # ================= CREATE PRODUCT =================
                 product_obj.create(vals)
