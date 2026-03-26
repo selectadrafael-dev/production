@@ -55,30 +55,23 @@ class VendorImportJob(models.Model):
         ws = wb.active
 
         # ---------------- EXTRACT EMBEDDED IMAGES ----------------
-        image_map = {}
+
+        all_images = []
 
         for image in getattr(ws, '_images', []):
             try:
-                row_excel = image.anchor._from.row  # 0-based
-
-                # ✅ FIX: align Excel row index with pandas index
-                #row_index = row_excel - 1  # IMPORTANT FIX
-                row_index = max(0, row_excel - 1)
-
                 img_bytes = image._data()
 
-                # ✅ FILTER SMALL IMAGES
                 if len(img_bytes) < 5000:
                     continue
 
                 img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-
-                image_map.setdefault(row_index, []).append(img_base64)
+                all_images.append(img_base64)
 
             except Exception as e:
-                _logger.warning(f"IMAGE MAP ERROR → {str(e)}")
+                _logger.warning(f"IMAGE EXTRACT ERROR → {str(e)}")
 
-        _logger.warning(f"EMBEDDED IMAGE ROWS: {len(image_map)}")
+        _logger.warning(f"TOTAL EXTRACTED IMAGES: {len(all_images)}")
 
         # ---------------- PROCESS ROWS ----------------
         pages = []
@@ -148,30 +141,6 @@ class VendorImportJob(models.Model):
                 else:
                     row_text_parts.append(val)
 
-            # -------- EMBEDDED IMAGES --------
-            if idx in image_map:
-                row_images.extend(image_map[idx])
-                _logger.warning(f"ROW {idx} → EMBED IMAGE FOUND")
-
-            row_text = " | ".join(row_text_parts)
-            _logger.warning(f"ROW {idx} → FINAL IMAGES COUNT: {len(row_images)}")
-
-            if not row_images:
-                _logger.warning(f"❌ ROW {idx} HAS NO IMAGE (CHECK SOURCE)")
-
-            # ✅ FIX: ensure row always meaningful for AI
-            if not row_text and row_images:
-                row_text = f"Product Row {idx}"
-                _logger.warning(f"ROW {idx} HAD NO TEXT → GENERATED PLACEHOLDER")
-
-            # 🔍 DEBUG IMAGE COUNT
-            _logger.warning(f"ROW {idx} → IMAGES: {len(row_images)}")
-
-            current_page.append({
-                "text": row_text,
-                "images": row_images
-            })
-
             # -------- PAGINATION --------
             if len(current_page) >= page_size:
                 pages.append({
@@ -198,9 +167,9 @@ class VendorImportJob(models.Model):
             structured_images = []
 
             for r in page["rows"]:
-                structured_images.append({
-                    "images": r.get("images", [])
-                })
+              
+                # 🔥 DO NOT USE ROW IMAGES ANYMORE
+                structured_images = all_images
 
             _logger.warning(
                 f"PAGE {page['page']} → ROWS: {len(page['rows'])}, STRUCTURED IMAGES: {len(structured_images)}"
@@ -209,7 +178,7 @@ class VendorImportJob(models.Model):
             final_pages.append({
                 "page": page["page"],
                 "text": combined_text,
-                "images": structured_images
+                "images": all_images  # 🔥 GLOBAL IMAGES
             })
 
         self.extracted_text = json.dumps(final_pages)
@@ -576,6 +545,8 @@ class VendorImportJob(models.Model):
             # ================= LOOP 2 (PRODUCTS) =================
             for i, product in enumerate(products):
 
+                _logger.warning(f"---- PRODUCT LOOP START → INDEX {i} ----")
+
                 name = product.get("name")
 
                 _logger.warning(f"PRODUCT {i} → {name}")
@@ -605,74 +576,50 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"SKIPPED DUPLICATE → {name}")
                     continue
 
-                # ================= IMAGE ENGINE (FINAL) =================
+                # ================= IMAGE ENGINE (FINAL SAFE + DEBUG) =================
 
                 row_data = page_data.get("images", [])
                 selected_image = None
 
-              
+                _logger.warning(f"IMAGE INDEX → {i} / TOTAL IMAGES → {len(row_data)}")
+
                 if row_data:
 
-                    if isinstance(row_data[0], dict):
+                    _logger.warning(f"RAW IMAGES → {len(row_data)}")
 
-                        if i < len(row_data):
+                    # ✅ VALID IMAGES
+                    valid_images = [
+                        img for img in row_data
+                        if is_valid_product_image(img)
+                    ]
 
-                            row_images = row_data[i].get("images", [])
-                            
-                            _logger.warning(f"ROW {i} → STRUCTURED IMAGES OBJECT: {type(row_images)}")
-                            _logger.warning(f"ROW {i} → IMAGE SAMPLE SIZE: {[len(img) for img in row_images[:2]]}")
+                    _logger.warning(f"VALID IMAGES → {len(valid_images)}")
 
-                            _logger.warning(f"PRODUCT {i} → RAW IMAGES: {len(row_images)}")
-                        
+                    # ✅ CLEAN IMAGES (preferred)
+                    clean_images = [
+                        img for img in valid_images
+                        if self.is_clean_product_image(img) and img not in used_images
+                    ]
 
-                            valid_images = [
-                                img for img in row_images
-                                if is_valid_product_image(img)
-                            ]
+                    _logger.warning(f"CLEAN IMAGES → {len(clean_images)}")
 
-                            _logger.warning(f"PRODUCT {i} → VALID IMAGES: {len(valid_images)}")
+                    # 🔥 PRIORITY 1 — CLEAN + POSITION MATCH
+                    if i < len(clean_images):
+                        selected_image = clean_images[i]
+                        _logger.warning(f"USING CLEAN INDEX → {i}")
 
-                            clean_images = [
-                                img for img in valid_images
-                                if self.is_clean_product_image(img) and img not in used_images
-                            ]
+                    # 🔥 PRIORITY 2 — VALID + POSITION MATCH
+                    elif i < len(valid_images):
+                        selected_image = valid_images[i]
+                        _logger.warning(f"USING VALID INDEX → {i}")
 
-                            _logger.warning(f"PRODUCT {i} → CLEAN IMAGES: {len(clean_images)}")
+                    # 🔥 PRIORITY 3 — CYCLIC FALLBACK (VERY IMPORTANT)
+                    elif valid_images:
+                        selected_image = valid_images[i % len(valid_images)]
+                        _logger.warning(f"FALLBACK CYCLIC → {i % len(valid_images)}")
 
-                            if clean_images:
-                                selected_image = clean_images[0]
-
-                            elif valid_images:
-                                selected_image = valid_images[0]
-
-                            else:
-                                _logger.warning(f"❌ PRODUCT {i} → NO IMAGE AFTER FILTER")
-
-                    # # ================= PDF =================
-                    elif isinstance(row_data[0], str):
-
-                        valid_images = [
-                            img for img in row_data
-                            if is_valid_product_image(img)
-                        ]
-
-                        clean_images = [
-                            img for img in valid_images
-                            if self.is_clean_product_image(img) and img not in used_images
-                        ]
-
-                        # ✅ position-aware mapping
-                        if clean_images:
-                            selected_image = clean_images.pop(0)
-
-                        # 🔥 fallback (no duplication)
-                        else:
-                            fallback = [
-                                img for img in valid_images
-                                if img not in used_images
-                            ]
-                            if fallback:
-                                selected_image = fallback[0]
+                else:
+                    _logger.warning("NO ROW DATA FOUND")
 
                 # ================= APPLY IMAGE =================
 
