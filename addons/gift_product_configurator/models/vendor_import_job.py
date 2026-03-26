@@ -193,7 +193,7 @@ class VendorImportJob(models.Model):
                 "images": page_images
             })
 
-    # ---------------- MAIN FLOW ----------------
+    #---------------- MAIN FLOW ----------------
 
     def process_import(self):
 
