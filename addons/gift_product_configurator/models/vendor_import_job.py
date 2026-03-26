@@ -141,49 +141,48 @@ class VendorImportJob(models.Model):
                 else:
                     row_text_parts.append(val)
 
-            # -------- PAGINATION --------
-            if len(current_page) >= page_size:
-                pages.append({
-                    "page": page_number,
-                    "rows": current_page
+           # -------- BUILD ROW STRUCTURE (CRITICAL FIX) --------
+                row_text = " ".join(row_text_parts).strip()
+
+                current_page.append({
+                    "text": row_text,
+                    "images": row_images  # ✅ row-level images
                 })
-                current_page = []
-                page_number += 1
 
-        if current_page:
-            pages.append({
-                "page": page_number,
-                "rows": current_page
-            })
-
+                # -------- PAGINATION --------
+                if len(current_page) >= page_size:
+                    pages.append({
+                        "page": page_number,
+                        "rows": current_page
+                    })
+                    current_page = []
+                    page_number += 1
        # ---------------- FINAL FORMAT ----------------
+      
         final_pages = []
 
         for page in pages:
 
             combined_text = "\n".join([r["text"] for r in page["rows"]])
 
-            # ✅ STRICT STRUCTURE (DO NOT FLATTEN)
-            structured_images = []
-
+            # ✅ FLATTEN ALL ROW IMAGES
+            page_images = []
             for r in page["rows"]:
-              
-                # 🔥 DO NOT USE ROW IMAGES ANYMORE
-                structured_images = all_images
+                page_images.extend(r.get("images", []))
+
+            # ✅ fallback to embedded images if none found
+            if not page_images:
+                page_images = all_images
 
             _logger.warning(
-                f"PAGE {page['page']} → ROWS: {len(page['rows'])}, STRUCTURED IMAGES: {len(structured_images)}"
+                f"PAGE {page['page']} → ROWS: {len(page['rows'])}, IMAGES: {len(page_images)}"
             )
 
             final_pages.append({
                 "page": page["page"],
                 "text": combined_text,
-                "images": all_images  # 🔥 GLOBAL IMAGES
+                "images": page_images
             })
-
-        self.extracted_text = json.dumps(final_pages)
-
-        _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
 
     # ---------------- MAIN FLOW ----------------
 
