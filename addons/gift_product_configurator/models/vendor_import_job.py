@@ -9,6 +9,10 @@ from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl_image_loader import SheetImageLoader
 from PIL import Image
+import time
+import json
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 
 _logger = logging.getLogger(__name__)
@@ -43,7 +47,6 @@ class VendorImportJob(models.Model):
     #------excel processing methof---------------
 
     def parse_excel(self):
-
         _logger.warning("EXCEL → START PARSING")
 
         excel_bytes = base64.b64decode(self.excel_file)
@@ -52,20 +55,6 @@ class VendorImportJob(models.Model):
         sheet = wb.active
 
         image_loader = SheetImageLoader(sheet)
-
-        # 🔥 NEW: fallback image pool
-        global_images = []
-        for img in getattr(sheet, "_images", []):
-            try:
-                img_bytes = img._data()
-                if img_bytes and len(img_bytes) > 5000:
-                    global_images.append(
-                        base64.b64encode(img_bytes).decode("utf-8")
-                    )
-            except Exception:
-                continue
-
-        _logger.warning(f"GLOBAL IMAGES FOUND → {len(global_images)}")
 
         headers = {
             "User-Agent": "Mozilla/5.0",
@@ -76,8 +65,6 @@ class VendorImportJob(models.Model):
         page_number = 1
         page_size = 20
 
-        global_img_index = 0  # 🔥 pointer
-
         for idx, row in enumerate(sheet.iter_rows()):
 
             _logger.warning(f"ROW {idx} PROCESSING")
@@ -85,6 +72,7 @@ class VendorImportJob(models.Model):
             row_text_parts = []
             row_images = []
 
+            # -------- TEXT --------
             for cell in row:
                 val = str(cell.value or "").strip()
                 if val:
@@ -93,35 +81,30 @@ class VendorImportJob(models.Model):
             row_text = " ".join(row_text_parts).strip()
 
             if not row_text:
+                _logger.warning(f"ROW {idx} EMPTY → SKIPPED")
                 continue
 
-            # -------- 1️⃣ EMBED (CELL-BOUND) --------
+            # -------- 1️⃣ TRY EMBEDDED IMAGE --------
             for cell in row:
                 try:
                     if image_loader.image_in(cell.coordinate):
+
                         pil_img = image_loader.get(cell.coordinate)
 
                         buffer = BytesIO()
                         pil_img.save(buffer, format="JPEG")
 
-                        row_images.append(
-                            base64.b64encode(buffer.getvalue()).decode("utf-8")
-                        )
+                        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-                        _logger.warning(f"ROW {idx} → CELL IMAGE")
+                        row_images.append(img_base64)
+
+                        _logger.warning(f"ROW {idx} → EMBED IMAGE USED")
                         break
+
                 except Exception:
                     continue
 
-            # -------- 2️⃣ GLOBAL FALLBACK --------
-            if not row_images and global_img_index < len(global_images):
-
-                row_images.append(global_images[global_img_index])
-                global_img_index += 1
-
-                _logger.warning(f"ROW {idx} → GLOBAL IMAGE USED")
-
-            # -------- 3️⃣ URL FALLBACK --------
+            # -------- 2️⃣ TRY URL SCRAPING --------
             if not row_images:
 
                 for cell in row:
@@ -132,26 +115,92 @@ class VendorImportJob(models.Model):
                         try:
                             response = requests.get(val, headers=headers, timeout=10)
 
-                            if response.status_code == 200 and "image" in response.headers.get("Content-Type", ""):
+                            if response.status_code != 200:
+                                continue
+
+                            content_type = response.headers.get("Content-Type", "")
+
+                            # DIRECT IMAGE
+                            if "image" in content_type:
 
                                 if len(response.content) > 5000:
-                                    row_images.append(
-                                        base64.b64encode(response.content).decode("utf-8")
-                                    )
+                                    img_base64 = base64.b64encode(response.content).decode("utf-8")
+                                    row_images.append(img_base64)
 
-                                    _logger.warning(f"ROW {idx} → URL IMAGE")
+                                    _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
+                                    break
+
+                            # HTML PAGE → SCRAPE IMAGE
+                            elif "text/html" in content_type:
+
+                                soup = BeautifulSoup(response.text, "html.parser")
+
+                                best_img = None
+
+                                # 🔥 PRIORITY: PRODUCT IMAGES
+                                for img in soup.find_all("img"):
+
+                                    src = img.get("src")
+                                    if not src:
+                                        continue
+
+                                    if src.startswith("/"):
+                                        src = urljoin(val, src)
+
+                                    if any(k in src.lower() for k in ["product", "large", "main"]):
+
+                                        try:
+                                            img_res = requests.get(src, headers=headers, timeout=5)
+
+                                            if img_res.status_code == 200 and len(img_res.content) > 10000:
+                                                best_img = img_res.content
+                                                break
+
+                                        except Exception:
+                                            continue
+
+                                # 🔥 FALLBACK: ANY VALID IMAGE
+                                if not best_img:
+                                    for img in soup.find_all("img"):
+
+                                        src = img.get("src")
+                                        if not src:
+                                            continue
+
+                                        if src.startswith("/"):
+                                            src = urljoin(val, src)
+
+                                        try:
+                                            img_res = requests.get(src, headers=headers, timeout=5)
+
+                                            if img_res.status_code == 200 and len(img_res.content) > 10000:
+                                                best_img = img_res.content
+                                                break
+
+                                        except Exception:
+                                            continue
+
+                                if best_img:
+                                    img_base64 = base64.b64encode(best_img).decode("utf-8")
+                                    row_images.append(img_base64)
+
+                                    _logger.warning(f"ROW {idx} → SCRAPED IMAGE")
                                     break
 
                         except Exception:
-                            continue
+                            _logger.warning(f"ROW {idx} → URL FAILED")
 
-            _logger.warning(f"ROW {idx} → FINAL IMAGE COUNT: {len(row_images)}")
+            # -------- FINAL DEBUG --------
+            _logger.warning(f"ROW {idx} → TEXT LENGTH: {len(row_text)}")
+            _logger.warning(f"ROW {idx} → IMAGES FOUND: {len(row_images)}")
 
+            # -------- STORE ROW --------
             current_page.append({
                 "text": row_text,
                 "images": row_images
             })
 
+            # -------- PAGINATION --------
             if len(current_page) >= page_size:
                 pages.append({
                     "page": page_number,
@@ -160,15 +209,18 @@ class VendorImportJob(models.Model):
                 current_page = []
                 page_number += 1
 
+        # -------- LAST PAGE --------
         if current_page:
             pages.append({
                 "page": page_number,
                 "rows": current_page
             })
 
+        # -------- FINAL STRUCTURE --------
         final_pages = []
 
         for page in pages:
+
             combined_text = "\n".join([r["text"] for r in page["rows"]])
 
             final_pages.append({
