@@ -240,45 +240,51 @@ class VendorImportJob(models.Model):
     def process_import(self):
 
         _logger.warning(f"PROCESS START → Job {self.id}")
-        self.state = "processing"
 
         try:
 
-            self.extracted_text = ""
+            # ---------------- DETECT FILE TYPE ----------------
+            filename = (self.file_name or "").lower()
 
-            if self.pdf_file:
-                _logger.warning("STEP → Extracting PDF")
-                self.extract_pdf()
+            # ---------------- EXCEL FLOW ----------------
+            if filename.endswith(".xlsx") or filename.endswith(".xls"):
 
-            if self.excel_file:
                 _logger.warning("STEP → Parsing Excel")
                 self.parse_excel()
 
-            if self.data_url:
-                _logger.warning("STEP → Scraping URL")
-                self.scrape_website()
+            # ---------------- PDF FLOW ----------------
+            elif filename.endswith(".pdf"):
 
-            # if not self.extracted_text:
-            if not self.extracted_text or self.extracted_text == "[]":
-                # ✅ DEBUG BEFORE STOP (ADD HERE)
-                _logger.warning(f"EXTRACTED TEXT SAMPLE → {str(self.extracted_text)[:500]}")
+                _logger.warning("STEP → Extracting PDF")
+                self.extract_pdf()
+
+            else:
+                raise Exception("Unsupported file type")
+
+            # ---------------- VALIDATION ----------------
+            if not self.extracted_text:
                 _logger.error("NO TEXT EXTRACTED → STOPPING")
-                self.state = "error"
                 return
 
+            _logger.warning(f"EXTRACTED TEXT SAMPLE → {self.extracted_text[:200]}")
+
+            # ---------------- AI STEP ----------------
             _logger.warning("STEP → Sending to OpenAI")
             self.send_to_openai()
 
+            if not self.ai_response:
+                _logger.error("NO AI RESPONSE → STOPPING")
+                return
+
+            # 🔥 CRITICAL FIX — ALWAYS RUN THIS
             _logger.warning("STEP → Creating products")
             self.create_product_drafts()
 
             self.state = "done"
 
-            _logger.warning(f"PROCESS DONE → Job {self.id}")
-
-        except Exception:
-            _logger.exception("PROCESS FAILED")
-            self.state = "error"
+        except Exception as e:
+            _logger.error(f"PROCESS FAILED → {str(e)}")
+            self.state = "failed"
 
     # ---------------- PDF ----------------
     def extract_pdf(self):
@@ -414,7 +420,7 @@ class VendorImportJob(models.Model):
                     input=prompt,
                     timeout=60
                 )
-
+                time.sleep(1)
                 result = response.output_text.strip()
 
                 _logger.warning(f"RAW AI RESPONSE → {result[:200]}")
