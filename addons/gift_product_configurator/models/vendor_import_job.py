@@ -489,10 +489,12 @@ class VendorImportJob(models.Model):
 
             if isinstance(parsed, list) and parsed:
 
-                page_products.append({
-                    "page": batch[0].get("page"),
-                    "products": parsed
-                })
+                for page in batch:
+
+                    page_products.append({
+                        "page": page.get("page"),
+                        "products": parsed
+                    })
 
                 _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
 
