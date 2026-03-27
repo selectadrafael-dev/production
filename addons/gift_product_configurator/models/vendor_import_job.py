@@ -4,7 +4,6 @@ import logging
 import io
 import requests
 import pandas as pd
-
 from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl_image_loader import SheetImageLoader
