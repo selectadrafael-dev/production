@@ -379,19 +379,70 @@ class VendorImportJob(models.Model):
                 continue
 
             prompt = f"""
-            You are an advanced product extraction engine.
+            You are an advanced product extraction and interpretation engine for catalog PDFs.
 
-            RULES:
-            - Return ONLY JSON
-            - No explanation
-            - No markdown
-            - No duplicate products
-            - Do not skip any product
+            =====================
+            CORE RULES (STRICT)
+            =====================
 
-            If page contains multiple products:
-            → extract ALL products individually
+            1. RETURN ONLY VALID JSON
+            2. NO explanation
+            3. NO markdown
+            4. NO text outside JSON
+            5. DO NOT duplicate products
+            6. DO NOT skip any product
+            7. EACH product must appear exactly once
 
-            TEXT:
+            =====================
+            PRODUCT DETECTION LOGIC
+            =====================
+
+            A page may contain:
+
+            (A) ONE large product (hero layout)
+            (B) MULTIPLE products (grid/catalog layout)
+            (C) MIX of large + small supporting products
+
+            You MUST:
+
+            - If SINGLE main product:
+            → return ONE product
+
+            - If MULTIPLE products (grid/list/table):
+            → extract EACH product separately
+
+            - If repeated items (pens, bottles, accessories):
+            → treat EACH visible item as a unique product
+            → DO NOT group them
+
+            =====================
+            VISUAL CONTEXT UNDERSTANDING
+            =====================
+
+            Even though you receive TEXT, infer layout meaning:
+
+            - If many short repeated lines → multiple products
+            - If long paragraph → single product
+            - If codes/SKUs differ → separate products
+
+            NEVER SKIP ITEMS.
+
+            =====================
+            OUTPUT FORMAT
+            =====================
+
+            [
+            {{
+                "name": "",
+                "description": "",
+                "category": ""
+            }}
+            ]
+
+            =====================
+            TEXT TO ANALYZE
+            =====================
+
             {combined_text}
             """
 
@@ -476,6 +527,76 @@ class VendorImportJob(models.Model):
                 continue
 
         return best_img
+    
+    #----marchin AI-----------------------------------
+    def match_image_with_ai(self, product_name, images):
+
+        from openai import OpenAI
+
+        api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+        client = OpenAI(api_key=api_key)
+
+        if not images:
+            return None
+
+        # limit images for performance
+        images = images[:5]
+
+        image_inputs = [
+            {
+                "type": "input_image",
+                "image_base64": img
+            }
+            for img in images
+        ]
+
+        prompt = f"""
+    You are an expert product image matcher.
+
+    Select the image that BEST represents this product:
+
+    PRODUCT:
+    {product_name}
+
+    RULES:
+    - Return ONLY the index (0-based integer)
+    - No explanation
+    - No text
+
+    PRIORITY:
+    1. Clean product image (plain background)
+    2. Product centered and clearly visible
+    3. No human interaction preferred
+    4. If only lifestyle images exist, choose the clearest one
+
+    DO NOT PICK:
+    - logos
+    - icons
+    - background-only images
+    - cropped fragments
+    """
+
+        try:
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=[{
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": prompt}] + image_inputs
+                }],
+                timeout=30
+            )
+
+            result = response.output_text.strip()
+
+            index = int(result)
+
+            if 0 <= index < len(images):
+                return images[index]
+
+        except Exception as e:
+            _logger.warning(f"AI IMAGE MATCH FAILED → {str(e)}")
+
+        return None
 
     #----------------PRODUCT CREATION ----------------
 
