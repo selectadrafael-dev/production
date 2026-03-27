@@ -985,7 +985,7 @@ class VendorImportJob(models.Model):
 
         with sync_playwright() as p:
 
-            browser = p.chromium.launch(headless=True)
+            #browser = p.chromium.launch(headless=True)
             page = browser.new_page()
 
             # 🔥 Go to page

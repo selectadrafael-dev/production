@@ -4,3 +4,4 @@ openai>=1.0.0
 beautifulsoup4
 requests
 openpyxl-image-loader
+playwright
