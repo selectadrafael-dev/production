@@ -104,8 +104,23 @@ def extract_url():
 
     try:
         with sync_playwright() as p:
+            import os
+            from playwright.sync_api import sync_playwright
+            import subprocess
 
-            browser = p.chromium.launch(headless=True)
+            with sync_playwright() as p:
+
+                try:
+                    browser = p.chromium.launch(headless=True)
+
+                except Exception:
+                    _logger.warning("PLAYWRIGHT BROWSER MISSING → INSTALLING NOW")
+
+                    # 🔥 Force install at runtime
+                    subprocess.run(["playwright", "install", "chromium"], check=True)
+
+                    browser = p.chromium.launch(headless=True)
+          
             page = browser.new_page()
 
             page.goto(url, timeout=60000)
