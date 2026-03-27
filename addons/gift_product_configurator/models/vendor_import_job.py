@@ -16,8 +16,6 @@ from urllib.parse import urljoin
 from openai import OpenAI
 
 
-
-
 _logger = logging.getLogger(__name__)
 
 
@@ -530,8 +528,6 @@ class VendorImportJob(models.Model):
     
     #----marchin AI-----------------------------------
     def match_image_with_ai(self, product_name, images):
-
-        from openai import OpenAI
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
         client = OpenAI(api_key=api_key)
