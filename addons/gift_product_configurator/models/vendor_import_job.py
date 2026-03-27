@@ -13,6 +13,9 @@ import time
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+from openai import OpenAI
+
+
 
 
 _logger = logging.getLogger(__name__)
@@ -380,8 +383,6 @@ class VendorImportJob(models.Model):
 
     def send_to_openai(self):
 
-        from openai import OpenAI
-
         self.state = "ai_processing"
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -395,134 +396,38 @@ class VendorImportJob(models.Model):
 
         page_products = []
 
-        # ✅ FIX 1: batch processing (prevents missing products)
-        batch_size = 3
+        BATCH_SIZE = 3
 
-        for i in range(0, len(pages), batch_size):
+        for i in range(0, len(pages), BATCH_SIZE):
 
-            batch = pages[i:i + batch_size]
+            batch = pages[i:i + BATCH_SIZE]
 
+            _logger.warning(f"AI → PROCESSING BATCH {i // BATCH_SIZE + 1}")
+
+            # ✅ COMBINE TEXT PROPERLY
             combined_text = "\n\n".join([
-                f"PAGE {p.get('page')}:\n{p.get('text','')}"
-                for p in batch if p.get("text", "").strip()
+                p.get("text", "") for p in batch if p.get("text")
             ])
 
             if not combined_text.strip():
+                _logger.warning("EMPTY TEXT → SKIP BATCH")
                 continue
 
-            _logger.warning(f"AI → PROCESSING BATCH {i // batch_size + 1}")
-
-
             prompt = f"""
-            You are an advanced product extraction and interpretation engine for catalog PDFs.
+            You are an advanced product extraction engine.
 
-            Your job is to extract ALL products on this page AND understand how images relate to products.
+            RULES:
+            - Return ONLY JSON
+            - No explanation
+            - No markdown
+            - No duplicate products
+            - Do not skip any product
 
-            =====================
-            CORE RULES (STRICT)
-            =====================
+            If page contains multiple products:
+            → extract ALL products individually
 
-            1. RETURN ONLY VALID JSON
-            2. NO explanations
-            3. NO markdown
-            4. NO text outside JSON
-            5. DO NOT duplicate products
-            6. DO NOT skip any product
-            7. EACH product must appear exactly once
-
-            =====================
-            PRODUCT DETECTION LOGIC
-            =====================
-
-            A page may contain:
-
-            (A) ONE large product (hero layout)
-            (B) MULTIPLE products (grid/catalog layout)
-            (C) MIX of large + small supporting products
-
-            You MUST:
-
-            - If SINGLE main product:
-            → return ONE product
-
-            - If MULTIPLE products (grid/list/table):
-            → return EACH product separately
-
-            - If variants (same product different colors):
-            → treat as SEPARATE products ONLY if clearly labeled differently
-
-            =====================
-            IMAGE UNDERSTANDING LOGIC (CRITICAL)
-            =====================
-
-            Each product may have multiple images on the page.
-
-            You MUST decide the BEST image for each product using these rules:
-
-            PRIORITY ORDER:
-
-            1. CLEAN PRODUCT IMAGE (BEST)
-            - Plain background
-            - Centered object
-            - No human interaction
-
-            2. PRODUCT-FOCUSED IMAGE
-            - Product clearly dominant
-            - May include minor props
-
-            3. LIFESTYLE IMAGE (USE ONLY IF NECESSARY)
-            - Human holding/wearing product
-            - ONLY if:
-                - product is clearly visible
-                - no better clean image exists
-
-            4. NEVER USE:
-            - Logos
-            - Icons
-            - Decorative graphics
-            - Background textures
-            - Cropped fragments
-            - Zoomed partial product
-
-            =====================
-            IMPORTANT VISUAL INTERPRETATION
-            =====================
-
-            When multiple images exist for same product:
-
-            → Compare ALL images
-            → Choose the MOST REPRESENTATIVE one
-
-            Examples:
-
-            - Backpack page:
-            - Ignore person wearing bag ❌
-            - Prefer isolated product image ✅
-
-            - Pen grid:
-            - Extract EACH pen model
-            - Use closest matching image per pen
-
-            - Product + detail thumbnails:
-            - Use main product image, NOT thumbnails
-
-            =====================
-            OUTPUT FORMAT
-            =====================
-
-            [
-            {{
-                "name": "",
-                "description": "",
-                "category": ""
-            }}
-            ]
-
-            =====================
-            TEXT TO ANALYZE
-            =====================
-
-            {text}
+            TEXT:
+            {combined_text}
             """
 
             try:
@@ -531,12 +436,9 @@ class VendorImportJob(models.Model):
                     input=prompt,
                     timeout=60
                 )
-                time.sleep(1)
+
                 result = response.output_text.strip()
 
-                _logger.warning(f"RAW AI RESPONSE → {result[:200]}")
-
-                # 🔥 CLEAN RESPONSE
                 if "```" in result:
                     result = result.split("```")[1]
 
@@ -545,35 +447,29 @@ class VendorImportJob(models.Model):
 
                 result = result.strip()
 
-                # 🔥 SAFE PARSE
                 try:
                     parsed = json.loads(result)
                 except Exception:
-                    _logger.warning("INVALID JSON → SKIPPED")
+                    _logger.warning("INVALID JSON → SKIP BATCH")
                     continue
 
                 if isinstance(parsed, list) and parsed:
-                    _logger.warning(f"BATCH → {len(parsed)} products extracted")
+                    page_products.append({
+                        "page": batch[0].get("page"),
+                        "products": parsed
+                    })
 
-                    # ✅ IMPORTANT: map batch to FIRST page only (stable mapping)
-                    for p in batch:
-                        page_products.append({
-                            "page": p.get("page"),
-                            "products": parsed
-                        })
+                    _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
 
             except Exception as e:
                 _logger.warning(f"BATCH FAILED → {str(e)}")
                 continue
 
-        #✅ SAVE AFTER LOOP (CRITICAL)
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
-     #-----------clean image-------------
-     
-     #-----------scoring image before picking best/quality image (inage logic)-------------
+    #-----------scoring image before picking best/quality image (inage logic)-------------
 
     def pick_best_image(self, images):
         import base64
