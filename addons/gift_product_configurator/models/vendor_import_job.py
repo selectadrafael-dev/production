@@ -979,20 +979,30 @@ class VendorImportJob(models.Model):
 
     def scrape_with_playwright(self):
 
+        from playwright.sync_api import sync_playwright
         import subprocess
-      
+        import json
+        import base64
+        import requests
+        import os
 
         _logger.warning(f"PLAYWRIGHT SCRAPE → {self.data_url}")
 
-        # 🔥 FORCE INSTALL BROWSER (THIS FIXES YOUR ERROR)
-        try:
-            subprocess.run(
-                ["python", "-m", "playwright", "install", "chromium"],
-                check=True
-            )
-            _logger.warning("PLAYWRIGHT BROWSER INSTALLED")
-        except Exception as e:
-            _logger.warning(f"PLAYWRIGHT INSTALL FAILED → {str(e)}")
+        # ✅ CHECK IF BROWSER EXISTS FIRST
+        browser_path = os.path.expanduser("~/.cache/ms-playwright")
+
+        if not os.path.exists(browser_path):
+            _logger.warning("PLAYWRIGHT → INSTALLING BROWSER (FIRST RUN)")
+
+            try:
+                subprocess.run(
+                    ["python", "-m", "playwright", "install", "chromium"],
+                    check=True
+                )
+                _logger.warning("PLAYWRIGHT BROWSER INSTALLED")
+            except Exception as e:
+                _logger.error(f"PLAYWRIGHT INSTALL FAILED → {str(e)}")
+                return
 
         products = []
 
@@ -1004,7 +1014,7 @@ class VendorImportJob(models.Model):
             page.goto(self.data_url, timeout=60000)
             page.wait_for_timeout(5000)
 
-            # ✅ Handle cookie popup
+            # ✅ Cookie handling
             try:
                 page.locator("button:has-text('Accept')").click(timeout=3000)
             except:
