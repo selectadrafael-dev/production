@@ -1,4 +1,8 @@
 #!/bin/bash
 
+echo "Installing Playwright browser..."
+
 pip install playwright
-playwright install chromium
+python -m playwright install chromium
+
+echo "Playwright setup complete"
