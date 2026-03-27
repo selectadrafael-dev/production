@@ -89,12 +89,16 @@ def extract():
 # ================= URL EXTRACT (PLAYWRIGHT) =================
 
 @app.route("/extract-url", methods=["POST"])
+@app.route("/extract-url", methods=["POST"])
 def extract_url():
 
     from playwright.sync_api import sync_playwright
-    import subprocess
     import requests
     import base64
+    import os
+
+    # 🔥 VERY IMPORTANT (Render fix)
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
 
     data = request.get_json()
     url = data.get("url")
@@ -109,14 +113,8 @@ def extract_url():
     try:
         with sync_playwright() as p:
 
-            # ================= BROWSER LAUNCH (SAFE) =================
-            try:
-                browser = p.chromium.launch(headless=True)
-            except Exception as e:
-                _logger.warning(f"PLAYWRIGHT BROWSER MISSING → INSTALLING NOW ({str(e)[:100]})")
-                subprocess.run(["playwright", "install", "chromium"], check=True)
-                browser = p.chromium.launch(headless=True)
-
+            # ✅ SIMPLE & STABLE LAUNCH (no reinstall, no fallback loop)
+            browser = p.chromium.launch(headless=True)
             page = browser.new_page()
 
             # ================= LOAD PAGE =================
@@ -153,67 +151,10 @@ def extract_url():
                     _logger.info(f"SELECTOR HIT → {sel} ({len(found)})")
                     break
 
+            # 🔥 DEBUG LINE (VERY IMPORTANT)
             _logger.info(f"TOTAL ITEMS FOUND → {len(items)}")
 
             # ================= EXTRACTION =================
-            products = []
-
-            # for item in items[:200]:
-
-            #     try:
-            #         text = item.inner_text().strip()
-
-            #         if not text or len(text) < 10:
-            #             continue
-
-            #         img_el = item.query_selector("img")
-            #         if not img_el:
-            #             continue
-
-            #         # 🔥 MULTI-SOURCE IMAGE FETCH (VERY IMPORTANT)
-            #         img_url = (
-            #             img_el.get_attribute("src") or
-            #             img_el.get_attribute("data-src") or
-            #             img_el.get_attribute("data-original") or
-            #             img_el.get_attribute("srcset")
-            #         )
-
-            #         if not img_url:
-            #             continue
-
-            #         # 🔥 HANDLE srcset (pick first image)
-            #         if " " in img_url and "http" in img_url:
-            #             img_url = img_url.split(" ")[0]
-
-            #         if img_url.startswith("//"):
-            #             img_url = "https:" + img_url
-
-            #         if not img_url.startswith("http"):
-            #             continue
-
-            #         # 🔥 FETCH IMAGE
-            #         img_base64 = None
-
-            #         try:
-            #             res = requests.get(img_url, timeout=10)
-            #             if res.status_code == 200 and len(res.content) > 5000:
-            #                 img_base64 = base64.b64encode(res.content).decode("utf-8")
-            #         except:
-            #             continue
-
-            #         if not img_base64:
-            #             continue
-
-            #         products.append({
-            #             "name": text[:120],
-            #             "image": img_base64
-            #         })
-
-            #     except:
-            #         continue
-
-            products = []
-
             for item in items[:200]:
 
                 try:
@@ -226,7 +167,7 @@ def extract_url():
                     if not img_el:
                         continue
 
-                    # 🔥 MULTI-SOURCE IMAGE FETCH (VERY IMPORTANT)
+                    # 🔥 HANDLE LAZY IMAGES
                     img_url = (
                         img_el.get_attribute("src") or
                         img_el.get_attribute("data-src") or
@@ -237,7 +178,7 @@ def extract_url():
                     if not img_url:
                         continue
 
-                    # 🔥 HANDLE srcset (pick first image)
+                    # 🔥 HANDLE srcset
                     if " " in img_url and "http" in img_url:
                         img_url = img_url.split(" ")[0]
 
@@ -247,7 +188,7 @@ def extract_url():
                     if not img_url.startswith("http"):
                         continue
 
-                    # 🔥 FETCH IMAGE
+                    # ================= FETCH IMAGE =================
                     img_base64 = None
 
                     try:
@@ -267,7 +208,7 @@ def extract_url():
 
                 except:
                     continue
-            
+
             browser.close()
 
     except Exception as e:
@@ -288,7 +229,6 @@ def extract_url():
     }]
 
     return jsonify(pages)
-
 # ================= START APP =================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
