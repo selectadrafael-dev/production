@@ -13,6 +13,7 @@ import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from openai import OpenAI
+import re
 
 
 _logger = logging.getLogger(__name__)
@@ -221,21 +222,100 @@ class VendorImportJob(models.Model):
         # -------- FINAL STRUCTURE --------
         final_pages = []
 
-        for page in pages:
+        # for page in pages:
 
-            combined_text = "\n".join([r["text"] for r in page["rows"]])
+        #     combined_text = "\n".join([r["text"] for r in page["rows"]])
 
-            final_pages.append({
-                "page": page["page"],
-                "text": combined_text,
-                "images": page["rows"]
-            })
+        #     final_pages.append({
+        #         "page": page["page"],
+        #         "text": combined_text,
+        #         "images": page["rows"]
+        #     })
 
-            _logger.warning(f"PAGE {page['page']} → ROWS: {len(page['rows'])}")
+        #     _logger.warning(f"PAGE {page['page']} → ROWS: {len(page['rows'])}")
 
-        self.extracted_text = json.dumps(final_pages)
+        # self.extracted_text = json.dumps(final_pages)
 
-        _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
+        # _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
+
+        BATCH_SIZE = 5  # 🔥 KEY OPTIMIZATION
+
+batched_pages = [
+    pages[i:i + BATCH_SIZE]
+    for i in range(0, len(pages), BATCH_SIZE)
+]
+
+_logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
+
+page_products = []
+
+for batch_index, batch in enumerate(batched_pages):
+
+    _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
+
+    combined_text = "\n\n".join([
+        p.get("text", "")
+        for p in batch if p.get("text")
+    ])
+
+    if not combined_text.strip():
+        continue
+
+    prompt = f"""
+    (USE YOUR FINAL PROMPT HERE — DO NOT CHANGE IT)
+    
+    TEXT:
+    {combined_text}
+    """
+
+    MAX_RETRIES = 3
+    success = False
+
+    for attempt in range(MAX_RETRIES):
+
+        try:
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=prompt,
+                timeout=60
+            )
+
+            result = response.output_text.strip()
+            success = True
+            break
+
+        except Exception as e:
+            _logger.warning(f"RETRY {attempt+1} FAILED → {str(e)}")
+
+    if not success:
+        _logger.error("FINAL FAILURE → SKIPPING BATCH")
+        continue
+
+    # CLEAN RESPONSE
+    if "```" in result:
+        result = result.split("```")[1]
+
+    if result.lower().startswith("json"):
+        result = result[4:]
+
+    result = result.strip()
+
+    try:
+        parsed = json.loads(result)
+    except Exception:
+        _logger.warning("INVALID JSON → SKIPPED")
+        continue
+
+    if isinstance(parsed, list) and parsed:
+        _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
+
+        page_products.append({
+            "page": batch[0].get("page"),
+            "products": parsed
+        })
+
+    import time
+    time.sleep(1)
 
     #---------------- MAIN FLOW ----------------
 
@@ -778,7 +858,6 @@ class VendorImportJob(models.Model):
 
 
     #-----url flow--------------------------------------------
-
     def parse_url(self):
 
         _logger.warning(f"URL PARSE START → {self.data_url}")
@@ -789,6 +868,7 @@ class VendorImportJob(models.Model):
             "Accept-Language": "en-US,en;q=0.9",
         }
 
+        # ================= FETCH HTML =================
         try:
             response = requests.get(self.data_url, headers=headers, timeout=20)
 
@@ -801,42 +881,108 @@ class VendorImportJob(models.Model):
             _logger.error(f"URL FETCH FAILED → {str(e)}")
             return
 
-        soup = BeautifulSoup(html, "html.parser")
+        # ================= TRY API DISCOVERY =================
+        api_urls = []
+
+        # 🔥 common patterns inside HTML
+        matches = re.findall(r'https://[^"]*api[^"]*', html)
+        api_urls.extend(matches)
+
+        # 🔥 also look for JSON endpoints
+        matches_json = re.findall(r'https://[^"]*\.json', html)
+        api_urls.extend(matches_json)
+
+        _logger.warning(f"API CANDIDATES FOUND → {len(api_urls)}")
 
         products = []
 
-        # ================= MULTI-SELECTOR STRATEGY =================
-        items = soup.select("""
-            div.product,
-            li.product,
-            .product-item,
-            .product-card,
-            .catalog-item,
-            .item
-        """)
+        # ================= TRY API FIRST =================
+        for api_url in api_urls[:5]:  # limit
+            try:
+                _logger.warning(f"TRY API → {api_url}")
 
-        _logger.warning(f"URL ITEMS FOUND → {len(items)}")
+                res = requests.get(api_url, headers=headers, timeout=15)
 
-        # 🔥 FALLBACK (VERY IMPORTANT)
-        if not items:
-            _logger.warning("NO ITEMS → FALLBACK TO IMAGES")
-
-            images = soup.find_all("img")
-
-            for img in images[:20]:  # limit
-                src = img.get("src")
-
-                if not src:
+                if res.status_code != 200:
                     continue
 
-                if src.startswith("//"):
-                    src = "https:" + src
+                data = res.json()
 
-                products.append({
-                    "name": "Unknown Product",
-                    "image": src
-                })
+                # 🔥 GENERIC JSON PARSER
+                def extract_from_json(obj):
+                    if isinstance(obj, dict):
+                        name = obj.get("name") or obj.get("title")
+                        image = obj.get("image") or obj.get("image_url")
 
+                        if name:
+                            products.append({
+                                "name": name,
+                                "image": image
+                            })
+
+                        for v in obj.values():
+                            extract_from_json(v)
+
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            extract_from_json(item)
+
+                extract_from_json(data)
+
+                if products:
+                    _logger.warning(f"API SUCCESS → {len(products)} PRODUCTS")
+                    break
+
+            except Exception as e:
+                _logger.warning(f"API FAILED → {str(e)}")
+                continue
+
+        # ================= FALLBACK TO HTML =================
+        if not products:
+
+            _logger.warning("API FAILED → FALLBACK HTML PARSER")
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            items = soup.select("""
+                a[href*="/product"],
+                .product-card,
+                .product-item,
+                .card
+            """)
+
+            _logger.warning(f"HTML ITEMS FOUND → {len(items)}")
+
+            for item in items:
+
+                text = item.get_text(strip=True)
+
+                img_tag = item.select_one("img")
+                img_url = img_tag["src"] if img_tag else ""
+
+                if img_url and img_url.startswith("//"):
+                    img_url = "https:" + img_url
+
+                if text:
+                    products.append({
+                        "name": text,
+                        "image": img_url
+                    })
+
+        # ================= CLEAN PRODUCTS =================
+        clean_products = []
+
+        for p in products:
+            if p.get("name") and len(p.get("name")) > 3:
+                clean_products.append(p)
+
+        _logger.warning(f"CLEAN PRODUCTS → {len(clean_products)}")
+
+        if not clean_products:
+            _logger.error("NO VALID PRODUCTS FROM URL")
+            return
+
+        # ================= IMAGE DOWNLOAD =================
         def image_to_base64(url):
             try:
                 res = requests.get(url, timeout=10)
@@ -848,21 +994,15 @@ class VendorImportJob(models.Model):
 
         final_products = []
 
-        for p in products:
-
-            img_url = p.get("image")
-
-            image_base64 = image_to_base64(img_url) if img_url else None
+        for p in clean_products[:50]:  # limit
+            img_b64 = image_to_base64(p.get("image")) if p.get("image") else None
 
             final_products.append({
-                "name": p.get("name") or "Unknown Product",
-                "image": image_base64
+                "name": p.get("name"),
+                "image": img_b64
             })
 
-        if not final_products:
-            _logger.warning("NO PRODUCTS FROM URL")
-            return
-
+        # ================= FINAL FORMAT =================
         pages = [{
             "page": 1,
             "text": "\n".join([p["name"] for p in final_products]),
@@ -872,6 +1012,7 @@ class VendorImportJob(models.Model):
         self.extracted_text = json.dumps(pages)
 
         _logger.warning(f"URL PARSE DONE → {len(final_products)} PRODUCTS")
+
 
     #---------------- CRON ----------------
 
