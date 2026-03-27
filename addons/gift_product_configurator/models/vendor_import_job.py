@@ -48,42 +48,7 @@ class VendorImportJob(models.Model):
          ('failed', 'Failed'),
     ], default='draft')
 
-    #---------image processing-------------------
-
-    def is_clean_pdf_image(img_base64):
-        try:
-            import base64
-            from PIL import Image
-            import io
-
-            img_bytes = base64.b64decode(img_base64)
-            img = Image.open(io.BytesIO(img_bytes))
-
-            width, height = img.size
-
-            # ❌ reject tiny (logos/icons)
-            if width < 200 or height < 200:
-                return False
-
-            # ❌ reject extreme shapes (banners / strips)
-            ratio = width / float(height)
-            if ratio > 2.2 or ratio < 0.5:
-                return False
-
-            # ❌ reject complex scenes (likely humans/background)
-            colors = img.convert("RGB").getcolors(maxcolors=1000000)
-            if colors and len(colors) > 4000:
-                return False
-
-            # ❌ reject overly wide images (catalog layouts)
-            if width > 1200:
-                return False
-
-            return True
-
-        except Exception:
-            return False
-
+ 
     #------excel processing methof---------------
 
     def parse_excel(self):
@@ -517,7 +482,7 @@ class VendorImportJob(models.Model):
     def create_product_drafts(self):
 
         def is_valid_product_image(img_base64):
-            return True
+            return True  # keep Excel safe
 
         if not self.ai_response or not self.extracted_text:
             return
@@ -560,7 +525,6 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"---- PRODUCT LOOP START → INDEX {i} ----")
 
                 name = product.get("name")
-                _logger.warning(f"PRODUCT {i} → {name}")
 
                 if not name:
                     _logger.warning("SKIPPING EMPTY PRODUCT")
@@ -587,64 +551,49 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"SKIPPED DUPLICATE → {name}")
                     continue
 
-                # ================= IMAGE ENGINE (FIXED) =================
+                # ================= IMAGE ENGINE =================
                 row_data = page_data.get("images", [])
                 selected_image = None
 
                 if row_data:
 
-                    # ================= PDF MODE (STRICT + PAGE LOCK) =================
-                    
+                    # ================= PDF MODE (AI VISION FINAL) =================
                     if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
 
                         _logger.warning(f"PDF IMAGE MODE → {len(row_data)} images")
 
-                        # ✅ STEP 1: filter ONLY clean product images
-                        clean_images = [
-                            img for img in row_data
-                            if is_clean_pdf_image(img)
-                        ]
+                        available_images = [img for img in row_data if img not in used_images]
 
-                        _logger.warning(f"PDF CLEAN IMAGES → {len(clean_images)}")
-
-                        # ✅ STEP 2: remove already used (avoid duplication)
-                        available = [img for img in clean_images if img not in used_images]
-
-                        # ✅ STEP 3: strict sequential mapping per page
-                        if available:
-                            selected_image = available[0]
-                            _logger.warning("PDF IMAGE SELECTED → CLEAN UNUSED")
+                        if not available_images:
+                            _logger.warning("NO AVAILABLE IMAGES → SKIP")
 
                         else:
-                            _logger.warning("PDF → NO CLEAN UNUSED IMAGES")
+                            if len(available_images) == 1:
+                                selected_image = available_images[0]
+                                _logger.warning("ONLY ONE IMAGE → AUTO ASSIGNED")
 
-                            # 🔥 fallback: still avoid reuse if possible
-                            fallback = [img for img in row_data if img not in used_images]
+                            else:
+                                selected_image = self.match_image_with_ai(name, available_images)
 
-                            if fallback:
-                                selected_image = fallback[0]
-                                _logger.warning("PDF FALLBACK IMAGE USED")
+                                if selected_image:
+                                    _logger.warning("AI MATCHED IMAGE SUCCESS")
+                                else:
+                                    _logger.warning("AI MATCH FAILED → fallback")
+                                    selected_image = available_images[0]
 
-                    # ================= EXCEL MODE (FIXED HERE) =================
+                    # ================= EXCEL MODE (UNCHANGED) =================
                     elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
 
                         total_rows = len(row_data)
 
-                        _logger.warning(f"EXCEL IMAGE MODE → {total_rows} rows")
-
-                        # ✅ CYCLIC INDEX (KEY FIX)
                         row_index = i % total_rows
                         row_images = row_data[row_index].get("images", [])
-
-                        _logger.warning(f"EXCEL → USING ROW INDEX {row_index} FOR PRODUCT INDEX {i}")
 
                         valid_images = [img for img in row_images if is_valid_product_image(img)]
 
                         if valid_images:
                             selected_image = valid_images[0]
                             _logger.warning(f"EXCEL IMAGE SELECTED → ROW {row_index}")
-                        else:
-                            _logger.warning(f"EXCEL → NO VALID IMAGE AT ROW {row_index}")
 
                 # ================= APPLY IMAGE =================
                 if selected_image:
@@ -654,7 +603,7 @@ class VendorImportJob(models.Model):
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
 
-                # ================= CREATE PRODUCT =================
+                # ================= CREATE =================
                 product_obj.create(vals)
                 created_count += 1
 
