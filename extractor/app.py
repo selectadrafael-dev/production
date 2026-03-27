@@ -156,6 +156,64 @@ def extract_url():
             _logger.info(f"TOTAL ITEMS FOUND → {len(items)}")
 
             # ================= EXTRACTION =================
+            products = []
+
+            # for item in items[:200]:
+
+            #     try:
+            #         text = item.inner_text().strip()
+
+            #         if not text or len(text) < 10:
+            #             continue
+
+            #         img_el = item.query_selector("img")
+            #         if not img_el:
+            #             continue
+
+            #         # 🔥 MULTI-SOURCE IMAGE FETCH (VERY IMPORTANT)
+            #         img_url = (
+            #             img_el.get_attribute("src") or
+            #             img_el.get_attribute("data-src") or
+            #             img_el.get_attribute("data-original") or
+            #             img_el.get_attribute("srcset")
+            #         )
+
+            #         if not img_url:
+            #             continue
+
+            #         # 🔥 HANDLE srcset (pick first image)
+            #         if " " in img_url and "http" in img_url:
+            #             img_url = img_url.split(" ")[0]
+
+            #         if img_url.startswith("//"):
+            #             img_url = "https:" + img_url
+
+            #         if not img_url.startswith("http"):
+            #             continue
+
+            #         # 🔥 FETCH IMAGE
+            #         img_base64 = None
+
+            #         try:
+            #             res = requests.get(img_url, timeout=10)
+            #             if res.status_code == 200 and len(res.content) > 5000:
+            #                 img_base64 = base64.b64encode(res.content).decode("utf-8")
+            #         except:
+            #             continue
+
+            #         if not img_base64:
+            #             continue
+
+            #         products.append({
+            #             "name": text[:120],
+            #             "image": img_base64
+            #         })
+
+            #     except:
+            #         continue
+
+            products = []
+
             for item in items[:200]:
 
                 try:
@@ -168,19 +226,33 @@ def extract_url():
                     if not img_el:
                         continue
 
-                    img_url = img_el.get_attribute("src")
+                    # 🔥 MULTI-SOURCE IMAGE FETCH (VERY IMPORTANT)
+                    img_url = (
+                        img_el.get_attribute("src") or
+                        img_el.get_attribute("data-src") or
+                        img_el.get_attribute("data-original") or
+                        img_el.get_attribute("srcset")
+                    )
+
                     if not img_url:
                         continue
+
+                    # 🔥 HANDLE srcset (pick first image)
+                    if " " in img_url and "http" in img_url:
+                        img_url = img_url.split(" ")[0]
 
                     if img_url.startswith("//"):
                         img_url = "https:" + img_url
 
-                    # ================= IMAGE FETCH =================
+                    if not img_url.startswith("http"):
+                        continue
+
+                    # 🔥 FETCH IMAGE
                     img_base64 = None
 
                     try:
                         res = requests.get(img_url, timeout=10)
-                        if res.status_code == 200:
+                        if res.status_code == 200 and len(res.content) > 5000:
                             img_base64 = base64.b64encode(res.content).decode("utf-8")
                     except:
                         continue
@@ -195,7 +267,7 @@ def extract_url():
 
                 except:
                     continue
-
+            
             browser.close()
 
     except Exception as e:
