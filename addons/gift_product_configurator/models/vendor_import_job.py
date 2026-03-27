@@ -975,7 +975,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
 
-    #-----URL API FLOW--------------------------------------------
+    #-----URL API FLOW-------------------------------------------
 
     def scrape_with_playwright(self):
 
