@@ -45,6 +45,42 @@ class VendorImportJob(models.Model):
          ('failed', 'Failed'),
     ], default='draft')
 
+    #---------image processing-------------------
+
+    def is_clean_pdf_image(img_base64):
+        try:
+            import base64
+            from PIL import Image
+            import io
+
+            img_bytes = base64.b64decode(img_base64)
+            img = Image.open(io.BytesIO(img_bytes))
+
+            width, height = img.size
+
+            # ❌ reject tiny (logos/icons)
+            if width < 200 or height < 200:
+                return False
+
+            # ❌ reject extreme shapes (banners / strips)
+            ratio = width / float(height)
+            if ratio > 2.2 or ratio < 0.5:
+                return False
+
+            # ❌ reject complex scenes (likely humans/background)
+            colors = img.convert("RGB").getcolors(maxcolors=1000000)
+            if colors and len(colors) > 4000:
+                return False
+
+            # ❌ reject overly wide images (catalog layouts)
+            if width > 1200:
+                return False
+
+            return True
+
+        except Exception:
+            return False
+
     #------excel processing methof---------------
 
     def parse_excel(self):
@@ -285,6 +321,7 @@ class VendorImportJob(models.Model):
             self.state = "failed"
 
     # ---------------- PDF ----------------
+   
     def extract_pdf(self):
 
         pdf_bytes = base64.b64decode(self.pdf_file)
@@ -375,31 +412,104 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI → PROCESSING BATCH {i // batch_size + 1}")
 
+
             prompt = f"""
-            You are a product extraction engine.
+            You are an advanced product extraction and interpretation engine for catalog PDFs.
 
-            Extract ALL distinct products.
+            Your job is to extract ALL products on this page AND understand how images relate to products.
 
-            RULES:
-            - Return ONLY valid JSON
-            - No explanation
-            - No markdown
-            - No text outside JSON
+            =====================
+            CORE RULES (STRICT)
+            =====================
 
-            IMPORTANT LOGIC:
-            1. If content looks like structured rows (Excel):
-            → EACH LINE = ONE product
+            1. RETURN ONLY VALID JSON
+            2. NO explanations
+            3. NO markdown
+            4. NO text outside JSON
+            5. DO NOT duplicate products
+            6. DO NOT skip any product
+            7. EACH product must appear exactly once
 
-            2. If catalog grid:
-            → extract ALL items
+            =====================
+            PRODUCT DETECTION LOGIC
+            =====================
 
-            3. If single product page:
-            → extract ONE product
+            A page may contain:
 
-            4. DO NOT merge products
-            5. DO NOT skip products
+            (A) ONE large product (hero layout)
+            (B) MULTIPLE products (grid/catalog layout)
+            (C) MIX of large + small supporting products
 
-            FORMAT:
+            You MUST:
+
+            - If SINGLE main product:
+            → return ONE product
+
+            - If MULTIPLE products (grid/list/table):
+            → return EACH product separately
+
+            - If variants (same product different colors):
+            → treat as SEPARATE products ONLY if clearly labeled differently
+
+            =====================
+            IMAGE UNDERSTANDING LOGIC (CRITICAL)
+            =====================
+
+            Each product may have multiple images on the page.
+
+            You MUST decide the BEST image for each product using these rules:
+
+            PRIORITY ORDER:
+
+            1. CLEAN PRODUCT IMAGE (BEST)
+            - Plain background
+            - Centered object
+            - No human interaction
+
+            2. PRODUCT-FOCUSED IMAGE
+            - Product clearly dominant
+            - May include minor props
+
+            3. LIFESTYLE IMAGE (USE ONLY IF NECESSARY)
+            - Human holding/wearing product
+            - ONLY if:
+                - product is clearly visible
+                - no better clean image exists
+
+            4. NEVER USE:
+            - Logos
+            - Icons
+            - Decorative graphics
+            - Background textures
+            - Cropped fragments
+            - Zoomed partial product
+
+            =====================
+            IMPORTANT VISUAL INTERPRETATION
+            =====================
+
+            When multiple images exist for same product:
+
+            → Compare ALL images
+            → Choose the MOST REPRESENTATIVE one
+
+            Examples:
+
+            - Backpack page:
+            - Ignore person wearing bag ❌
+            - Prefer isolated product image ✅
+
+            - Pen grid:
+            - Extract EACH pen model
+            - Use closest matching image per pen
+
+            - Product + detail thumbnails:
+            - Use main product image, NOT thumbnails
+
+            =====================
+            OUTPUT FORMAT
+            =====================
+
             [
             {{
                 "name": "",
@@ -408,8 +518,11 @@ class VendorImportJob(models.Model):
             }}
             ]
 
-            TEXT:
-            {combined_text}
+            =====================
+            TEXT TO ANALYZE
+            =====================
+
+            {text}
             """
 
             try:
@@ -584,19 +697,37 @@ class VendorImportJob(models.Model):
 
                 if row_data:
 
-                    # ================= PDF MODE =================
+                    # ================= PDF MODE (STRICT + PAGE LOCK) =================
+                    
                     if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
 
-                        _logger.warning(f"PDF IMAGE MODE → {len(row_data)} images available")
+                        _logger.warning(f"PDF IMAGE MODE → {len(row_data)} images")
 
-                        valid_images = [img for img in row_data if is_valid_product_image(img)]
-                        available = [img for img in valid_images if img not in used_images]
+                        # ✅ STEP 1: filter ONLY clean product images
+                        clean_images = [
+                            img for img in row_data
+                            if is_clean_pdf_image(img)
+                        ]
 
+                        _logger.warning(f"PDF CLEAN IMAGES → {len(clean_images)}")
+
+                        # ✅ STEP 2: remove already used (avoid duplication)
+                        available = [img for img in clean_images if img not in used_images]
+
+                        # ✅ STEP 3: strict sequential mapping per page
                         if available:
                             selected_image = available[0]
-                            _logger.warning(f"PDF IMAGE SELECTED → INDEX {i}")
+                            _logger.warning("PDF IMAGE SELECTED → CLEAN UNUSED")
+
                         else:
-                            _logger.warning("PDF → NO UNUSED IMAGES LEFT")
+                            _logger.warning("PDF → NO CLEAN UNUSED IMAGES")
+
+                            # 🔥 fallback: still avoid reuse if possible
+                            fallback = [img for img in row_data if img not in used_images]
+
+                            if fallback:
+                                selected_image = fallback[0]
+                                _logger.warning("PDF FALLBACK IMAGE USED")
 
                     # ================= EXCEL MODE (FIXED HERE) =================
                     elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
