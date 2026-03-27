@@ -444,13 +444,36 @@ class VendorImportJob(models.Model):
             """
 
             try:
-                response = client.responses.create(
-                    model="gpt-4.1-mini",
-                    input=prompt,
-                    timeout=60
-                )
+                # response = client.responses.create(
+                #     model="gpt-4.1-mini",
+                #     input=prompt,
+                #     timeout=60
+                # )
+                
+                MAX_RETRIES = 3
+                success = False
 
-                result = response.output_text.strip()
+                for attempt in range(MAX_RETRIES):
+
+                    try:
+                        response = client.responses.create(
+                            model="gpt-4.1-mini",
+                            input=prompt,
+                            timeout=60
+                        )
+
+                        result = response.output_text.strip()
+                        success = True
+                        break
+
+                    except Exception as e:
+                        _logger.warning(f"RETRY {attempt+1} FAILED → {str(e)}")
+
+                if not success:
+                    _logger.error("FINAL FAILURE → SKIPPING BATCH SAFELY")
+                    continue
+
+                #result = response.output_text.strip()
 
                 if "```" in result:
                     result = result.split("```")[1]
@@ -473,6 +496,8 @@ class VendorImportJob(models.Model):
                     })
 
                     _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
+                    #import time //this alredy exist up
+                    time.sleep(1)
 
             except Exception as e:
                 _logger.warning(f"BATCH FAILED → {str(e)}")
