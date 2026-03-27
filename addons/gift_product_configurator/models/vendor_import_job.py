@@ -979,35 +979,42 @@ class VendorImportJob(models.Model):
 
     def scrape_with_playwright(self):
 
+        import subprocess
+      
+
         _logger.warning(f"PLAYWRIGHT SCRAPE → {self.data_url}")
+
+        # 🔥 FORCE INSTALL BROWSER (THIS FIXES YOUR ERROR)
+        try:
+            subprocess.run(
+                ["python", "-m", "playwright", "install", "chromium"],
+                check=True
+            )
+            _logger.warning("PLAYWRIGHT BROWSER INSTALLED")
+        except Exception as e:
+            _logger.warning(f"PLAYWRIGHT INSTALL FAILED → {str(e)}")
 
         products = []
 
         with sync_playwright() as p:
 
-            #browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=True)
             page = browser.new_page()
 
-            # 🔥 Go to page
             page.goto(self.data_url, timeout=60000)
-
-            # 🔥 Wait for content to load
             page.wait_for_timeout(5000)
 
-            # 🔥 Handle cookie popup (auto-click common buttons)
+            # ✅ Handle cookie popup
             try:
                 page.locator("button:has-text('Accept')").click(timeout=3000)
             except:
                 pass
 
-            html = page.content()
-
-            # 🔥 Extract product cards
             items = page.query_selector_all("a, div")
 
             _logger.warning(f"PLAYWRIGHT ELEMENTS FOUND → {len(items)}")
 
-            for item in items[:200]:  # limit for safety
+            for item in items[:200]:
 
                 try:
                     text = item.inner_text().strip()
@@ -1021,12 +1028,10 @@ class VendorImportJob(models.Model):
                     if img_url and img_url.startswith("//"):
                         img_url = "https:" + img_url
 
-                    # 🔥 Convert image to base64
                     img_base64 = None
 
                     if img_url:
                         try:
-                            import requests
                             res = requests.get(img_url, timeout=10)
                             if res.status_code == 200:
                                 img_base64 = base64.b64encode(res.content).decode("utf-8")
