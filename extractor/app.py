@@ -98,7 +98,7 @@ def extract_url():
     import os
 
     # 🔥 VERY IMPORTANT (Render fix)
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
+    #os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/.cache/ms-playwright"
 
     data = request.get_json()
     url = data.get("url")
