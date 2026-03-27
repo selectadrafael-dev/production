@@ -248,26 +248,34 @@ class VendorImportJob(models.Model):
 
         try:
 
-            # ---------------- FILE TYPE ----------------
-            if self.excel_file:
+            # ================= INPUT ROUTING =================
+
+            # ✅ PRIORITY 1: URL
+            if self.data_url:
+                _logger.warning("STEP → Parsing URL")
+                self.parse_url()
+
+            # ✅ PRIORITY 2: Excel
+            elif self.excel_file:
                 _logger.warning("STEP → Parsing Excel")
                 self.parse_excel()
 
+            # ✅ PRIORITY 3: PDF
             elif self.pdf_file:
                 _logger.warning("STEP → Extracting PDF")
                 self.extract_pdf()
 
             else:
-                raise Exception("No file found (excel/pdf missing)")
+                raise Exception("No input found (URL / Excel / PDF missing)")
 
-            # ---------------- VALIDATION ----------------
+            # ================= VALIDATION =================
             if not self.extracted_text:
                 _logger.error("NO TEXT EXTRACTED → STOPPING")
                 return
 
             _logger.warning(f"EXTRACTED TEXT SAMPLE → {self.extracted_text[:200]}")
 
-            # ---------------- AI ----------------
+            # ================= AI =================
             _logger.warning("STEP → Sending to OpenAI")
             self.send_to_openai()
 
@@ -275,7 +283,7 @@ class VendorImportJob(models.Model):
                 _logger.error("NO AI RESPONSE → STOPPING")
                 return
 
-            # ---------------- CREATE ----------------
+            # ================= CREATE =================
             _logger.warning("STEP → Creating products")
             self.create_product_drafts()
 
@@ -801,4 +809,82 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("FLASK PING FAILED")
 
-    #def create_product_drafts(self):
+    #--------url------
+    def parse_url(self):
+
+        #import requests
+        #from bs4 import BeautifulSoup
+        #import base64
+        #import json
+
+        _logger.warning(f"URL PARSE START → {self.data_url}")
+
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        try:
+            response = requests.get(self.data_url, headers=headers, timeout=20)
+
+            if response.status_code != 200:
+                raise Exception("Failed to fetch URL")
+
+            html = response.text
+
+        except Exception as e:
+            _logger.error(f"URL FETCH FAILED → {str(e)}")
+            return
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        products = []
+
+        # 🔥 GENERIC SELECTORS
+        items = soup.select("div.product, li.product, .product-item")
+
+        _logger.warning(f"URL ITEMS FOUND → {len(items)}")
+
+        def image_to_base64(url):
+            try:
+                res = requests.get(url, timeout=10)
+                if res.status_code == 200:
+                    return base64.b64encode(res.content).decode("utf-8")
+            except:
+                pass
+            return None
+
+        for item in items:
+
+            name_tag = item.select_one("h1, h2, h3")
+            img_tag = item.select_one("img")
+
+            name = name_tag.get_text(strip=True) if name_tag else ""
+            img_url = img_tag["src"] if img_tag else ""
+
+            if img_url and img_url.startswith("//"):
+                img_url = "https:" + img_url
+
+            image_base64 = image_to_base64(img_url) if img_url else None
+
+            if name:
+                products.append({
+                    "name": name,
+                    "image": image_base64
+                })
+
+        if not products:
+            _logger.warning("NO PRODUCTS FROM URL")
+            return
+
+        # ✅ CONVERT TO YOUR PIPELINE FORMAT
+        pages = [{
+            "page": 1,
+            "text": "\n".join([p["name"] for p in products]),
+            "images": [p["image"] for p in products if p["image"]]
+        }]
+
+        self.extracted_text = json.dumps(pages)
+
+        _logger.warning(f"URL PARSE DONE → {len(products)} PRODUCTS")
