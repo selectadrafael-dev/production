@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 from openai import OpenAI
 import re
 
-
+ 
 
 _logger = logging.getLogger(__name__)
 
@@ -48,7 +48,175 @@ class VendorImportJob(models.Model):
          ('failed', 'Failed'),
     ], default='draft')
 
- 
+    
+    #------------parse url----------------------------
+    def parse_url(self):
+
+        _logger.warning(f"URL PARSE START → {self.data_url}")
+
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html",
+        }
+
+        # ================= FETCH HTML =================
+        try:
+            response = requests.get(self.data_url, headers=headers, timeout=20)
+
+            if response.status_code != 200:
+                raise Exception("Failed to fetch URL")
+
+            html = response.text
+
+        except Exception as e:
+            _logger.error(f"URL FETCH FAILED → {str(e)}")
+            return
+
+        products = []
+
+        # ================= API DETECTION =================
+        api_urls = []
+
+        api_urls += re.findall(r'https://[^"]*api[^"]*', html)
+        api_urls += re.findall(r'https://[^"]*\.json', html)
+
+        _logger.warning(f"API CANDIDATES FOUND → {len(api_urls)}")
+
+        # ================= TRY API =================
+        for api_url in api_urls[:5]:
+
+            try:
+                _logger.warning(f"TRY API → {api_url}")
+
+                res = requests.get(api_url, headers=headers, timeout=15)
+
+                if res.status_code != 200:
+                    continue
+
+                data = res.json()
+
+                def extract(obj):
+                    if isinstance(obj, dict):
+
+                        name = (
+                            obj.get("name")
+                            or obj.get("title")
+                            or obj.get("productName")
+                        )
+
+                        image = (
+                            obj.get("image")
+                            or obj.get("image_url")
+                            or obj.get("thumbnail")
+                        )
+
+                        if name:
+                            products.append({
+                                "name": name,
+                                "image": image
+                            })
+
+                        for v in obj.values():
+                            extract(v)
+
+                    elif isinstance(obj, list):
+                        for i in obj:
+                            extract(i)
+
+                extract(data)
+
+                if products:
+                    _logger.warning(f"API SUCCESS → {len(products)} PRODUCTS")
+                    break
+
+            except Exception as e:
+                _logger.warning(f"API FAILED → {str(e)}")
+
+        # ================= HTML FALLBACK =================
+        if not products:
+
+            _logger.warning("API FAILED → TRY HTML")
+
+            soup = BeautifulSoup(html, "html.parser")
+
+            items = soup.select("""
+                a[href*="/product"],
+                .product-card,
+                .product-item,
+                .card
+            """)
+
+            _logger.warning(f"HTML ITEMS FOUND → {len(items)}")
+
+            for item in items:
+
+                text = item.get_text(strip=True)
+
+                if not text or len(text) < 5:
+                    continue
+
+                img_tag = item.select_one("img")
+                img_url = img_tag.get("src") if img_tag else None
+
+                if img_url and img_url.startswith("//"):
+                    img_url = "https:" + img_url
+
+                products.append({
+                    "name": text,
+                    "image": img_url
+                })
+
+        # ================= PLAYWRIGHT FALLBACK =================
+        if not products:
+
+            _logger.warning("HTML FAILED → USING PLAYWRIGHT")
+
+            self.scrape_with_playwright()
+            return
+
+        # ================= CLEAN =================
+        clean_products = [
+            p for p in products
+            if p.get("name") and len(p.get("name")) > 3
+        ]
+
+        _logger.warning(f"CLEAN PRODUCTS → {len(clean_products)}")
+
+        if not clean_products:
+            _logger.error("NO VALID PRODUCTS FROM URL")
+            return
+
+        # ================= IMAGE DOWNLOAD =================
+        def image_to_base64(url):
+            try:
+                res = requests.get(url, timeout=10)
+                if res.status_code == 200:
+                    return base64.b64encode(res.content).decode("utf-8")
+            except:
+                pass
+            return None
+
+        final_products = []
+
+        for p in clean_products[:50]:
+
+            img_b64 = image_to_base64(p.get("image")) if p.get("image") else None
+
+            final_products.append({
+                "name": p.get("name"),
+                "image": img_b64
+            })
+
+        pages = [{
+            "page": 1,
+            "text": "\n".join([p["name"] for p in final_products]),
+            "images": [p["image"] for p in final_products if p["image"]]
+        }]
+
+        self.extracted_text = json.dumps(pages)
+
+        _logger.warning(f"URL PARSE DONE → {len(final_products)} PRODUCTS")
+
     #------excel processing methof---------------
 
     def parse_excel(self):
@@ -924,181 +1092,4 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("FLASK PING FAILED")
 
-#------------parse url----------------------------
-def parse_url(self):
 
-    _logger.warning(f"URL PARSE START → {self.data_url}")
-
-    import requests
-    import json
-    import base64
-    import re
-    from bs4 import BeautifulSoup
-
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/html",
-    }
-
-    # ================= STEP 1: FETCH HTML =================
-    try:
-        response = requests.get(self.data_url, headers=headers, timeout=20)
-
-        if response.status_code != 200:
-            raise Exception("Failed to fetch URL")
-
-        html = response.text
-
-    except Exception as e:
-        _logger.error(f"URL FETCH FAILED → {str(e)}")
-        return
-
-    products = []
-
-    # ================= STEP 2: API DETECTION =================
-    api_urls = []
-
-    api_urls += re.findall(r'https://[^"]*api[^"]*', html)
-    api_urls += re.findall(r'https://[^"]*\.json', html)
-
-    _logger.warning(f"API CANDIDATES FOUND → {len(api_urls)}")
-
-    # ================= STEP 3: TRY API =================
-    for api_url in api_urls[:5]:
-
-        try:
-            _logger.warning(f"TRY API → {api_url}")
-
-            res = requests.get(api_url, headers=headers, timeout=15)
-
-            if res.status_code != 200:
-                continue
-
-            data = res.json()
-
-            def extract(obj):
-                if isinstance(obj, dict):
-
-                    name = (
-                        obj.get("name")
-                        or obj.get("title")
-                        or obj.get("productName")
-                    )
-
-                    image = (
-                        obj.get("image")
-                        or obj.get("image_url")
-                        or obj.get("thumbnail")
-                    )
-
-                    if name:
-                        products.append({
-                            "name": name,
-                            "image": image
-                        })
-
-                    for v in obj.values():
-                        extract(v)
-
-                elif isinstance(obj, list):
-                    for i in obj:
-                        extract(i)
-
-            extract(data)
-
-            if products:
-                _logger.warning(f"API SUCCESS → {len(products)} PRODUCTS")
-                break
-
-        except Exception as e:
-            _logger.warning(f"API FAILED → {str(e)}")
-
-    # ================= STEP 4: HTML FALLBACK =================
-    if not products:
-
-        _logger.warning("API FAILED → TRY HTML")
-
-        soup = BeautifulSoup(html, "html.parser")
-
-        items = soup.select("""
-            a[href*="/product"],
-            .product-card,
-            .product-item,
-            .card
-        """)
-
-        _logger.warning(f"HTML ITEMS FOUND → {len(items)}")
-
-        for item in items:
-
-            text = item.get_text(strip=True)
-
-            if not text or len(text) < 5:
-                continue
-
-            img_tag = item.select_one("img")
-            img_url = img_tag.get("src") if img_tag else None
-
-            if img_url and img_url.startswith("//"):
-                img_url = "https:" + img_url
-
-            products.append({
-                "name": text,
-                "image": img_url
-            })
-
-    # ================= STEP 5: PLAYWRIGHT FALLBACK =================
-    if not products:
-
-        _logger.warning("HTML FAILED → USING PLAYWRIGHT")
-
-        self.scrape_with_playwright()
-        return
-
-    # ================= STEP 6: CLEAN =================
-    clean_products = [
-        p for p in products
-        if p.get("name") and len(p.get("name")) > 3
-    ]
-
-    _logger.warning(f"CLEAN PRODUCTS → {len(clean_products)}")
-
-
-    if not clean_products:
-
-        _logger.warning("API + HTML FAILED → USING PLAYWRIGHT")
-
-        self.scrape_with_playwright()
-        return
-
-    # ================= STEP 7: IMAGE DOWNLOAD =================
-    def image_to_base64(url):
-        try:
-            res = requests.get(url, timeout=10)
-            if res.status_code == 200:
-                return base64.b64encode(res.content).decode("utf-8")
-        except:
-            pass
-        return None
-
-    final_products = []
-
-    for p in clean_products[:50]:
-
-        img_b64 = image_to_base64(p.get("image")) if p.get("image") else None
-
-        final_products.append({
-            "name": p.get("name"),
-            "image": img_b64
-        })
-
-    # ================= FINAL FORMAT =================
-    pages = [{
-        "page": 1,
-        "text": "\n".join([p["name"] for p in final_products]),
-        "images": [p["image"] for p in final_products if p["image"]]
-    }]
-
-    self.extracted_text = json.dumps(pages)
-
-    _logger.warning(f"URL PARSE DONE → {len(final_products)} PRODUCTS")
