@@ -87,10 +87,14 @@ def extract():
 
 
 # ================= URL EXTRACT (PLAYWRIGHT) =================
+
 @app.route("/extract-url", methods=["POST"])
 def extract_url():
 
     from playwright.sync_api import sync_playwright
+    import subprocess
+    import requests
+    import base64
 
     data = request.get_json()
     url = data.get("url")
@@ -103,61 +107,86 @@ def extract_url():
     products = []
 
     try:
-       
-        import subprocess
-
         with sync_playwright() as p:
 
+            # ================= BROWSER LAUNCH (SAFE) =================
             try:
                 browser = p.chromium.launch(headless=True)
-
             except Exception as e:
                 _logger.warning(f"PLAYWRIGHT BROWSER MISSING → INSTALLING NOW ({str(e)[:100]})")
-
                 subprocess.run(["playwright", "install", "chromium"], check=True)
-
                 browser = p.chromium.launch(headless=True)
 
             page = browser.new_page()
 
-            # ✅ Cookie popup
+            # ================= LOAD PAGE =================
+            page.goto(url, timeout=60000)
+            page.wait_for_timeout(5000)
+
+            # ================= HANDLE COOKIE =================
             try:
                 page.locator("button:has-text('Accept')").click(timeout=3000)
             except:
                 pass
 
-            # 🔥 Scroll to load products
+            # ================= SCROLL =================
             for _ in range(5):
                 page.mouse.wheel(0, 4000)
                 page.wait_for_timeout(1500)
 
-            items = page.query_selector_all("a, div")
+            # ================= SMART SELECTORS =================
+            selectors = [
+                ".product-item",
+                ".product-card",
+                ".product",
+                ".item",
+                "[class*='product']",
+                "li"
+            ]
 
-            _logger.info(f"ELEMENTS FOUND → {len(items)}")
+            items = []
 
-            for item in items[:300]:
+            for sel in selectors:
+                found = page.query_selector_all(sel)
+                if found:
+                    items = found
+                    _logger.info(f"SELECTOR HIT → {sel} ({len(found)})")
+                    break
+
+            _logger.info(f"TOTAL ITEMS FOUND → {len(items)}")
+
+            # ================= EXTRACTION =================
+            for item in items[:200]:
 
                 try:
                     text = item.inner_text().strip()
 
-                    if not text or len(text) < 5:
+                    if not text or len(text) < 10:
                         continue
 
                     img_el = item.query_selector("img")
-                    img_url = img_el.get_attribute("src") if img_el else None
+                    if not img_el:
+                        continue
 
-                    if img_url and img_url.startswith("//"):
+                    img_url = img_el.get_attribute("src")
+                    if not img_url:
+                        continue
+
+                    if img_url.startswith("//"):
                         img_url = "https:" + img_url
 
+                    # ================= IMAGE FETCH =================
                     img_base64 = None
 
-                    if img_url:
-                        try:
-                            res = requests.get(img_url, timeout=10)
-                            if res.status_code == 200:
-                                img_base64 = base64.b64encode(res.content).decode("utf-8")
-                        except:
-                            pass
+                    try:
+                        res = requests.get(img_url, timeout=10)
+                        if res.status_code == 200:
+                            img_base64 = base64.b64encode(res.content).decode("utf-8")
+                    except:
+                        continue
+
+                    if not img_base64:
+                        continue
 
                     products.append({
                         "name": text[:120],
@@ -173,8 +202,12 @@ def extract_url():
         _logger.error(f"PLAYWRIGHT FAILED → {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+    # ================= FINAL CHECK =================
     if not products:
+        _logger.warning("NO PRODUCTS EXTRACTED")
         return jsonify({"error": "No products found"}), 500
+
+    _logger.info(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     pages = [{
         "page": 1,
@@ -182,10 +215,7 @@ def extract_url():
         "images": [p["image"] for p in products if p["image"]]
     }]
 
-    _logger.info(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
-
     return jsonify(pages)
-
 
 # ================= START APP =================
 if __name__ == "__main__":
