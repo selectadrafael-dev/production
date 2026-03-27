@@ -103,28 +103,22 @@ def extract_url():
     products = []
 
     try:
+       
+        import subprocess
+
         with sync_playwright() as p:
-            import os
-            from playwright.sync_api import sync_playwright
-            import subprocess
 
-            with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch(headless=True)
 
-                try:
-                    browser = p.chromium.launch(headless=True)
+            except Exception as e:
+                _logger.warning(f"PLAYWRIGHT BROWSER MISSING → INSTALLING NOW ({str(e)[:100]})")
 
-                except Exception:
-                    _logger.warning("PLAYWRIGHT BROWSER MISSING → INSTALLING NOW")
+                subprocess.run(["playwright", "install", "chromium"], check=True)
 
-                    # 🔥 Force install at runtime
-                    subprocess.run(["playwright", "install", "chromium"], check=True)
+                browser = p.chromium.launch(headless=True)
 
-                    browser = p.chromium.launch(headless=True)
-          
             page = browser.new_page()
-
-            page.goto(url, timeout=60000)
-            page.wait_for_timeout(5000)
 
             # ✅ Cookie popup
             try:
