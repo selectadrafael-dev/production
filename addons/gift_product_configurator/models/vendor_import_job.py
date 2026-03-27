@@ -536,11 +536,10 @@ class VendorImportJob(models.Model):
 
         # limit images for performance
         images = images[:5]
-
         image_inputs = [
-            {
+        {
                 "type": "input_image",
-                "image_base64": img
+                "image_url": f"data:image/jpeg;base64,{img}"
             }
             for img in images
         ]
@@ -634,6 +633,7 @@ class VendorImportJob(models.Model):
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
             used_images = set()
+            image_cache = {}
 
             # ================= LOOP 2 (PRODUCTS) =================
             for i, product in enumerate(products):
@@ -674,6 +674,7 @@ class VendorImportJob(models.Model):
                 if row_data:
 
                     # ================= PDF MODE (AI VISION FINAL) =================
+                    # PDF MODE ONLY (STRICT)
                     if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
 
                         _logger.warning(f"PDF IMAGE MODE → {len(row_data)} images")
@@ -684,18 +685,26 @@ class VendorImportJob(models.Model):
                             _logger.warning("NO AVAILABLE IMAGES → SKIP")
 
                         else:
+
                             if len(available_images) == 1:
                                 selected_image = available_images[0]
                                 _logger.warning("ONLY ONE IMAGE → AUTO ASSIGNED")
 
                             else:
-                                selected_image = self.match_image_with_ai(name, available_images)
+                                # ================= CACHE + AI =================
+                                if name in image_cache:
+                                    selected_image = image_cache[name]
+                                    _logger.warning(f"CACHE HIT → {name}")
 
-                                if selected_image:
-                                    _logger.warning("AI MATCHED IMAGE SUCCESS")
                                 else:
-                                    _logger.warning("AI MATCH FAILED → fallback")
-                                    selected_image = available_images[0]
+                                    selected_image = self.match_image_with_ai(name, available_images)
+
+                                    if selected_image:
+                                        image_cache[name] = selected_image
+                                        _logger.warning("AI MATCHED IMAGE SUCCESS")
+                                    else:
+                                        _logger.warning("AI MATCH FAILED → fallback")
+                                        selected_image = available_images[0]
 
                     # ================= EXCEL MODE (UNCHANGED) =================
                     elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
