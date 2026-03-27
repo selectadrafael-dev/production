@@ -221,101 +221,78 @@ class VendorImportJob(models.Model):
 
         # -------- FINAL STRUCTURE --------
         final_pages = []
+        
+        _logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
 
-        # for page in pages:
+        page_products = []
 
-        #     combined_text = "\n".join([r["text"] for r in page["rows"]])
+        for batch_index, batch in enumerate(batched_pages):
 
-        #     final_pages.append({
-        #         "page": page["page"],
-        #         "text": combined_text,
-        #         "images": page["rows"]
-        #     })
+            _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
 
-        #     _logger.warning(f"PAGE {page['page']} → ROWS: {len(page['rows'])}")
+            combined_text = "\n\n".join([
+                p.get("text", "")
+                for p in batch if p.get("text")
+            ])
 
-        # self.extracted_text = json.dumps(final_pages)
+            if not combined_text.strip():
+                continue
 
-        # _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
+            prompt = f"""
+            (USE YOUR FINAL PROMPT HERE — DO NOT CHANGE IT)
+            
+            TEXT:
+            {combined_text}
+            """
 
-        BATCH_SIZE = 5  # 🔥 KEY OPTIMIZATION
+            MAX_RETRIES = 3
+            success = False
 
-batched_pages = [
-    pages[i:i + BATCH_SIZE]
-    for i in range(0, len(pages), BATCH_SIZE)
-]
+            for attempt in range(MAX_RETRIES):
 
-_logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
+                try:
+                    response = client.responses.create(
+                        model="gpt-4.1-mini",
+                        input=prompt,
+                        timeout=60
+                    )
 
-page_products = []
+                    result = response.output_text.strip()
+                    success = True
+                    break
 
-for batch_index, batch in enumerate(batched_pages):
+                except Exception as e:
+                    _logger.warning(f"RETRY {attempt+1} FAILED → {str(e)}")
 
-    _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
+            if not success:
+                _logger.error("FINAL FAILURE → SKIPPING BATCH")
+                continue
 
-    combined_text = "\n\n".join([
-        p.get("text", "")
-        for p in batch if p.get("text")
-    ])
+            # CLEAN RESPONSE
+            if "```" in result:
+                result = result.split("```")[1]
 
-    if not combined_text.strip():
-        continue
+            if result.lower().startswith("json"):
+                result = result[4:]
 
-    prompt = f"""
-    (USE YOUR FINAL PROMPT HERE — DO NOT CHANGE IT)
-    
-    TEXT:
-    {combined_text}
-    """
+            result = result.strip()
 
-    MAX_RETRIES = 3
-    success = False
+            try:
+                parsed = json.loads(result)
+            except Exception:
+                _logger.warning("INVALID JSON → SKIPPED")
+                continue
 
-    for attempt in range(MAX_RETRIES):
+            if isinstance(parsed, list) and parsed:
+                _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
 
-        try:
-            response = client.responses.create(
-                model="gpt-4.1-mini",
-                input=prompt,
-                timeout=60
-            )
+                page_products.append({
+                    "page": batch[0].get("page"),
+                    "products": parsed
+                })
 
-            result = response.output_text.strip()
-            success = True
-            break
-
-        except Exception as e:
-            _logger.warning(f"RETRY {attempt+1} FAILED → {str(e)}")
-
-    if not success:
-        _logger.error("FINAL FAILURE → SKIPPING BATCH")
-        continue
-
-    # CLEAN RESPONSE
-    if "```" in result:
-        result = result.split("```")[1]
-
-    if result.lower().startswith("json"):
-        result = result[4:]
-
-    result = result.strip()
-
-    try:
-        parsed = json.loads(result)
-    except Exception:
-        _logger.warning("INVALID JSON → SKIPPED")
-        continue
-
-    if isinstance(parsed, list) and parsed:
-        _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
-
-        page_products.append({
-            "page": batch[0].get("page"),
-            "products": parsed
-        })
-
-    import time
-    time.sleep(1)
+            import time
+            time.sleep(1)
 
     #---------------- MAIN FLOW ----------------
 
@@ -443,6 +420,15 @@ for batch_index, batch in enumerate(batched_pages):
         client = OpenAI(api_key=api_key)
 
         pages = json.loads(self.extracted_text or "[]")
+
+        BATCH_SIZE = 5
+
+        batched_pages = [
+            pages[i:i + BATCH_SIZE]
+            for i in range(0, len(pages), BATCH_SIZE)
+        ]
+
+        _logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
 
         page_products = []
 
@@ -658,30 +644,30 @@ for batch_index, batch in enumerate(batched_pages):
         ]
 
         prompt = f"""
-    You are an expert product image matcher.
+        You are an expert product image matcher.
 
-    Select the image that BEST represents this product:
+        Select the image that BEST represents this product:
 
-    PRODUCT:
-    {product_name}
+        PRODUCT:
+        {product_name}
 
-    RULES:
-    - Return ONLY the index (0-based integer)
-    - No explanation
-    - No text
+        RULES:
+        - Return ONLY the index (0-based integer)
+        - No explanation
+        - No text
 
-    PRIORITY:
-    1. Clean product image (plain background)
-    2. Product centered and clearly visible
-    3. No human interaction preferred
-    4. If only lifestyle images exist, choose the clearest one
+        PRIORITY:
+        1. Clean product image (plain background)
+        2. Product centered and clearly visible
+        3. No human interaction preferred
+        4. If only lifestyle images exist, choose the clearest one
 
-    DO NOT PICK:
-    - logos
-    - icons
-    - background-only images
-    - cropped fragments
-    """
+        DO NOT PICK:
+        - logos
+        - icons
+        - background-only images
+        - cropped fragments
+        """
 
         try:
             response = client.responses.create(
