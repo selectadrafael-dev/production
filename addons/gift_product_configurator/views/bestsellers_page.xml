@@ -1,0 +1,178 @@
+<odoo>
+
+  <template id="bestsellers_page_template">
+
+    <t t-call="website.layout">
+
+      <div id="wrap" class="oe_structure bestsellers-page">
+
+        <!--HERO-->
+        <section class="bs-hero">
+          <div class="container">
+
+            <div class="bs-hero-box">
+
+              <div class="bs-breadcrumb">
+                Home / Bestsellers
+              </div>
+
+              <h1>Best-Selling Promotional Products</h1>
+              <h3>Our Most Popular Branded Merchandise</h3>
+
+              <p>
+                If you're looking for the best-selling promotional products, look no further. You've found the right place. We have a wide variety of promotional merchandise that can be customized with your company's logo or message. From pens and mugs to notebooks and bags, we've got it all! And each item comes in a variety of colours so you can choose what's best for your brand. Get some of our best-selling promotional merchandise before it's gone!
+              </p>
+
+              <div class="bs-actions">
+                <a href="/contactus" class="btn-primary">
+                  Get An Express Quote
+                </a>
+                <a href="/contactus" class="btn-secondary">
+                  Contact Us
+                </a>
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+
+        <!-- MAIN -->
+        <section class="bs-main">
+          <div class="container">
+
+            <div class="bs-layout">
+
+              <!-- SIDEBAR -->
+              <aside class="bs-sidebar">
+
+                <h4>Filter by</h4>
+
+                <div class="filter-group">
+                  <h5>Colour</h5>
+
+                  <label><input type="checkbox"/> Black</label>
+                  <label><input type="checkbox"/> Blue</label>
+                  <label><input type="checkbox"/> Brown</label>
+                  <label><input type="checkbox"/> Burgundy</label>
+                  
+                  <h5 class="mt-3">Brand</h5>
+                  <label><input type="checkbox"/> Prodir</label>
+                 
+                  <h5 class="mt-3">Material</h5>
+
+                  <label><input type="checkbox"/> Aluminium</label>
+                  <label><input type="checkbox"/> Ceramic</label>
+                  <label><input type="checkbox"/> Cotton</label>
+                  <label><input type="checkbox"/> GRS</label>
+                </div>
+
+                <button class="clear-btn">
+                  Clear filters
+                </button>
+
+              </aside>
+
+
+              <!-- CONTENT -->
+              <div class="bs-content">
+
+                <!-- TOOLBAR -->
+                <div class="bs-toolbar">
+
+                  <!-- LEFT : VAT TOGGLE -->
+                  <div class="vat-toggle">
+                    <label class="switch">
+                      <input type="checkbox"/>
+                      <span class="slider"></span>
+                    </label>
+
+                    <span class="vat-text">
+                      Excludes <strong>VAT</strong>
+                    </span>
+                  </div>
+
+
+                  <!-- CENTER : RESULT COUNT -->
+                  <div class="result-count">
+                    <t t-set="total" t-value="len(products)"/>
+                    <span>1–<t t-esc="total"/> of <t t-esc="total"/> results</span>
+                  </div>
+
+
+                  <!-- RIGHT : SORT BUTTON -->
+                  <div class="sort-box">
+                    <button class="sort-btn">
+                      Most popular
+                    </button>
+                  </div>
+
+                </div>
+
+                
+
+
+                <!-- PRODUCT GRID -->
+                <div class="bs-grid">
+
+                  <t t-foreach="products" t-as="product">
+
+                    <div class="product-card">
+
+                      <a t-att-href="'/shop/product/%s' % product.id">
+
+                        <img
+                          t-att-src="'/web/image/product.template/%s/image_512' % product.id"
+                          alt=""
+                        />
+
+                        <h6 t-esc="product.name"/>
+
+                        <p class="price">
+                          <span t-field="product.list_price"
+                                t-options='{"widget": "monetary",
+                                "display_currency": website.pricelist_id.currency_id}'/>
+                        </p>
+
+                      </a>
+
+                    </div>
+
+                  </t>
+
+                </div>
+
+                <!-- PAGINATION -->
+                  <div class="bs-pagination">
+
+                    <a href="#" class="page-arrow">&lt;</a>
+
+                    <a href="#" class="page-number active">1</a>
+                    <a href="#" class="page-number">2</a>
+
+                    <a href="#" class="page-arrow">&gt;</a>
+
+                  </div>
+
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        <hr/>
+          <div class="container">
+            <h4>Best Selling Promotional Products</h4>
+            <p>Looking for printed promotional products to enhance your next marketing campaign or simply use as a giveaway? Look no further than EverythingBranded. Our Best Sellers category has all of our most popular, best-selling branded merchandise ranging from branded notebooks to custom mugs, we have every bit of best selling promotional merchandise which you can benefit from.</p>
+            <p>If you are new to top quality custom imprinted products, this is the place to start. We have the best selling promotional items that will get you noticed by potential customers. Our team of experts have reviewed their needs and we have put together a collection of the highest quality items from each category.</p>
+            <p>Let’s face it, when you have a product or service that you want to promote there are many ways to get the word out. For example, if you want your brand name to stand out you can use promotional products like custom mugs and pens. In fact, these marketing tools keep on working long after people have interacted with them.</p>
+        </div>
+      </div>
+
+    </t>
+
+  </template>
+
+</odoo>

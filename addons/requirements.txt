@@ -1,0 +1,7 @@
+pdfplumber
+pandas
+openai>=1.0.0
+beautifulsoup4
+requests
+openpyxl-image-loader
+#playwright==1.42.0

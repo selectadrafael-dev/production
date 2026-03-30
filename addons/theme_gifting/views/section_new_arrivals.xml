@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data>
+
+    <template id="section_new_arrivals"
+              name="New Arrivals Section">
+
+      <!-- Fetch latest 12 products from New Arrivals category -->
+      <t t-set="products"
+         t-value="request.env['gifting.product.helper']
+                  .get_latest_products(
+                  'theme_gifting.category_new_arrivals', 12)"/>
+
+      <section class="new-arrivals-section py-5">
+
+        <div class="container">
+
+          <!-- Header -->
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="fw-bold">Yeni gələnlər</h3>
+
+            <a href="/shop"
+               class="view-all-link">
+               Daha çox →
+            </a>
+          </div>
+
+          <!-- Grid -->
+          <div class="row g-4">
+
+            <t t-if="products">
+
+              <t t-foreach="products" t-as="product">
+
+                <div class="col-lg-3 col-md-4 col-6">
+
+                  <a t-att-href="'/shop/product/%s' % product.id"
+                     class="text-decoration-none">
+
+                    <div class="arrival-card">
+
+                      <!-- Image -->
+                      <div class="arrival-img" data-aos="fade-up">
+                        <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"/>
+                      </div>
+
+                      <!-- Name -->
+                      <div class="arrival-name">
+                        <t t-esc="product.name"/>
+                      </div>
+
+                      <!-- Price -->
+                      <div class="arrival-price">
+                        $ <t t-esc="product.list_price"/>
+                      </div>
+
+                    </div>
+
+                  </a>
+
+                </div>
+
+              </t>
+
+            </t>
+
+            <!-- Empty fallback -->
+            <t t-if="not products">
+              <div class="col-12 text-center text-muted">
+                No new arrivals yet.
+              </div>
+            </t>
+
+          </div>
+
+        </div>
+
+      </section>
+
+    </template>
+
+  </data>
+</odoo>
