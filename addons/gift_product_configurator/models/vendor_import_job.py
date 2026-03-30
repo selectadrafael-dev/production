@@ -991,7 +991,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"APIFY START → {url}")
 
         try:
-            # 🚀 Start actor run
+            #🚀 Start actor run
             run_response = requests.post(run_url, json=payload, timeout=60)
             run_response.raise_for_status()
 
@@ -1000,7 +1000,7 @@ class VendorImportJob(models.Model):
 
             dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={apify_token}"
 
-            # ⏳ Wait for Apify to finish
+            #⏳ Wait for Apify to finish
             time.sleep(8)
 
             # 📥 Fetch results
