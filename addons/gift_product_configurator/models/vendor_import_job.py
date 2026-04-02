@@ -970,6 +970,8 @@ class VendorImportJob(models.Model):
 
     #======apify url new logic=============== 
     def _run_apify_actor(self, url):
+        import requests
+        import time
 
         token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
 
@@ -979,35 +981,70 @@ class VendorImportJob(models.Model):
         ACTOR_ID = "princ_adex~my-actor"
 
         run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
-
         _logger.warning(f"APIFY RUN URL → {run_url}")
 
-        # ✅ THIS IS CRITICAL (PAYLOAD)
         payload = {
             "startUrls": [
                 {"url": url}
             ]
         }
 
-        # ✅ THIS IS ALSO REQUIRED
         headers = {
             "Content-Type": "application/json"
         }
 
-        # ✅ MUST BE POST WITH JSON
-        response = requests.post(run_url, json=payload, headers=headers)
+        # 🚀 START ACTOR
+        response = requests.post(run_url, json=payload, headers=headers, timeout=30)
 
         if response.status_code != 201:
             raise Exception(f"Apify run failed: {response.text}")
 
         run_data = response.json()
+        run_id = run_data["data"]["id"]
         dataset_id = run_data["data"]["defaultDatasetId"]
 
-        # ⏳ wait for results
-        time.sleep(5)
+        _logger.warning(f"APIFY RUN ID → {run_id}")
+        _logger.warning(f"APIFY DATASET ID → {dataset_id}")
 
-        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={token}"
+        # 🔁 WAIT FOR ACTOR TO FINISH
+        for _ in range(30):  # ~90 seconds max
+            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={token}"
 
-        dataset_res = requests.get(dataset_url)
+            status_res = requests.get(status_url, timeout=20).json()
+            status = status_res["data"]["status"]
 
-        return dataset_res.json()
+            _logger.warning(f"APIFY STATUS → {status}")
+
+            if status == "SUCCEEDED":
+                break
+
+            if status in ["FAILED", "ABORTED", "TIMED-OUT"]:
+                raise Exception(f"Apify run failed with status: {status}")
+
+            time.sleep(3)
+        else:
+            raise Exception("Apify run timeout exceeded")
+
+        # 📦 FETCH DATA WITH LIMIT
+        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+
+        params = {
+            "token": token,
+            "limit": 1000,   # 🔥 increase as needed
+            "clean": True
+        }
+
+        dataset_res = requests.get(dataset_url, params=params, timeout=30)
+
+        if dataset_res.status_code != 200:
+            raise Exception(f"Failed to fetch dataset: {dataset_res.text}")
+
+        data = dataset_res.json()
+
+        _logger.warning(f"APIFY ITEMS FETCHED → {len(data)}")
+
+        # ❗ SAFETY CHECK
+        if not data:
+            raise Exception("Apify returned empty dataset")
+
+        return data
