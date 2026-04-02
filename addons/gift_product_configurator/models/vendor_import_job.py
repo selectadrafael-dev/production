@@ -654,9 +654,13 @@ class VendorImportJob(models.Model):
 
         return None
 
-    #----------------PRODUCT CREATION ----------------
+
+    # ---------------- PRODUCT CREATION ----------------
 
     def create_product_drafts(self):
+
+        import requests
+        import base64
 
         if not self.ai_response:
             _logger.warning("NO AI RESPONSE")
@@ -667,8 +671,13 @@ class VendorImportJob(models.Model):
 
         try:
             products = json.loads(self.ai_response)
-        except Exception:
-            _logger.error("INVALID AI JSON")
+
+            # ✅ safety (AI may return dict instead of list)
+            if isinstance(products, dict):
+                products = [products]
+
+        except Exception as e:
+            _logger.error(f"INVALID AI JSON → {str(e)}")
             return
 
         created_count = 0
@@ -682,14 +691,14 @@ class VendorImportJob(models.Model):
             description = product.get("description", "")
             category_name = product.get("category") or "Uncategorized"
 
-            # ✅ category
+            # ✅ CATEGORY
             category = category_obj.search([('name', '=', category_name)], limit=1)
             if not category:
                 category = category_obj.create({'name': category_name})
 
-            # ✅ duplicate protection
+            # ✅ DUPLICATE PROTECTION (IMPROVED)
             existing = product_obj.search([
-                ('name', 'ilike', name[:30])
+                ('name', 'ilike', name.strip())
             ], limit=1)
 
             if existing:
@@ -697,27 +706,48 @@ class VendorImportJob(models.Model):
                 continue
 
             vals = {
-                'name': name,
+                'name': name.strip(),
                 'description_sale': description,
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
             }
 
-            # ✅ IMAGE (FROM AI URL)
-            image_url = product.get("image")
+            # ================= IMAGE HANDLING (IMPROVED) =================
 
-            if image_url:
+            image_url = (
+                product.get("image")
+                or product.get("image_url")
+                or product.get("raw_image")
+            )
+
+            if image_url and isinstance(image_url, str) and image_url.startswith("http"):
                 try:
-                    res = requests.get(image_url, timeout=10)
-                    if res.status_code == 200:
-                        vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
-                except Exception:
-                    pass
+                    _logger.warning(f"FETCHING IMAGE → {image_url}")
 
-            product_obj.create(vals)
-            created_count += 1
+                    res = requests.get(image_url, timeout=15)
 
+                    if res.status_code == 200 and res.content:
+                        vals['image_1920'] = base64.b64encode(res.content)
+                    else:
+                        _logger.warning(f"INVALID IMAGE RESPONSE → {image_url}")
+
+                except Exception as e:
+                    _logger.warning(f"IMAGE FETCH FAILED → {image_url} | {str(e)}")
+
+            else:
+                _logger.warning(f"NO VALID IMAGE → {name}")
+
+            # ================= CREATE PRODUCT =================
+
+            try:
+                product_obj.create(vals)
+                created_count += 1
+            except Exception as e:
+                _logger.error(f"PRODUCT CREATE FAILED → {name} | {str(e)}")
+                continue
+
+            # ✅ commit in batches (safe for large imports)
             if created_count % 50 == 0:
                 self.env.cr.commit()
 
