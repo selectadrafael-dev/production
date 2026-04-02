@@ -254,9 +254,41 @@ class VendorImportJob(models.Model):
             # ================= INPUT ROUTING =================
 
             # ✅ PRIORITY 1: URL
+            # if self.data_url:
+            #     _logger.warning("STEP → Parsing URL (Apify)")
+            #     raw_data = self._run_apify_actor(self.data_url)
+            #     self.extracted_text = json.dumps(raw_data)
+
             if self.data_url:
                 _logger.warning("STEP → Parsing URL (Apify)")
-                self.parse_url()
+
+                raw_data = self._run_apify_actor(self.data_url)
+
+                if not raw_data:
+                    _logger.error("APIFY FAILED → NO DATA")
+                    self.state = "failed"
+                    return
+
+                _logger.warning(f"RAW APIFY COUNT → {len(raw_data)}")
+
+                # ✅ CLEAN DATA
+                cleaned_data = self._clean_scraped_blocks(raw_data)
+
+                _logger.warning(f"CLEANED DATA COUNT → {len(cleaned_data)}")
+
+                if not cleaned_data:
+                    _logger.error("NO CLEAN DATA → STOPPING")
+                    self.state = "failed"
+                    return
+
+                # ✅ NORMALIZE FOR AI (VERY IMPORTANT)
+                self.extracted_text = json.dumps([
+                    {
+                        "page": 1,
+                        "text": "\n".join([item["text"] for item in cleaned_data]),
+                        "images": [item["image"] for item in cleaned_data if item["image"]]
+                    }
+                ])
 
             # ✅ PRIORITY 2: Excel
             elif self.excel_file:
@@ -397,7 +429,6 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # ================= BATCHING =================
         BATCH_SIZE = 5
 
         batched_pages = [
@@ -407,9 +438,8 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
 
-        page_products = []
+        all_products = []
 
-        # ================= LOOP =================
         for batch_index, batch in enumerate(batched_pages):
 
             _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
@@ -419,121 +449,62 @@ class VendorImportJob(models.Model):
             ])
 
             if not combined_text.strip():
-                _logger.warning("EMPTY TEXT → SKIP BATCH")
                 continue
 
             prompt = f"""
-            You are an advanced product extraction and interpretation engine for catalog PDFs.
+            You are a highly precise e-commerce product extraction engine.
 
-            =====================
-            CORE RULES (STRICT)
-            =====================
+            Extract ALL individual products.
 
-            1. RETURN ONLY VALID JSON
-            2. NO explanation
-            3. NO markdown
-            4. NO text outside JSON
-            5. DO NOT duplicate products
-            6. DO NOT skip any product
-            7. EACH product must appear exactly once
+            RULES:
+            - Split multiple products
+            - Remove duplicates
+            - Ignore noise (menu, footer, login)
+            - Return ONLY JSON
 
-            =====================
-            PRODUCT DETECTION LOGIC
-            =====================
-
-            A page may contain:
-
-            (A) ONE large product (hero layout)
-            (B) MULTIPLE products (grid/catalog layout)
-            (C) MIX of large + small supporting products
-
-            You MUST:
-
-            - If SINGLE main product:
-            → return ONE product
-
-            - If MULTIPLE products:
-            → extract EACH product separately
-
-            - If repeated items:
-            → treat EACH visible item as a unique product
-
-            =====================
-            OUTPUT FORMAT
-            =====================
-
+            OUTPUT:
             [
-            {{
-                "name": "",
-                "description": "",
-                "category": ""
-            }}
+                {{
+                    "name": "",
+                    "description": "",
+                    "category": "",
+                    "image": ""
+                }}
             ]
 
-            =====================
-            TEXT TO ANALYZE
-            =====================
-
+            TEXT:
             {combined_text}
             """
 
-            MAX_RETRIES = 3
-            success = False
-
-            for attempt in range(MAX_RETRIES):
-                try:
-                    response = client.responses.create(
-                        model="gpt-4.1-mini",
-                        input=prompt,
-                        timeout=60
-                    )
-
-                    result = response.output_text.strip()
-                    success = True
-                    break
-
-                except Exception as e:
-                    _logger.warning(f"RETRY {attempt+1} FAILED → {str(e)}")
-
-            if not success:
-                _logger.error("FINAL FAILURE → SKIP BATCH")
-                continue
-
-            # ================= CLEAN RESPONSE =================
-            if "```" in result:
-                result = result.split("```")[1]
-
-            if result.lower().startswith("json"):
-                result = result[4:]
-
-            result = result.strip()
-
             try:
+                response = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=prompt,
+                    timeout=60
+                )
+
+                result = response.output_text.strip()
+
+                if "```" in result:
+                    result = result.split("```")[1]
+
+                if result.lower().startswith("json"):
+                    result = result[4:]
+
                 parsed = json.loads(result)
-            except Exception:
-                _logger.warning("INVALID JSON → SKIP BATCH")
-                continue
 
-            if isinstance(parsed, list) and parsed:
+                if isinstance(parsed, list):
+                    all_products.extend(parsed)
+                    _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
 
-                for page in batch:
+            except Exception as e:
+                _logger.warning(f"AI ERROR → {str(e)}")
 
-                    page_products.append({
-                        "page": page.get("page"),
-                        "products": parsed
-                    })
-
-                _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
-
-            import time
             time.sleep(1)
 
-        # ================= FINAL =================
-        self.ai_response = json.dumps(page_products)
+        self.ai_response = json.dumps(all_products)
 
-        _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
-
-       #self.state = "ai_done"
+        _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
 
@@ -687,152 +658,72 @@ class VendorImportJob(models.Model):
 
     def create_product_drafts(self):
 
-        def is_valid_product_image(img_base64):
-            return True  # keep Excel safe
-
-        if not self.ai_response or not self.extracted_text:
-            _logger.warning("NO AI OR EXTRACTED DATA → STOP")
+        if not self.ai_response:
+            _logger.warning("NO AI RESPONSE")
             return
 
         product_obj = self.env['product.template']
         category_obj = self.env['product.category']
 
         try:
-            pages = json.loads(self.extracted_text)
-            ai_pages = json.loads(self.ai_response)
+            products = json.loads(self.ai_response)
         except Exception:
-            _logger.error("INVALID JSON → STOP")
+            _logger.error("INVALID AI JSON")
             return
-
-        _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
-        _logger.warning(f"AI PAGES COUNT: {len(ai_pages)}")
 
         created_count = 0
 
-        # ✅ GLOBAL CACHE (VERY IMPORTANT)
-        used_images = set()
-        image_cache = {}
+        for product in products:
 
-        # ================= LOOP 1 (PAGES) =================
-        for page_data in pages:
-
-            page_no = page_data.get("page")
-
-            ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
-
-            if not ai_page:
-                _logger.warning(f"NO AI DATA FOR PAGE {page_no}")
+            name = product.get("name")
+            if not name:
                 continue
 
-            products = ai_page.get("products", [])
+            description = product.get("description", "")
+            category_name = product.get("category") or "Uncategorized"
 
-            if not products:
-                _logger.warning(f"NO PRODUCTS FOUND ON PAGE {page_no}")
+            # ✅ category
+            category = category_obj.search([('name', '=', category_name)], limit=1)
+            if not category:
+                category = category_obj.create({'name': category_name})
+
+            # ✅ duplicate protection
+            existing = product_obj.search([
+                ('name', 'ilike', name[:30])
+            ], limit=1)
+
+            if existing:
+                _logger.warning(f"DUPLICATE SKIPPED → {name}")
                 continue
 
-            _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
+            vals = {
+                'name': name,
+                'description_sale': description,
+                'categ_id': category.id,
+                'sale_ok': True,
+                'website_published': False,
+            }
 
-            # ================= LOOP 2 (PRODUCTS) =================
-            for i, product in enumerate(products):
+            # ✅ IMAGE (FROM AI URL)
+            image_url = product.get("image")
 
-                name = product.get("name")
+            if image_url:
+                try:
+                    res = requests.get(image_url, timeout=10)
+                    if res.status_code == 200:
+                        vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
+                except Exception:
+                    pass
 
-                if not name:
-                    _logger.warning("SKIPPING EMPTY PRODUCT")
-                    continue
+            product_obj.create(vals)
+            created_count += 1
 
-                description = product.get("description", "")
-                category_name = product.get("category") or "Uncategorized"
+            if created_count % 50 == 0:
+                self.env.cr.commit()
 
-                category = category_obj.search([('name', '=', category_name)], limit=1)
-                if not category:
-                    category = category_obj.create({'name': category_name})
-
-                vals = {
-                    'name': name,
-                    'description_sale': description,
-                    'categ_id': category.id,
-                    'sale_ok': True,
-                    'website_published': False,
-                }
-
-                # ================= DUPLICATE PROTECTION =================
-                existing = product_obj.search([('name', '=', name)], limit=1)
-                if existing:
-                    _logger.warning(f"SKIPPED DUPLICATE → {name}")
-                    continue
-
-                # ================= IMAGE ENGINE =================
-                row_data = page_data.get("images", [])
-                selected_image = None
-
-                if row_data:
-
-                    # ================= PDF MODE =================
-                    if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
-
-                        available_images = [img for img in row_data if img not in used_images]
-
-                        _logger.warning(f"PDF IMAGE MODE → {len(available_images)} usable images")
-
-                        if available_images:
-
-                            if len(available_images) == 1:
-                                selected_image = available_images[0]
-
-                            else:
-                                if name in image_cache:
-                                    selected_image = image_cache[name]
-                                    _logger.warning(f"CACHE HIT → {name}")
-
-                                else:
-                                    selected_image = self.match_image_with_ai(name, available_images)
-
-                                    if selected_image:
-                                        image_cache[name] = selected_image
-                                        _logger.warning("AI MATCHED IMAGE SUCCESS")
-                                    else:
-                                        selected_image = available_images[0]
-                                        _logger.warning("AI FALLBACK USED")
-
-                    # ================= EXCEL MODE =================
-                    elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
-
-                        total_rows = len(row_data)
-
-                        row_index = i % total_rows
-                        row_images = row_data[row_index].get("images", [])
-
-                        valid_images = [img for img in row_images if is_valid_product_image(img)]
-
-                        if valid_images:
-                            selected_image = valid_images[0]
-                            _logger.warning(f"EXCEL IMAGE SELECTED → ROW {row_index}")
-
-                # ================= APPLY IMAGE =================
-                if selected_image:
-                    vals['image_1920'] = selected_image
-                    used_images.add(selected_image)
-                    _logger.warning(f"IMAGE ASSIGNED → {name}")
-                else:
-                    _logger.warning(f"NO IMAGE → {name}")
-
-                # ================= CREATE =================
-                product_obj.create(vals)
-                created_count += 1
-
-                # ✅ COMMIT EVERY 50 PRODUCTS (VERY IMPORTANT)
-                if created_count % 50 == 0:
-                    self.env.cr.commit()
-                    _logger.warning(f"PARTIAL COMMIT → {created_count}")
-
-            _logger.warning(f"PAGE {page_no} DONE")
-
-        # ================= FINAL COMMIT =================
         self.env.cr.commit()
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
-        _logger.warning("PRODUCT CREATION LOOP COMPLETED")
 
     #-----URL API FLOW-------------------------------------------
 
@@ -934,7 +825,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     #---------------- CRON ----------------
-
     def run_pending_jobs(self):
 
         jobs = self.search([('state', '=', 'draft')])
@@ -949,15 +839,16 @@ class VendorImportJob(models.Model):
 
                 job.process_import()
 
-                # ✅ VERY IMPORTANT — mark as done
-                job.state = 'done'
+                if job.state != 'failed':
+                    job.state = 'done'
 
                 _logger.warning(f"CRON → JOB {job.id} DONE")
 
             except Exception:
                 _logger.exception("CRON FAILED")
                 job.state = 'error'
-    
+   
+   #flask setup/installation 
     def ping_flask_server(self):
       
         try:
@@ -965,7 +856,6 @@ class VendorImportJob(models.Model):
             _logger.info("FLASK PING SUCCESS")
         except Exception:
             _logger.warning("FLASK PING FAILED")
-
 
     #----------apify fetch url-------------------
     
@@ -979,13 +869,15 @@ class VendorImportJob(models.Model):
         if not apify_token:
             raise Exception("Apify API token not configured. Please set it in System Parameters.")
 
-        ACTOR_ID = "apify/playwright-scraper"
+        #ACTOR_ID = "princ_adex/my-actor"
+        ACTOR_ID = "apify/web-scraper"
 
         run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={apify_token}"
 
         payload = {
             "startUrls": [{"url": url}],
-            "maxRequestsPerCrawl": 20
+            "maxRequestsPerCrawl": 20,
+            "pseudoUrls": [{"purl": url + "[.*]"}]
         }
 
         _logger.warning(f"APIFY START → {url}")
@@ -1033,3 +925,87 @@ class VendorImportJob(models.Model):
             })
 
         return normalized
+
+    def _clean_scraped_blocks(self, raw_blocks):
+        """
+        Clean Apify output before sending to AI
+        """
+
+        cleaned = []
+        seen = set()
+
+        for item in raw_blocks:
+
+            text = (item.get("text") or "").strip()
+            image = item.get("image")
+
+            # ❌ REMOVE NOISE
+            if not text:
+                continue
+
+            if len(text) < 15:
+                continue
+
+            if any(x in text.lower() for x in [
+                "privacy", "cookie", "terms", "login",
+                "menu", "navigation", "home"
+            ]):
+                continue
+
+            # ❌ REMOVE DUPLICATES
+            key = text[:120]  # allow more variation
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            cleaned.append({
+                "text": text,
+                "image": image
+            })
+
+        return cleaned
+    
+
+    #======apify url new logic=============== 
+    def _run_apify_actor(self, url):
+
+        token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
+
+        if not token:
+            raise Exception("Apify API token not configured")
+
+        ACTOR_ID = "princ_adex/my-actor"
+
+        run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
+
+        payload = {
+            "startUrls": [{"url": url}]
+        }
+
+        response = requests.post(run_url, json=payload)
+
+        if response.status_code != 201:
+            raise Exception(f"Apify run failed: {response.text}")
+
+        run_data = response.json()
+        dataset_id = run_data["data"]["defaultDatasetId"]
+
+        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={token}"
+
+        # ✅ WAIT UNTIL DATA IS READY (IMPORTANT FIX)
+        for _ in range(10):
+            result = requests.get(dataset_url)
+
+            if result.status_code == 200:
+                data = result.json()
+
+                if data:
+                    _logger.warning(f"APIFY DATA READY → {len(data)} items")
+                    return data
+
+            time.sleep(3)
+
+        _logger.error("APIFY TIMEOUT → NO DATA")
+        return []
