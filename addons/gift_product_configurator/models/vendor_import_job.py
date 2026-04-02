@@ -970,8 +970,6 @@ class VendorImportJob(models.Model):
 
     #======apify url new logic=============== 
     def _run_apify_actor(self, url):
-        import requests
-        import time
 
         token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
 
@@ -1030,8 +1028,8 @@ class VendorImportJob(models.Model):
 
         params = {
             "token": token,
-            "limit": 1000,   # 🔥 increase as needed
-            "clean": True
+            "limit": 1000,
+            "clean": "true"   # ✅ MUST be string
         }
 
         dataset_res = requests.get(dataset_url, params=params, timeout=30)
