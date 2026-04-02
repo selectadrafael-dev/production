@@ -713,7 +713,7 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             }
 
-            # ================= IMAGE HANDLING (IMPROVED) =================
+            #================= IMAGE HANDLING (IMPROVED) =================
 
             image_url = (
                 product.get("image")
