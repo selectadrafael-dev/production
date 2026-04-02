@@ -738,7 +738,7 @@ class VendorImportJob(models.Model):
             else:
                 _logger.warning(f"NO VALID IMAGE → {name}")
 
-            # ================= CREATE PRODUCT =================
+            #================= CREATE PRODUCT =================
 
             try:
                 product_obj.create(vals)
@@ -761,14 +761,11 @@ class VendorImportJob(models.Model):
 
         from playwright.sync_api import sync_playwright
         import subprocess
-        import json
-        import base64
-        import requests
         import os
 
         _logger.warning(f"PLAYWRIGHT SCRAPE → {self.data_url}")
 
-        # ✅ CHECK IF BROWSER EXISTS FIRST
+        #✅ CHECK IF BROWSER EXISTS FIRST
         browser_path = os.path.expanduser("~/.cache/ms-playwright")
 
         if not os.path.exists(browser_path):
