@@ -976,15 +976,26 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "princ_adex/my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
 
+        _logger.warning(f"APIFY RUN URL → {run_url}")
+
+        # ✅ THIS IS CRITICAL (PAYLOAD)
         payload = {
-            "startUrls": [{"url": url}]
+            "startUrls": [
+                {"url": url}
+            ]
         }
 
-        response = requests.post(run_url, json=payload)
+        # ✅ THIS IS ALSO REQUIRED
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        # ✅ MUST BE POST WITH JSON
+        response = requests.post(run_url, json=payload, headers=headers)
 
         if response.status_code != 201:
             raise Exception(f"Apify run failed: {response.text}")
@@ -992,20 +1003,11 @@ class VendorImportJob(models.Model):
         run_data = response.json()
         dataset_id = run_data["data"]["defaultDatasetId"]
 
+        # ⏳ wait for results
+        time.sleep(5)
+
         dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={token}"
 
-        # ✅ WAIT UNTIL DATA IS READY (IMPORTANT FIX)
-        for _ in range(10):
-            result = requests.get(dataset_url)
+        dataset_res = requests.get(dataset_url)
 
-            if result.status_code == 200:
-                data = result.json()
-
-                if data:
-                    _logger.warning(f"APIFY DATA READY → {len(data)} items")
-                    return data
-
-            time.sleep(3)
-
-        _logger.error("APIFY TIMEOUT → NO DATA")
-        return []
+        return dataset_res.json()
