@@ -7,7 +7,6 @@ import pandas as pd
 from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl_image_loader import SheetImageLoader
-from playwright.sync_api import sync_playwright
 from PIL import Image
 import time
 import json
@@ -254,11 +253,6 @@ class VendorImportJob(models.Model):
             # ================= INPUT ROUTING =================
 
             # ✅ PRIORITY 1: URL
-            # if self.data_url:
-            #     _logger.warning("STEP → Parsing URL (Apify)")
-            #     raw_data = self._run_apify_actor(self.data_url)
-            #     self.extracted_text = json.dumps(raw_data)
-
             if self.data_url:
                 _logger.warning("STEP → Parsing URL (Apify)")
 
@@ -285,8 +279,7 @@ class VendorImportJob(models.Model):
                 self.extracted_text = json.dumps([
                     {
                         "page": 1,
-                        "text": "\n".join([item["text"] for item in cleaned_data]),
-                        "images": [item["image"] for item in cleaned_data if item["image"]]
+                        "blocks": cleaned_data   # ✅ KEEP TEXT + IMAGE TOGETHER
                     }
                 ])
 
@@ -445,7 +438,9 @@ class VendorImportJob(models.Model):
             _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
 
             combined_text = "\n\n".join([
-                p.get("text", "") for p in batch if p.get("text")
+                f"{b.get('text','')} | IMAGE: {b.get('image','')}"
+                for p in batch
+                for b in p.get("blocks", [])
             ])
 
             if not combined_text.strip():
@@ -728,7 +723,8 @@ class VendorImportJob(models.Model):
                     res = requests.get(image_url, timeout=15)
 
                     if res.status_code == 200 and res.content:
-                        vals['image_1920'] = base64.b64encode(res.content)
+                        #vals['image_1920'] = base64.b64encode(res.content)
+                        vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
                     else:
                         _logger.warning(f"INVALID IMAGE RESPONSE → {image_url}")
 
@@ -884,58 +880,6 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("FLASK PING FAILED")
 
-    #----------apify fetch url-------------------
-    
-    _logger = logging.getLogger(__name__)
-
-    def _fetch_from_apify(self, url):
-
-        #✅ Get token from Odoo system parameters
-        apify_token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
-
-        if not apify_token:
-            raise Exception("Apify API token not configured. Please set it in System Parameters.")
-
-        #ACTOR_ID = "princ_adex/my-actor"
-        ACTOR_ID = "apify/web-scraper"
-
-        run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={apify_token}"
-
-        payload = {
-            "startUrls": [{"url": url}],
-            "maxRequestsPerCrawl": 20,
-            "pseudoUrls": [{"purl": url + "[.*]"}]
-        }
-
-        _logger.warning(f"APIFY START → {url}")
-
-        try:
-            #🚀 Start actor run
-            run_response = requests.post(run_url, json=payload, timeout=60)
-            run_response.raise_for_status()
-
-            run_data = run_response.json()
-            dataset_id = run_data["data"]["defaultDatasetId"]
-
-            dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={apify_token}"
-
-            #⏳ Wait for Apify to finish
-            time.sleep(8)
-
-            # 📥 Fetch results
-            result_response = requests.get(dataset_url, timeout=60)
-            result_response.raise_for_status()
-
-            result = result_response.json()
-
-            _logger.warning(f"APIFY SUCCESS → {len(result)} items fetched")
-
-            return result
-
-        except Exception as e:
-            _logger.error(f"APIFY ERROR → {str(e)}")
-            return []
-
     #---------------normalizer--------------------------------
     def _normalize_url_data(self, items):
         normalized = []
@@ -995,7 +939,7 @@ class VendorImportJob(models.Model):
         return cleaned
     
 
-    #======apify url new logic=============== 
+    #======apify url fetch/scrapp products=============== 
     def _run_apify_actor(self, url):
 
         token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
