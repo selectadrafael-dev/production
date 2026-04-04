@@ -433,9 +433,49 @@ class VendorImportJob(models.Model):
         _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
 
         # 🔥 LIMIT TO PREVENT OVERLOAD
-        all_blocks = all_blocks[:60]
+        MAX_BLOCKS = 200
+        if len(all_blocks) > MAX_BLOCKS:
+            all_blocks = all_blocks[:MAX_BLOCKS]
 
-        BLOCK_BATCH_SIZE = 10
+        # =====================================================
+        # 🔥🔥 NEW: FILTER OUT NON-PRODUCT BLOCKS (SAFE INSERT)
+        # =====================================================
+
+        def is_valid_block(text):
+            if not text:
+                return False
+
+            text = text.lower()
+
+            # ❌ noise removal
+            noise_keywords = [
+                "cookie", "privacy", "login", "menu",
+                "navigation", "home", "accept", "terms",
+                "search", "filter", "sort"
+            ]
+
+            if any(n in text for n in noise_keywords):
+                return False
+
+            # ✅ product indicators
+            has_price = any(sym in text for sym in ["£", "$", "€"])
+            has_numbers = any(char.isdigit() for char in text)
+
+            return has_price or has_numbers
+
+        # 🔥 APPLY FILTER
+        all_blocks = [
+            b for b in all_blocks
+            if is_valid_block(b.get("text", ""))
+        ]
+
+        _logger.warning(f"FILTERED BLOCKS → {len(all_blocks)}")
+
+        # =====================================================
+        # 🔥 CONTINUE NORMAL FLOW (UNCHANGED)
+        # =====================================================
+
+        BLOCK_BATCH_SIZE = 20
 
         batched_blocks = [
             all_blocks[i:i + BLOCK_BATCH_SIZE]
@@ -582,7 +622,7 @@ class VendorImportJob(models.Model):
         # 🔥 DEDUPLICATE PRODUCTS
         unique = {}
         for p in all_products:
-            key = (p.get("name") or "").lower().strip()
+            key = (p.get("name") or "").lower().strip()[:40]
             if key and key not in unique:
                 unique[key] = p
 
@@ -593,7 +633,6 @@ class VendorImportJob(models.Model):
         self.ai_response = json.dumps(all_products)
 
         _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
-
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
