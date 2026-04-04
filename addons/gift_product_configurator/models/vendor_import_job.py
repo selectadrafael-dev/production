@@ -437,9 +437,9 @@ class VendorImportJob(models.Model):
         if len(all_blocks) > MAX_BLOCKS:
             all_blocks = all_blocks[:MAX_BLOCKS]
 
-        # =====================================================
+        # ======================================================
         # 🔥🔥 NEW: FILTER OUT NON-PRODUCT BLOCKS (SAFE INSERT)
-        # =====================================================
+        # ======================================================
 
         def is_valid_block(text):
             if not text:
