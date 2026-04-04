@@ -54,14 +54,81 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
 
+        # ================= PRIMARY SCRAPE =================
         raw_data = self._fetch_from_apify(self.data_url)
+
         _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:300]}")
 
         if not raw_data:
             _logger.error("APIFY FAILED → NO DATA")
             return
 
-        structured_data = self._normalize_url_data(raw_data)
+        # ================= DETECT CATEGORY PAGE =================
+        # If many items have NO price / weak product signals → likely category page
+        product_like_count = 0
+
+        for item in raw_data:
+            text = (item.get("text") or "").lower()
+
+            if any(k in text for k in ["£", "$", "€", "price", "from"]):
+                product_like_count += 1
+
+        is_category_page = product_like_count < 5
+
+        _logger.warning(f"CATEGORY PAGE DETECTED → {is_category_page}")
+
+        # ================= FOLLOW CATEGORY LINKS =================
+        all_data = list(raw_data)
+
+        if is_category_page:
+
+            _logger.warning("ATTEMPTING CATEGORY LINK EXTRACTION")
+
+            try:
+                headers = {"User-Agent": "Mozilla/5.0"}
+                res = requests.get(self.data_url, headers=headers, timeout=20)
+
+                if res.status_code == 200:
+
+                    soup = BeautifulSoup(res.text, "html.parser")
+
+                    category_links = []
+
+                    for link in soup.find_all("a", href=True):
+                        href = link.get("href")
+
+                        if not href:
+                            continue
+
+                        if any(k in href.lower() for k in ["category", "shop", "product"]):
+
+                            full_url = urljoin(self.data_url, href)
+
+                            if full_url not in category_links:
+                                category_links.append(full_url)
+
+                    _logger.warning(f"CATEGORY LINKS FOUND → {len(category_links)}")
+
+                    # 🔥 LIMIT to avoid overload (can increase later)
+                    for cat_url in category_links[:5]:
+
+                        try:
+                            _logger.warning(f"SCRAPING CATEGORY → {cat_url}")
+
+                            cat_data = self._fetch_from_apify(cat_url)
+
+                            if cat_data:
+                                _logger.warning(f"CATEGORY DATA → {len(cat_data)} items")
+                                all_data.extend(cat_data)
+
+                        except Exception as e:
+                            _logger.warning(f"CATEGORY SCRAPE FAILED → {str(e)}")
+
+            except Exception as e:
+                _logger.warning(f"CATEGORY DETECTION FAILED → {str(e)}")
+
+        # ================= FINAL NORMALIZATION =================
+        structured_data = self._normalize_url_data(all_data)
 
         if not structured_data:
             _logger.error("NORMALIZATION FAILED → EMPTY DATA")
@@ -70,9 +137,7 @@ class VendorImportJob(models.Model):
         # ✅ Convert to same format used by Excel/PDF
         self.extracted_text = json.dumps(structured_data)
 
-        _logger.warning(f"APIFY DONE → {len(structured_data)} ITEMS")
-      
-
+        _logger.warning(f"APIFY FINAL → {len(structured_data)} ITEMS")
 
     #------excel processing methof---------------
 
@@ -426,9 +491,28 @@ class VendorImportJob(models.Model):
             return
 
         # 🔥 FLATTEN BLOCKS
-        all_blocks = [
-            b for p in pages for b in p.get("blocks", [])
-        ]
+        # all_blocks = [
+        #     b for p in pages for b in p.get("blocks", [])
+        # ]
+
+        all_blocks = []
+
+        for p in pages:
+
+            # ✅ CASE 1: URL (Apify structure)
+            if p.get("blocks"):
+                all_blocks.extend(p.get("blocks", []))
+
+            # ✅ CASE 2: PDF / Excel (text-based structure)
+            else:
+                text = p.get("text", "")
+                images = p.get("images", [])
+
+                if text:
+                    all_blocks.append({
+                        "text": text,
+                        "image": images[0] if images else None
+                    })
 
         _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
 
@@ -1080,6 +1164,9 @@ class VendorImportJob(models.Model):
             raise Exception("Apify API token not configured")
 
         ACTOR_ID = "princ_adex~my-actor"
+        
+        #select add
+        #ACTOR_ID = "selectad~my-actor"
 
         run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
         _logger.warning(f"APIFY RUN URL → {run_url}")
