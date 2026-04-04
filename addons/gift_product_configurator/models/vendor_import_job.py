@@ -54,7 +54,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
 
-        raw_data = self._fetch_from_apify(self.data_url)
+        raw_data = self._run_apify_actor(self.data_url)
         _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:300]}")
 
         if not raw_data:
@@ -919,7 +919,7 @@ class VendorImportJob(models.Model):
 
     # ---------------- PRODUCT CREATION ----------------
 
-    def create_product_drafts(self):
+    def create_products_url(self):
 
         import requests
         import base64
@@ -1301,23 +1301,31 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("FLASK PING FAILED")
 
-    #---------------normalizer--------------------------------
+    #---------------normalizer-------------------------------
+
     def _normalize_url_data(self, items):
-        normalized = []
 
-        for i, item in enumerate(items):
+        blocks = []
+
+        for item in items:
+
             name = item.get("name") or item.get("title") or ""
-
             image = item.get("image") or item.get("imageUrl")
 
-            normalized.append({
-                "page": i + 1,
+            if not name:
+                continue
+
+            blocks.append({
                 "text": name,
-                "images": [image] if image else []
+                "image": image
             })
 
-        return normalized
+        return [{
+            "page": 1,
+            "blocks": blocks
+        }]
 
+    #---------------clean_scraped_blocks-------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
         """
         Clean Apify output before sending to AI
