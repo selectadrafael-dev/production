@@ -403,6 +403,9 @@ class VendorImportJob(models.Model):
 
     def send_to_openai(self):
 
+        import time
+        import re
+
         self.state = "ai_processing"
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -422,52 +425,126 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        BATCH_SIZE = 5
-
-        batched_pages = [
-            pages[i:i + BATCH_SIZE]
-            for i in range(0, len(pages), BATCH_SIZE)
+        # 🔥 FLATTEN BLOCKS
+        all_blocks = [
+            b for p in pages for b in p.get("blocks", [])
         ]
 
-        _logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
+        _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
+
+        # 🔥 LIMIT TO PREVENT OVERLOAD
+        all_blocks = all_blocks[:60]
+
+        BLOCK_BATCH_SIZE = 10
+
+        batched_blocks = [
+            all_blocks[i:i + BLOCK_BATCH_SIZE]
+            for i in range(0, len(all_blocks), BLOCK_BATCH_SIZE)
+        ]
+
+        _logger.warning(f"TOTAL BLOCK BATCHES → {len(batched_blocks)}")
 
         all_products = []
 
-        for batch_index, batch in enumerate(batched_pages):
+        for batch_index, block_batch in enumerate(batched_blocks):
 
-            _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
+            _logger.warning(f"AI → PROCESSING BLOCK BATCH {batch_index + 1}")
 
             combined_text = "\n\n".join([
                 f"{b.get('text','')} | IMAGE: {b.get('image','')}"
-                for p in batch
-                for b in p.get("blocks", [])
+                for b in block_batch
             ])
+
+            # 🔥 HARD LIMIT (prevents timeout)
+            combined_text = combined_text[:12000]
 
             if not combined_text.strip():
                 continue
 
+            # ✅ FULL STRONG PROMPT (UNCHANGED)
             prompt = f"""
             You are a highly precise e-commerce product extraction engine.
 
-            Extract ALL individual products.
+            You are processing raw scraped website content.
 
-            RULES:
-            - Split multiple products
-            - Remove duplicates
-            - Ignore noise (menu, footer, login)
-            - Return ONLY JSON
+            =====================================
+            YOUR GOAL
+            =====================================
 
-            OUTPUT:
+            Extract ALL individual products from the text.
+
+            IMPORTANT:
+            - A single block may contain MULTIPLE products → you MUST split them
+            - Each product MUST be returned separately
+            - NEVER merge multiple products into one
+
+            =====================================
+            HOW TO IDENTIFY A PRODUCT
+            =====================================
+
+            A product usually contains:
+            - product name
+            - price (e.g. $, £, €, numbers)
+            - specs or description
+            - sometimes reviews
+
+            Strong indicators:
+            - currency symbols ($, £, €)
+            - model names (Dell, Lenovo, etc.)
+            - numbers like GB, inch, SSD, RAM, etc.
+
+            =====================================
+            STRICT RULES
+            =====================================
+
+            1. RETURN ONLY VALID JSON ARRAY
+            2. NO explanation
+            3. NO markdown
+            4. NO text outside JSON
+
+            5. EACH product must be unique
+            6. REMOVE duplicates
+            7. DO NOT skip products
+            8. SPLIT combined text into multiple products
+
+            =====================================
+            REMOVE THIS NOISE
+            =====================================
+
+            Ignore anything related to:
+            - navigation (Home, Login, Pricing)
+            - cookies/privacy
+            - footer text
+            - categories only (no product info)
+            - repeated headers
+
+            =====================================
+            OUTPUT FORMAT
+            =====================================
+
             [
-                {{
-                    "name": "",
-                    "description": "",
-                    "category": "",
-                    "image": ""
-                }}
+            {{
+                "name": "Clean product name",
+                "description": "Short product description (max 30 words)",
+                "category": "Best guess category",
+                "image": "image_url_or_null"
+            }}
             ]
 
-            TEXT:
+            =====================================
+            EXTRA RULES
+            =====================================
+
+            - Keep names SHORT and CLEAN
+            - Description must be concise
+            - Infer category intelligently
+            - If no image exists → return null
+            - If unsure → still extract
+
+            =====================================
+            TEXT TO PROCESS
+            =====================================
+
             {combined_text}
             """
 
@@ -480,106 +557,122 @@ class VendorImportJob(models.Model):
 
                 result = response.output_text.strip()
 
-                if "```" in result:
-                    result = result.split("```")[1]
+                # 🔥 SAFE MARKDOWN CLEANUP
+                result = re.sub(r"^```(?:json)?|```$", "", result).strip()
 
-                if result.lower().startswith("json"):
-                    result = result[4:]
+                # 🔥 SAFE JSON PARSE
+                try:
+                    parsed = json.loads(result)
+                except Exception:
+                    _logger.warning("JSON PARSE FAILED → SKIPPING BATCH")
+                    continue
 
-                parsed = json.loads(result)
-
+                # 🔥 FILTER EMPTY PRODUCTS
                 if isinstance(parsed, list):
-                    all_products.extend(parsed)
-                    _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
+                    cleaned = [p for p in parsed if p.get("name")]
+                    all_products.extend(cleaned)
+                    _logger.warning(f"BATCH PRODUCTS → {len(cleaned)}")
 
             except Exception as e:
                 _logger.warning(f"AI ERROR → {str(e)}")
+                continue
 
             time.sleep(1)
+
+        # 🔥 DEDUPLICATE PRODUCTS
+        unique = {}
+        for p in all_products:
+            key = (p.get("name") or "").lower().strip()
+            if key and key not in unique:
+                unique[key] = p
+
+        all_products = list(unique.values())
+
+        _logger.warning(f"FINAL UNIQUE PRODUCTS → {len(all_products)}")
 
         self.ai_response = json.dumps(all_products)
 
         _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
 
-    #-----------scoring image before picking best/quality image (inage logic)-------------
 
+    #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
 
-        best_img = None
-        best_score = 0
-        seen_hashes = set()
+            best_img = None
+            best_score = 0
+            seen_hashes = set()
 
-        for img in images:
+            for img in images:
 
-            try:
-                img_bytes = base64.b64decode(img)
-                size = len(img_bytes)
+                try:
+                    img_bytes = base64.b64decode(img)
+                    size = len(img_bytes)
 
-                # ❌ Skip tiny images (logos/icons)
-                if size < 10000:
+                    # ❌ Skip tiny images (logos/icons)
+                    if size < 10000:
+                        continue
+
+                    # ❌ Skip extremely large (full lifestyle pages)
+                    if size > 800000:
+                        continue
+
+                    # ================= IMAGE ANALYSIS =================
+                    pil_img = Image.open(BytesIO(img_bytes))
+                    width, height = pil_img.size
+
+                    # ❌ Skip extremely small resolution
+                    if width < 150 or height < 150:
+                        continue
+
+                    # ❌ Skip extreme aspect ratios (banners, strips)
+                    aspect_ratio = width / height if height else 1
+
+                    if aspect_ratio > 3 or aspect_ratio < 0.3:
+                        continue
+
+                    # ================= DUPLICATE CHECK =================
+                    img_hash = hash(img_bytes[:100])  # fast partial hash
+
+                    if img_hash in seen_hashes:
+                        continue
+
+                    seen_hashes.add(img_hash)
+
+                    # ================= SCORING =================
+                    score = 0
+
+                    # ✅ Prefer medium-good sizes
+                    if 20000 < size < 300000:
+                        score += 200
+
+                    # ✅ Prefer square-ish product images
+                    if 0.7 < aspect_ratio < 1.5:
+                        score += 150
+
+                    # ✅ Prefer decent resolution
+                    if width > 400 and height > 400:
+                        score += 150
+
+                    # ❌ Penalize too wide/tall
+                    if aspect_ratio > 2 or aspect_ratio < 0.5:
+                        score -= 100
+
+                    # ❌ Penalize very large images (likely lifestyle)
+                    if size > 500000:
+                        score -= 150
+
+                    # Base size contribution
+                    score += size / 2000
+
+                    # ================= SELECT BEST =================
+                    if score > best_score:
+                        best_score = score
+                        best_img = img
+
+                except Exception:
                     continue
 
-                # ❌ Skip extremely large (full lifestyle pages)
-                if size > 800000:
-                    continue
-
-                # ================= IMAGE ANALYSIS =================
-                pil_img = Image.open(BytesIO(img_bytes))
-                width, height = pil_img.size
-
-                # ❌ Skip extremely small resolution
-                if width < 150 or height < 150:
-                    continue
-
-                # ❌ Skip extreme aspect ratios (banners, strips)
-                aspect_ratio = width / height if height else 1
-
-                if aspect_ratio > 3 or aspect_ratio < 0.3:
-                    continue
-
-                # ================= DUPLICATE CHECK =================
-                img_hash = hash(img_bytes[:100])  # fast partial hash
-
-                if img_hash in seen_hashes:
-                    continue
-
-                seen_hashes.add(img_hash)
-
-                # ================= SCORING =================
-                score = 0
-
-                # ✅ Prefer medium-good sizes
-                if 20000 < size < 300000:
-                    score += 200
-
-                # ✅ Prefer square-ish product images
-                if 0.7 < aspect_ratio < 1.5:
-                    score += 150
-
-                # ✅ Prefer decent resolution
-                if width > 400 and height > 400:
-                    score += 150
-
-                # ❌ Penalize too wide/tall
-                if aspect_ratio > 2 or aspect_ratio < 0.5:
-                    score -= 100
-
-                # ❌ Penalize very large images (likely lifestyle)
-                if size > 500000:
-                    score -= 150
-
-                # Base size contribution
-                score += size / 2000
-
-                # ================= SELECT BEST =================
-                if score > best_score:
-                    best_score = score
-                    best_img = img
-
-            except Exception:
-                continue
-
-        return best_img
+            return best_img
 
 
     #----marchin AI-----------------------------------
