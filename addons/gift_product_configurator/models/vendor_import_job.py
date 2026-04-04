@@ -1302,21 +1302,31 @@ class VendorImportJob(models.Model):
             _logger.warning("FLASK PING FAILED")
 
     #---------------normalizer-------------------------------
+   
     def _normalize_url_data(self, items):
-        normalized = []
 
-        for i, item in enumerate(items):
-            name = item.get("name") or item.get("title") or ""
+        blocks = []
 
-            image = item.get("image") or item.get("imageUrl")
+        for item in items:
 
-            normalized.append({
-                "page": i + 1,
-                "text": name,
-                "images": [image] if image else []
+            # ✅ FIX: USE "text" FROM APIFY
+            text = (item.get("text") or "").strip()
+            image = item.get("image")
+
+            if not text:
+                continue
+
+            blocks.append({
+                "text": text,
+                "image": image
             })
 
-        return normalized
+        _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
+
+        return [{
+            "page": 1,
+            "blocks": blocks
+        }]
 
     #---------------clean_scraped_blocks-------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
