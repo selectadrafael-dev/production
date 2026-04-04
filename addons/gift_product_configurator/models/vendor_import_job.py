@@ -140,7 +140,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"APIFY FINAL → {len(structured_data)} ITEMS")
 
-    #------excel processing methof---------------
+    #------excel processing methof--------------
 
     def parse_excel(self):
 
@@ -153,9 +153,7 @@ class VendorImportJob(models.Model):
 
         image_loader = SheetImageLoader(sheet)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-        }
+        headers = {"User-Agent": "Mozilla/5.0"}
 
         pages = []
         current_page = []
@@ -163,8 +161,6 @@ class VendorImportJob(models.Model):
         page_size = 20
 
         for idx, row in enumerate(sheet.iter_rows()):
-
-            _logger.warning(f"ROW {idx} PROCESSING")
 
             row_text_parts = []
             row_images = []
@@ -177,15 +173,13 @@ class VendorImportJob(models.Model):
 
             row_text = " ".join(row_text_parts).strip()
 
-            if not row_text:
-                _logger.warning(f"ROW {idx} EMPTY → SKIPPED")
+            if len(row_text) < 10:
                 continue
 
-            # -------- 1️⃣ EMBEDDED IMAGE --------
+            # -------- IMAGE (ONLY KEEP VALID URL OR BASE64) --------
             for cell in row:
                 try:
                     if image_loader.image_in(cell.coordinate):
-
                         pil_img = image_loader.get(cell.coordinate)
 
                         buffer = BytesIO()
@@ -194,78 +188,9 @@ class VendorImportJob(models.Model):
                         img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
                         row_images.append(img_base64)
-
-                        _logger.warning(f"ROW {idx} → EMBED IMAGE USED")
                         break
-
                 except Exception:
                     continue
-
-            # -------- 2️⃣ URL IMAGE --------
-            if not row_images:
-
-                for cell in row:
-                    val = str(cell.value or "").strip()
-
-                    if val.startswith("http"):
-
-                        try:
-                            response = requests.get(val, headers=headers, timeout=10)
-
-                            if response.status_code != 200:
-                                continue
-
-                            content_type = response.headers.get("Content-Type", "")
-
-                            # DIRECT IMAGE
-                            if "image" in content_type:
-
-                                if len(response.content) > 5000:
-                                    img_base64 = base64.b64encode(response.content).decode("utf-8")
-                                    row_images.append(img_base64)
-
-                                    _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
-                                    break
-
-                            # HTML PAGE
-                            elif "text/html" in content_type:
-
-                                soup = BeautifulSoup(response.text, "html.parser")
-
-                                best_img = None
-
-                                for img in soup.find_all("img"):
-
-                                    src = img.get("src")
-                                    if not src:
-                                        continue
-
-                                    if src.startswith("/"):
-                                        src = urljoin(val, src)
-
-                                    try:
-                                        img_res = requests.get(src, headers=headers, timeout=5)
-
-                                        if img_res.status_code == 200 and len(img_res.content) > 10000:
-                                            best_img = img_res.content
-                                            break
-
-                                    except Exception:
-                                        continue
-
-                                if best_img:
-                                    img_base64 = base64.b64encode(best_img).decode("utf-8")
-                                    row_images.append(img_base64)
-
-                                    _logger.warning(f"ROW {idx} → SCRAPED IMAGE")
-                                    break
-
-                        except Exception:
-                            _logger.warning(f"ROW {idx} → URL FAILED")
-
-            # -------- DEBUG --------
-            _logger.warning(f"ROW {idx} → TEXT LENGTH: {len(row_text)}")
-            _logger.warning(f"ROW {idx} → IMAGES FOUND: {len(row_images)}")
 
             # -------- STORE --------
             current_page.append({
@@ -273,38 +198,25 @@ class VendorImportJob(models.Model):
                 "images": row_images
             })
 
-            # -------- PAGINATION --------
             if len(current_page) >= page_size:
                 pages.append({
                     "page": page_number,
-                    "rows": current_page
+                    "text": "\n".join([r["text"] for r in current_page]),
+                    "images": [img for r in current_page for img in r["images"]]
                 })
                 current_page = []
                 page_number += 1
 
-        # -------- LAST PAGE --------
         if current_page:
             pages.append({
                 "page": page_number,
-                "rows": current_page
+                "text": "\n".join([r["text"] for r in current_page]),
+                "images": [img for r in current_page for img in r["images"]]
             })
 
-        # -------- FINAL FORMAT --------
-        final_pages = []
+        self.extracted_text = json.dumps(pages)
 
-        for page in pages:
-
-            combined_text = "\n".join([r["text"] for r in page["rows"]])
-
-            final_pages.append({
-                "page": page["page"],
-                "text": combined_text,
-                "images": page["rows"]
-            })
-
-        self.extracted_text = json.dumps(final_pages)
-
-        _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
+        _logger.warning(f"EXCEL DONE → {len(pages)} PAGES")
 
     #---------------- MAIN FLOW ----------------
     def process_import(self):
@@ -472,7 +384,6 @@ class VendorImportJob(models.Model):
         self.state = "ai_processing"
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
-
         if not api_key:
             raise Exception("OpenAI API key not configured")
 
@@ -480,257 +391,238 @@ class VendorImportJob(models.Model):
 
         try:
             pages = json.loads(self.extracted_text or "[]")
+
+            is_url = any(p.get("blocks") for p in pages)
+            is_excel = any(p.get("text") and not p.get("blocks") for p in pages) and not any("pdf_marker" in p for p in pages)
+            is_pdf = not is_url and not is_excel
+
+            _logger.warning(f"DATA TYPE → URL={is_url}, PDF={is_pdf}, EXCEL={is_excel}")
+
         except Exception:
             _logger.error("INVALID extracted_text JSON")
             return
-
-        if not pages:
-            _logger.error("NO PAGES TO PROCESS")
-            return
-
-        # ======================================================
-        # 🔥 UNIVERSAL BLOCK EXTRACTION (URL + PDF + EXCEL)
-        # ======================================================
 
         all_blocks = []
 
         for p in pages:
 
-            # ✅ CASE 1: URL (Apify)
             if p.get("blocks"):
-                all_blocks.extend(p.get("blocks", []))
+                all_blocks.extend(p.get("blocks"))
 
-            # ✅ CASE 2: PDF / Excel
             else:
                 text = p.get("text", "")
                 images = p.get("images", [])
 
-                if text:
-                    all_blocks.append({
-                        "text": text,
-                        "image": images[0] if images else None
-                    })
+                if len(text.strip()) < 30:
+                    continue
+
+                all_blocks.append({
+                    "text": text,
+                    "image": images[0] if images else None
+                })
 
         _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
 
-        # ======================================================
-        # 🔥 LIMIT BLOCKS (prevent overload)
-        # ======================================================
+        MAX_BLOCKS = 80 if is_pdf else 150
+        all_blocks = all_blocks[:MAX_BLOCKS]
 
-        MAX_BLOCKS = 200
-        if len(all_blocks) > MAX_BLOCKS:
-            all_blocks = all_blocks[:MAX_BLOCKS]
-
-        # ======================================================
-        # 🔥 FILTER OUT NOISE BLOCKS
-        # ======================================================
-
-        def is_valid_block(text):
-            if not text:
-                return False
-
-            text = text.lower()
-
-            noise_keywords = [
-                "cookie", "privacy", "login", "menu",
-                "navigation", "home", "accept", "terms",
-                "search", "filter", "sort"
-            ]
-
-            if any(n in text for n in noise_keywords):
-                return False
-
-            has_price = any(sym in text for sym in ["£", "$", "€"])
-            has_numbers = any(char.isdigit() for char in text)
-
-            return has_price or has_numbers
-
-        all_blocks = [
-            b for b in all_blocks
-            if is_valid_block(b.get("text", ""))
-        ]
-
-        _logger.warning(f"FILTERED BLOCKS → {len(all_blocks)}")
-
-        # ======================================================
-        # 🔥 SMART BATCH SIZE (PDF SAFE)
-        # ======================================================
-
-        is_pdf = any("page" in p for p in pages)
-
-        BLOCK_BATCH_SIZE = 10 if not is_pdf else 5
+        BLOCK_BATCH_SIZE = 10 if is_pdf else 20
 
         batched_blocks = [
             all_blocks[i:i + BLOCK_BATCH_SIZE]
             for i in range(0, len(all_blocks), BLOCK_BATCH_SIZE)
         ]
 
-        _logger.warning(f"TOTAL BLOCK BATCHES → {len(batched_blocks)}")
-
         all_products = []
+        start_time = time.time()
 
-        for batch_index, block_batch in enumerate(batched_blocks):
+        for i, batch in enumerate(batched_blocks):
 
-            _logger.warning(f"AI → PROCESSING BLOCK BATCH {batch_index + 1}")
+            if time.time() - start_time > 90:
+                break
 
-            # ======================================================
-            # 🔥 BUILD TEXT (UNIVERSAL)
-            # ======================================================
-
-            combined_text_parts = []
-
-            for b in block_batch:
-                combined_text_parts.append(
-                    f"{b.get('text','')} | IMAGE: {b.get('image','')}"
-                )
-
-            combined_text = "\n\n".join(combined_text_parts)
+            combined_text = "\n\n".join([
+                f"{b.get('text')} | IMAGE: {b.get('image')}"
+                for b in batch
+            ])
 
             if len(combined_text.strip()) < 50:
-                _logger.warning("SKIPPING WEAK CONTENT BLOCK")
                 continue
 
-            # ======================================================
-            # 🔥 HARD LIMIT (prevent timeout crash)
-            # ======================================================
+            combined_text = combined_text[:10000]
 
-            combined_text = combined_text[:12000]
+            # 🔥 PROMPT SWITCH (FINAL)
+            if is_url:
+                 prompt = f"""
+                You are a highly precise e-commerce product extraction engine.
 
-            # ======================================================
-            # 🔥 STRONG PROMPT (UNCHANGED — FULL)
-            # ======================================================
+                You are processing raw scraped website content.
 
-            prompt = f"""
-            You are a highly precise e-commerce product extraction engine.
+                =====================================
+                YOUR GOAL
+                =====================================
 
-            You are processing raw scraped website content.
+                Extract ALL individual products from the text.
 
-            =====================================
-            YOUR GOAL
-            =====================================
+                IMPORTANT:
+                - A single block may contain MULTIPLE products → you MUST split them
+                - Each product MUST be returned separately
+                - NEVER merge multiple products into one
 
-            Extract ALL individual products from the text.
+                =====================================
+                HOW TO IDENTIFY A PRODUCT
+                =====================================
 
-            IMPORTANT:
-            - A single block may contain MULTIPLE products → you MUST split them
-            - Each product MUST be returned separately
-            - NEVER merge multiple products into one
+                A product usually contains:
+                - product name
+                - price (e.g. $, £, €, numbers)
+                - specs or description
+                - sometimes reviews
 
-            =====================================
-            HOW TO IDENTIFY A PRODUCT
-            =====================================
+                Strong indicators:
+                - currency symbols ($, £, €)
+                - model names (Dell, Lenovo, etc.)
+                - numbers like GB, inch, SSD, RAM, etc.
 
-            A product usually contains:
-            - product name
-            - price (e.g. $, £, €, numbers)
-            - specs or description
-            - sometimes reviews
+                =====================================
+                STRICT RULES
+                =====================================
 
-            Strong indicators:
-            - currency symbols ($, £, €)
-            - model names (Dell, Lenovo, etc.)
-            - numbers like GB, inch, SSD, RAM, etc.
+                1. RETURN ONLY VALID JSON ARRAY
+                2. NO explanation
+                3. NO markdown
+                4. NO text outside JSON
 
-            =====================================
-            STRICT RULES
-            =====================================
+                5. EACH product must be unique
+                6. REMOVE duplicates
+                7. DO NOT skip products
+                8. SPLIT combined text into multiple products
 
-            1. RETURN ONLY VALID JSON ARRAY
-            2. NO explanation
-            3. NO markdown
-            4. NO text outside JSON
+                =====================================
+                REMOVE THIS NOISE
+                =====================================
 
-            5. EACH product must be unique
-            6. REMOVE duplicates
-            7. DO NOT skip products
-            8. SPLIT combined text into multiple products
+                Ignore anything related to:
+                - navigation (Home, Login, Pricing)
+                - cookies/privacy
+                - footer text
+                - categories only (no product info)
+                - repeated headers
 
-            =====================================
-            REMOVE THIS NOISE
-            =====================================
+                =====================================
+                OUTPUT FORMAT
+                =====================================
 
-            Ignore anything related to:
-            - navigation (Home, Login, Pricing)
-            - cookies/privacy
-            - footer text
-            - categories only (no product info)
-            - repeated headers
+                [
+                    {{
+                        "name": "Clean product name",
+                        "description": "Short product description (max 30 words)",
+                        "category": "Best guess category",
+                        "image": "image_url_or_null"
+                    }}
+                ]
 
-            =====================================
-            OUTPUT FORMAT
-            =====================================
+                =====================================
+                EXTRA RULES
+                =====================================
 
-            [
-            {{
-                "name": "Clean product name",
-                "description": "Short product description (max 30 words)",
-                "category": "Best guess category",
-                "image": "image_url_or_null"
-            }}
-            ]
+                - Keep names SHORT and CLEAN
+                - Description must be concise
+                - Infer category intelligently
+                - If no image exists → return null
+                - If unsure → still extract
 
-            =====================================
-            EXTRA RULES
-            =====================================
+                =====================================
+                TEXT TO PROCESS
+                =====================================
 
-            - Keep names SHORT and CLEAN
-            - Description must be concise
-            - Infer category intelligently
-            - If no image exists → return null
-            - If unsure → still extract
+                {combined_text}
+                """
 
-            =====================================
-            TEXT TO PROCESS
-            =====================================
+            else:
+                prompt = f"""
+                You are an advanced product extraction and interpretation engine for catalog PDFs.
 
-            {combined_text}
-            """
+                =====================
+                CORE RULES (STRICT)
+                =====================
+
+                1. RETURN ONLY VALID JSON
+                2. NO explanation
+                3. NO markdown
+                4. NO text outside JSON
+                5. DO NOT duplicate products
+                6. DO NOT skip any product
+                7. EACH product must appear exactly once
+
+                =====================
+                PRODUCT DETECTION LOGIC
+                =====================
+
+                A page may contain:
+
+                (A) ONE large product (hero layout)
+                (B) MULTIPLE products (grid/catalog layout)
+                (C) MIX of large + small supporting products
+
+                You MUST:
+
+                - If SINGLE main product:
+                → return ONE product
+
+                - If MULTIPLE products:
+                → extract EACH product separately
+
+                - If repeated items:
+                → treat EACH visible item as a unique product
+
+                =====================
+                OUTPUT FORMAT
+                =====================
+
+                [
+                {{
+                    "name": "",
+                    "description": "",
+                    "category": ""
+                }}
+                ]
+
+                =====================
+                TEXT TO ANALYZE
+                =====================
+
+                {combined_text}
+                """
 
             try:
                 response = client.responses.create(
                     model="gpt-4.1-mini",
                     input=prompt,
-                    timeout=30  # 🔥 reduced from 60 (prevents crash)
+                    timeout=30
                 )
 
-                result = response.output_text.strip()
+                result = re.sub(r"^```|```$", "", response.output_text.strip())
 
-                result = re.sub(r"^```(?:json)?|```$", "", result).strip()
-
-                try:
-                    parsed = json.loads(result)
-                except Exception:
-                    _logger.warning("JSON PARSE FAILED → SKIPPING BATCH")
-                    continue
+                parsed = json.loads(result)
 
                 if isinstance(parsed, list):
-                    cleaned = [p for p in parsed if p.get("name")]
-                    all_products.extend(cleaned)
-                    _logger.warning(f"BATCH PRODUCTS → {len(cleaned)}")
+                    all_products.extend([p for p in parsed if p.get("name")])
 
-            except Exception as e:
-                _logger.warning(f"AI ERROR → {str(e)}")
+            except Exception:
                 continue
 
             time.sleep(1)
 
-        # ======================================================
-        # 🔥 DEDUPLICATION
-        # ======================================================
-
         unique = {}
         for p in all_products:
-            key = (p.get("name") or "").lower().strip()[:40]
+            key = (p.get("name") or "").lower()[:40]
             if key and key not in unique:
                 unique[key] = p
 
-        all_products = list(unique.values())
+        self.ai_response = json.dumps(list(unique.values()))
 
-        _logger.warning(f"FINAL UNIQUE PRODUCTS → {len(all_products)}")
-
-        self.ai_response = json.dumps(all_products)
-
-        _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
+        _logger.warning(f"TOTAL AI PRODUCTS → {len(unique)}")
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
