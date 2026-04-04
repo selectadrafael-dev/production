@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from openpyxl_image_loader import SheetImageLoader
 from PIL import Image
 import time
+import re
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -468,9 +469,6 @@ class VendorImportJob(models.Model):
 
     def send_to_openai(self):
 
-        import time
-        import re
-
         self.state = "ai_processing"
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -490,20 +488,19 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # 🔥 FLATTEN BLOCKS
-        # all_blocks = [
-        #     b for p in pages for b in p.get("blocks", [])
-        # ]
+        # ======================================================
+        # 🔥 UNIVERSAL BLOCK EXTRACTION (URL + PDF + EXCEL)
+        # ======================================================
 
         all_blocks = []
 
         for p in pages:
 
-            # ✅ CASE 1: URL (Apify structure)
+            # ✅ CASE 1: URL (Apify)
             if p.get("blocks"):
                 all_blocks.extend(p.get("blocks", []))
 
-            # ✅ CASE 2: PDF / Excel (text-based structure)
+            # ✅ CASE 2: PDF / Excel
             else:
                 text = p.get("text", "")
                 images = p.get("images", [])
@@ -516,13 +513,16 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
 
-        # 🔥 LIMIT TO PREVENT OVERLOAD
+        # ======================================================
+        # 🔥 LIMIT BLOCKS (prevent overload)
+        # ======================================================
+
         MAX_BLOCKS = 200
         if len(all_blocks) > MAX_BLOCKS:
             all_blocks = all_blocks[:MAX_BLOCKS]
 
         # ======================================================
-        # 🔥🔥 NEW: FILTER OUT NON-PRODUCT BLOCKS (SAFE INSERT)
+        # 🔥 FILTER OUT NOISE BLOCKS
         # ======================================================
 
         def is_valid_block(text):
@@ -531,7 +531,6 @@ class VendorImportJob(models.Model):
 
             text = text.lower()
 
-            # ❌ noise removal
             noise_keywords = [
                 "cookie", "privacy", "login", "menu",
                 "navigation", "home", "accept", "terms",
@@ -541,13 +540,11 @@ class VendorImportJob(models.Model):
             if any(n in text for n in noise_keywords):
                 return False
 
-            # ✅ product indicators
             has_price = any(sym in text for sym in ["£", "$", "€"])
             has_numbers = any(char.isdigit() for char in text)
 
             return has_price or has_numbers
 
-        # 🔥 APPLY FILTER
         all_blocks = [
             b for b in all_blocks
             if is_valid_block(b.get("text", ""))
@@ -555,11 +552,13 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"FILTERED BLOCKS → {len(all_blocks)}")
 
-        # =====================================================
-        # 🔥 CONTINUE NORMAL FLOW (UNCHANGED)
-        # =====================================================
+        # ======================================================
+        # 🔥 SMART BATCH SIZE (PDF SAFE)
+        # ======================================================
 
-        BLOCK_BATCH_SIZE = 20
+        is_pdf = any("page" in p for p in pages)
+
+        BLOCK_BATCH_SIZE = 10 if not is_pdf else 5
 
         batched_blocks = [
             all_blocks[i:i + BLOCK_BATCH_SIZE]
@@ -574,18 +573,33 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI → PROCESSING BLOCK BATCH {batch_index + 1}")
 
-            combined_text = "\n\n".join([
-                f"{b.get('text','')} | IMAGE: {b.get('image','')}"
-                for b in block_batch
-            ])
+            # ======================================================
+            # 🔥 BUILD TEXT (UNIVERSAL)
+            # ======================================================
 
-            # 🔥 HARD LIMIT (prevents timeout)
-            combined_text = combined_text[:12000]
+            combined_text_parts = []
 
-            if not combined_text.strip():
+            for b in block_batch:
+                combined_text_parts.append(
+                    f"{b.get('text','')} | IMAGE: {b.get('image','')}"
+                )
+
+            combined_text = "\n\n".join(combined_text_parts)
+
+            if len(combined_text.strip()) < 50:
+                _logger.warning("SKIPPING WEAK CONTENT BLOCK")
                 continue
 
-            # ✅ FULL STRONG PROMPT (UNCHANGED)
+            # ======================================================
+            # 🔥 HARD LIMIT (prevent timeout crash)
+            # ======================================================
+
+            combined_text = combined_text[:12000]
+
+            # ======================================================
+            # 🔥 STRONG PROMPT (UNCHANGED — FULL)
+            # ======================================================
+
             prompt = f"""
             You are a highly precise e-commerce product extraction engine.
 
@@ -676,22 +690,19 @@ class VendorImportJob(models.Model):
                 response = client.responses.create(
                     model="gpt-4.1-mini",
                     input=prompt,
-                    timeout=60
+                    timeout=30  # 🔥 reduced from 60 (prevents crash)
                 )
 
                 result = response.output_text.strip()
 
-                # 🔥 SAFE MARKDOWN CLEANUP
                 result = re.sub(r"^```(?:json)?|```$", "", result).strip()
 
-                # 🔥 SAFE JSON PARSE
                 try:
                     parsed = json.loads(result)
                 except Exception:
                     _logger.warning("JSON PARSE FAILED → SKIPPING BATCH")
                     continue
 
-                # 🔥 FILTER EMPTY PRODUCTS
                 if isinstance(parsed, list):
                     cleaned = [p for p in parsed if p.get("name")]
                     all_products.extend(cleaned)
@@ -703,7 +714,10 @@ class VendorImportJob(models.Model):
 
             time.sleep(1)
 
-        # 🔥 DEDUPLICATE PRODUCTS
+        # ======================================================
+        # 🔥 DEDUPLICATION
+        # ======================================================
+
         unique = {}
         for p in all_products:
             key = (p.get("name") or "").lower().strip()[:40]
