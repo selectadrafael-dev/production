@@ -384,6 +384,7 @@ class VendorImportJob(models.Model):
         self.state = "ai_processing"
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+
         if not api_key:
             raise Exception("OpenAI API key not configured")
 
@@ -391,67 +392,177 @@ class VendorImportJob(models.Model):
 
         try:
             pages = json.loads(self.extracted_text or "[]")
-
-            is_url = any(p.get("blocks") for p in pages)
-            is_excel = any(p.get("text") and not p.get("blocks") for p in pages) and not any("pdf_marker" in p for p in pages)
-            is_pdf = not is_url and not is_excel
-
-            _logger.warning(f"DATA TYPE → URL={is_url}, PDF={is_pdf}, EXCEL={is_excel}")
-
         except Exception:
             _logger.error("INVALID extracted_text JSON")
             return
 
-        all_blocks = []
+        if not pages:
+            _logger.error("NO PAGES TO PROCESS")
+            return
 
-        for p in pages:
+        # ======================================================
+        # 🔥 CORRECT DATA TYPE DETECTION (CRITICAL FIX)
+        # ======================================================
 
-            if p.get("blocks"):
-                all_blocks.extend(p.get("blocks"))
+        is_url = any(p.get("blocks") for p in pages)
 
-            else:
-                text = p.get("text", "")
-                images = p.get("images", [])
+        is_pdf = any(
+            isinstance(p.get("images"), list)
+            and p.get("images")
+            and isinstance(p["images"][0], str)
+            and p["images"][0].startswith("/9j")  # base64 jpeg
+            for p in pages
+        )
 
-                if len(text.strip()) < 30:
+        is_excel = not is_url and not is_pdf
+
+        _logger.warning(f"DATA TYPE → URL={is_url}, PDF={is_pdf}, EXCEL={is_excel}")
+
+        # ======================================================
+        # 🔥 PDF → USE ORIGINAL PAGE LOGIC (DO NOT FLATTEN)
+        # ======================================================
+
+        if is_pdf:
+
+            BATCH_SIZE = 5
+
+            batched_pages = [
+                pages[i:i + BATCH_SIZE]
+                for i in range(0, len(pages), BATCH_SIZE)
+            ]
+
+            _logger.warning(f"PDF TOTAL BATCHES → {len(batched_pages)}")
+
+            page_products = []
+
+            for batch_index, batch in enumerate(batched_pages):
+
+                _logger.warning(f"PDF → PROCESSING BATCH {batch_index + 1}")
+
+                combined_text = "\n\n".join([
+                    p.get("text", "") for p in batch if p.get("text")
+                ])
+
+                if len(combined_text.strip()) < 10:
                     continue
 
-                all_blocks.append({
-                    "text": text,
-                    "image": images[0] if images else None
-                })
+                prompt = f"""
+                You are an advanced product extraction and interpretation engine for catalog PDFs.
 
-        _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
+                =====================
+                CORE RULES (STRICT)
+                =====================
 
-        MAX_BLOCKS = 80 if is_pdf else 150
-        all_blocks = all_blocks[:MAX_BLOCKS]
+                1. RETURN ONLY VALID JSON
+                2. NO explanation
+                3. NO markdown
+                4. NO text outside JSON
+                5. DO NOT duplicate products
+                6. DO NOT skip any product
+                7. EACH product must appear exactly once
 
-        BLOCK_BATCH_SIZE = 10 if is_pdf else 20
+                =====================
+                PRODUCT DETECTION LOGIC
+                =====================
 
-        batched_blocks = [
-            all_blocks[i:i + BLOCK_BATCH_SIZE]
-            for i in range(0, len(all_blocks), BLOCK_BATCH_SIZE)
+                A page may contain:
+
+                (A) ONE large product (hero layout)
+                (B) MULTIPLE products (grid/catalog layout)
+                (C) MIX of large + small supporting products
+
+                You MUST:
+
+                - If SINGLE main product:
+                → return ONE product
+
+                - If MULTIPLE products:
+                → extract EACH product separately
+
+                - If repeated items:
+                → treat EACH visible item as a unique product
+
+                =====================
+                OUTPUT FORMAT
+                =====================
+
+                [
+                {{
+                    "name": "",
+                    "description": "",
+                    "category": ""
+                }}
+                ]
+
+                =====================
+                TEXT TO ANALYZE
+                =====================
+
+                {combined_text}
+                """
+
+                try:
+                    response = client.responses.create(
+                        model="gpt-4.1-mini",
+                        input=prompt,
+                        timeout=60
+                    )
+
+                    result = response.output_text.strip()
+
+                    if "```" in result:
+                        result = result.split("```")[1]
+
+                    if result.lower().startswith("json"):
+                        result = result[4:]
+
+                    parsed = json.loads(result)
+
+                    if isinstance(parsed, list):
+                        page_products.append({
+                            "page": batch[0].get("page"),
+                            "products": parsed
+                        })
+
+                        _logger.warning(f"PDF PRODUCTS → {len(parsed)}")
+
+                except Exception as e:
+                    _logger.warning(f"PDF AI ERROR → {str(e)}")
+
+                time.sleep(1)
+
+            self.ai_response = json.dumps(page_products)
+
+            _logger.warning(f"PDF TOTAL PRODUCTS PAGES → {len(page_products)}")
+
+            return
+
+        # ======================================================
+        # 🔥 URL + EXCEL FLOW (UNCHANGED)
+        # ======================================================
+
+        BATCH_SIZE = 5
+
+        batched_pages = [
+            pages[i:i + BATCH_SIZE]
+            for i in range(0, len(pages), BATCH_SIZE)
         ]
 
-        all_products = []
-        start_time = time.time()
+        _logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
 
-        for i, batch in enumerate(batched_blocks):
+        page_products = []
 
-            if time.time() - start_time > 90:
-                break
+        for batch_index, batch in enumerate(batched_pages):
+
+            _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
 
             combined_text = "\n\n".join([
-                f"{b.get('text')} | IMAGE: {b.get('image')}"
-                for b in batch
+                p.get("text", "") for p in batch if p.get("text")
             ])
 
-            if len(combined_text.strip()) < 50:
+            if len(combined_text.strip()) < 10:
                 continue
 
-            combined_text = combined_text[:10000]
-
-            # 🔥 PROMPT SWITCH (FINAL)
             if is_url:
                  prompt = f"""
                 You are a highly precise e-commerce product extraction engine.
@@ -602,27 +713,32 @@ class VendorImportJob(models.Model):
                     timeout=30
                 )
 
-                result = re.sub(r"^```|```$", "", response.output_text.strip())
+                result = response.output_text.strip()
+
+                if "```" in result:
+                    result = result.split("```")[1]
+
+                if result.lower().startswith("json"):
+                    result = result[4:]
 
                 parsed = json.loads(result)
 
                 if isinstance(parsed, list):
-                    all_products.extend([p for p in parsed if p.get("name")])
+                    page_products.append({
+                        "page": batch[0].get("page"),
+                        "products": parsed
+                    })
 
-            except Exception:
-                continue
+                    _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
+
+            except Exception as e:
+                _logger.warning(f"AI ERROR → {str(e)}")
 
             time.sleep(1)
 
-        unique = {}
-        for p in all_products:
-            key = (p.get("name") or "").lower()[:40]
-            if key and key not in unique:
-                unique[key] = p
+        self.ai_response = json.dumps(page_products)
 
-        self.ai_response = json.dumps(list(unique.values()))
-
-        _logger.warning(f"TOTAL AI PRODUCTS → {len(unique)}")
+        _logger.warning(f"TOTAL AI PAGES STORED: {len(page_products)}")
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
