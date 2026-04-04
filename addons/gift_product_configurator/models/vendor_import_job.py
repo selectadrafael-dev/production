@@ -1309,16 +1309,19 @@ class VendorImportJob(models.Model):
 
         for item in items:
 
-            name = item.get("name") or item.get("title") or ""
-            image = item.get("image") or item.get("imageUrl")
+            # ✅ FIX: USE "text" FROM APIFY
+            text = (item.get("text") or "").strip()
+            image = item.get("image")
 
-            if not name:
+            if not text:
                 continue
 
             blocks.append({
-                "text": name,
+                "text": text,
                 "image": image
             })
+
+        _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
 
         return [{
             "page": 1,
