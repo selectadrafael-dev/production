@@ -403,10 +403,13 @@ class VendorImportJob(models.Model):
             b for p in pages for b in p.get("blocks", [])
         ]
 
+        # 🔥 MAKE ORDER CONSISTENT
+        all_blocks = sorted(all_blocks, key=lambda x: (x.get("text") or "")[:50])
+
         _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
 
         # 🔥 LIMIT TO PREVENT OVERLOAD
-        MAX_BLOCKS = 200
+        MAX_BLOCKS = 400
         if len(all_blocks) > MAX_BLOCKS:
             all_blocks = all_blocks[:MAX_BLOCKS]
 
@@ -418,23 +421,22 @@ class VendorImportJob(models.Model):
             if not text:
                 return False
 
-            text = text.lower()
+            text = text.lower().strip()
 
-            # ❌ noise removal
+            # ❌ noise
             noise_keywords = [
                 "cookie", "privacy", "login", "menu",
-                "navigation", "home", "accept", "terms",
-                "search", "filter", "sort"
+                "navigation", "home", "accept", "terms"
             ]
 
             if any(n in text for n in noise_keywords):
                 return False
 
-            # ✅ product indicators
-            has_price = any(sym in text for sym in ["£", "$", "€"])
-            has_numbers = any(char.isdigit() for char in text)
+            # ✅ allow more product-like text
+            if len(text) < 15:
+                return False
 
-            return has_price or has_numbers
+            return True
 
         # 🔥 APPLY FILTER
         all_blocks = [
@@ -565,6 +567,7 @@ class VendorImportJob(models.Model):
                 response = client.responses.create(
                     model="gpt-4.1-mini",
                     input=prompt,
+                    temperature=0,  
                     timeout=60
                 )
 
