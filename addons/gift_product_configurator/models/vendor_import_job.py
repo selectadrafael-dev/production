@@ -851,26 +851,13 @@ class VendorImportJob(models.Model):
             OUTPUT FORMAT
             =====================
 
-            [
-            {{
-                "page": {page_no},
-                "products": [
-                    {{
-                        "name": "",
-                        "description": "",
-                        "category": "",
-
-                        "variants": [
-                            {{
-                                "attributes": {{
-                                    "Color": ""
-                                }},
-                                "stock": null
-                            }}
-                        ]
-                    }}
-                ]
-            }}
+           [
+                {{
+                    "name": "",
+                    "description": "",
+                    "category": "",
+                    "variants": []
+                }}
             ]
 
             =====================
@@ -1240,10 +1227,10 @@ class VendorImportJob(models.Model):
             # ================= LOOP 2 (PRODUCTS) =================
             for i, product in enumerate(products):
 
-                name = product.get("name")
+                name = (product.get("name") or "").strip()
 
-                if not name:
-                    _logger.warning("SKIPPING EMPTY PRODUCT")
+                if not name or len(name) < 3:
+                    _logger.warning(f"INVALID PRODUCT NAME → {product}")
                     continue
 
                 description = product.get("description", "")
