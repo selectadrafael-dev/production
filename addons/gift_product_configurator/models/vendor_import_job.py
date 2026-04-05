@@ -658,8 +658,7 @@ class VendorImportJob(models.Model):
                 _logger.warning("EMPTY TEXT → SKIP BATCH")
                 continue
 
-            prompt = f"""
-            You are an advanced product extraction and interpretation engine for catalog PDFs.
+            prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
             =====================
             CORE RULES (STRICT)
@@ -688,11 +687,72 @@ class VendorImportJob(models.Model):
             - If SINGLE main product:
             → return ONE product
 
-            - If MULTIPLE products:
+            - If MULTIPLE distinct products:
             → extract EACH product separately
 
-            - If repeated items:
-            → treat EACH visible item as a unique product
+            =====================
+            VARIANT DETECTION LOGIC (CRITICAL)
+            =====================
+
+            Products in catalogs may appear as multiple similar images WITHOUT explicit labels like "color" or "size".
+
+            You MUST detect variants using visual, structural, and contextual clues.
+
+            A product HAS VARIANTS if:
+            - Multiple similar items are grouped together
+            - Items share the same name or no repeated name is shown
+            - Items differ only by color, size, material, or minor design changes
+            - Items are arranged in a row, grid, or cluster
+            - A single title or description applies to multiple items
+
+            IMPORTANT:
+
+            - DO NOT treat these as separate products
+            - GROUP them into ONE product with variants
+
+            =====================
+            VARIANT RULES
+            =====================
+
+            - Each product appears ONLY ONCE
+            - Variants must be grouped under "variants"
+            - If no variants exist → do NOT include "variants" field
+
+            ATTRIBUTE INFERENCE:
+
+            - If difference looks like color → use "Color"
+            - If difference looks like size → use "Size"
+            - If unclear → use "Variant"
+
+            - Attribute names must be consistent (e.g. Color, Size)
+
+            STOCK HANDLING:
+
+            - If stock is shown per variation → assign to that variant
+            - If stock is general → assign to product
+
+            =====================
+            WHEN TO SPLIT PRODUCTS
+            =====================
+
+            Treat items as SEPARATE products ONLY IF:
+            - Names are clearly different
+            - Designs are significantly different
+            - They are unrelated items
+
+            If unsure:
+            → Prefer grouping as variants
+
+            EXAMPLES:
+
+            If multiple pens with same design but different colors are shown:
+            → ONE product with Color variants
+
+            If multiple shirts in different colors:
+            → ONE product with Color variants
+
+            If items differ only slightly:
+            → ALWAYS treat as variants
 
             =====================
             OUTPUT FORMAT
@@ -702,7 +762,16 @@ class VendorImportJob(models.Model):
             {{
                 "name": "",
                 "description": "",
-                "category": ""
+                "category": "",
+
+                "variants": [
+                    {{
+                        "attributes": {{
+                            "Color": ""
+                        }},
+                        "stock": null
+                    }}
+                ]
             }}
             ]
 
@@ -721,6 +790,7 @@ class VendorImportJob(models.Model):
                     response = client.responses.create(
                         model="gpt-4.1-mini",
                         input=prompt,
+                        temperature=0,
                         timeout=60
                     )
 
@@ -1452,3 +1522,15 @@ class VendorImportJob(models.Model):
             raise Exception("Apify returned empty dataset")
 
         return data
+    
+    def validate_ai_output(products):
+        for p in products:
+            if "variants" in p:
+                if not isinstance(p["variants"], list):
+                    p["variants"] = []
+
+                for v in p["variants"]:
+                    if "attributes" not in v:
+                        v["attributes"] = {"Variant": "Default"}
+
+        return products
