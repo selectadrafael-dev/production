@@ -1208,9 +1208,12 @@ class VendorImportJob(models.Model):
 
         created_count = 0
 
-        # ✅ GLOBAL CACHE (VERY IMPORTANT)
+        # ✅ GLOBAL CACHE
         used_images = set()
         image_cache = {}
+
+        # 🔥 NEW: track processed names ONLY within THIS RUN
+        processed_names = set()
 
         # ================= LOOP 1 (PAGES) =================
         for page_data in pages:
@@ -1243,9 +1246,19 @@ class VendorImportJob(models.Model):
                 description = product.get("description", "")
                 category_name = product.get("category") or "Uncategorized"
 
+                # ================= CATEGORY =================
                 category = category_obj.search([('name', '=', category_name)], limit=1)
                 if not category:
                     category = category_obj.create({'name': category_name})
+
+                # ================= DUPLICATE HANDLING (FIXED) =================
+                # ❌ REMOVE DB-LEVEL SKIP
+                # ✅ Only avoid duplicates WITHIN SAME RUN (optional)
+
+                if name in processed_names:
+                    _logger.warning(f"DUPLICATE IN BATCH → {name} (still processing)")
+                else:
+                    processed_names.add(name)
 
                 vals = {
                     'name': name,
@@ -1254,12 +1267,6 @@ class VendorImportJob(models.Model):
                     'sale_ok': True,
                     'website_published': False,
                 }
-
-                # ================= DUPLICATE PROTECTION =================
-                existing = product_obj.search([('name', '=', name)], limit=1)
-                if existing:
-                    _logger.warning(f"SKIPPED DUPLICATE → {name}")
-                    continue
 
                 # ================= IMAGE ENGINE =================
                 row_data = page_data.get("images", [])
@@ -1298,7 +1305,6 @@ class VendorImportJob(models.Model):
                     elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
 
                         total_rows = len(row_data)
-
                         row_index = i % total_rows
                         row_images = row_data[row_index].get("images", [])
 
@@ -1316,11 +1322,11 @@ class VendorImportJob(models.Model):
                 else:
                     _logger.warning(f"NO IMAGE → {name}")
 
-                # ================= CREATE =================
+                # ================= CREATE (NO SKIP) =================
                 product_obj.create(vals)
                 created_count += 1
 
-                # ✅ COMMIT EVERY 50 PRODUCTS (VERY IMPORTANT)
+                # ✅ COMMIT EVERY 50 PRODUCTS
                 if created_count % 50 == 0:
                     self.env.cr.commit()
                     _logger.warning(f"PARTIAL COMMIT → {created_count}")
@@ -1332,8 +1338,6 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
-
-
 
     #-----URL API FLOW-------------------------------------------
 
