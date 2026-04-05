@@ -567,6 +567,7 @@ class VendorImportJob(models.Model):
                 continue
 
             # ✅ FULL STRONG PROMPT (UNCHANGED)
+            
             prompt = f"""
             You are a highly precise e-commerce product extraction engine.
 
@@ -700,6 +701,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
 
+
     #===========pdf and excel open ai OPENAI======================
 
     def send_to_openai_pdf_excel(self):
@@ -723,30 +725,21 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # ================= BATCHING =================
-        BATCH_SIZE = 5
-
-        batched_pages = [
-            pages[i:i + BATCH_SIZE]
-            for i in range(0, len(pages), BATCH_SIZE)
-        ]
-
-        _logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
+        _logger.warning(f"TOTAL PAGES → {len(pages)}")
 
         page_products = []
 
-        # ================= LOOP =================
-        for batch_index, batch in enumerate(batched_pages):
+        # 🔥 PROCESS PAGE BY PAGE (CRITICAL FIX)
+        for page in pages:
 
-            _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
+            page_no = page.get("page")
+            page_text = page.get("text", "")
 
-            combined_text = "\n\n".join([
-                p.get("text", "") for p in batch if p.get("text")
-            ])
-
-            if not combined_text.strip():
-                _logger.warning("EMPTY TEXT → SKIP BATCH")
+            if not page_text.strip():
+                _logger.warning(f"EMPTY TEXT → SKIP PAGE {page_no}")
                 continue
+
+            _logger.warning(f"AI → PROCESSING PAGE {page_no}")
 
             prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
@@ -758,9 +751,16 @@ class VendorImportJob(models.Model):
             2. NO explanation
             3. NO markdown
             4. NO text outside JSON
-            5. DO NOT duplicate products
+            5. DO NOT duplicate products WITHIN THE SAME PAGE
             6. DO NOT skip any product
-            7. EACH product must appear exactly once
+            7. EACH product must appear exactly once PER PAGE
+
+            IMPORTANT GLOBAL RULE:
+
+            - This input represents ONLY ONE PAGE of a catalog
+            - You MUST extract ONLY products visible on THIS PAGE
+            - DO NOT repeat products from previous pages
+            - DO NOT assume products continue across pages
 
             =====================
             PRODUCT DETECTION LOGIC
@@ -779,6 +779,12 @@ class VendorImportJob(models.Model):
 
             - If MULTIPLE distinct products:
             → extract EACH product separately
+
+            CRITICAL:
+
+            - Products are typically aligned with images
+            - Each image or grouped images usually represent a product
+            - DO NOT treat the whole page as one product
 
             =====================
             VARIANT DETECTION LOGIC (CRITICAL)
@@ -804,7 +810,7 @@ class VendorImportJob(models.Model):
             VARIANT RULES
             =====================
 
-            - Each product appears ONLY ONCE
+            - Each product appears ONLY ONCE per page
             - Variants must be grouped under "variants"
             - If no variants exist → do NOT include "variants" field
 
@@ -833,16 +839,13 @@ class VendorImportJob(models.Model):
             If unsure:
             → Prefer grouping as variants
 
-            EXAMPLES:
+            =====================
+            ANTI-REPETITION RULE (VERY IMPORTANT)
+            =====================
 
-            If multiple pens with same design but different colors are shown:
-            → ONE product with Color variants
-
-            If multiple shirts in different colors:
-            → ONE product with Color variants
-
-            If items differ only slightly:
-            → ALWAYS treat as variants
+            - If the same product appears multiple times on THIS PAGE → return it ONLY ONCE
+            - If two products look visually different → treat them as separate even if names are similar
+            - DO NOT repeat the same product multiple times in output
 
             =====================
             OUTPUT FORMAT
@@ -850,16 +853,21 @@ class VendorImportJob(models.Model):
 
             [
             {{
-                "name": "",
-                "description": "",
-                "category": "",
-
-                "variants": [
+                "page": {page_no},
+                "products": [
                     {{
-                        "attributes": {{
-                            "Color": ""
-                        }},
-                        "stock": null
+                        "name": "",
+                        "description": "",
+                        "category": "",
+
+                        "variants": [
+                            {{
+                                "attributes": {{
+                                    "Color": ""
+                                }},
+                                "stock": null
+                            }}
+                        ]
                     }}
                 ]
             }}
@@ -869,7 +877,7 @@ class VendorImportJob(models.Model):
             TEXT TO ANALYZE
             =====================
 
-            {combined_text}
+            {page_text}
             """
 
             MAX_RETRIES = 3
@@ -889,13 +897,13 @@ class VendorImportJob(models.Model):
                     break
 
                 except Exception as e:
-                    _logger.warning(f"RETRY {attempt+1} FAILED → {str(e)}")
+                    _logger.warning(f"PAGE {page_no} → RETRY {attempt+1} FAILED → {str(e)}")
 
             if not success:
-                _logger.error("FINAL FAILURE → SKIP BATCH")
+                _logger.error(f"PAGE {page_no} → FINAL FAILURE")
                 continue
 
-            # ================= CLEAN RESPONSE =================
+            # ================= CLEAN =================
             if "```" in result:
                 result = result.split("```")[1]
 
@@ -907,109 +915,104 @@ class VendorImportJob(models.Model):
             try:
                 parsed = json.loads(result)
             except Exception:
-                _logger.warning("INVALID JSON → SKIP BATCH")
+                _logger.warning(f"PAGE {page_no} → INVALID JSON")
                 continue
 
             if isinstance(parsed, list) and parsed:
 
-                for page in batch:
+                page_products.append({
+                    "page": page_no,
+                    "products": parsed
+                })
 
-                    page_products.append({
-                        "page": page.get("page"),
-                        "products": parsed
-                    })
-
-                _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
+                _logger.warning(f"PAGE {page_no} → PRODUCTS: {len(parsed)}")
 
             import time
-            time.sleep(1)
+            time.sleep(1)  # 🔒 rate limit protection
 
         # ================= FINAL =================
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
-       #self.state = "ai_done"
+        #-----------scoring image before picking best/quality image (inage logic)-------------
+        def pick_best_image(self, images):
 
+                best_img = None
+                best_score = 0
+                seen_hashes = set()
 
-    #-----------scoring image before picking best/quality image (inage logic)-------------
-    def pick_best_image(self, images):
+                for img in images:
 
-            best_img = None
-            best_score = 0
-            seen_hashes = set()
+                    try:
+                        img_bytes = base64.b64decode(img)
+                        size = len(img_bytes)
 
-            for img in images:
+                        # ❌ Skip tiny images (logos/icons)
+                        if size < 10000:
+                            continue
 
-                try:
-                    img_bytes = base64.b64decode(img)
-                    size = len(img_bytes)
+                        # ❌ Skip extremely large (full lifestyle pages)
+                        if size > 800000:
+                            continue
 
-                    # ❌ Skip tiny images (logos/icons)
-                    if size < 10000:
+                        # ================= IMAGE ANALYSIS =================
+                        pil_img = Image.open(BytesIO(img_bytes))
+                        width, height = pil_img.size
+
+                        # ❌ Skip extremely small resolution
+                        if width < 150 or height < 150:
+                            continue
+
+                        # ❌ Skip extreme aspect ratios (banners, strips)
+                        aspect_ratio = width / height if height else 1
+
+                        if aspect_ratio > 3 or aspect_ratio < 0.3:
+                            continue
+
+                        # ================= DUPLICATE CHECK =================
+                        img_hash = hash(img_bytes[:100])  # fast partial hash
+
+                        if img_hash in seen_hashes:
+                            continue
+
+                        seen_hashes.add(img_hash)
+
+                        # ================= SCORING =================
+                        score = 0
+
+                        # ✅ Prefer medium-good sizes
+                        if 20000 < size < 300000:
+                            score += 200
+
+                        # ✅ Prefer square-ish product images
+                        if 0.7 < aspect_ratio < 1.5:
+                            score += 150
+
+                        # ✅ Prefer decent resolution
+                        if width > 400 and height > 400:
+                            score += 150
+
+                        # ❌ Penalize too wide/tall
+                        if aspect_ratio > 2 or aspect_ratio < 0.5:
+                            score -= 100
+
+                        # ❌ Penalize very large images (likely lifestyle)
+                        if size > 500000:
+                            score -= 150
+
+                        # Base size contribution
+                        score += size / 2000
+
+                        # ================= SELECT BEST =================
+                        if score > best_score:
+                            best_score = score
+                            best_img = img
+
+                    except Exception:
                         continue
 
-                    # ❌ Skip extremely large (full lifestyle pages)
-                    if size > 800000:
-                        continue
-
-                    # ================= IMAGE ANALYSIS =================
-                    pil_img = Image.open(BytesIO(img_bytes))
-                    width, height = pil_img.size
-
-                    # ❌ Skip extremely small resolution
-                    if width < 150 or height < 150:
-                        continue
-
-                    # ❌ Skip extreme aspect ratios (banners, strips)
-                    aspect_ratio = width / height if height else 1
-
-                    if aspect_ratio > 3 or aspect_ratio < 0.3:
-                        continue
-
-                    # ================= DUPLICATE CHECK =================
-                    img_hash = hash(img_bytes[:100])  # fast partial hash
-
-                    if img_hash in seen_hashes:
-                        continue
-
-                    seen_hashes.add(img_hash)
-
-                    # ================= SCORING =================
-                    score = 0
-
-                    # ✅ Prefer medium-good sizes
-                    if 20000 < size < 300000:
-                        score += 200
-
-                    # ✅ Prefer square-ish product images
-                    if 0.7 < aspect_ratio < 1.5:
-                        score += 150
-
-                    # ✅ Prefer decent resolution
-                    if width > 400 and height > 400:
-                        score += 150
-
-                    # ❌ Penalize too wide/tall
-                    if aspect_ratio > 2 or aspect_ratio < 0.5:
-                        score -= 100
-
-                    # ❌ Penalize very large images (likely lifestyle)
-                    if size > 500000:
-                        score -= 150
-
-                    # Base size contribution
-                    score += size / 2000
-
-                    # ================= SELECT BEST =================
-                    if score > best_score:
-                        best_score = score
-                        best_img = img
-
-                except Exception:
-                    continue
-
-            return best_img
+                return best_img
 
 
     #----marchin AI-----------------------------------
