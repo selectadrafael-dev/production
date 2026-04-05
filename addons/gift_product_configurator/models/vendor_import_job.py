@@ -202,17 +202,17 @@ class VendorImportJob(models.Model):
                         except Exception:
                             _logger.warning(f"ROW {idx} → URL FAILED")
 
-            # -------- DEBUG --------
+            #-------- DEBUG --------
             _logger.warning(f"ROW {idx} → TEXT LENGTH: {len(row_text)}")
             _logger.warning(f"ROW {idx} → IMAGES FOUND: {len(row_images)}")
 
-            # -------- STORE --------
+            #-------- STORE --------
             current_page.append({
                 "text": row_text,
                 "images": row_images
             })
 
-            # -------- PAGINATION --------
+            #-------- PAGINATION --------
             if len(current_page) >= page_size:
                 pages.append({
                     "page": page_number,
@@ -221,14 +221,14 @@ class VendorImportJob(models.Model):
                 current_page = []
                 page_number += 1
 
-        # -------- LAST PAGE --------
+        #-------- LAST PAGE --------
         if current_page:
             pages.append({
                 "page": page_number,
                 "rows": current_page
             })
 
-        # -------- FINAL FORMAT --------
+        #-------- FINAL FORMAT --------
         final_pages = []
 
         for page in pages:
@@ -254,7 +254,7 @@ class VendorImportJob(models.Model):
 
         try:
 
-            # ================= URL FLOW =================
+            #================= URL FLOW =================
             if self.data_url:
                 _logger.warning("FLOW → URL")
 

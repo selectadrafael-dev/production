@@ -4,4 +4,5 @@ openai>=1.0.0
 beautifulsoup4
 requests
 openpyxl-image-loader
+PyMuPDF==1.23.7
 #playwright==1.42.0
