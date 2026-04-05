@@ -702,7 +702,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
 
 
-    #===========pdf and excel open ai OPENAI======================
+    #===========pdf and excel open ai OPENAI=========================
 
     def send_to_openai_pdf_excel(self):
 
