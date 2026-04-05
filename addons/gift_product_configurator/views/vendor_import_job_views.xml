@@ -55,6 +55,7 @@
 
                         <page string="AI Data">
                             <field name="extracted_text" widget="text"/>
+                            <field name="current_page" invisible="1"/>
                             <field name="ai_response" widget="text"/>
                         </page>
 

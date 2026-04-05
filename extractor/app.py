@@ -5,6 +5,7 @@ import logging
 import os
 from PIL import Image
 import io
+import gc  # 🔥 memory cleanup
 
 app = Flask(__name__)
 
@@ -32,19 +33,26 @@ def extract():
     try:
         pdf_bytes = file.read()
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    except Exception:
+    except Exception as e:
+        _logger.error(f"INVALID PDF → {str(e)}")
         return jsonify({"error": "Invalid PDF"}), 400
 
     pages_data = []
 
+    # 🔒 MUST remain 1 (Odoo sends one page)
+    MAX_PAGES = 1
+
     for page_number, page in enumerate(doc):
+
+        if page_number >= MAX_PAGES:
+            break
 
         text = page.get_text("text") or ""
         image_list = []
 
         images = page.get_images(full=True)
 
-        MAX_IMAGES_PER_PAGE = 5
+        MAX_IMAGES_PER_PAGE = 3
 
         for img_data in images:
             try:
@@ -60,19 +68,30 @@ def extract():
 
                 img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-                img.thumbnail((800, 800))
+                # 🔒 reduce size
+                img.thumbnail((600, 600))
 
                 buffer = io.BytesIO()
-                img.save(buffer, format="JPEG", quality=70)
+                img.save(buffer, format="JPEG", quality=60)
 
                 compressed_bytes = buffer.getvalue()
+
+                # 🔒 skip large images
+                if len(compressed_bytes) > 200000:
+                    continue
 
                 image_base64 = base64.b64encode(compressed_bytes).decode("utf-8")
 
                 image_list.append(image_base64)
 
+                # 🔥 free memory
+                buffer.close()
+
             except Exception:
                 continue
+
+        # 🔒 limit text
+        text = text[:2000]
 
         _logger.info(f"PAGE {page_number+1} → IMAGES KEPT: {len(image_list)}")
 
@@ -82,7 +101,31 @@ def extract():
             "images": image_list
         })
 
-    return jsonify(pages_data)
+    # 🔒 response size protection
+    try:
+        response_size = len(str(pages_data))
+        _logger.info(f"RESPONSE SIZE → {response_size}")
+
+        if response_size > 500000:
+            _logger.warning("RESPONSE TOO LARGE → trimming images")
+            for p in pages_data:
+                p["images"] = []
+
+    except Exception:
+        pass
+
+    # 🔥 CLOSE DOC + CLEAN MEMORY
+    try:
+        doc.close()
+        del doc
+        gc.collect()
+    except Exception:
+        pass
+
+    return jsonify({
+        "pages": pages_data
+    })
+
 
 # ================= START APP =================
 if __name__ == "__main__":

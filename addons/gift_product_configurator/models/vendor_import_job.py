@@ -36,6 +36,10 @@ class VendorImportJob(models.Model):
     logo_file = fields.Binary()
 
     extracted_text = fields.Text()
+    current_page = fields.Integer(
+        string="Current PDF Page",
+        default=0
+    )
     ai_response = fields.Text()
 
     state = fields.Selection([
@@ -298,79 +302,165 @@ class VendorImportJob(models.Model):
 
     def extract_pdf(self):
 
-        _logger.warning("PDF → START EXTRACTION")
+        _logger.warning("PDF → START EXTRACTION (BATCH MODE)")
+
+        import fitz  # PyMuPDF
+        import io
 
         pdf_bytes = base64.b64decode(self.pdf_file)
 
         MAX_RETRIES = 2
-        success = False
 
-        for attempt in range(MAX_RETRIES):
+        # 🔥 BATCH CONFIG (tunable)
+        BATCH_SIZE = 5  # smaller = safer
+        PAGE_DELAY = 2  # seconds between pages
+        BATCH_DELAY = 5  # seconds after batch
 
+        all_pages = []
+
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        except Exception as e:
+            _logger.exception(f"PDF OPEN FAILED → {str(e)}")
+            self.state = "failed"
+            return
+
+        total_pages = len(doc)
+
+        # 🔥 Resume from last processed page
+        start_page = self.current_page or 0
+        end_page = min(start_page + BATCH_SIZE, total_pages)
+
+        _logger.warning(f"PDF TOTAL PAGES → {total_pages}")
+        _logger.warning(f"BATCH → Processing pages {start_page+1} to {end_page}")
+
+        for i in range(start_page, end_page):
+
+            page = doc[i]
+            _logger.warning(f"PROCESSING PAGE {i + 1}")
+
+            # ================= CREATE SINGLE PAGE PDF =================
             try:
-                _logger.warning(f"FLASK CALL ATTEMPT {attempt + 1}")
+                single_pdf = fitz.open()
+                single_pdf.insert_pdf(doc, from_page=i, to_page=i)
 
-                response = requests.post(
-                    "https://pdf-extractor-staging.onrender.com/extract",
-                    files={"file": ("catalog.pdf", pdf_bytes, "application/pdf")},
-                    timeout=180
-                )
-
-                if response.status_code != 200:
-                    _logger.warning(f"FLASK ERROR: {response.status_code}")
-                    continue
-
-                pages = response.json()
-
-                # ================= VALIDATION =================
-                if not isinstance(pages, list) or not pages:
-                    _logger.error("INVALID FLASK RESPONSE → EMPTY OR WRONG FORMAT")
-                    continue
-
-                _logger.warning(f"RECEIVED {len(pages)} PAGES FROM FLASK")
-
-                # ================= NORMALIZATION =================
-                normalized_pages = []
-
-                for page in pages:
-
-                    text = page.get("text", "")
-                    images = page.get("images", [])
-
-                    if not text and not images:
-                        continue
-
-                    normalized_pages.append({
-                        "page": page.get("page"),
-                        "text": text,
-                        "images": images
-                    })
-
-                if not normalized_pages:
-                    _logger.error("NO VALID PAGES AFTER NORMALIZATION")
-                    continue
-
-                # ================= STORE =================
-                self.extracted_text = json.dumps(normalized_pages)
-
-                _logger.warning(
-                    f"PDF EXTRACTED SAMPLE → {self.extracted_text[:200]}"
-                )
-
-                success = True
-                break
+                pdf_bytes_io = io.BytesIO()
+                single_pdf.save(pdf_bytes_io)
+                pdf_bytes_io.seek(0)
 
             except Exception as e:
-                _logger.exception(f"FLASK CALL FAILED → {str(e)}")
+                _logger.exception(f"FAILED TO SPLIT PAGE {i+1} → {str(e)}")
+                continue
 
-            time.sleep(5)
+            # ================= CALL FLASK =================
+            page_success = False
 
-        # ================= FINAL STATUS =================
-        if not success:
-            _logger.error("PDF EXTRACTION FAILED AFTER RETRIES")
+            for attempt in range(MAX_RETRIES):
+
+                try:
+                    _logger.warning(f"FLASK CALL PAGE {i+1} → ATTEMPT {attempt + 1}")
+
+                    response = requests.post(
+                        "https://pdf-extractor-staging.onrender.com/extract",
+                        files={
+                            "file": ("page.pdf", pdf_bytes_io, "application/pdf")
+                        },
+                        timeout=60
+                    )
+
+                    if response.status_code != 200:
+                        _logger.warning(
+                            f"FLASK ERROR PAGE {i+1}: {response.status_code}"
+                        )
+                        continue
+
+                    page_data = response.json()
+
+                    # ================= FORMAT SUPPORT (BOTH TYPES) =================
+                    if isinstance(page_data, dict):
+                        pages = page_data.get("pages", [])
+                    elif isinstance(page_data, list):
+                        pages = page_data
+                    else:
+                        pages = []
+
+                    if not pages:
+                        _logger.warning(f"EMPTY PAGE DATA PAGE {i+1}")
+                        continue
+
+                    _logger.warning(f"PAGE {i+1} → RECEIVED {len(pages)} BLOCKS")
+
+                    # ================= NORMALIZATION =================
+                    for p in pages:
+
+                        text = p.get("text", "")
+                        images = p.get("images", [])
+
+                        if not text and not images:
+                            continue
+
+                        all_pages.append({
+                            "page": i + 1,
+                            "text": text,
+                            "images": images
+                        })
+
+                    page_success = True
+                    break
+
+                except Exception as e:
+                    _logger.exception(
+                        f"FLASK CALL FAILED PAGE {i+1} → {str(e)}"
+                    )
+
+                time.sleep(2)
+
+            if not page_success:
+                _logger.error(f"PAGE {i+1} FAILED AFTER RETRIES")
+
+            # 🔥 COOL DOWN BETWEEN PAGES
+            time.sleep(PAGE_DELAY)
+
+        # ================= UPDATE PROGRESS =================
+        self.current_page = end_page
+
+        # ================= STORE (APPEND, NOT REPLACE) =================
+        try:
+            existing = []
+
+            if self.extracted_text:
+                try:
+                    existing = json.loads(self.extracted_text)
+                except Exception:
+                    existing = []
+
+            combined = existing + all_pages
+
+            self.extracted_text = json.dumps(combined)
+
+            _logger.warning(f"BATCH STORED → {len(all_pages)} pages")
+            _logger.warning(f"TOTAL STORED → {len(combined)} pages")
+            _logger.warning(f"EXTRACTED DATA SIZE → {len(self.extracted_text)}")
+
+        except Exception as e:
+            _logger.exception(f"FAILED TO STORE DATA → {str(e)}")
             self.state = "failed"
+            return
 
+        # ================= CHECK COMPLETION =================
+        if end_page >= total_pages:
 
+            _logger.warning("ALL PAGES PROCESSED ✅")
+            self.state = "done"
+
+        else:
+
+            _logger.warning(f"NEXT BATCH STARTS FROM PAGE {end_page + 1}")
+
+            # 🔥 allow Flask to recover before next cron
+            time.sleep(BATCH_DELAY)
+
+        _logger.warning("PDF EXTRACTION BATCH COMPLETED")
 
     # ---------------- OPENAI ----------------
 
