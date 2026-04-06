@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from openai import OpenAI
 import re
+import fitz
 
  
 
@@ -303,18 +304,14 @@ class VendorImportJob(models.Model):
     def extract_pdf(self):
 
         _logger.warning("PDF → START EXTRACTION (BATCH MODE)")
-
-        import fitz  # PyMuPDF
-        import io
-
         pdf_bytes = base64.b64decode(self.pdf_file)
 
         MAX_RETRIES = 2
 
-        # 🔥 BATCH CONFIG (tunable)
-        BATCH_SIZE = 5  # smaller = safer
-        PAGE_DELAY = 2  # seconds between pages
-        BATCH_DELAY = 5  # seconds after batch
+        # 🔥 BATCH CONFIG
+        BATCH_SIZE = 5
+        PAGE_DELAY = 2
+        BATCH_DELAY = 5
 
         all_pages = []
 
@@ -326,8 +323,11 @@ class VendorImportJob(models.Model):
             return
 
         total_pages = len(doc)
+        self.total_pages = total_pages
 
-        # 🔥 Resume from last processed page
+        # 🔥 RESUME LOG (NEW)
+        _logger.warning(f"RESUMING FROM PAGE → {self.current_page or 0}")
+
         start_page = self.current_page or 0
         end_page = min(start_page + BATCH_SIZE, total_pages)
 
@@ -362,21 +362,17 @@ class VendorImportJob(models.Model):
 
                     response = requests.post(
                         "https://pdf-extractor-staging.onrender.com/extract",
-                        files={
-                            "file": ("page.pdf", pdf_bytes_io, "application/pdf")
-                        },
+                        files={"file": ("page.pdf", pdf_bytes_io, "application/pdf")},
                         timeout=60
                     )
 
                     if response.status_code != 200:
-                        _logger.warning(
-                            f"FLASK ERROR PAGE {i+1}: {response.status_code}"
-                        )
+                        _logger.warning(f"FLASK ERROR PAGE {i+1}: {response.status_code}")
                         continue
 
                     page_data = response.json()
 
-                    # ================= FORMAT SUPPORT (BOTH TYPES) =================
+                    # ================= FORMAT SUPPORT =================
                     if isinstance(page_data, dict):
                         pages = page_data.get("pages", [])
                     elif isinstance(page_data, list):
@@ -409,22 +405,19 @@ class VendorImportJob(models.Model):
                     break
 
                 except Exception as e:
-                    _logger.exception(
-                        f"FLASK CALL FAILED PAGE {i+1} → {str(e)}"
-                    )
+                    _logger.exception(f"FLASK CALL FAILED PAGE {i+1} → {str(e)}")
 
                 time.sleep(2)
 
             if not page_success:
                 _logger.error(f"PAGE {i+1} FAILED AFTER RETRIES")
 
-            # 🔥 COOL DOWN BETWEEN PAGES
             time.sleep(PAGE_DELAY)
 
         # ================= UPDATE PROGRESS =================
         self.current_page = end_page
 
-        # ================= STORE (APPEND, NOT REPLACE) =================
+        # ================= STORE =================
         try:
             existing = []
 
@@ -447,18 +440,20 @@ class VendorImportJob(models.Model):
             self.state = "failed"
             return
 
-        # ================= CHECK COMPLETION =================
-        if end_page >= total_pages:
+        # ================= 🔥 CRITICAL FIX =================
+        if self.current_page < total_pages:
 
-            _logger.warning("ALL PAGES PROCESSED ✅")
-            self.state = "done"
+            _logger.warning(f"JOB NOT FINISHED → NEXT START PAGE {self.current_page + 1}")
+
+            # 🔥 FORCE JOB TO CONTINUE
+            self.state = "processing"
+
+            time.sleep(BATCH_DELAY)
 
         else:
 
-            _logger.warning(f"NEXT BATCH STARTS FROM PAGE {end_page + 1}")
-
-            # 🔥 allow Flask to recover before next cron
-            time.sleep(BATCH_DELAY)
+            _logger.warning("ALL PAGES PROCESSED ✅")
+            self.state = "done"
 
         _logger.warning("PDF EXTRACTION BATCH COMPLETED")
 
