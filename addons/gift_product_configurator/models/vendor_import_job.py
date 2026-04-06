@@ -293,7 +293,13 @@ class VendorImportJob(models.Model):
             else:
                 raise Exception("No input found")
 
-            self.state = "done"
+            # ONLY mark done if FULL PDF processed
+            if self.current_page >= self.total_pages:
+                _logger.warning("PROCESS IMPORT → ALL PAGES COMPLETED")
+                self.state = 'done'
+            else:
+                _logger.warning("PROCESS IMPORT → WAITING FOR NEXT BATCH")
+                self.state = 'processing'
 
         except Exception as e:
             _logger.error(f"PROCESS FAILED → {str(e)}")
