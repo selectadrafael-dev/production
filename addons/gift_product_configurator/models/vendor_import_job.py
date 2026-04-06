@@ -892,7 +892,7 @@ class VendorImportJob(models.Model):
             =====================
 
             [
-                {
+                {{
                     "name": "",
                     "description": "",
                     "category": "",
@@ -904,7 +904,7 @@ class VendorImportJob(models.Model):
                                         "stock": null
                                     }
                                 ]
-                }
+                }}
             ]
 
             PAGE CONTEXT:
