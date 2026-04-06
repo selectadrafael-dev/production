@@ -1501,9 +1501,11 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     #---------------- CRON ----------------
+    
     def run_pending_jobs(self):
 
         jobs = self.search([('state', 'in', ['draft', 'processing'])])
+
         _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
         for job in jobs:
@@ -1514,18 +1516,18 @@ class VendorImportJob(models.Model):
                 job.state = 'processing'
 
                 job.process_import()
+
                 _logger.warning(f"CRON → JOB {job.id} FINAL STATE: {job.state}")
 
-                if job.state not in ['failed', 'processing']:
-                    job.state = 'done'
-                
+                # ❌ DO NOT TOUCH STATE HERE
+
                 _logger.warning(f"CRON → JOB {job.id} DONE")
 
-            except Exception:
-                _logger.exception("CRON FAILED")
-                job.state = 'error'
-   
-   #flask setup/installation 
+            except Exception as e:
+                _logger.exception(f"PROCESS FAILED → {str(e)}")
+                job.state = 'failed'
+
+   #=============flask setup/installation=================== 
     def ping_flask_server(self):
       
         try:
