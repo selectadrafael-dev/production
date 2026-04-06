@@ -1503,21 +1503,22 @@ class VendorImportJob(models.Model):
     #---------------- CRON ----------------
     def run_pending_jobs(self):
 
-        jobs = self.search([('state', '=', 'draft')])
-
+        jobs = self.search([('state', 'in', ['draft', 'processing'])])
         _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
         for job in jobs:
             try:
                 _logger.warning(f"CRON → START JOB {job.id}")
+                _logger.warning(f"CRON → JOB {job.id} CURRENT STATE: {job.state}")
 
                 job.state = 'processing'
 
                 job.process_import()
+                _logger.warning(f"CRON → JOB {job.id} FINAL STATE: {job.state}")
 
-                if job.state != 'failed':
+                if job.state not in ['failed', 'processing']:
                     job.state = 'done'
-
+                
                 _logger.warning(f"CRON → JOB {job.id} DONE")
 
             except Exception:
