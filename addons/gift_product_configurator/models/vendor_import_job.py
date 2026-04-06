@@ -41,6 +41,7 @@ class VendorImportJob(models.Model):
         string="Current PDF Page",
         default=0
     )
+    total_pages = fields.Integer(string="Total Pages", default=0)
     ai_response = fields.Text()
 
     state = fields.Selection([
