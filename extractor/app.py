@@ -50,9 +50,9 @@ def extract():
         text = page.get_text("text") or ""
         image_list = []
 
-        images = page.get_images(full=True)
+        images = sorted(images, key=lambda x: x[2] * x[3], reverse=True)
 
-        MAX_IMAGES_PER_PAGE = 3
+        MAX_IMAGES_PER_PAGE = 10
 
         for img_data in images:
             try:
@@ -67,18 +67,23 @@ def extract():
                     continue
 
                 img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+                width, height = img.size
+
+                # skip tiny images (icons, logos)
+                if width < 200 or height < 200:
+                    continue
 
                 # 🔒 reduce size
-                img.thumbnail((600, 600))
+                img.thumbnail((800, 800))
 
                 buffer = io.BytesIO()
-                img.save(buffer, format="JPEG", quality=60)
+                img.save(buffer, format="JPEG", quality=75)
 
                 compressed_bytes = buffer.getvalue()
 
                 # 🔒 skip large images
-                if len(compressed_bytes) > 200000:
-                    continue
+                # if len(compressed_bytes) > 500000:
+                #     continue
 
                 image_base64 = base64.b64encode(compressed_bytes).decode("utf-8")
 
@@ -93,8 +98,9 @@ def extract():
         # 🔒 limit text
         text = text[:2000]
 
-        _logger.info(f"PAGE {page_number+1} → IMAGES KEPT: {len(image_list)}")
-
+        _logger.info(
+                f"PAGE {page_number+1} → RAW IMAGES: {len(images)} | KEPT: {len(image_list)}"
+        )
         pages_data.append({
             "page": page_number + 1,
             "text": text,
@@ -107,9 +113,10 @@ def extract():
         _logger.info(f"RESPONSE SIZE → {response_size}")
 
         if response_size > 500000:
-            _logger.warning("RESPONSE TOO LARGE → trimming images")
+            _logger.warning("RESPONSE TOO LARGE → reducing images per page")
+
             for p in pages_data:
-                p["images"] = []
+               p["images"] = p["images"][:6]  # keep at least some images
 
     except Exception:
         pass
