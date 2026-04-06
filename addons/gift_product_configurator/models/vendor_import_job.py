@@ -734,9 +734,11 @@ class VendorImportJob(models.Model):
 
             page_no = page.get("page")
             page_text = page.get("text", "")
+            images = page.get("images", [])
+            image_count = len(images)
 
-            if not page_text.strip():
-                _logger.warning(f"EMPTY TEXT → SKIP PAGE {page_no}")
+            if not page_text.strip() and not images:
+                _logger.warning(f"EMPTY PAGE → SKIP PAGE {page_no}")
                 continue
 
             _logger.warning(f"AI → PROCESSING PAGE {page_no}")
@@ -780,6 +782,12 @@ class VendorImportJob(models.Model):
             - If MULTIPLE distinct products:
             → extract EACH product separately
 
+            IMPORTANT:
+
+            - If multiple images exist → assume multiple products
+            - DO NOT collapse multiple items into one product
+            - If unsure → split into multiple products instead of merging
+
             CRITICAL:
 
             - Products are typically aligned with images
@@ -794,17 +802,21 @@ class VendorImportJob(models.Model):
 
             You MUST detect variants using visual, structural, and contextual clues.
 
-            A product HAS VARIANTS if:
-            - Multiple similar items are grouped together
-            - Items share the same name or no repeated name is shown
-            - Items differ only by color, size, material, or minor design changes
-            - Items are arranged in a row, grid, or cluster
-            - A single title or description applies to multiple items
+           A product HAS VARIANTS ONLY IF:
+
+            - The items are clearly the SAME product design
+            - Differences are ONLY color, size, or minor variation
+            - The items would share the same product name in a store
+
+            DO NOT group items as variants if:
+            - They are different product types
+            - They have different shapes or purposes
+            - They would be listed separately in an e-commerce store
 
             IMPORTANT:
 
-            - DO NOT treat these as separate products
-            - GROUP them into ONE product with variants
+            - ONLY group items as variants when they clearly represent the SAME product
+            - OTHERWISE treat them as separate products
 
             =====================
             VARIANT RULES
@@ -812,7 +824,7 @@ class VendorImportJob(models.Model):
 
             - Each product appears ONLY ONCE per page
             - Variants must be grouped under "variants"
-            - If no variants exist → do NOT include "variants" field
+            - If no variants exist → DO NOT include "variants" field at all
 
             ATTRIBUTE INFERENCE:
 
@@ -837,7 +849,9 @@ class VendorImportJob(models.Model):
             - They are unrelated items
 
             If unsure:
-            → Prefer grouping as variants
+            → Prefer splitting into separate products
+
+            ONLY group as variants when items are clearly the SAME product
 
             =====================
             ANTI-REPETITION RULE (VERY IMPORTANT)
@@ -848,17 +862,67 @@ class VendorImportJob(models.Model):
             - DO NOT repeat the same product multiple times in output
 
             =====================
+            MINIMUM EXTRACTION RULE (VERY IMPORTANT)
+            =====================
+
+            - You MUST extract at least ONE product from this page
+            - NEVER return an empty list
+            - If unclear, make a best possible interpretation based on visible structure
+            - If the page contains multiple images → return multiple products
+            - Expected products ≈ number of images (unless variants)
+
+            - If there are 5 images → expect around 5 products
+            - DO NOT group unrelated products into one
+            - ONLY group as variants if they are clearly the same product
+
+            HARD SPLIT RULE (CRITICAL):
+
+            - Each distinct image should be treated as a separate product
+            - DO NOT group multiple images into one product unless they are clearly variants
+            - If 5 images show different items → return at least 4–5 products
+
+            VISUAL PRIORITY RULE (CRITICAL):
+
+            - Images are more reliable than text
+            - If text is unclear, rely on images to determine products
+            - Each distinct image usually represents a separate product
+
+            =====================
             OUTPUT FORMAT
             =====================
 
-           [
-                {{
+            [
+                {
                     "name": "",
                     "description": "",
                     "category": "",
-                    "variants": []
-                }}
+                    "variants": [
+                                    {
+                                        "attributes": {
+                                            "Color": ""
+                                        },
+                                        "stock": null
+                                    }
+                                ]
+                }
             ]
+
+            PAGE CONTEXT:
+            - This page contains {image_count} product images
+            - You MUST extract approximately {image_count} products (unless variants)
+            - Each product is usually tied to one image
+            - Use image count as primary signal for product count
+
+            STRICT RULE:
+
+            - If 6 images → expect 4 – 6 products
+            - DO NOT return only 1 product if multiple images exist
+
+            IMPORTANT:
+
+            - If multiple images exist → assume multiple products
+            - Do NOT merge multiple products into one
+            - Prefer splitting into multiple products
 
             =====================
             TEXT TO ANALYZE
@@ -872,14 +936,27 @@ class VendorImportJob(models.Model):
 
             for attempt in range(MAX_RETRIES):
                 try:
+
+                    image_inputs = [
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/jpeg;base64,{img}"
+                        }
+                        for img in images[:10]  # limit to 5 for performance
+                    ]
+
                     response = client.responses.create(
                         model="gpt-4.1-mini",
-                        input=prompt,
+                        input=[{
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": prompt}] + image_inputs
+                        }],
                         temperature=0,
                         timeout=60
                     )
 
                     result = response.output_text.strip()
+                    _logger.warning(f"RAW AI OUTPUT PAGE {page_no} → {result[:500]}")
                     success = True
                     break
 
@@ -902,17 +979,19 @@ class VendorImportJob(models.Model):
             try:
                 parsed = json.loads(result)
             except Exception:
-                _logger.warning(f"PAGE {page_no} → INVALID JSON")
-                continue
 
-            if isinstance(parsed, list) and parsed:
+                _logger.warning(f"PAGE {page_no} → INVALID JSON → forcing empty list")
+                parsed = []
 
-                page_products.append({
-                    "page": page_no,
-                    "products": parsed
-                })
+            if not isinstance(parsed, list):
+                parsed = []
 
-                _logger.warning(f"PAGE {page_no} → PRODUCTS: {len(parsed)}")
+            page_products.append({
+                "page": page_no,
+                "products": parsed
+            })
+
+            _logger.warning(f"PAGE {page_no} → STORED PRODUCTS: {len(parsed)}")
 
             import time
             time.sleep(1)  # 🔒 rate limit protection
