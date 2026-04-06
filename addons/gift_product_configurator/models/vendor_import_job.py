@@ -896,13 +896,13 @@ class VendorImportJob(models.Model):
                     "name": "",
                     "description": "",
                     "category": "",
-                    "variants": [
-                                    {
-                                        "attributes": {
+                   "variants": [
+                                    {{
+                                        "attributes": {{
                                             "Color": ""
-                                        },
+                                        }},
                                         "stock": null
-                                    }
+                                    }}
                                 ]
                 }}
             ]
