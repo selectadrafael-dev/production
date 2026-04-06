@@ -745,9 +745,9 @@ class VendorImportJob(models.Model):
 
             prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
-            =====================
+            ======================
             CORE RULES (STRICT)
-            =====================
+            ======================
 
             1. RETURN ONLY VALID JSON
             2. NO explanation

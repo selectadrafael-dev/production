@@ -49,8 +49,12 @@ def extract():
 
         text = page.get_text("text") or ""
         image_list = []
-
-        images = sorted(images, key=lambda x: x[2] * x[3], reverse=True)
+        images = page.get_images(full=True)
+        images = sorted(
+                images,
+                key=lambda x: x[2] * x[3] if len(x) > 3 else 0,
+                reverse=True
+            )
 
         MAX_IMAGES_PER_PAGE = 10
 
