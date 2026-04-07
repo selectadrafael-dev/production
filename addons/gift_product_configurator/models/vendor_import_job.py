@@ -223,12 +223,14 @@ class VendorImportJob(models.Model):
                     _logger.warning("URL NOT READY → WAIT NEXT CRON")
                     return
 
+                _logger.warning("STEP → SEND TO AI (URL)")
                 self.send_to_openai_url()
 
                 if not self.ai_response:
-                    _logger.error("URL AI FAILED")
+                    _logger.error("URL AI FAILED → STOP")
                     return
 
+                _logger.warning("STEP → CREATE PRODUCTS (URL)")
                 self.create_products_url()
 
             # ================= EXCEL FLOW =================
@@ -236,7 +238,20 @@ class VendorImportJob(models.Model):
                 _logger.warning("FLOW → EXCEL")
 
                 self.parse_excel()
+
+                if not self.extracted_text:
+                    _logger.error("EXCEL PARSE FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → SEND TO AI (EXCEL)")
                 self.send_to_openai_pdf_excel()
+
+                # 🔥 CRITICAL FIX
+                if not self.ai_response:
+                    _logger.error("EXCEL AI FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
                 self.create_products_pdf_excel()
 
             # ================= PDF FLOW =================
@@ -244,13 +259,25 @@ class VendorImportJob(models.Model):
                 _logger.warning("FLOW → PDF")
 
                 self.extract_pdf()
+
+                if not self.extracted_text:
+                    _logger.error("PDF EXTRACTION FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → SEND TO AI (PDF)")
                 self.send_to_openai_pdf_excel()
+
+                if not self.ai_response:
+                    _logger.error("PDF AI FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → CREATE PRODUCTS (PDF)")
                 self.create_products_pdf_excel()
 
             else:
                 raise Exception("No input found")
 
-            # ONLY mark done if FULL PDF processed
+            # ================= FINAL STATE =================
             if self.current_page >= self.total_pages:
                 _logger.warning("PROCESS IMPORT → ALL PAGES COMPLETED")
                 self.state = 'done'
@@ -261,7 +288,6 @@ class VendorImportJob(models.Model):
         except Exception as e:
             _logger.error(f"PROCESS FAILED → {str(e)}")
             self.state = "failed"
-
    
     # ---------------- PDF ----------------
 
@@ -1577,6 +1603,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
+
 
     #-----URL API FLOW-------------------------------------------
 
