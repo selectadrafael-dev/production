@@ -50,6 +50,7 @@ class VendorImportJob(models.Model):
     apify_dataset_id = fields.Char()
     url_batch_index = fields.Integer(default=0)
     last_processed_product_index = fields.Integer(default=0)
+    last_created_page = fields.Integer(default=0)
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -66,13 +67,6 @@ class VendorImportJob(models.Model):
     def parse_url(self):
 
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
-
-        # raw_data = self._run_apify_actor(self.data_url)
-        # _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:300]}")
-
-        # if not raw_data:
-        #     _logger.error("APIFY FAILED → NO DATA")
-        #     return
 
         raw_data = self._run_apify_actor(self.data_url)
 
@@ -102,7 +96,6 @@ class VendorImportJob(models.Model):
 
     #------excel processing methof---------------
 
-    
     def parse_excel(self):
 
         _logger.warning("EXCEL → START PARSING")
@@ -179,24 +172,18 @@ class VendorImportJob(models.Model):
                             content_type = response.headers.get("Content-Type", "")
 
                             # DIRECT IMAGE
-                            if "image" in content_type:
+                            if "image" in content_type and len(response.content) > 5000:
+                                img_base64 = base64.b64encode(response.content).decode("utf-8")
+                                row_images.append(img_base64)
+                                _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
+                                break
 
-                                if len(response.content) > 5000:
-                                    img_base64 = base64.b64encode(response.content).decode("utf-8")
-                                    row_images.append(img_base64)
-
-                                    _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
-                                    break
-
-                            # HTML PAGE
+                            # HTML PAGE → scrape best image
                             elif "text/html" in content_type:
 
                                 soup = BeautifulSoup(response.text, "html.parser")
 
-                                best_img = None
-
                                 for img in soup.find_all("img"):
-
                                     src = img.get("src")
                                     if not src:
                                         continue
@@ -208,33 +195,31 @@ class VendorImportJob(models.Model):
                                         img_res = requests.get(src, headers=headers, timeout=5)
 
                                         if img_res.status_code == 200 and len(img_res.content) > 10000:
-                                            best_img = img_res.content
+                                            img_base64 = base64.b64encode(img_res.content).decode("utf-8")
+                                            row_images.append(img_base64)
+                                            _logger.warning(f"ROW {idx} → SCRAPED IMAGE")
                                             break
 
                                     except Exception:
                                         continue
 
-                                if best_img:
-                                    img_base64 = base64.b64encode(best_img).decode("utf-8")
-                                    row_images.append(img_base64)
-
-                                    _logger.warning(f"ROW {idx} → SCRAPED IMAGE")
+                                if row_images:
                                     break
 
                         except Exception:
                             _logger.warning(f"ROW {idx} → URL FAILED")
 
-            #-------- DEBUG --------
+            # -------- DEBUG --------
             _logger.warning(f"ROW {idx} → TEXT LENGTH: {len(row_text)}")
             _logger.warning(f"ROW {idx} → IMAGES FOUND: {len(row_images)}")
 
-            #-------- STORE --------
+            # -------- STORE --------
             current_page.append({
                 "text": row_text,
                 "images": row_images
             })
 
-            #-------- PAGINATION --------
+            # -------- PAGINATION --------
             if len(current_page) >= page_size:
                 pages.append({
                     "page": page_number,
@@ -243,30 +228,35 @@ class VendorImportJob(models.Model):
                 current_page = []
                 page_number += 1
 
-        #-------- LAST PAGE --------
+        # -------- LAST PAGE --------
         if current_page:
             pages.append({
                 "page": page_number,
                 "rows": current_page
             })
 
-        #-------- FINAL FORMAT --------
+        # ================= FINAL FORMAT (FIXED) =================
         final_pages = []
 
         for page in pages:
 
-            combined_text = "\n".join([r["text"] for r in page["rows"]])
+            # 🔥 FIX 1: STRONG TEXT SEPARATION (CRITICAL)
+            combined_text = "\n\n---\n\n".join([r["text"] for r in page["rows"]])
+
+            # 🔥 FIX 2: FLATTEN IMAGES (CRITICAL)
+            images_flat = []
+            for r in page["rows"]:
+                images_flat.extend(r.get("images", []))
 
             final_pages.append({
                 "page": page["page"],
                 "text": combined_text,
-                "images": page["rows"]
+                "images": images_flat
             })
 
         self.extracted_text = json.dumps(final_pages)
 
         _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
-
 
     #---------------- MAIN FLOW ----------------
    
@@ -283,7 +273,7 @@ class VendorImportJob(models.Model):
                 self.parse_url()
 
                 if not self.extracted_text:
-                    _logger.error("URL PARSE FAILED")
+                    _logger.warning("URL NOT READY → WAIT NEXT CRON")
                     return
 
                 self.send_to_openai_url()
@@ -521,38 +511,16 @@ class VendorImportJob(models.Model):
         current_batch = getattr(self, "url_batch_index", 0)
 
         # ================= FLATTEN =================
+      
         all_blocks = [
             b for p in pages for b in p.get("blocks", [])
         ]
 
+        # 🔥 STRONG CLEAN (REPLACE your weak filtering)
+        all_blocks = self._clean_scraped_blocks(all_blocks)
+
+        # Optional sort after cleaning
         all_blocks = sorted(all_blocks, key=lambda x: (x.get("text") or "")[:50])
-
-        # ================= FILTER =================
-        def is_valid_block(text):
-            if not text:
-                return False
-
-            text = text.lower().strip()
-
-            noise_keywords = [
-                "cookie", "privacy", "login", "menu",
-                "navigation", "home", "accept", "terms"
-            ]
-
-            if any(n in text for n in noise_keywords):
-                return False
-
-            if len(text) < 15:
-                return False
-
-            return True
-
-        all_blocks = [
-            b for b in all_blocks
-            if is_valid_block(b.get("text", ""))
-        ]
-
-        _logger.warning(f"FILTERED BLOCKS → {len(all_blocks)}")
 
         # ================= BATCH =================
         BLOCK_BATCH_SIZE = 20
@@ -575,8 +543,8 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
 
-        combined_text = "\n\n".join([
-            f"{b.get('text','')} | IMAGE: {b.get('image','')}"
+        combined_text = "\n\n---\n\n".join([
+            b.get("text", "")
             for b in block_batch
         ])[:12000]
 
@@ -939,43 +907,13 @@ class VendorImportJob(models.Model):
             for attempt in range(MAX_RETRIES):
                 try:
 
-                    # image_inputs = [
-                    #     {
-                    #         "type": "input_image",
-                    #         "image_url": f"data:image/jpeg;base64,{img}"
-                    #     }
-                    #     for img in images[:10]
-                    # ]
-
-                    image_inputs = []
-
-                    # 🔥 HANDLE PDF MODE (list of base64)
-                    if images and isinstance(images[0], str):
-
-                        image_inputs = [
-                            {
-                                "type": "input_image",
-                                "image_url": f"data:image/jpeg;base64,{img}"
-                            }
-                            for img in images[:10]
-                        ]
-
-                    # 🔥 HANDLE EXCEL MODE (list of dict rows)
-                    elif images and isinstance(images[0], dict):
-
-                        collected_images = []
-
-                        for row in images:
-                            row_imgs = row.get("images", [])
-                            collected_images.extend(row_imgs)
-
-                        image_inputs = [
-                            {
-                                "type": "input_image",
-                                "image_url": f"data:image/jpeg;base64,{img}"
-                            }
-                            for img in collected_images[:10]
-                        ]
+                    image_inputs = [
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/jpeg;base64,{img}"
+                        }
+                        for img in images[:10]
+                    ]
 
                     response = client.responses.create(
                         model="gpt-4.1-mini",
@@ -1345,21 +1283,18 @@ class VendorImportJob(models.Model):
         _logger.warning(f"TOTAL PRODUCTS CREATED THIS RUN: {created_count}")
 
     #==========create pdf and excel product======================
-    MAX_PRODUCTS_PER_RUN = 15
-    processed_products = 0
 
     def create_products_pdf_excel(self):
 
         import base64
+        import json
 
         def safe_set_image(vals, images):
-
             if not images:
                 return
 
             img = images[0]
 
-            # ✅ Case 1: valid base64
             if isinstance(img, str) and len(img) > 100:
                 try:
                     base64.b64decode(img)
@@ -1368,7 +1303,6 @@ class VendorImportJob(models.Model):
                 except Exception:
                     pass
 
-            # ❌ skip invalid images
             _logger.warning("INVALID IMAGE FORMAT → SKIPPED")
 
         if not self.ai_response or not self.extracted_text:
@@ -1386,13 +1320,8 @@ class VendorImportJob(models.Model):
             return
 
         _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
-        _logger.warning(f"AI PAGES COUNT: {len(ai_pages)}")
 
         created_count = 0
-
-        # 🔥 CRON SAFETY LIMIT
-        MAX_PRODUCTS_PER_RUN = 15
-        processed_products = 0
 
         # ================= CATEGORY CONFIG =================
         CATEGORY_MAPPING = {
@@ -1418,10 +1347,17 @@ class VendorImportJob(models.Model):
         if not parent_category:
             parent_category = category_obj.create({'name': DEFAULT_PARENT})
 
-        # ================= LOOP =================
+        # ================= RESUME CONTROL =================
+        last_created_page = getattr(self, "last_created_page", 0)
+
+        # ================= MAIN LOOP =================
         for page_data in pages:
 
             page_no = page_data.get("page")
+
+            # ✅ skip already processed pages
+            if page_no <= last_created_page:
+                continue
 
             ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
 
@@ -1429,6 +1365,7 @@ class VendorImportJob(models.Model):
                 continue
 
             products = ai_page.get("products", [])
+            images = page_data.get("images", [])
 
             if not products:
                 continue
@@ -1436,14 +1373,6 @@ class VendorImportJob(models.Model):
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
             for product_data in products:
-
-                # 🔥 STOP EARLY (CRON SAFE)
-                if processed_products >= MAX_PRODUCTS_PER_RUN:
-                    _logger.warning("CRON LIMIT → STOP EARLY")
-                    self.env.cr.commit()
-                    return
-
-                processed_products += 1
 
                 try:
                     name = (product_data.get("name") or "").strip()
@@ -1484,7 +1413,6 @@ class VendorImportJob(models.Model):
                     ], limit=1)
 
                     if existing_product:
-                        product = existing_product
                         continue
 
                     vals = {
@@ -1495,16 +1423,13 @@ class VendorImportJob(models.Model):
                         'website_published': False,
                     }
 
-                    # 🔥 SAFE IMAGE (FIXED)
-                    images = page_data.get("images", [])
-                    safe_set_image(vals, images)
+                    # ================= IMAGE =================
+                    best_img = self.pick_best_image(images)
+                    if best_img:
+                        vals['image_1920'] = best_img
 
                     product = product_obj.create(vals)
                     created_count += 1
-
-                    # 🔥 LIGHT COMMIT
-                    if processed_products % 5 == 0:
-                        self.env.cr.commit()
 
                     # ================= VARIANTS =================
                     variants = product_data.get("variants", [])
@@ -1579,18 +1504,24 @@ class VendorImportJob(models.Model):
                                 if 0 <= image_index < len(images):
                                     variant_record.image_1920 = images[image_index]
 
+                    # 🔥 COMMIT EVERY FEW PRODUCTS (SAFE)
+                    if created_count % 10 == 0:
+                        self.env.cr.commit()
+
                 except Exception as e:
                     _logger.error(f"PRODUCT FAILED → {str(e)}")
                     self.env.cr.rollback()
                     continue
 
-            _logger.warning(f"PAGE {page_no} DONE")
-
-            # 🔥 PAGE COMMIT (VERY IMPORTANT)
+            # ✅ SAVE PROGRESS PER PAGE
+            self.last_created_page = page_no
             self.env.cr.commit()
+
+            _logger.warning(f"PAGE {page_no} DONE")
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
+
     #-----URL API FLOW-------------------------------------------
 
     def scrape_with_playwright(self):
@@ -1919,3 +1850,7 @@ class VendorImportJob(models.Model):
                         v["attributes"] = {"Variant": "Default"}
 
         return products
+    
+    #=======keep cron alive================
+    def keep_alive(self):
+        _logger.warning("KEEP ALIVE PING")
