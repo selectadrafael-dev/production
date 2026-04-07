@@ -103,160 +103,107 @@ class VendorImportJob(models.Model):
         excel_bytes = base64.b64decode(self.excel_file)
 
         wb = load_workbook(filename=BytesIO(excel_bytes))
-        sheet = wb.active
 
-        image_loader = SheetImageLoader(sheet)
-
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-        }
+        headers = {"User-Agent": "Mozilla/5.0"}
 
         pages = []
-        current_page = []
         page_number = 1
-        page_size = 20
 
-        for idx, row in enumerate(sheet.iter_rows()):
+        # 🔥 PROCESS ALL SHEETS (FIX 1)
+        for sheet in wb.worksheets:
 
-            _logger.warning(f"ROW {idx} PROCESSING")
+            _logger.warning(f"PROCESSING SHEET → {sheet.title}")
 
-            row_text_parts = []
-            row_images = []
+            image_loader = SheetImageLoader(sheet)
 
-            # -------- TEXT --------
-            for cell in row:
-                val = str(cell.value or "").strip()
-                if val:
-                    row_text_parts.append(val)
+            for idx, row in enumerate(sheet.iter_rows()):
 
-            row_text = " ".join(row_text_parts).strip()
+                row_text_parts = []
+                row_images = []
 
-            if not row_text:
-                _logger.warning(f"ROW {idx} EMPTY → SKIPPED")
-                continue
-
-            # -------- 1️⃣ EMBEDDED IMAGE --------
-            for cell in row:
-                try:
-                    if image_loader.image_in(cell.coordinate):
-
-                        pil_img = image_loader.get(cell.coordinate)
-
-                        buffer = BytesIO()
-                        pil_img.save(buffer, format="JPEG")
-
-                        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-                        row_images.append(img_base64)
-
-                        _logger.warning(f"ROW {idx} → EMBED IMAGE USED")
-                        break
-
-                except Exception:
-                    continue
-
-            # -------- 2️⃣ URL IMAGE --------
-            if not row_images:
-
+                # ================= TEXT =================
                 for cell in row:
                     val = str(cell.value or "").strip()
+                    if val:
+                        row_text_parts.append(val)
 
-                    if val.startswith("http"):
+                if not row_text_parts:
+                    continue
 
-                        try:
-                            response = requests.get(val, headers=headers, timeout=10)
+                # 🔥 STRUCTURED TEXT (FIX 2)
+                row_text = f"""
+                ROW_DATA:
+                {" | ".join(row_text_parts)}
 
-                            if response.status_code != 200:
-                                continue
+                RULE:
+                - THIS IS EXACTLY ONE PRODUCT
+                - DO NOT MERGE WITH OTHER ROWS
+                - DO NOT CREATE VARIANTS
+                """
 
-                            content_type = response.headers.get("Content-Type", "")
+                # ================= IMAGE (EMBEDDED) =================
+                for cell in row:
+                    try:
+                        if image_loader.image_in(cell.coordinate):
 
-                            # DIRECT IMAGE
-                            if "image" in content_type and len(response.content) > 5000:
-                                img_base64 = base64.b64encode(response.content).decode("utf-8")
-                                row_images.append(img_base64)
-                                _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
-                                break
+                            pil_img = image_loader.get(cell.coordinate)
 
-                            # HTML PAGE → scrape best image
-                            elif "text/html" in content_type:
+                            buffer = BytesIO()
+                            pil_img.save(buffer, format="JPEG")
 
-                                soup = BeautifulSoup(response.text, "html.parser")
+                            img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-                                for img in soup.find_all("img"):
-                                    src = img.get("src")
-                                    if not src:
-                                        continue
+                            row_images.append(img_base64)
 
-                                    if src.startswith("/"):
-                                        src = urljoin(val, src)
+                            _logger.warning(f"ROW {idx} → EMBED IMAGE USED")
+                            break
 
-                                    try:
-                                        img_res = requests.get(src, headers=headers, timeout=5)
+                    except Exception:
+                        continue
 
-                                        if img_res.status_code == 200 and len(img_res.content) > 10000:
-                                            img_base64 = base64.b64encode(img_res.content).decode("utf-8")
-                                            row_images.append(img_base64)
-                                            _logger.warning(f"ROW {idx} → SCRAPED IMAGE")
-                                            break
+                # ================= IMAGE (URL) =================
+                if not row_images:
 
-                                    except Exception:
-                                        continue
+                    for cell in row:
+                        val = str(cell.value or "").strip()
 
-                                if row_images:
+                        if val.startswith("http"):
+
+                            try:
+                                response = requests.get(val, headers=headers, timeout=10)
+
+                                if response.status_code != 200:
+                                    continue
+
+                                if "image" in response.headers.get("Content-Type", ""):
+                                    img_base64 = base64.b64encode(response.content).decode("utf-8")
+                                    row_images.append(img_base64)
+                                    _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
                                     break
 
-                        except Exception:
-                            _logger.warning(f"ROW {idx} → URL FAILED")
+                            except Exception:
+                                _logger.warning(f"ROW {idx} → URL FAILED")
 
-            # -------- DEBUG --------
-            _logger.warning(f"ROW {idx} → TEXT LENGTH: {len(row_text)}")
-            _logger.warning(f"ROW {idx} → IMAGES FOUND: {len(row_images)}")
+                # ================= DEBUG =================
+                _logger.warning(f"SHEET {sheet.title} | ROW {idx}")
+                _logger.warning(f"TEXT PARTS → {len(row_text_parts)}")
+                _logger.warning(f"IMAGES → {len(row_images)}")
 
-            # -------- STORE --------
-            current_page.append({
-                "text": row_text,
-                "images": row_images
-            })
-
-            # -------- PAGINATION --------
-            if len(current_page) >= page_size:
+                # 🔥 STORE EACH ROW AS A PAGE (FIX 3)
                 pages.append({
                     "page": page_number,
-                    "rows": current_page
+                    "text": row_text,
+                    "images": row_images,
+                    "row_index": idx,
+                    "sheet": sheet.title
                 })
-                current_page = []
+
                 page_number += 1
 
-        # -------- LAST PAGE --------
-        if current_page:
-            pages.append({
-                "page": page_number,
-                "rows": current_page
-            })
+        # ================= FINAL =================
+        self.extracted_text = json.dumps(pages)
 
-        # ================= FINAL FORMAT (FIXED) =================
-        final_pages = []
-
-        for page in pages:
-
-            # 🔥 FIX 1: STRONG TEXT SEPARATION (CRITICAL)
-            combined_text = "\n\n---\n\n".join([r["text"] for r in page["rows"]])
-
-            # 🔥 FIX 2: FLATTEN IMAGES (CRITICAL)
-            images_flat = []
-            for r in page["rows"]:
-                images_flat.extend(r.get("images", []))
-
-            final_pages.append({
-                "page": page["page"],
-                "text": combined_text,
-                "images": images_flat
-            })
-
-        self.extracted_text = json.dumps(final_pages)
-
-        _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
+        _logger.warning(f"EXCEL DONE → TOTAL ROWS: {len(pages)}")
 
     #---------------- MAIN FLOW ----------------
    
@@ -692,10 +639,10 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # 🔥 DETECT MODE
-        is_excel = len(pages) == 1
+        # 🔥 FIXED EXCEL DETECTION
+        is_excel = any("row_index" in p for p in pages)
 
-        _logger.warning(f"MODE → {'EXCEL' if is_excel else 'PDF'}")
+        _logger.warning(f"MODE DETECTED → {'EXCEL' if is_excel else 'PDF'}")
 
         # ================= EXISTING DATA =================
         existing_ai = []
@@ -707,20 +654,20 @@ class VendorImportJob(models.Model):
 
         page_products = existing_ai.copy()
 
-        # ================= EXCEL MODE =================
+        # ================= EXCEL MODE (FIXED) =================
         if is_excel:
 
-            page = pages[0]
-            full_text = page.get("text", "")
-
-            # 🔥 split rows (VERY IMPORTANT)
-            rows = [r.strip() for r in full_text.split("---") if r.strip()]
-
-            _logger.warning(f"EXCEL ROWS DETECTED → {len(rows)}")
+            _logger.warning(f"EXCEL MODE → TOTAL ROWS: {len(pages)}")
 
             products = []
 
-            for idx, row_text in enumerate(rows):
+            for idx, row in enumerate(pages):
+
+                row_text = row.get("text", "")
+                images = row.get("images", [])
+
+                _logger.warning(f"ROW {idx} → PROCESSING")
+                _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
 
                 prompt = f"""
                 You are an advanced product extraction and interpretation engine for catalog PDFs.
@@ -774,7 +721,7 @@ class VendorImportJob(models.Model):
                 TEXT TO ANALYZE
                 =====================
 
-                {row_text}
+                {row_text} 
                 """
 
                 try:
@@ -797,12 +744,13 @@ class VendorImportJob(models.Model):
                     if parsed:
                         products.append(parsed)
 
-                    _logger.warning(f"ROW {idx} → PRODUCT OK")
+                    _logger.warning(f"ROW {idx} → PRODUCT CREATED")
 
                 except Exception as e:
                     _logger.warning(f"ROW {idx} FAILED → {str(e)}")
                     continue
 
+            # 🔥 FINAL STRUCTURE FOR CREATE METHOD
             page_products = [{
                 "page": 1,
                 "products": products
@@ -812,7 +760,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"EXCEL PRODUCTS TOTAL → {len(products)}")
 
-            return  # 🔥 STOP HERE (DO NOT CONTINUE PDF FLOW)
+            return  # 🔥 STOP — DO NOT ENTER PDF FLOW
 
         # ================= PDF MODE (UNCHANGED) =================
 
