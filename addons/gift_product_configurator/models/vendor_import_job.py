@@ -1394,184 +1394,208 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL PRODUCTS CREATED THIS RUN: {created_count}")
 
+
     #==========create pdf and excel product======================
+
     def create_products_pdf_excel(self):
 
-        import base64
-        import json
-        import requests
+            import json
 
-        if not self.ai_response or not self.extracted_text:
-            _logger.warning("NO AI OR EXTRACTED DATA → STOP")
-            return
+            if not self.ai_response or not self.extracted_text:
+                _logger.warning("NO AI OR EXTRACTED DATA → STOP")
+                return
 
-        product_obj = self.env['product.template']
-        category_obj = self.env['product.category']
+            product_obj = self.env['product.template']
+            category_obj = self.env['product.category']
 
-        try:
-            pages = json.loads(self.extracted_text)
-            ai_pages = json.loads(self.ai_response)
-        except Exception:
-            _logger.error("INVALID JSON → STOP")
-            return
+            try:
+                pages = json.loads(self.extracted_text)
+                ai_pages = json.loads(self.ai_response)
+            except Exception:
+                _logger.error("INVALID JSON → STOP")
+                return
 
-        _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
+            _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
 
-        created_count = 0
+            created_count = 0
 
-        CATEGORY_MAPPING = {
-            "t-shirt": "Apparel",
-            "shirt": "Apparel",
-            "polo": "Apparel",
-            "bag": "Bags",
-            "backpack": "Bags",
-            "cap": "Headwear",
-            "hat": "Headwear",
-            "bottle": "Drinkware",
-            "drinkware": "Drinkware",
-            "pen": "Stationery",
-            "notebook": "Stationery",
-            "powerbank": "Electronics",
-            "charger": "Electronics",
-            "laptop": "Electronics",
-        }
+            CATEGORY_MAPPING = {
+                "t-shirt": "Apparel",
+                "shirt": "Apparel",
+                "polo": "Apparel",
+                "bag": "Bags",
+                "backpack": "Bags",
+                "cap": "Headwear",
+                "hat": "Headwear",
+                "bottle": "Drinkware",
+                "drinkware": "Drinkware",
+                "pen": "Stationery",
+                "notebook": "Stationery",
+                "powerbank": "Electronics",
+                "charger": "Electronics",
+                "laptop": "Electronics",
+            }
 
-        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
-        if not parent_category:
-            parent_category = category_obj.create({'name': "All Products"})
+            parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
+            if not parent_category:
+                parent_category = category_obj.create({'name': "All Products"})
 
-        last_created_page = getattr(self, "last_created_page", 0)
+            last_created_page = getattr(self, "last_created_page", 0)
 
-        for page_data in pages:
+            for page_data in pages:
 
-            page_no = page_data.get("page")
+                page_no = page_data.get("page")
 
-            if page_no <= last_created_page:
-                continue
-
-            ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
-            if not ai_page:
-                continue
-
-            products = ai_page.get("products", [])
-            images = page_data.get("images", [])
-
-            if not products:
-                continue
-
-            _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
-
-            for product_data in products:
-
-                try:
-                    name = (product_data.get("name") or "").strip()
-                    variant_group = product_data.get("variant_group")
-
-                    if not name or len(name) < 3:
-                        continue
-
-                    description = product_data.get("description", "")
-                    raw_category = (product_data.get("category") or "").lower()
-
-                    # CATEGORY
-                    mapped_category = "General"
-                    for key, val in CATEGORY_MAPPING.items():
-                        if key in raw_category:
-                            mapped_category = val
-                            break
-
-                    category = category_obj.search([
-                        ('name', '=', mapped_category),
-                        ('parent_id', '=', parent_category.id)
-                    ], limit=1)
-
-                    if not category:
-                        category = category_obj.create({
-                            'name': mapped_category,
-                            'parent_id': parent_category.id
-                        })
-
-                    # VARIANT GROUP CHECK
-                    existing_product = None
-                    if variant_group:
-                        existing_product = product_obj.search([
-                            ('default_code', '=', variant_group)
-                        ], limit=1)
-
-                    if existing_product:
-                        product = existing_product
-                    else:
-                        vals = {
-                            'name': name,
-                            'default_code': variant_group or name,
-                            'description_sale': description,
-                            'categ_id': category.id,
-                            'sale_ok': True,
-                            'website_published': False,
-                        }
-
-                        # IMAGE
-                        if images:
-                            vals['image_1920'] = images[0]
-
-                        product = product_obj.create(vals)
-                        created_count += 1
-
-                    # VARIANTS
-                    variants = product_data.get("variants", [])
-
-                    for variant in variants:
-                        attributes = variant.get("attributes", {})
-
-                        for attr_name, attr_value in attributes.items():
-
-                            attribute = self.env['product.attribute'].search([
-                                ('name', '=', attr_name)
-                            ], limit=1)
-
-                            if not attribute:
-                                attribute = self.env['product.attribute'].create({'name': attr_name})
-
-                            value = self.env['product.attribute.value'].search([
-                                ('name', '=', attr_value),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
-
-                            if not value:
-                                value = self.env['product.attribute.value'].create({
-                                    'name': attr_value,
-                                    'attribute_id': attribute.id
-                                })
-
-                            line = self.env['product.template.attribute.line'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
-
-                            if not line:
-                                self.env['product.template.attribute.line'].create({
-                                    'product_tmpl_id': product.id,
-                                    'attribute_id': attribute.id,
-                                    'value_ids': [(6, 0, [value.id])]
-                                })
-                            else:
-                                if value.id not in line.value_ids.ids:
-                                    line.value_ids = [(4, value.id)]
-
-                    if created_count % 10 == 0:
-                        self.env.cr.commit()
-
-                except Exception as e:
-                    _logger.error(f"PRODUCT FAILED → {str(e)}")
-                    self.env.cr.rollback()
+                if page_no <= last_created_page:
                     continue
 
-            self.last_created_page = page_no
-            self.env.cr.commit()
+                ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
+                if not ai_page:
+                    continue
 
-            _logger.warning(f"PAGE {page_no} DONE")
+                products = ai_page.get("products", [])
 
-        _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
+                if not products:
+                    continue
+
+                _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
+
+                for product_data in products:
+
+                    try:
+                        name = (product_data.get("name") or "").strip()
+                        variant_group = product_data.get("variant_group")
+                        description = product_data.get("description", "")
+                        raw_category = (product_data.get("category") or "").lower()
+
+                        if not name or len(name) < 3:
+                            continue
+
+                        # ================= CATEGORY =================
+                        mapped_category = "General"
+                        for key, val in CATEGORY_MAPPING.items():
+                            if key in raw_category:
+                                mapped_category = val
+                                break
+
+                        category = category_obj.search([
+                            ('name', '=', mapped_category),
+                            ('parent_id', '=', parent_category.id)
+                        ], limit=1)
+
+                        if not category:
+                            category = category_obj.create({
+                                'name': mapped_category,
+                                'parent_id': parent_category.id
+                            })
+
+                        # ================= VARIANT GROUPING =================
+                        existing_product = None
+
+                        if variant_group:
+                            existing_product = product_obj.search([
+                                ('default_code', '=', variant_group)
+                            ], limit=1)
+
+                        if existing_product:
+                            product = existing_product
+                            _logger.warning(f"USING EXISTING PRODUCT → {variant_group}")
+
+                        else:
+                            vals = {
+                                'name': name,
+                                'default_code': variant_group or name,
+                                'description_sale': description,
+                                'categ_id': category.id,
+                                'sale_ok': True,
+                                'website_published': False,
+                            }
+
+                            # ================= IMAGE (FIXED) =================
+                            image_base64 = product_data.get("image")
+
+                            if image_base64:
+                                vals['image_1920'] = image_base64
+                                _logger.warning("IMAGE ASSIGNED → FROM AI")
+                            else:
+                                _logger.warning("NO IMAGE FROM AI")
+
+                            product = product_obj.create(vals)
+                            created_count += 1
+
+                            _logger.warning(f"CREATED NEW PRODUCT → {name}")
+
+                        # ================= DEBUG =================
+                        _logger.warning(f"""
+                        FINAL PRODUCT DEBUG:
+                        Name → {name}
+                        Variant Group → {variant_group}
+                        Image Present → {"YES" if product_data.get("image") else "NO"}
+                        """)
+
+                        # ================= VARIANTS =================
+                        variants = product_data.get("variants", [])
+
+                        for variant in variants:
+
+                            attributes = variant.get("attributes", {})
+
+                            for attr_name, attr_value in attributes.items():
+
+                                if not attr_value:
+                                    continue
+
+                                attribute = self.env['product.attribute'].search([
+                                    ('name', '=', attr_name)
+                                ], limit=1)
+
+                                if not attribute:
+                                    attribute = self.env['product.attribute'].create({
+                                        'name': attr_name
+                                    })
+
+                                value = self.env['product.attribute.value'].search([
+                                    ('name', '=', attr_value),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
+
+                                if not value:
+                                    value = self.env['product.attribute.value'].create({
+                                        'name': attr_value,
+                                        'attribute_id': attribute.id
+                                    })
+
+                                line = self.env['product.template.attribute.line'].search([
+                                    ('product_tmpl_id', '=', product.id),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
+
+                                if not line:
+                                    self.env['product.template.attribute.line'].create({
+                                        'product_tmpl_id': product.id,
+                                        'attribute_id': attribute.id,
+                                        'value_ids': [(6, 0, [value.id])]
+                                    })
+                                else:
+                                    if value.id not in line.value_ids.ids:
+                                        line.value_ids = [(4, value.id)]
+
+                        # ================= SAFE COMMIT =================
+                        if created_count % 10 == 0:
+                            self.env.cr.commit()
+
+                    except Exception as e:
+                        _logger.error(f"PRODUCT FAILED → {str(e)}")
+                        self.env.cr.rollback()
+                        continue
+
+                # SAVE PROGRESS
+                self.last_created_page = page_no
+                self.env.cr.commit()
+
+                _logger.warning(f"PAGE {page_no} DONE")
+
+            _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
 
     #-----URL API FLOW-------------------------------------------
 
