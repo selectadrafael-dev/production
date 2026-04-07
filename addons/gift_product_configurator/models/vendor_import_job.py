@@ -49,6 +49,7 @@ class VendorImportJob(models.Model):
     apify_run_id = fields.Char()
     apify_dataset_id = fields.Char()
     url_batch_index = fields.Integer(default=0)
+    last_processed_product_index = fields.Integer(default=0)
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -66,11 +67,24 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
 
+        # raw_data = self._run_apify_actor(self.data_url)
+        # _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:300]}")
+
+        # if not raw_data:
+        #     _logger.error("APIFY FAILED → NO DATA")
+        #     return
+
         raw_data = self._run_apify_actor(self.data_url)
-        _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:300]}")
+
+        _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:200]}")
+
+        # 🔥 VERY IMPORTANT FIX
+        if raw_data is None:
+            _logger.warning("APIFY NOT READY → WAIT NEXT CRON")
+            return
 
         if not raw_data:
-            _logger.error("APIFY FAILED → NO DATA")
+            _logger.error("APIFY FAILED → EMPTY DATASET")
             return
 
         structured_data = self._normalize_url_data(raw_data)
@@ -1217,6 +1231,7 @@ class VendorImportJob(models.Model):
             "notebook": "Stationery",
             "powerbank": "Electronics",
             "charger": "Electronics",
+            "laptop": "Electronics",
         }
 
         DEFAULT_PARENT = "All Products"
@@ -1330,11 +1345,31 @@ class VendorImportJob(models.Model):
         _logger.warning(f"TOTAL PRODUCTS CREATED THIS RUN: {created_count}")
 
     #==========create pdf and excel product======================
+    MAX_PRODUCTS_PER_RUN = 15
+    processed_products = 0
 
     def create_products_pdf_excel(self):
 
-        def is_valid_product_image(img_base64):
-            return True  # keep Excel safe
+        import base64
+
+        def safe_set_image(vals, images):
+
+            if not images:
+                return
+
+            img = images[0]
+
+            # ✅ Case 1: valid base64
+            if isinstance(img, str) and len(img) > 100:
+                try:
+                    base64.b64decode(img)
+                    vals['image_1920'] = img
+                    return
+                except Exception:
+                    pass
+
+            # ❌ skip invalid images
+            _logger.warning("INVALID IMAGE FORMAT → SKIPPED")
 
         if not self.ai_response or not self.extracted_text:
             _logger.warning("NO AI OR EXTRACTED DATA → STOP")
@@ -1355,6 +1390,10 @@ class VendorImportJob(models.Model):
 
         created_count = 0
 
+        # 🔥 CRON SAFETY LIMIT
+        MAX_PRODUCTS_PER_RUN = 15
+        processed_products = 0
+
         # ================= CATEGORY CONFIG =================
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
@@ -1370,6 +1409,7 @@ class VendorImportJob(models.Model):
             "notebook": "Stationery",
             "powerbank": "Electronics",
             "charger": "Electronics",
+            "laptop": "Electronics",
         }
 
         DEFAULT_PARENT = "All Products"
@@ -1378,6 +1418,7 @@ class VendorImportJob(models.Model):
         if not parent_category:
             parent_category = category_obj.create({'name': DEFAULT_PARENT})
 
+        # ================= LOOP =================
         for page_data in pages:
 
             page_no = page_data.get("page")
@@ -1385,21 +1426,26 @@ class VendorImportJob(models.Model):
             ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
 
             if not ai_page:
-                _logger.warning(f"NO AI DATA FOR PAGE {page_no}")
                 continue
 
             products = ai_page.get("products", [])
 
             if not products:
-                _logger.warning(f"NO PRODUCTS FOUND ON PAGE {page_no}")
                 continue
 
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
-            for i, product_data in enumerate(products):
+            for product_data in products:
+
+                # 🔥 STOP EARLY (CRON SAFE)
+                if processed_products >= MAX_PRODUCTS_PER_RUN:
+                    _logger.warning("CRON LIMIT → STOP EARLY")
+                    self.env.cr.commit()
+                    return
+
+                processed_products += 1
 
                 try:
-
                     name = (product_data.get("name") or "").strip()
 
                     if not name or len(name) < 3:
@@ -1410,7 +1456,7 @@ class VendorImportJob(models.Model):
                     description = product_data.get("description", "")
                     raw_category = (product_data.get("category") or "").lower()
 
-                    # ================= 🔥 CATEGORY MAPPING =================
+                    # ================= CATEGORY =================
                     mapped_category_name = None
 
                     for key, value in CATEGORY_MAPPING.items():
@@ -1421,15 +1467,12 @@ class VendorImportJob(models.Model):
                     if not mapped_category_name:
                         mapped_category_name = "General"
 
-                    # ================= ENSURE CATEGORY =================
                     category = category_obj.search([
                         ('name', '=', mapped_category_name),
                         ('parent_id', '=', parent_category.id)
                     ], limit=1)
 
                     if not category:
-                        _logger.warning(f"CREATING CATEGORY → {mapped_category_name}")
-
                         category = category_obj.create({
                             'name': mapped_category_name,
                             'parent_id': parent_category.id
@@ -1442,40 +1485,38 @@ class VendorImportJob(models.Model):
 
                     if existing_product:
                         product = existing_product
-                        _logger.warning(f"DUPLICATE SKIPPED → {name}")
-                    else:
-                        vals = {
-                            'name': name,
-                            'description_sale': description,
-                            'categ_id': category.id,
-                            'sale_ok': True,
-                            'website_published': False,
-                        }
+                        continue
 
-                        # IMAGE
-                        images = page_data.get("images", [])
-                        if images:
-                            vals['image_1920'] = images[0]
+                    vals = {
+                        'name': name,
+                        'description_sale': description,
+                        'categ_id': category.id,
+                        'sale_ok': True,
+                        'website_published': False,
+                    }
 
-                        product = product_obj.create(vals)
-                        created_count += 1
+                    # 🔥 SAFE IMAGE (FIXED)
+                    images = page_data.get("images", [])
+                    safe_set_image(vals, images)
 
+                    product = product_obj.create(vals)
+                    created_count += 1
+
+                    # 🔥 LIGHT COMMIT
+                    if processed_products % 5 == 0:
                         self.env.cr.commit()
 
-                    # ================= 🔥 VARIANT FIX START =================
-
+                    # ================= VARIANTS =================
                     variants = product_data.get("variants", [])
-                    images = page_data.get("images", [])
 
                     if len(variants) < len(images) and len(images) > 1:
-                        _logger.warning(f"VARIANT AUTO-EXPANSION TRIGGERED → PAGE {page_no}")
-
-                        variants = []
-                        for idx in range(len(images)):
-                            variants.append({
+                        variants = [
+                            {
                                 "attributes": {"Variant": f"Option {idx+1}"},
                                 "image_index": idx
-                            })
+                            }
+                            for idx in range(len(images))
+                        ]
 
                     for variant in variants:
 
@@ -1537,9 +1578,6 @@ class VendorImportJob(models.Model):
                             if variant_record and image_index is not None:
                                 if 0 <= image_index < len(images):
                                     variant_record.image_1920 = images[image_index]
-                                    _logger.warning(f"VARIANT IMAGE ASSIGNED → {attributes}")
-
-                    # ================= 🔥 VARIANT FIX END =================
 
                 except Exception as e:
                     _logger.error(f"PRODUCT FAILED → {str(e)}")
@@ -1548,9 +1586,11 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"PAGE {page_no} DONE")
 
+            # 🔥 PAGE COMMIT (VERY IMPORTANT)
+            self.env.cr.commit()
+
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
-
     #-----URL API FLOW-------------------------------------------
 
     def scrape_with_playwright(self):
