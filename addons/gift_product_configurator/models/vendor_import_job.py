@@ -46,6 +46,10 @@ class VendorImportJob(models.Model):
     ai_response = fields.Text()
     priority = fields.Integer(default=10)
 
+    apify_run_id = fields.Char()
+    apify_dataset_id = fields.Char()
+    url_batch_index = fields.Integer(default=0)
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -492,32 +496,30 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # 🔥 FLATTEN BLOCKS
+        # ================= LOAD EXISTING PROGRESS =================
+        existing_products = []
+        if self.ai_response:
+            try:
+                existing_products = json.loads(self.ai_response)
+            except:
+                existing_products = []
+
+        current_batch = getattr(self, "url_batch_index", 0)
+
+        # ================= FLATTEN =================
         all_blocks = [
             b for p in pages for b in p.get("blocks", [])
         ]
 
-        # 🔥 MAKE ORDER CONSISTENT
         all_blocks = sorted(all_blocks, key=lambda x: (x.get("text") or "")[:50])
 
-        _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
-
-        # 🔥 LIMIT TO PREVENT OVERLOAD
-        MAX_BLOCKS = 400
-        if len(all_blocks) > MAX_BLOCKS:
-            all_blocks = all_blocks[:MAX_BLOCKS]
-
-        # ======================================================
-        # 🔥🔥 NEW: FILTER OUT NON-PRODUCT BLOCKS (SAFE INSERT)
-        # ======================================================
-
+        # ================= FILTER =================
         def is_valid_block(text):
             if not text:
                 return False
 
             text = text.lower().strip()
 
-            # ❌ noise
             noise_keywords = [
                 "cookie", "privacy", "login", "menu",
                 "navigation", "home", "accept", "terms"
@@ -526,13 +528,11 @@ class VendorImportJob(models.Model):
             if any(n in text for n in noise_keywords):
                 return False
 
-            # ✅ allow more product-like text
             if len(text) < 15:
                 return False
 
             return True
 
-        # 🔥 APPLY FILTER
         all_blocks = [
             b for b in all_blocks
             if is_valid_block(b.get("text", ""))
@@ -540,10 +540,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"FILTERED BLOCKS → {len(all_blocks)}")
 
-        # =====================================================
-        # 🔥 CONTINUE NORMAL FLOW (UNCHANGED)
-        # =====================================================
-
+        # ================= BATCH =================
         BLOCK_BATCH_SIZE = 20
 
         batched_blocks = [
@@ -552,27 +549,27 @@ class VendorImportJob(models.Model):
         ]
 
         _logger.warning(f"TOTAL BLOCK BATCHES → {len(batched_blocks)}")
+        _logger.warning(f"CURRENT BATCH → {current_batch}")
 
-        all_products = []
+        # 🔥 STOP IF DONE
+        if current_batch >= len(batched_blocks):
+            _logger.warning("ALL URL BATCHES PROCESSED")
+            return
 
-        for batch_index, block_batch in enumerate(batched_blocks):
+        # ================= PROCESS ONE BATCH =================
+        block_batch = batched_blocks[current_batch]
 
-            _logger.warning(f"AI → PROCESSING BLOCK BATCH {batch_index + 1}")
+        _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
 
-            combined_text = "\n\n".join([
-                f"{b.get('text','')} | IMAGE: {b.get('image','')}"
-                for b in block_batch
-            ])
+        combined_text = "\n\n".join([
+            f"{b.get('text','')} | IMAGE: {b.get('image','')}"
+            for b in block_batch
+        ])[:12000]
 
-            # 🔥 HARD LIMIT (prevents timeout)
-            combined_text = combined_text[:12000]
+        if not combined_text.strip():
+            return
 
-            if not combined_text.strip():
-                continue
-
-            # ✅ FULL STRONG PROMPT (UNCHANGED)
-            
-            prompt = f"""
+        prompt = f"""
             You are a highly precise e-commerce product extraction engine.
 
             You are processing raw scraped website content.
@@ -655,58 +652,41 @@ class VendorImportJob(models.Model):
             TEXT TO PROCESS
             =====================================
 
-            {combined_text}
-            """
+        {combined_text}
+        """
 
-            try:
-                response = client.responses.create(
-                    model="gpt-4.1-mini",
-                    input=prompt,
-                    temperature=0,  
-                    timeout=60
-                )
+        try:
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=prompt,
+                temperature=0,
+                timeout=60
+            )
 
-                result = response.output_text.strip()
+            result = response.output_text.strip()
+            result = re.sub(r"^```(?:json)?|```$", "", result).strip()
 
-                # 🔥 SAFE MARKDOWN CLEANUP
-                result = re.sub(r"^```(?:json)?|```$", "", result).strip()
+            parsed = json.loads(result)
 
-                # 🔥 SAFE JSON PARSE
-                try:
-                    parsed = json.loads(result)
-                except Exception:
-                    _logger.warning("JSON PARSE FAILED → SKIPPING BATCH")
-                    continue
+            if isinstance(parsed, list):
+                cleaned = [p for p in parsed if p.get("name")]
+                existing_products.extend(cleaned)
+                _logger.warning(f"BATCH PRODUCTS → {len(cleaned)}")
 
-                # 🔥 FILTER EMPTY PRODUCTS
-                if isinstance(parsed, list):
-                    cleaned = [p for p in parsed if p.get("name")]
-                    all_products.extend(cleaned)
-                    _logger.warning(f"BATCH PRODUCTS → {len(cleaned)}")
+        except Exception as e:
+            _logger.warning(f"AI ERROR → {str(e)}")
 
-            except Exception as e:
-                _logger.warning(f"AI ERROR → {str(e)}")
-                continue
+        # ================= SAVE PROGRESS =================
+        self.ai_response = json.dumps(existing_products)
+        self.url_batch_index = current_batch + 1
 
-            time.sleep(1)
+        _logger.warning(f"NEXT BATCH → {self.url_batch_index}")
 
-        # 🔥 DEDUPLICATE PRODUCTS
-        unique = {}
-        for p in all_products:
-            key = (p.get("name") or "").lower().strip()[:40]
-            if key and key not in unique:
-                unique[key] = p
-
-        all_products = list(unique.values())
-
-        _logger.warning(f"FINAL UNIQUE PRODUCTS → {len(all_products)}")
-
-        self.ai_response = json.dumps(all_products)
-
-        _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
-
+        # 🔥 EXIT EARLY (CRITICAL)
+        return
 
     #===========pdf and excel open ai OPENAI=========================
+
 
     def send_to_openai_pdf_excel(self):
 
@@ -945,13 +925,43 @@ class VendorImportJob(models.Model):
             for attempt in range(MAX_RETRIES):
                 try:
 
-                    image_inputs = [
-                        {
-                            "type": "input_image",
-                            "image_url": f"data:image/jpeg;base64,{img}"
-                        }
-                        for img in images[:10]
-                    ]
+                    # image_inputs = [
+                    #     {
+                    #         "type": "input_image",
+                    #         "image_url": f"data:image/jpeg;base64,{img}"
+                    #     }
+                    #     for img in images[:10]
+                    # ]
+
+                    image_inputs = []
+
+                    # 🔥 HANDLE PDF MODE (list of base64)
+                    if images and isinstance(images[0], str):
+
+                        image_inputs = [
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/jpeg;base64,{img}"
+                            }
+                            for img in images[:10]
+                        ]
+
+                    # 🔥 HANDLE EXCEL MODE (list of dict rows)
+                    elif images and isinstance(images[0], dict):
+
+                        collected_images = []
+
+                        for row in images:
+                            row_imgs = row.get("images", [])
+                            collected_images.extend(row_imgs)
+
+                        image_inputs = [
+                            {
+                                "type": "input_image",
+                                "image_url": f"data:image/jpeg;base64,{img}"
+                            }
+                            for img in collected_images[:10]
+                        ]
 
                     response = client.responses.create(
                         model="gpt-4.1-mini",
@@ -1011,6 +1021,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
         _logger.warning(f"AI LAST PROCESSED PAGE → {self.last_ai_page}")
+
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -1190,6 +1201,31 @@ class VendorImportJob(models.Model):
 
         MAX_PRODUCTS_PER_RUN = 20  # 🔥 CRITICAL LIMIT
 
+        # ================= CATEGORY CONFIG =================
+        CATEGORY_MAPPING = {
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "cup": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+        }
+
+        DEFAULT_PARENT = "All Products"
+
+        # 🔥 Ensure parent category exists
+        parent_category = category_obj.search([('name', '=', DEFAULT_PARENT)], limit=1)
+        if not parent_category:
+            parent_category = category_obj.create({'name': DEFAULT_PARENT})
+
         for product in products:
 
             if processed >= MAX_PRODUCTS_PER_RUN:
@@ -1205,12 +1241,32 @@ class VendorImportJob(models.Model):
             name_clean = name.strip().lower()
 
             description = product.get("description", "")
-            category_name = product.get("category") or "Uncategorized"
+            raw_category = (product.get("category") or "").lower()
 
-            # ================= CATEGORY =================
-            category = category_obj.search([('name', '=', category_name)], limit=1)
+            # ================= CATEGORY MAPPING =================
+            mapped_category_name = None
+
+            for key, value in CATEGORY_MAPPING.items():
+                if key in raw_category:
+                    mapped_category_name = value
+                    break
+
+            if not mapped_category_name:
+                mapped_category_name = "General"
+
+            # ================= ENSURE CATEGORY =================
+            category = category_obj.search([
+                ('name', '=', mapped_category_name),
+                ('parent_id', '=', parent_category.id)
+            ], limit=1)
+
             if not category:
-                category = category_obj.create({'name': category_name})
+                _logger.warning(f"CREATING CATEGORY → {mapped_category_name}")
+
+                category = category_obj.create({
+                    'name': mapped_category_name,
+                    'parent_id': parent_category.id
+                })
 
             # ================= STRONG DUPLICATE CHECK =================
             existing = product_obj.search([
@@ -1299,6 +1355,29 @@ class VendorImportJob(models.Model):
 
         created_count = 0
 
+        # ================= CATEGORY CONFIG =================
+        CATEGORY_MAPPING = {
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+        }
+
+        DEFAULT_PARENT = "All Products"
+
+        parent_category = category_obj.search([('name', '=', DEFAULT_PARENT)], limit=1)
+        if not parent_category:
+            parent_category = category_obj.create({'name': DEFAULT_PARENT})
+
         for page_data in pages:
 
             page_no = page_data.get("page")
@@ -1329,14 +1408,34 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"PROCESSING PRODUCT → {name}")
 
                     description = product_data.get("description", "")
-                    category_name = product_data.get("category") or "Uncategorized"
+                    raw_category = (product_data.get("category") or "").lower()
 
-                    # CATEGORY
-                    category = category_obj.search([('name', '=', category_name)], limit=1)
+                    # ================= 🔥 CATEGORY MAPPING =================
+                    mapped_category_name = None
+
+                    for key, value in CATEGORY_MAPPING.items():
+                        if key in raw_category:
+                            mapped_category_name = value
+                            break
+
+                    if not mapped_category_name:
+                        mapped_category_name = "General"
+
+                    # ================= ENSURE CATEGORY =================
+                    category = category_obj.search([
+                        ('name', '=', mapped_category_name),
+                        ('parent_id', '=', parent_category.id)
+                    ], limit=1)
+
                     if not category:
-                        category = category_obj.create({'name': category_name})
+                        _logger.warning(f"CREATING CATEGORY → {mapped_category_name}")
 
-                    # DEDUP
+                        category = category_obj.create({
+                            'name': mapped_category_name,
+                            'parent_id': parent_category.id
+                        })
+
+                    # ================= DEDUP =================
                     existing_product = product_obj.search([
                         ('name', 'ilike', name)
                     ], limit=1)
@@ -1353,7 +1452,7 @@ class VendorImportJob(models.Model):
                             'website_published': False,
                         }
 
-                        # IMAGE (basic fallback)
+                        # IMAGE
                         images = page_data.get("images", [])
                         if images:
                             vals['image_1920'] = images[0]
@@ -1368,7 +1467,6 @@ class VendorImportJob(models.Model):
                     variants = product_data.get("variants", [])
                     images = page_data.get("images", [])
 
-                    # 🔥 FALLBACK: AUTO EXPAND VARIANTS IF AI FAILED
                     if len(variants) < len(images) and len(images) > 1:
                         _logger.warning(f"VARIANT AUTO-EXPANSION TRIGGERED → PAGE {page_no}")
 
@@ -1379,7 +1477,6 @@ class VendorImportJob(models.Model):
                                 "image_index": idx
                             })
 
-                    # 🔥 APPLY VARIANTS
                     for variant in variants:
 
                         attributes = variant.get("attributes", {})
@@ -1429,7 +1526,6 @@ class VendorImportJob(models.Model):
                                 if value.id not in line.value_ids.ids:
                                     line.value_ids = [(4, value.id)]
 
-                        # 🔥 NOW FIND CORRECT VARIANT RECORD
                         if created_values:
 
                             variant_record = self.env['product.product'].search([
@@ -1438,7 +1534,6 @@ class VendorImportJob(models.Model):
                                 [v.id for v in created_values])
                             ], limit=1)
 
-                            # 🔥 ASSIGN CORRECT IMAGE
                             if variant_record and image_index is not None:
                                 if 0 <= image_index < len(images):
                                     variant_record.image_1920 = images[image_index]
@@ -1600,12 +1695,15 @@ class VendorImportJob(models.Model):
 
         for item in items:
 
-            # ✅ FIX: USE "text" FROM APIFY
             text = (item.get("text") or "").strip()
             image = item.get("image")
 
-            if not text:
+            # 🔥 STRICT VALIDATION
+            if not text or len(text) < 5:
                 continue
+
+            if image and isinstance(image, str) and not image.startswith("http"):
+                image = None
 
             blocks.append({
                 "text": text,
@@ -1614,10 +1712,26 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
 
-        return [{
-            "page": 1,
-            "blocks": blocks
-        }]
+        # =====================================================
+        # 🔥 SPLIT INTO MULTIPLE PAGES (CRITICAL FIX)
+        # =====================================================
+
+        PAGE_SIZE = 20  # 🔥 prevents AI overload
+
+        pages = []
+
+        for i in range(0, len(blocks), PAGE_SIZE):
+
+            chunk = blocks[i:i + PAGE_SIZE]
+
+            pages.append({
+                "page": len(pages) + 1,
+                "blocks": chunk
+            })
+
+        _logger.warning(f"NORMALIZED PAGES → {len(pages)}")
+
+        return pages
 
     #---------------clean_scraped_blocks-------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
@@ -1662,7 +1776,8 @@ class VendorImportJob(models.Model):
         return cleaned
     
 
-    #======apify url fetch/scrapp products=============== 
+    #======apify url fetch/scrapp products===============
+    
     def _run_apify_actor(self, url):
 
         token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
@@ -1672,58 +1787,66 @@ class VendorImportJob(models.Model):
 
         ACTOR_ID = "princ_adex~my-actor"
 
-        run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
-        _logger.warning(f"APIFY RUN URL → {run_url}")
+        # =====================================================
+        # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
+        # =====================================================
 
-        payload = {
-            "startUrls": [
-                {"url": url}
-            ]
-        }
+        if not getattr(self, "apify_run_id", False):
 
-        headers = {
-            "Content-Type": "application/json"
-        }
+            run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
 
-        # 🚀 START ACTOR
-        response = requests.post(run_url, json=payload, headers=headers, timeout=30)
+            payload = {
+                "startUrls": [{"url": url}]
+            }
 
-        if response.status_code != 201:
-            raise Exception(f"Apify run failed: {response.text}")
+            headers = {
+                "Content-Type": "application/json"
+            }
 
-        run_data = response.json()
-        run_id = run_data["data"]["id"]
-        dataset_id = run_data["data"]["defaultDatasetId"]
+            response = requests.post(run_url, json=payload, headers=headers, timeout=30)
 
-        _logger.warning(f"APIFY RUN ID → {run_id}")
-        _logger.warning(f"APIFY DATASET ID → {dataset_id}")
+            if response.status_code != 201:
+                raise Exception(f"Apify run failed: {response.text}")
 
-        # 🔁 WAIT FOR ACTOR TO FINISH
-        for _ in range(30):  # ~90 seconds max
-            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={token}"
+            run_data = response.json()
 
-            status_res = requests.get(status_url, timeout=20).json()
-            status = status_res["data"]["status"]
+            # ✅ SAVE FOR NEXT CRON
+            self.apify_run_id = run_data["data"]["id"]
+            self.apify_dataset_id = run_data["data"]["defaultDatasetId"]
 
-            _logger.warning(f"APIFY STATUS → {status}")
+            _logger.warning(f"APIFY STARTED → RUN ID {self.apify_run_id}")
 
-            if status == "SUCCEEDED":
-                break
+            # 🔥 IMPORTANT: STOP HERE (NON-BLOCKING)
+            return None
 
-            if status in ["FAILED", "ABORTED", "TIMED-OUT"]:
-                raise Exception(f"Apify run failed with status: {status}")
+        # =====================================================
+        # 🔥 STEP 2: CHECK STATUS
+        # =====================================================
 
-            time.sleep(3)
-        else:
-            raise Exception("Apify run timeout exceeded")
+        status_url = f"https://api.apify.com/v2/actor-runs/{self.apify_run_id}?token={token}"
 
-        # 📦 FETCH DATA WITH LIMIT
-        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+        status_res = requests.get(status_url, timeout=20).json()
+        status = status_res["data"]["status"]
+
+        _logger.warning(f"APIFY STATUS → {status}")
+
+        if status in ["RUNNING", "READY"]:
+            _logger.warning("APIFY STILL RUNNING → WAIT NEXT CRON")
+            return None
+
+        if status in ["FAILED", "ABORTED", "TIMED-OUT"]:
+            raise Exception(f"Apify run failed with status: {status}")
+
+        # =====================================================
+        # 🔥 STEP 3: FETCH DATA (ONLY WHEN DONE)
+        # =====================================================
+
+        dataset_url = f"https://api.apify.com/v2/datasets/{self.apify_dataset_id}/items"
 
         params = {
             "token": token,
             "limit": 1000,
-            "clean": "true"   # ✅ MUST be string
+            "clean": "true"
         }
 
         dataset_res = requests.get(dataset_url, params=params, timeout=30)
@@ -1735,12 +1858,16 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"APIFY ITEMS FETCHED → {len(data)}")
 
-        # ❗ SAFETY CHECK
         if not data:
             raise Exception("Apify returned empty dataset")
 
+        # 🔥 CLEAN UP (IMPORTANT)
+        self.apify_run_id = False
+        self.apify_dataset_id = False
+
         return data
-    
+
+    #=======validation===================
     def validate_ai_output(products):
         for p in products:
             if "variants" in p:
