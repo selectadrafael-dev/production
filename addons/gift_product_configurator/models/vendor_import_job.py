@@ -543,10 +543,12 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
 
+        blocks_limited = block_batch[:20]  # limit number of items instead of cutting text
+
         combined_text = "\n\n---\n\n".join([
-            b.get("text", "")
-            for b in block_batch
-        ])[:12000]
+            f"{b.get('text','')}\nIMAGE_URL: {b.get('image','')}"
+            for b in blocks_limited
+        ])
 
         if not combined_text.strip():
             return
@@ -669,7 +671,6 @@ class VendorImportJob(models.Model):
 
     #===========pdf and excel open ai OPENAI=========================
 
-
     def send_to_openai_pdf_excel(self):
 
         self.state = "ai_processing"
@@ -691,13 +692,12 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        _logger.warning(f"TOTAL PAGES → {len(pages)}")
+        # 🔥 DETECT MODE
+        is_excel = len(pages) == 1
 
-        # ================= 🔥 RESUME LOGIC =================
-        start_index = self.last_ai_page or 0
-        _logger.warning(f"AI RESUME FROM PAGE INDEX → {start_index}")
+        _logger.warning(f"MODE → {'EXCEL' if is_excel else 'PDF'}")
 
-        # ================= PRESERVE EXISTING DATA =================
+        # ================= EXISTING DATA =================
         existing_ai = []
         if self.ai_response:
             try:
@@ -707,7 +707,120 @@ class VendorImportJob(models.Model):
 
         page_products = existing_ai.copy()
 
-        # ================= PROCESS ONLY NEW PAGES =================
+        # ================= EXCEL MODE =================
+        if is_excel:
+
+            page = pages[0]
+            full_text = page.get("text", "")
+
+            # 🔥 split rows (VERY IMPORTANT)
+            rows = [r.strip() for r in full_text.split("---") if r.strip()]
+
+            _logger.warning(f"EXCEL ROWS DETECTED → {len(rows)}")
+
+            products = []
+
+            for idx, row_text in enumerate(rows):
+
+                prompt = f"""
+                You are an advanced product extraction and interpretation engine for catalog PDFs.
+
+                =====================
+                CORE RULES (STRICT)
+                =====================
+
+                1. RETURN ONLY VALID JSON
+                2. NO explanation
+                3. NO markdown
+                4. NO text outside JSON
+                5. DO NOT duplicate products
+                6. DO NOT skip any product
+                7. EACH product must appear exactly once
+
+                =====================
+                PRODUCT DETECTION LOGIC
+                =====================
+
+                A page may contain:
+
+                (A) ONE large product (hero layout)
+                (B) MULTIPLE products (grid/catalog layout)
+                (C) MIX of large + small supporting products
+
+                You MUST:
+
+                - If SINGLE main product:
+                → return ONE product
+
+                - If MULTIPLE products:
+                → extract EACH product separately
+
+                - If repeated items:
+                → treat EACH visible item as a unique product
+
+                =====================
+                OUTPUT FORMAT
+                =====================
+
+                [
+                {{
+                    "name": "",
+                    "description": "",
+                    "category": ""
+                }}
+                ]
+
+                =====================
+                TEXT TO ANALYZE
+                =====================
+
+                {row_text}
+                """
+
+                try:
+                    response = client.responses.create(
+                        model="gpt-4.1-mini",
+                        input=prompt,
+                        timeout=60
+                    )
+
+                    result = response.output_text.strip()
+
+                    if "```" in result:
+                        result = result.split("```")[1]
+
+                    if result.lower().startswith("json"):
+                        result = result[4:]
+
+                    parsed = json.loads(result)
+
+                    if parsed:
+                        products.append(parsed)
+
+                    _logger.warning(f"ROW {idx} → PRODUCT OK")
+
+                except Exception as e:
+                    _logger.warning(f"ROW {idx} FAILED → {str(e)}")
+                    continue
+
+            page_products = [{
+                "page": 1,
+                "products": products
+            }]
+
+            self.ai_response = json.dumps(page_products)
+
+            _logger.warning(f"EXCEL PRODUCTS TOTAL → {len(products)}")
+
+            return  # 🔥 STOP HERE (DO NOT CONTINUE PDF FLOW)
+
+        # ================= PDF MODE (UNCHANGED) =================
+
+        _logger.warning(f"TOTAL PAGES → {len(pages)}")
+
+        start_index = self.last_ai_page or 0
+        _logger.warning(f"AI RESUME FROM PAGE INDEX → {start_index}")
+
         for i, page in enumerate(pages[start_index:], start=start_index):
 
             page_no = page.get("page")
@@ -716,7 +829,6 @@ class VendorImportJob(models.Model):
             image_count = len(images)
 
             if not page_text.strip() and not images:
-                _logger.warning(f"EMPTY PAGE → SKIP PAGE {page_no}")
                 continue
 
             _logger.warning(f"AI → PROCESSING PAGE {page_no}")
@@ -901,56 +1013,41 @@ class VendorImportJob(models.Model):
             {page_text}
             """
 
-            MAX_RETRIES = 3
-            success = False
+            try:
 
-            for attempt in range(MAX_RETRIES):
-                try:
+                image_inputs = [
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:image/jpeg;base64,{img}"
+                    }
+                    for img in images[:10]
+                ]
 
-                    image_inputs = [
-                        {
-                            "type": "input_image",
-                            "image_url": f"data:image/jpeg;base64,{img}"
-                        }
-                        for img in images[:10]
-                    ]
+                response = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=[{
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": prompt}] + image_inputs
+                    }],
+                    temperature=0,
+                    timeout=60
+                )
 
-                    response = client.responses.create(
-                        model="gpt-4.1-mini",
-                        input=[{
-                            "role": "user",
-                            "content": [{"type": "input_text", "text": prompt}] + image_inputs
-                        }],
-                        temperature=0,
-                        timeout=60
-                    )
+                result = response.output_text.strip()
 
-                    result = response.output_text.strip()
-                    _logger.warning(f"RAW AI OUTPUT PAGE {page_no} → {result[:300]}")
-
-                    success = True
-                    break
-
-                except Exception as e:
-                    _logger.warning(f"PAGE {page_no} → RETRY {attempt+1} FAILED → {str(e)}")
-
-            if not success:
-                _logger.error(f"PAGE {page_no} → FINAL FAILURE")
+            except Exception as e:
+                _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
 
-            # ================= CLEAN =================
             if "```" in result:
                 result = result.split("```")[1]
 
             if result.lower().startswith("json"):
                 result = result[4:]
 
-            result = result.strip()
-
             try:
                 parsed = json.loads(result)
             except Exception:
-                _logger.warning(f"PAGE {page_no} → INVALID JSON")
                 parsed = []
 
             if not isinstance(parsed, list):
@@ -961,19 +1058,16 @@ class VendorImportJob(models.Model):
                 "products": parsed
             })
 
-            # ================= SAVE PROGRESS =================
             self.last_ai_page = i + 1
 
-            _logger.warning(f"PAGE {page_no} → STORED PRODUCTS: {len(parsed)}")
+            _logger.warning(f"PAGE {page_no} → STORED: {len(parsed)}")
 
             time.sleep(1)
 
-        # ================= FINAL SAVE =================
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
         _logger.warning(f"AI LAST PROCESSED PAGE → {self.last_ai_page}")
-
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -1222,10 +1316,9 @@ class VendorImportJob(models.Model):
                 })
 
             # ================= STRONG DUPLICATE CHECK =================
+          
             existing = product_obj.search([
-                '|',
-                ('name', '=', name.strip()),
-                ('name', '=', name_clean)
+                ('name', 'ilike', name.strip())
             ], limit=1)
 
             if existing:
@@ -1241,11 +1334,26 @@ class VendorImportJob(models.Model):
             }
 
             # ================= IMAGE HANDLING =================
-            image_url = (
-                product.get("image")
-                or product.get("image_url")
-                or product.get("raw_image")
-            )
+
+            image_url = product.get("image")
+
+            if image_url and isinstance(image_url, str) and image_url.startswith("http"):
+
+                try:
+                    _logger.warning(f"FETCHING IMAGE → {image_url}")
+
+                    res = requests.get(image_url, timeout=10)
+
+                    if res.status_code == 200 and res.content:
+                        vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
+                    else:
+                        _logger.warning(f"INVALID IMAGE RESPONSE → {image_url}")
+
+                except Exception as e:
+                    _logger.warning(f"IMAGE FETCH FAILED → {image_url} | {str(e)}")
+
+            else:
+                _logger.warning(f"NO VALID IMAGE → {name}")
 
             if image_url and isinstance(image_url, str) and image_url.startswith("http"):
 
