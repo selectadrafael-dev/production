@@ -42,6 +42,7 @@ class VendorImportJob(models.Model):
         default=0
     )
     total_pages = fields.Integer(string="Total Pages", default=0)
+    last_ai_page = fields.Integer(string="Last AI Page", default=0)
     ai_response = fields.Text()
 
     state = fields.Selection([
@@ -313,10 +314,10 @@ class VendorImportJob(models.Model):
         _logger.warning("PDF → START EXTRACTION (BATCH MODE)")
         pdf_bytes = base64.b64decode(self.pdf_file)
 
-        MAX_RETRIES = 2
+        MAX_RETRIES = 3
 
         # 🔥 BATCH CONFIG
-        BATCH_SIZE = 5
+        BATCH_SIZE = 3
         PAGE_DELAY = 2
         BATCH_DELAY = 5
 
@@ -370,7 +371,7 @@ class VendorImportJob(models.Model):
                     response = requests.post(
                         "https://pdf-extractor-staging.onrender.com/extract",
                         files={"file": ("page.pdf", pdf_bytes_io, "application/pdf")},
-                        timeout=60
+                        timeout=120
                     )
 
                     if response.status_code != 200:
@@ -414,7 +415,7 @@ class VendorImportJob(models.Model):
                 except Exception as e:
                     _logger.exception(f"FLASK CALL FAILED PAGE {i+1} → {str(e)}")
 
-                time.sleep(2)
+                time.sleep(5)
 
             if not page_success:
                 _logger.error(f"PAGE {i+1} FAILED AFTER RETRIES")
