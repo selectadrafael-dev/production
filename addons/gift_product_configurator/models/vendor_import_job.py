@@ -767,10 +767,12 @@ class VendorImportJob(models.Model):
 
                     parsed = json.loads(result)
 
-                    if parsed:
-                        products.append(parsed)
+                    if isinstance(parsed, list):
+                        products.extend(parsed)   # 🔥 FIX
+                    elif isinstance(parsed, dict):
+                        products.append(parsed)   # safety
 
-                    _logger.warning(f"ROW {idx} → PRODUCT CREATED")
+                    _logger.warning(f"ROW {idx} → PRODUCT PARSED")
 
                 except Exception as e:
                     _logger.warning(f"ROW {idx} FAILED → {str(e)}")
