@@ -729,10 +729,22 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL PAGES → {len(pages)}")
 
-        page_products = []
+        # ================= 🔥 RESUME LOGIC =================
+        start_index = self.last_ai_page or 0
+        _logger.warning(f"AI RESUME FROM PAGE INDEX → {start_index}")
 
-        # 🔥 PROCESS PAGE BY PAGE (CRITICAL FIX)
-        for page in pages:
+        # ================= PRESERVE EXISTING DATA =================
+        existing_ai = []
+        if self.ai_response:
+            try:
+                existing_ai = json.loads(self.ai_response)
+            except Exception:
+                existing_ai = []
+
+        page_products = existing_ai.copy()
+
+        # ================= PROCESS ONLY NEW PAGES =================
+        for i, page in enumerate(pages[start_index:], start=start_index):
 
             page_no = page.get("page")
             page_text = page.get("text", "")
@@ -747,9 +759,9 @@ class VendorImportJob(models.Model):
 
             prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
-            ======================
+            =====================
             CORE RULES (STRICT)
-            ======================
+            =====================
 
             1. RETURN ONLY VALID JSON
             2. NO explanation
@@ -804,7 +816,7 @@ class VendorImportJob(models.Model):
 
             You MUST detect variants using visual, structural, and contextual clues.
 
-           A product HAS VARIANTS ONLY IF:
+            A product HAS VARIANTS ONLY IF:
 
             - The items are clearly the SAME product design
             - Differences are ONLY color, size, or minor variation
@@ -836,11 +848,6 @@ class VendorImportJob(models.Model):
 
             - Attribute names must be consistent (e.g. Color, Size)
 
-            STOCK HANDLING:
-
-            - If stock is shown per variation → assign to that variant
-            - If stock is general → assign to product
-
             =====================
             WHEN TO SPLIT PRODUCTS
             =====================
@@ -856,38 +863,26 @@ class VendorImportJob(models.Model):
             ONLY group as variants when items are clearly the SAME product
 
             =====================
-            ANTI-REPETITION RULE (VERY IMPORTANT)
+            ANTI-REPETITION RULE
             =====================
 
             - If the same product appears multiple times on THIS PAGE → return it ONLY ONCE
-            - If two products look visually different → treat them as separate even if names are similar
-            - DO NOT repeat the same product multiple times in output
 
             =====================
-            MINIMUM EXTRACTION RULE (VERY IMPORTANT)
+            MINIMUM EXTRACTION RULE
             =====================
 
             - You MUST extract at least ONE product from this page
             - NEVER return an empty list
-            - If unclear, make a best possible interpretation based on visible structure
-            - If the page contains multiple images → return multiple products
-            - Expected products ≈ number of images (unless variants)
+            - If unclear, make a best possible interpretation
 
-            - If there are 5 images → expect around 5 products
-            - DO NOT group unrelated products into one
-            - ONLY group as variants if they are clearly the same product
-
-            HARD SPLIT RULE (CRITICAL):
+            HARD SPLIT RULE:
 
             - Each distinct image should be treated as a separate product
-            - DO NOT group multiple images into one product unless they are clearly variants
-            - If 5 images show different items → return at least 4–5 products
 
-            VISUAL PRIORITY RULE (CRITICAL):
+            VISUAL PRIORITY RULE:
 
             - Images are more reliable than text
-            - If text is unclear, rely on images to determine products
-            - Each distinct image usually represents a separate product
 
             =====================
             OUTPUT FORMAT
@@ -898,38 +893,21 @@ class VendorImportJob(models.Model):
                     "name": "",
                     "description": "",
                     "category": "",
-                   "variants": [
-                                    {{
-                                        "attributes": {{
-                                            "Color": ""
-                                        }},
-                                        "stock": null
-                                    }}
-                                ]
+                    "variants": [
+                        {{
+                            "attributes": {{
+                                "Color": ""
+                            }},
+                            "stock": null
+                        }}
+                    ]
                 }}
             ]
 
             PAGE CONTEXT:
             - This page contains {image_count} product images
-            - You MUST extract approximately {image_count} products (unless variants)
-            - Each product is usually tied to one image
-            - Use image count as primary signal for product count
 
-            STRICT RULE:
-
-            - If 6 images → expect 4 – 6 products
-            - DO NOT return only 1 product if multiple images exist
-
-            IMPORTANT:
-
-            - If multiple images exist → assume multiple products
-            - Do NOT merge multiple products into one
-            - Prefer splitting into multiple products
-
-            =====================
-            TEXT TO ANALYZE
-            =====================
-
+            TEXT TO ANALYZE:
             {page_text}
             """
 
@@ -944,7 +922,7 @@ class VendorImportJob(models.Model):
                             "type": "input_image",
                             "image_url": f"data:image/jpeg;base64,{img}"
                         }
-                        for img in images[:10]  # limit to 5 for performance
+                        for img in images[:10]
                     ]
 
                     response = client.responses.create(
@@ -958,7 +936,8 @@ class VendorImportJob(models.Model):
                     )
 
                     result = response.output_text.strip()
-                    _logger.warning(f"RAW AI OUTPUT PAGE {page_no} → {result[:500]}")
+                    _logger.warning(f"RAW AI OUTPUT PAGE {page_no} → {result[:300]}")
+
                     success = True
                     break
 
@@ -981,8 +960,7 @@ class VendorImportJob(models.Model):
             try:
                 parsed = json.loads(result)
             except Exception:
-
-                _logger.warning(f"PAGE {page_no} → INVALID JSON → forcing empty list")
+                _logger.warning(f"PAGE {page_no} → INVALID JSON")
                 parsed = []
 
             if not isinstance(parsed, list):
@@ -993,15 +971,18 @@ class VendorImportJob(models.Model):
                 "products": parsed
             })
 
+            # ================= SAVE PROGRESS =================
+            self.last_ai_page = i + 1
+
             _logger.warning(f"PAGE {page_no} → STORED PRODUCTS: {len(parsed)}")
 
-            import time
-            time.sleep(1)  # 🔒 rate limit protection
+            time.sleep(1)
 
-        # ================= FINAL =================
+        # ================= FINAL SAVE =================
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
+        _logger.warning(f"AI LAST PROCESSED PAGE → {self.last_ai_page}")
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -1254,7 +1235,6 @@ class VendorImportJob(models.Model):
     
 
     #==========create pdf and excel product======================
-    
     def create_products_pdf_excel(self):
 
         def is_valid_product_image(img_base64):
@@ -1283,9 +1263,6 @@ class VendorImportJob(models.Model):
         used_images = set()
         image_cache = {}
 
-        # 🔥 NEW: track processed names ONLY within THIS RUN
-        processed_names = set()
-
         # ================= LOOP 1 (PAGES) =================
         for page_data in pages:
 
@@ -1306,96 +1283,147 @@ class VendorImportJob(models.Model):
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
             # ================= LOOP 2 (PRODUCTS) =================
-            for i, product in enumerate(products):
+            for i, product_data in enumerate(products):
 
-                name = (product.get("name") or "").strip()
+                name = (product_data.get("name") or "").strip()
 
                 if not name or len(name) < 3:
-                    _logger.warning(f"INVALID PRODUCT NAME → {product}")
+                    _logger.warning(f"INVALID PRODUCT NAME → {product_data}")
                     continue
 
-                description = product.get("description", "")
-                category_name = product.get("category") or "Uncategorized"
+                _logger.warning(f"PROCESSING PRODUCT → {name}")
+
+                description = product_data.get("description", "")
+                category_name = product_data.get("category") or "Uncategorized"
 
                 # ================= CATEGORY =================
                 category = category_obj.search([('name', '=', category_name)], limit=1)
                 if not category:
                     category = category_obj.create({'name': category_name})
 
-                # ================= DUPLICATE HANDLING (FIXED) =================
-                # ❌ REMOVE DB-LEVEL SKIP
-                # ✅ Only avoid duplicates WITHIN SAME RUN (optional)
+                # ================= 🔥 DB-LEVEL DEDUPLICATION =================
+                existing_product = product_obj.search([
+                    ('name', 'ilike', name)
+                ], limit=1)
 
-                if name in processed_names:
-                    _logger.warning(f"DUPLICATE IN BATCH → {name} (still processing)")
+                if existing_product:
+                    _logger.warning(f"DUPLICATE SKIPPED (DB) → {name}")
+                    product = existing_product
                 else:
-                    processed_names.add(name)
+                    vals = {
+                        'name': name,
+                        'description_sale': description,
+                        'categ_id': category.id,
+                        'sale_ok': True,
+                        'website_published': False,
+                    }
 
-                vals = {
-                    'name': name,
-                    'description_sale': description,
-                    'categ_id': category.id,
-                    'sale_ok': True,
-                    'website_published': False,
-                }
+                    # ================= IMAGE ENGINE =================
+                    row_data = page_data.get("images", [])
+                    selected_image = None
 
-                # ================= IMAGE ENGINE =================
-                row_data = page_data.get("images", [])
-                selected_image = None
+                    if row_data:
 
-                if row_data:
+                        # ================= PDF MODE =================
+                        if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
 
-                    # ================= PDF MODE =================
-                    if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
+                            available_images = [img for img in row_data if img not in used_images]
 
-                        available_images = [img for img in row_data if img not in used_images]
+                            _logger.warning(f"PDF IMAGE MODE → {len(available_images)} usable images")
 
-                        _logger.warning(f"PDF IMAGE MODE → {len(available_images)} usable images")
+                            if available_images:
 
-                        if available_images:
-
-                            if len(available_images) == 1:
-                                selected_image = available_images[0]
-
-                            else:
-                                if name in image_cache:
-                                    selected_image = image_cache[name]
-                                    _logger.warning(f"CACHE HIT → {name}")
+                                if len(available_images) == 1:
+                                    selected_image = available_images[0]
 
                                 else:
-                                    selected_image = self.match_image_with_ai(name, available_images)
+                                    if name in image_cache:
+                                        selected_image = image_cache[name]
+                                        _logger.warning(f"CACHE HIT → {name}")
 
-                                    if selected_image:
-                                        image_cache[name] = selected_image
-                                        _logger.warning("AI MATCHED IMAGE SUCCESS")
                                     else:
-                                        selected_image = available_images[0]
-                                        _logger.warning("AI FALLBACK USED")
+                                        selected_image = self.match_image_with_ai(name, available_images)
 
-                    # ================= EXCEL MODE =================
-                    elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
+                                        if selected_image:
+                                            image_cache[name] = selected_image
+                                            _logger.warning("AI MATCHED IMAGE SUCCESS")
+                                        else:
+                                            selected_image = available_images[0]
+                                            _logger.warning("AI FALLBACK USED")
 
-                        total_rows = len(row_data)
-                        row_index = i % total_rows
-                        row_images = row_data[row_index].get("images", [])
+                        # ================= EXCEL MODE =================
+                        elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
 
-                        valid_images = [img for img in row_images if is_valid_product_image(img)]
+                            total_rows = len(row_data)
+                            row_index = i % total_rows
+                            row_images = row_data[row_index].get("images", [])
 
-                        if valid_images:
-                            selected_image = valid_images[0]
-                            _logger.warning(f"EXCEL IMAGE SELECTED → ROW {row_index}")
+                            valid_images = [img for img in row_images if is_valid_product_image(img)]
 
-                # ================= APPLY IMAGE =================
-                if selected_image:
-                    vals['image_1920'] = selected_image
-                    used_images.add(selected_image)
-                    _logger.warning(f"IMAGE ASSIGNED → {name}")
-                else:
-                    _logger.warning(f"NO IMAGE → {name}")
+                            if valid_images:
+                                selected_image = valid_images[0]
+                                _logger.warning(f"EXCEL IMAGE SELECTED → ROW {row_index}")
 
-                # ================= CREATE (NO SKIP) =================
-                product_obj.create(vals)
-                created_count += 1
+                    # ================= APPLY IMAGE =================
+                    if selected_image:
+                        vals['image_1920'] = selected_image
+                        used_images.add(selected_image)
+                        _logger.warning(f"IMAGE ASSIGNED → {name}")
+                    else:
+                        _logger.warning(f"NO IMAGE → {name}")
+
+                    product = product_obj.create(vals)
+                    created_count += 1
+
+                # ================= 🔥 VARIANT HANDLING =================
+                if product_data.get("variants"):
+
+                    for variant in product_data["variants"]:
+
+                        attributes = variant.get("attributes", {})
+
+                        for attr_name, attr_value in attributes.items():
+
+                            if not attr_value:
+                                continue
+
+                            # ATTRIBUTE
+                            attribute = self.env['product.attribute'].search([
+                                ('name', '=', attr_name)
+                            ], limit=1)
+
+                            if not attribute:
+                                attribute = self.env['product.attribute'].create({
+                                    'name': attr_name
+                                })
+
+                            # VALUE
+                            value = self.env['product.attribute.value'].search([
+                                ('name', '=', attr_value),
+                                ('attribute_id', '=', attribute.id)
+                            ], limit=1)
+
+                            if not value:
+                                value = self.env['product.attribute.value'].create({
+                                    'name': attr_value,
+                                    'attribute_id': attribute.id
+                                })
+
+                            # ATTACH TO PRODUCT
+                            line = self.env['product.template.attribute.line'].search([
+                                ('product_tmpl_id', '=', product.id),
+                                ('attribute_id', '=', attribute.id)
+                            ], limit=1)
+
+                            if not line:
+                                self.env['product.template.attribute.line'].create({
+                                    'product_tmpl_id': product.id,
+                                    'attribute_id': attribute.id,
+                                    'value_ids': [(6, 0, [value.id])]
+                                })
+                            else:
+                                if value.id not in line.value_ids.ids:
+                                    line.value_ids = [(4, value.id)]
 
                 # ✅ COMMIT EVERY 50 PRODUCTS
                 if created_count % 50 == 0:
