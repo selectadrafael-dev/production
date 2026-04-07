@@ -95,7 +95,7 @@ class VendorImportJob(models.Model):
 
 
     #------excel processing methof---------------
-
+    
     def parse_excel(self):
 
         _logger.warning("EXCEL → START PARSING")
@@ -109,7 +109,7 @@ class VendorImportJob(models.Model):
         pages = []
         page_number = 1
 
-        # 🔥 PROCESS ALL SHEETS (FIX 1)
+        # 🔥 PROCESS ALL SHEETS
         for sheet in wb.worksheets:
 
             _logger.warning(f"PROCESSING SHEET → {sheet.title}")
@@ -127,21 +127,28 @@ class VendorImportJob(models.Model):
                     if val:
                         row_text_parts.append(val)
 
+                # skip empty rows
                 if not row_text_parts:
                     continue
 
-                # 🔥 STRUCTURED TEXT (FIX 2)
+                # skip header
+                if idx == 0:
+                    _logger.warning(f"SKIP HEADER ROW → {sheet.title}")
+                    continue
+
+                # ================= STRUCTURED TEXT =================
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
 
                 RULE:
                 - THIS IS EXACTLY ONE PRODUCT
-                - DO NOT MERGE WITH OTHER ROWS
-                - DO NOT CREATE VARIANTS
+                - DO NOT SPLIT THIS ROW
+                - THIS ROW MAY BE A VARIANT OF ANOTHER ROW
+                - USE SIMILAR ID/SKU TO GROUP VARIANTS
                 """
 
-                # ================= IMAGE (EMBEDDED) =================
+                # ================= IMAGE (EMBEDDED FIRST) =================
                 for cell in row:
                     try:
                         if image_loader.image_in(cell.coordinate):
@@ -155,20 +162,19 @@ class VendorImportJob(models.Model):
 
                             row_images.append(img_base64)
 
-                            _logger.warning(f"ROW {idx} → EMBED IMAGE USED")
+                            _logger.warning(f"ROW {idx} → EMBED IMAGE FOUND")
                             break
 
                     except Exception:
                         continue
 
-                # ================= IMAGE (URL) =================
+                # ================= IMAGE (URL FALLBACK) =================
                 if not row_images:
 
                     for cell in row:
                         val = str(cell.value or "").strip()
 
                         if val.startswith("http"):
-
                             try:
                                 response = requests.get(val, headers=headers, timeout=10)
 
@@ -178,18 +184,19 @@ class VendorImportJob(models.Model):
                                 if "image" in response.headers.get("Content-Type", ""):
                                     img_base64 = base64.b64encode(response.content).decode("utf-8")
                                     row_images.append(img_base64)
-                                    _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
+
+                                    _logger.warning(f"ROW {idx} → IMAGE FROM URL")
                                     break
 
                             except Exception:
-                                _logger.warning(f"ROW {idx} → URL FAILED")
+                                _logger.warning(f"ROW {idx} → IMAGE URL FAILED")
 
                 # ================= DEBUG =================
-                _logger.warning(f"SHEET {sheet.title} | ROW {idx}")
+                _logger.warning(f"SHEET → {sheet.title} | ROW → {idx}")
                 _logger.warning(f"TEXT PARTS → {len(row_text_parts)}")
-                _logger.warning(f"IMAGES → {len(row_images)}")
+                _logger.warning(f"IMAGES FOUND → {len(row_images)}")
 
-                # 🔥 STORE EACH ROW AS A PAGE (FIX 3)
+                # ================= STORE =================
                 pages.append({
                     "page": page_number,
                     "text": row_text,
@@ -644,7 +651,11 @@ class VendorImportJob(models.Model):
 
     #===========pdf and excel open ai OPENAI=========================
 
+
     def send_to_openai_pdf_excel(self):
+
+        import json
+        import time
 
         self.state = "ai_processing"
 
@@ -665,22 +676,12 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # 🔥 FIXED EXCEL DETECTION
+        # 🔥 detect excel
         is_excel = any("row_index" in p for p in pages)
 
         _logger.warning(f"MODE DETECTED → {'EXCEL' if is_excel else 'PDF'}")
 
-        # ================= EXISTING DATA =================
-        existing_ai = []
-        if self.ai_response:
-            try:
-                existing_ai = json.loads(self.ai_response)
-            except Exception:
-                existing_ai = []
-
-        page_products = existing_ai.copy()
-
-        # ================= EXCEL MODE (FIXED) =================
+        # ================= EXCEL MODE =================
         if is_excel:
 
             _logger.warning(f"EXCEL MODE → TOTAL ROWS: {len(pages)}")
@@ -694,7 +695,6 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(f"ROW {idx} → PROCESSING")
                 _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
-
 
                 prompt = f"""
                 You are a structured Excel product parser.
@@ -730,7 +730,7 @@ class VendorImportJob(models.Model):
 
                 - If no clear name:
                     → GENERATE NAME like:
-                    "Product ID"
+                    "Product <ID>"
 
                 3. DESCRIPTION:
                 - Short summary from row
@@ -747,19 +747,26 @@ class VendorImportJob(models.Model):
 
                 Return:
 
-                "variant_group": "<ID>"
+                - variant_group MUST be the detected product ID (KOD/SKU)
+                - NEVER invent random variant_group
+                - SAME ID → SAME variant_group
+
+                CRITICAL:
+
+                - EACH ROW = EXACTLY ONE PRODUCT
+                - NEVER return multiple products
 
                 =====================================
                 OUTPUT FORMAT
                 =====================================
 
-                [
-                {{
-                    "name": "",
-                    "description": "",
-                    "category": "",
-                    "variant_group": ""
-                }}
+               [
+                    {{
+                        "name": "",
+                        "description": "",
+                        "category": "",
+                        "variant_group": ""
+                    }}
                 ]
 
                 =====================================
@@ -786,32 +793,38 @@ class VendorImportJob(models.Model):
 
                     parsed = json.loads(result)
 
-                    if isinstance(parsed, list):
-                        products.extend(parsed)   # 🔥 FIX
-                    elif isinstance(parsed, dict):
-                        products.append(parsed)   # safety
+                    # 🔥 enforce ONE product per row
+                    if isinstance(parsed, list) and parsed:
+                        parsed = parsed[0]
 
-                    _logger.warning(f"ROW {idx} → PRODUCT PARSED")
+                    if not isinstance(parsed, dict):
+                        continue
+
+                    # 🔥 attach image (CRITICAL FIX)
+                    if images:
+                        parsed["image"] = images[0]
+
+                    products.append(parsed)
+
+                    _logger.warning(f"ROW {idx} → PRODUCT PARSED WITH IMAGE")
 
                 except Exception as e:
                     _logger.warning(f"ROW {idx} FAILED → {str(e)}")
                     continue
 
-            # 🔥 FINAL STRUCTURE FOR CREATE METHOD
-            page_products = [{
+            # final structure
+            self.ai_response = json.dumps([{
                 "page": 1,
                 "products": products
-            }]
-
-            self.ai_response = json.dumps(page_products)
+            }])
 
             _logger.warning(f"EXCEL PRODUCTS TOTAL → {len(products)}")
 
-            return  # 🔥 STOP — DO NOT ENTER PDF FLOW
+            return
 
         # ================= PDF MODE (UNCHANGED) =================
 
-        _logger.warning(f"TOTAL PAGES → {len(pages)}")
+        page_products = []
 
         start_index = self.last_ai_page or 0
         _logger.warning(f"AI RESUME FROM PAGE INDEX → {start_index}")
@@ -821,7 +834,6 @@ class VendorImportJob(models.Model):
             page_no = page.get("page")
             page_text = page.get("text", "")
             images = page.get("images", [])
-            image_count = len(images)
 
             if not page_text.strip() and not images:
                 continue
@@ -1009,7 +1021,6 @@ class VendorImportJob(models.Model):
             """
 
             try:
-
                 image_inputs = [
                     {
                         "type": "input_image",
@@ -1024,7 +1035,6 @@ class VendorImportJob(models.Model):
                         "role": "user",
                         "content": [{"type": "input_text", "text": prompt}] + image_inputs
                     }],
-                    temperature=0,
                     timeout=60
                 )
 
@@ -1062,7 +1072,6 @@ class VendorImportJob(models.Model):
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
-        _logger.warning(f"AI LAST PROCESSED PAGE → {self.last_ai_page}")
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -1386,11 +1395,11 @@ class VendorImportJob(models.Model):
         _logger.warning(f"TOTAL PRODUCTS CREATED THIS RUN: {created_count}")
 
     #==========create pdf and excel product======================
-
     def create_products_pdf_excel(self):
 
         import base64
         import json
+        import requests
 
         if not self.ai_response or not self.extracted_text:
             _logger.warning("NO AI OR EXTRACTED DATA → STOP")
@@ -1410,7 +1419,6 @@ class VendorImportJob(models.Model):
 
         created_count = 0
 
-        # ================= CATEGORY CONFIG =================
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
             "shirt": "Apparel",
@@ -1428,16 +1436,12 @@ class VendorImportJob(models.Model):
             "laptop": "Electronics",
         }
 
-        DEFAULT_PARENT = "All Products"
-
-        parent_category = category_obj.search([('name', '=', DEFAULT_PARENT)], limit=1)
+        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
         if not parent_category:
-            parent_category = category_obj.create({'name': DEFAULT_PARENT})
+            parent_category = category_obj.create({'name': "All Products"})
 
-        # ================= RESUME CONTROL =================
         last_created_page = getattr(self, "last_created_page", 0)
 
-        # ================= MAIN LOOP =================
         for page_data in pages:
 
             page_no = page_data.get("page")
@@ -1446,18 +1450,18 @@ class VendorImportJob(models.Model):
                 continue
 
             ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
-
             if not ai_page:
                 continue
 
             products = ai_page.get("products", [])
+            images = page_data.get("images", [])
 
             if not products:
                 continue
 
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
-            for idx, product_data in enumerate(products):
+            for product_data in products:
 
                 try:
                     name = (product_data.get("name") or "").strip()
@@ -1466,36 +1470,29 @@ class VendorImportJob(models.Model):
                     if not name or len(name) < 3:
                         continue
 
-                    _logger.warning(f"PROCESSING PRODUCT → {name}")
-
                     description = product_data.get("description", "")
                     raw_category = (product_data.get("category") or "").lower()
 
-                    # ================= CATEGORY =================
-                    mapped_category_name = None
-
-                    for key, value in CATEGORY_MAPPING.items():
+                    # CATEGORY
+                    mapped_category = "General"
+                    for key, val in CATEGORY_MAPPING.items():
                         if key in raw_category:
-                            mapped_category_name = value
+                            mapped_category = val
                             break
 
-                    if not mapped_category_name:
-                        mapped_category_name = "General"
-
                     category = category_obj.search([
-                        ('name', '=', mapped_category_name),
+                        ('name', '=', mapped_category),
                         ('parent_id', '=', parent_category.id)
                     ], limit=1)
 
                     if not category:
                         category = category_obj.create({
-                            'name': mapped_category_name,
+                            'name': mapped_category,
                             'parent_id': parent_category.id
                         })
 
-                    # ================= EXISTING / VARIANT GROUP =================
+                    # VARIANT GROUP CHECK
                     existing_product = None
-
                     if variant_group:
                         existing_product = product_obj.search([
                             ('default_code', '=', variant_group)
@@ -1503,7 +1500,6 @@ class VendorImportJob(models.Model):
 
                     if existing_product:
                         product = existing_product
-                        _logger.warning(f"VARIANT GROUP FOUND → {variant_group}")
                     else:
                         vals = {
                             'name': name,
@@ -1514,94 +1510,53 @@ class VendorImportJob(models.Model):
                             'website_published': False,
                         }
 
-                        # ================= IMAGE FIX (CRITICAL) =================
-                        images = page_data.get("images", [])
-
-                        _logger.warning(f"IMAGES AVAILABLE → {len(images)}")
-
+                        # IMAGE
                         if images:
-                            # Use index to distribute images properly
-                            img_index = idx if idx < len(images) else 0
-                            vals['image_1920'] = images[img_index]
-                            _logger.warning(f"IMAGE ASSIGNED → INDEX {img_index}")
-                        else:
-                            _logger.warning("NO IMAGE FOUND FOR PRODUCT")
-
-                        _logger.warning(f"""
-                        DEBUG PRODUCT:
-                        Name: {name}
-                        Variant Group: {variant_group}
-                        Images Count: {len(images)}
-                        """)
+                            vals['image_1920'] = images[0]
 
                         product = product_obj.create(vals)
                         created_count += 1
 
-                    # ================= VARIANTS =================
+                    # VARIANTS
                     variants = product_data.get("variants", [])
 
-                    if variants:
+                    for variant in variants:
+                        attributes = variant.get("attributes", {})
 
-                        for variant in variants:
+                        for attr_name, attr_value in attributes.items():
 
-                            attributes = variant.get("attributes", {})
-                            image_index = variant.get("image_index")
+                            attribute = self.env['product.attribute'].search([
+                                ('name', '=', attr_name)
+                            ], limit=1)
 
-                            created_values = []
+                            if not attribute:
+                                attribute = self.env['product.attribute'].create({'name': attr_name})
 
-                            for attr_name, attr_value in attributes.items():
+                            value = self.env['product.attribute.value'].search([
+                                ('name', '=', attr_value),
+                                ('attribute_id', '=', attribute.id)
+                            ], limit=1)
 
-                                if not attr_value:
-                                    continue
+                            if not value:
+                                value = self.env['product.attribute.value'].create({
+                                    'name': attr_value,
+                                    'attribute_id': attribute.id
+                                })
 
-                                attribute = self.env['product.attribute'].search([
-                                    ('name', '=', attr_name)
-                                ], limit=1)
+                            line = self.env['product.template.attribute.line'].search([
+                                ('product_tmpl_id', '=', product.id),
+                                ('attribute_id', '=', attribute.id)
+                            ], limit=1)
 
-                                if not attribute:
-                                    attribute = self.env['product.attribute'].create({
-                                        'name': attr_name
-                                    })
-
-                                value = self.env['product.attribute.value'].search([
-                                    ('name', '=', attr_value),
-                                    ('attribute_id', '=', attribute.id)
-                                ], limit=1)
-
-                                if not value:
-                                    value = self.env['product.attribute.value'].create({
-                                        'name': attr_value,
-                                        'attribute_id': attribute.id
-                                    })
-
-                                created_values.append(value)
-
-                                line = self.env['product.template.attribute.line'].search([
-                                    ('product_tmpl_id', '=', product.id),
-                                    ('attribute_id', '=', attribute.id)
-                                ], limit=1)
-
-                                if not line:
-                                    self.env['product.template.attribute.line'].create({
-                                        'product_tmpl_id': product.id,
-                                        'attribute_id': attribute.id,
-                                        'value_ids': [(6, 0, [value.id])]
-                                    })
-                                else:
-                                    if value.id not in line.value_ids.ids:
-                                        line.value_ids = [(4, value.id)]
-
-                            if created_values:
-
-                                variant_record = self.env['product.product'].search([
-                                    ('product_tmpl_id', '=', product.id),
-                                    ('product_template_attribute_value_ids.product_attribute_value_id', 'in',
-                                    [v.id for v in created_values])
-                                ], limit=1)
-
-                                if variant_record and image_index is not None:
-                                    if image_index < len(images):
-                                        variant_record.image_1920 = images[image_index]
+                            if not line:
+                                self.env['product.template.attribute.line'].create({
+                                    'product_tmpl_id': product.id,
+                                    'attribute_id': attribute.id,
+                                    'value_ids': [(6, 0, [value.id])]
+                                })
+                            else:
+                                if value.id not in line.value_ids.ids:
+                                    line.value_ids = [(4, value.id)]
 
                     if created_count % 10 == 0:
                         self.env.cr.commit()
@@ -1617,7 +1572,6 @@ class VendorImportJob(models.Model):
             _logger.warning(f"PAGE {page_no} DONE")
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
-        _logger.warning("PRODUCT CREATION LOOP COMPLETED")
 
     #-----URL API FLOW-------------------------------------------
 
