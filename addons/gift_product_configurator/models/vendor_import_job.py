@@ -695,59 +695,132 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"ROW {idx} → PROCESSING")
                 _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
 
+                # prompt = f"""
+                # You are an advanced product extraction and interpretation engine for catalog PDFs.
+
+                # =====================
+                # CORE RULES (STRICT)
+                # =====================
+
+                # 1. RETURN ONLY VALID JSON
+                # 2. NO explanation
+                # 3. NO markdown
+                # 4. NO text outside JSON
+                # 5. DO NOT duplicate products
+                # 6. DO NOT skip any product
+                # 7. EACH product must appear exactly once
+
+                # =====================
+                # PRODUCT DETECTION LOGIC
+                # =====================
+
+                # A page may contain:
+
+                # (A) ONE large product (hero layout)
+                # (B) MULTIPLE products (grid/catalog layout)
+                # (C) MIX of large + small supporting products
+
+                # You MUST:
+
+                # - If SINGLE main product:
+                # → return ONE product
+
+                # - If MULTIPLE products:
+                # → extract EACH product separately
+
+                # - If repeated items:
+                # → treat EACH visible item as a unique product
+
+                # =====================
+                # OUTPUT FORMAT
+                # =====================
+
+                # [
+                # {{
+                #     "name": "",
+                #     "description": "",
+                #     "category": ""
+                # }}
+                # ]
+
+                # =====================
+                # TEXT TO ANALYZE
+                # =====================
+
+                # {row_text} 
+                #"""
+
                 prompt = f"""
-                You are an advanced product extraction and interpretation engine for catalog PDFs.
+                You are a structured Excel product parser.
 
-                =====================
-                CORE RULES (STRICT)
-                =====================
+                Each input represents EXACTLY ONE ROW = ONE PRODUCT.
 
-                1. RETURN ONLY VALID JSON
-                2. NO explanation
-                3. NO markdown
-                4. NO text outside JSON
-                5. DO NOT duplicate products
-                6. DO NOT skip any product
-                7. EACH product must appear exactly once
+                =====================================
+                COLUMN UNDERSTANDING (CRITICAL)
+                =====================================
 
-                =====================
-                PRODUCT DETECTION LOGIC
-                =====================
+                The row contains mixed values like:
 
-                A page may contain:
+                - ID (e.g. 94601, 12345)
+                - Range (e.g. 2-66, 11-00)
+                - Stock numbers
+                - Prices
+                - Links (http...)
+                - Image references
 
-                (A) ONE large product (hero layout)
-                (B) MULTIPLE products (grid/catalog layout)
-                (C) MIX of large + small supporting products
+                YOU MUST:
 
-                You MUST:
+                1. IDENTIFY PRODUCT ID
+                - Usually numeric (e.g. 94601)
+                - Column name may vary (KOD, SKU, ID, CODE)
 
-                - If SINGLE main product:
-                → return ONE product
+                2. IDENTIFY PRODUCT NAME
+                - MUST NOT be:
+                    - pure numbers
+                    - ranges (e.g. 2-66)
+                    - links
+                    - dates
+                    - column headers like FOTO
 
-                - If MULTIPLE products:
-                → extract EACH product separately
+                - If no clear name:
+                    → GENERATE NAME like:
+                    "Product {ID}"
 
-                - If repeated items:
-                → treat EACH visible item as a unique product
+                3. DESCRIPTION:
+                - Short summary from row
 
-                =====================
+                4. CATEGORY:
+                - Guess intelligently (e.g. bottle → Drinkware)
+
+                =====================================
+                VARIANT DETECTION (VERY IMPORTANT)
+                =====================================
+
+                - If multiple rows share SAME ID
+                → they are VARIANTS of same product
+
+                Return:
+
+                "variant_group": "<ID>"
+
+                =====================================
                 OUTPUT FORMAT
-                =====================
+                =====================================
 
                 [
                 {{
                     "name": "",
                     "description": "",
-                    "category": ""
+                    "category": "",
+                    "variant_group": ""
                 }}
                 ]
 
-                =====================
-                TEXT TO ANALYZE
-                =====================
+                =====================================
+                ROW DATA
+                =====================================
 
-                {row_text} 
+                {row_text}
                 """
 
                 try:
@@ -1460,6 +1533,7 @@ class VendorImportJob(models.Model):
 
                 try:
                     name = (product_data.get("name") or "").strip()
+                    variant_group = product_data.get("variant_group")
 
                     if not name or len(name) < 3:
                         continue
@@ -1492,15 +1566,23 @@ class VendorImportJob(models.Model):
                         })
 
                     # ================= DEDUP =================
-                    existing_product = product_obj.search([
-                        ('name', 'ilike', name)
-                    ], limit=1)
+
+                    existing_product = None
+
+                    if variant_group:
+                        existing_product = product_obj.search([
+                            ('default_code', '=', variant_group)
+                        ], limit=1)
 
                     if existing_product:
-                        continue
+                        product = existing_product
+                        _logger.warning(f"VARIANT GROUP FOUND → {variant_group}")
+                    else:
+                        product = None
 
                     vals = {
                         'name': name,
+                        'default_code': variant_group or name,
                         'description_sale': description,
                         'categ_id': category.id,
                         'sale_ok': True,
@@ -1508,9 +1590,20 @@ class VendorImportJob(models.Model):
                     }
 
                     # ================= IMAGE =================
-                    best_img = self.pick_best_image(images)
-                    if best_img:
-                        vals['image_1920'] = best_img
+                    _logger.warning(f"IMAGES AVAILABLE → {len(images)}")
+
+                    if images:
+                        vals['image_1920'] = images[0]   # 🔥 FORCE FIRST IMAGE
+                        _logger.warning("IMAGE ASSIGNED → FIRST IMAGE USED")
+                    else:
+                        _logger.warning("NO IMAGE FOUND FOR PRODUCT")
+
+                    _logger.warning(f"""
+                        DEBUG PRODUCT:
+                        Name: {name}
+                        Variant Group: {variant_group}
+                        Images Count: {len(images)}
+                        """)
 
                     product = product_obj.create(vals)
                     created_count += 1
