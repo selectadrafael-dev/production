@@ -1236,6 +1236,7 @@ class VendorImportJob(models.Model):
     
 
     #==========create pdf and excel product======================
+
     def create_products_pdf_excel(self):
 
         def is_valid_product_image(img_base64):
@@ -1260,7 +1261,6 @@ class VendorImportJob(models.Model):
 
         created_count = 0
 
-        # ✅ GLOBAL CACHE
         used_images = set()
         image_cache = {}
 
@@ -1286,155 +1286,145 @@ class VendorImportJob(models.Model):
             # ================= LOOP 2 (PRODUCTS) =================
             for i, product_data in enumerate(products):
 
-                name = (product_data.get("name") or "").strip()
+                try:  # 🔥 CRITICAL PROTECTION
 
-                if not name or len(name) < 3:
-                    _logger.warning(f"INVALID PRODUCT NAME → {product_data}")
-                    continue
+                    name = (product_data.get("name") or "").strip()
 
-                _logger.warning(f"PROCESSING PRODUCT → {name}")
+                    if not name or len(name) < 3:
+                        _logger.warning(f"INVALID PRODUCT NAME → {product_data}")
+                        continue
 
-                description = product_data.get("description", "")
-                category_name = product_data.get("category") or "Uncategorized"
+                    _logger.warning(f"PROCESSING PRODUCT → {name}")
 
-                # ================= CATEGORY =================
-                category = category_obj.search([('name', '=', category_name)], limit=1)
-                if not category:
-                    category = category_obj.create({'name': category_name})
+                    description = product_data.get("description", "")
+                    category_name = product_data.get("category") or "Uncategorized"
 
-                # ================= 🔥 DB-LEVEL DEDUPLICATION =================
-                existing_product = product_obj.search([
-                    ('name', 'ilike', name)
-                ], limit=1)
+                    # ================= CATEGORY =================
+                    category = category_obj.search([('name', '=', category_name)], limit=1)
+                    if not category:
+                        category = category_obj.create({'name': category_name})
 
-                if existing_product:
-                    _logger.warning(f"DUPLICATE SKIPPED (DB) → {name}")
-                    product = existing_product
-                else:
-                    vals = {
-                        'name': name,
-                        'description_sale': description,
-                        'categ_id': category.id,
-                        'sale_ok': True,
-                        'website_published': False,
-                    }
+                    # ================= DEDUP =================
+                    existing_product = product_obj.search([
+                        ('name', 'ilike', name)
+                    ], limit=1)
 
-                    # ================= IMAGE ENGINE =================
-                    row_data = page_data.get("images", [])
-                    selected_image = None
+                    if existing_product:
+                        _logger.warning(f"DUPLICATE SKIPPED (DB) → {name}")
+                        product = existing_product
 
-                    if row_data:
+                    else:
+                        vals = {
+                            'name': name,
+                            'description_sale': description,
+                            'categ_id': category.id,
+                            'sale_ok': True,
+                            'website_published': False,
+                        }
 
-                        # ================= PDF MODE =================
-                        if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
+                        # ================= IMAGE ENGINE =================
+                        row_data = page_data.get("images", [])
+                        selected_image = None
 
-                            available_images = [img for img in row_data if img not in used_images]
+                        if row_data:
 
-                            _logger.warning(f"PDF IMAGE MODE → {len(available_images)} usable images")
+                            if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
 
-                            if available_images:
+                                available_images = [img for img in row_data if img not in used_images]
 
-                                if len(available_images) == 1:
-                                    selected_image = available_images[0]
+                                _logger.warning(f"PDF IMAGE MODE → {len(available_images)} usable images")
 
-                                else:
-                                    if name in image_cache:
-                                        selected_image = image_cache[name]
-                                        _logger.warning(f"CACHE HIT → {name}")
+                                if available_images:
+
+                                    if len(available_images) == 1:
+                                        selected_image = available_images[0]
 
                                     else:
-                                        selected_image = self.match_image_with_ai(name, available_images)
-
-                                        if selected_image:
-                                            image_cache[name] = selected_image
-                                            _logger.warning("AI MATCHED IMAGE SUCCESS")
+                                        if name in image_cache:
+                                            selected_image = image_cache[name]
                                         else:
-                                            selected_image = available_images[0]
-                                            _logger.warning("AI FALLBACK USED")
+                                            selected_image = self.match_image_with_ai(name, available_images)
 
-                        # ================= EXCEL MODE =================
-                        elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
+                                            if selected_image:
+                                                image_cache[name] = selected_image
+                                            else:
+                                                selected_image = available_images[0]
 
-                            total_rows = len(row_data)
-                            row_index = i % total_rows
-                            row_images = row_data[row_index].get("images", [])
+                            elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
 
-                            valid_images = [img for img in row_images if is_valid_product_image(img)]
+                                total_rows = len(row_data)
+                                row_index = i % total_rows
+                                row_images = row_data[row_index].get("images", [])
 
-                            if valid_images:
-                                selected_image = valid_images[0]
-                                _logger.warning(f"EXCEL IMAGE SELECTED → ROW {row_index}")
+                                valid_images = [img for img in row_images if is_valid_product_image(img)]
 
-                    # ================= APPLY IMAGE =================
-                    if selected_image:
-                        vals['image_1920'] = selected_image
-                        used_images.add(selected_image)
-                        _logger.warning(f"IMAGE ASSIGNED → {name}")
-                    else:
-                        _logger.warning(f"NO IMAGE → {name}")
+                                if valid_images:
+                                    selected_image = valid_images[0]
 
-                    product = product_obj.create(vals)
-                    created_count += 1
+                        if selected_image:
+                            vals['image_1920'] = selected_image
+                            used_images.add(selected_image)
 
-                # ================= 🔥 VARIANT HANDLING =================
-                if product_data.get("variants"):
+                        product = product_obj.create(vals)
+                        created_count += 1
 
-                    for variant in product_data["variants"]:
+                        # 🔥 SAFE COMMIT
+                        self.env.cr.commit()
+                        _logger.warning(f"PRODUCT CREATED → {name}")
 
-                        attributes = variant.get("attributes", {})
+                    # ================= VARIANTS =================
+                    if product_data.get("variants"):
 
-                        for attr_name, attr_value in attributes.items():
+                        for variant in product_data["variants"]:
 
-                            if not attr_value:
-                                continue
+                            attributes = variant.get("attributes", {})
 
-                            # ATTRIBUTE
-                            attribute = self.env['product.attribute'].search([
-                                ('name', '=', attr_name)
-                            ], limit=1)
+                            for attr_name, attr_value in attributes.items():
 
-                            if not attribute:
-                                attribute = self.env['product.attribute'].create({
-                                    'name': attr_name
-                                })
+                                if not attr_value:
+                                    continue
 
-                            # VALUE
-                            value = self.env['product.attribute.value'].search([
-                                ('name', '=', attr_value),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
+                                attribute = self.env['product.attribute'].search([
+                                    ('name', '=', attr_name)
+                                ], limit=1)
 
-                            if not value:
-                                value = self.env['product.attribute.value'].create({
-                                    'name': attr_value,
-                                    'attribute_id': attribute.id
-                                })
+                                if not attribute:
+                                    attribute = self.env['product.attribute'].create({
+                                        'name': attr_name
+                                    })
 
-                            # ATTACH TO PRODUCT
-                            line = self.env['product.template.attribute.line'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
+                                value = self.env['product.attribute.value'].search([
+                                    ('name', '=', attr_value),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
 
-                            if not line:
-                                self.env['product.template.attribute.line'].create({
-                                    'product_tmpl_id': product.id,
-                                    'attribute_id': attribute.id,
-                                    'value_ids': [(6, 0, [value.id])]
-                                })
-                            else:
-                                if value.id not in line.value_ids.ids:
-                                    line.value_ids = [(4, value.id)]
+                                if not value:
+                                    value = self.env['product.attribute.value'].create({
+                                        'name': attr_value,
+                                        'attribute_id': attribute.id
+                                    })
 
-                # ✅ COMMIT EVERY 50 PRODUCTS
-                if created_count % 50 == 0:
-                    self.env.cr.commit()
-                    _logger.warning(f"PARTIAL COMMIT → {created_count}")
+                                line = self.env['product.template.attribute.line'].search([
+                                    ('product_tmpl_id', '=', product.id),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
+
+                                if not line:
+                                    self.env['product.template.attribute.line'].create({
+                                        'product_tmpl_id': product.id,
+                                        'attribute_id': attribute.id,
+                                        'value_ids': [(6, 0, [value.id])]
+                                    })
+                                else:
+                                    if value.id not in line.value_ids.ids:
+                                        line.value_ids = [(4, value.id)]
+
+                except Exception as e:
+                    _logger.error(f"PRODUCT FAILED → {str(e)}")
+                    self.env.cr.rollback()
+                    continue
 
             _logger.warning(f"PAGE {page_no} DONE")
-
-        # ================= FINAL COMMIT =================
-        self.env.cr.commit()
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
