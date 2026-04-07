@@ -695,60 +695,6 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"ROW {idx} → PROCESSING")
                 _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
 
-                # prompt = f"""
-                # You are an advanced product extraction and interpretation engine for catalog PDFs.
-
-                # =====================
-                # CORE RULES (STRICT)
-                # =====================
-
-                # 1. RETURN ONLY VALID JSON
-                # 2. NO explanation
-                # 3. NO markdown
-                # 4. NO text outside JSON
-                # 5. DO NOT duplicate products
-                # 6. DO NOT skip any product
-                # 7. EACH product must appear exactly once
-
-                # =====================
-                # PRODUCT DETECTION LOGIC
-                # =====================
-
-                # A page may contain:
-
-                # (A) ONE large product (hero layout)
-                # (B) MULTIPLE products (grid/catalog layout)
-                # (C) MIX of large + small supporting products
-
-                # You MUST:
-
-                # - If SINGLE main product:
-                # → return ONE product
-
-                # - If MULTIPLE products:
-                # → extract EACH product separately
-
-                # - If repeated items:
-                # → treat EACH visible item as a unique product
-
-                # =====================
-                # OUTPUT FORMAT
-                # =====================
-
-                # [
-                # {{
-                #     "name": "",
-                #     "description": "",
-                #     "category": ""
-                # }}
-                # ]
-
-                # =====================
-                # TEXT TO ANALYZE
-                # =====================
-
-                # {row_text} 
-                #"""
 
                 prompt = f"""
                 You are a structured Excel product parser.
@@ -784,7 +730,7 @@ class VendorImportJob(models.Model):
 
                 - If no clear name:
                     → GENERATE NAME like:
-                    "Product {ID}"
+                    "Product ID"
 
                 3. DESCRIPTION:
                 - Short summary from row
@@ -1446,22 +1392,6 @@ class VendorImportJob(models.Model):
         import base64
         import json
 
-        def safe_set_image(vals, images):
-            if not images:
-                return
-
-            img = images[0]
-
-            if isinstance(img, str) and len(img) > 100:
-                try:
-                    base64.b64decode(img)
-                    vals['image_1920'] = img
-                    return
-                except Exception:
-                    pass
-
-            _logger.warning("INVALID IMAGE FORMAT → SKIPPED")
-
         if not self.ai_response or not self.extracted_text:
             _logger.warning("NO AI OR EXTRACTED DATA → STOP")
             return
@@ -1512,7 +1442,6 @@ class VendorImportJob(models.Model):
 
             page_no = page_data.get("page")
 
-            # ✅ skip already processed pages
             if page_no <= last_created_page:
                 continue
 
@@ -1522,14 +1451,13 @@ class VendorImportJob(models.Model):
                 continue
 
             products = ai_page.get("products", [])
-            images = page_data.get("images", [])
 
             if not products:
                 continue
 
             _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
 
-            for product_data in products:
+            for idx, product_data in enumerate(products):
 
                 try:
                     name = (product_data.get("name") or "").strip()
@@ -1565,8 +1493,7 @@ class VendorImportJob(models.Model):
                             'parent_id': parent_category.id
                         })
 
-                    # ================= DEDUP =================
-
+                    # ================= EXISTING / VARIANT GROUP =================
                     existing_product = None
 
                     if variant_group:
@@ -1578,110 +1505,104 @@ class VendorImportJob(models.Model):
                         product = existing_product
                         _logger.warning(f"VARIANT GROUP FOUND → {variant_group}")
                     else:
-                        product = None
+                        vals = {
+                            'name': name,
+                            'default_code': variant_group or name,
+                            'description_sale': description,
+                            'categ_id': category.id,
+                            'sale_ok': True,
+                            'website_published': False,
+                        }
 
-                    vals = {
-                        'name': name,
-                        'default_code': variant_group or name,
-                        'description_sale': description,
-                        'categ_id': category.id,
-                        'sale_ok': True,
-                        'website_published': False,
-                    }
+                        # ================= IMAGE FIX (CRITICAL) =================
+                        images = page_data.get("images", [])
 
-                    # ================= IMAGE =================
-                    _logger.warning(f"IMAGES AVAILABLE → {len(images)}")
+                        _logger.warning(f"IMAGES AVAILABLE → {len(images)}")
 
-                    if images:
-                        vals['image_1920'] = images[0]   # 🔥 FORCE FIRST IMAGE
-                        _logger.warning("IMAGE ASSIGNED → FIRST IMAGE USED")
-                    else:
-                        _logger.warning("NO IMAGE FOUND FOR PRODUCT")
+                        if images:
+                            # Use index to distribute images properly
+                            img_index = idx if idx < len(images) else 0
+                            vals['image_1920'] = images[img_index]
+                            _logger.warning(f"IMAGE ASSIGNED → INDEX {img_index}")
+                        else:
+                            _logger.warning("NO IMAGE FOUND FOR PRODUCT")
 
-                    _logger.warning(f"""
+                        _logger.warning(f"""
                         DEBUG PRODUCT:
                         Name: {name}
                         Variant Group: {variant_group}
                         Images Count: {len(images)}
                         """)
 
-                    product = product_obj.create(vals)
-                    created_count += 1
+                        product = product_obj.create(vals)
+                        created_count += 1
 
                     # ================= VARIANTS =================
                     variants = product_data.get("variants", [])
 
-                    if len(variants) < len(images) and len(images) > 1:
-                        variants = [
-                            {
-                                "attributes": {"Variant": f"Option {idx+1}"},
-                                "image_index": idx
-                            }
-                            for idx in range(len(images))
-                        ]
+                    if variants:
 
-                    for variant in variants:
+                        for variant in variants:
 
-                        attributes = variant.get("attributes", {})
-                        image_index = variant.get("image_index")
+                            attributes = variant.get("attributes", {})
+                            image_index = variant.get("image_index")
 
-                        created_values = []
+                            created_values = []
 
-                        for attr_name, attr_value in attributes.items():
+                            for attr_name, attr_value in attributes.items():
 
-                            if not attr_value:
-                                continue
+                                if not attr_value:
+                                    continue
 
-                            attribute = self.env['product.attribute'].search([
-                                ('name', '=', attr_name)
-                            ], limit=1)
+                                attribute = self.env['product.attribute'].search([
+                                    ('name', '=', attr_name)
+                                ], limit=1)
 
-                            if not attribute:
-                                attribute = self.env['product.attribute'].create({
-                                    'name': attr_name
-                                })
+                                if not attribute:
+                                    attribute = self.env['product.attribute'].create({
+                                        'name': attr_name
+                                    })
 
-                            value = self.env['product.attribute.value'].search([
-                                ('name', '=', attr_value),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
+                                value = self.env['product.attribute.value'].search([
+                                    ('name', '=', attr_value),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
 
-                            if not value:
-                                value = self.env['product.attribute.value'].create({
-                                    'name': attr_value,
-                                    'attribute_id': attribute.id
-                                })
+                                if not value:
+                                    value = self.env['product.attribute.value'].create({
+                                        'name': attr_value,
+                                        'attribute_id': attribute.id
+                                    })
 
-                            created_values.append(value)
+                                created_values.append(value)
 
-                            line = self.env['product.template.attribute.line'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
+                                line = self.env['product.template.attribute.line'].search([
+                                    ('product_tmpl_id', '=', product.id),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
 
-                            if not line:
-                                self.env['product.template.attribute.line'].create({
-                                    'product_tmpl_id': product.id,
-                                    'attribute_id': attribute.id,
-                                    'value_ids': [(6, 0, [value.id])]
-                                })
-                            else:
-                                if value.id not in line.value_ids.ids:
-                                    line.value_ids = [(4, value.id)]
+                                if not line:
+                                    self.env['product.template.attribute.line'].create({
+                                        'product_tmpl_id': product.id,
+                                        'attribute_id': attribute.id,
+                                        'value_ids': [(6, 0, [value.id])]
+                                    })
+                                else:
+                                    if value.id not in line.value_ids.ids:
+                                        line.value_ids = [(4, value.id)]
 
-                        if created_values:
+                            if created_values:
 
-                            variant_record = self.env['product.product'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('product_template_attribute_value_ids.product_attribute_value_id', 'in',
-                                [v.id for v in created_values])
-                            ], limit=1)
+                                variant_record = self.env['product.product'].search([
+                                    ('product_tmpl_id', '=', product.id),
+                                    ('product_template_attribute_value_ids.product_attribute_value_id', 'in',
+                                    [v.id for v in created_values])
+                                ], limit=1)
 
-                            if variant_record and image_index is not None:
-                                if 0 <= image_index < len(images):
-                                    variant_record.image_1920 = images[image_index]
+                                if variant_record and image_index is not None:
+                                    if image_index < len(images):
+                                        variant_record.image_1920 = images[image_index]
 
-                    # 🔥 COMMIT EVERY FEW PRODUCTS (SAFE)
                     if created_count % 10 == 0:
                         self.env.cr.commit()
 
@@ -1690,7 +1611,6 @@ class VendorImportJob(models.Model):
                     self.env.cr.rollback()
                     continue
 
-            # ✅ SAVE PROGRESS PER PAGE
             self.last_created_page = page_no
             self.env.cr.commit()
 
@@ -1698,7 +1618,6 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning("PRODUCT CREATION LOOP COMPLETED")
-
 
     #-----URL API FLOW-------------------------------------------
 
