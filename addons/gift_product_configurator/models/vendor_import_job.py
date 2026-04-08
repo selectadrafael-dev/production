@@ -744,6 +744,21 @@ class VendorImportJob(models.Model):
 
                 - If multiple rows share SAME ID
                 → they are VARIANTS of same product
+                - ALSO extract variant attributes from the row:
+    
+                Examples:
+                - Colors → Black, Blue, Red
+                - Sizes → S, M, L
+                - Range values (e.g. 2-66) → treat as Size or Option
+
+                - If row contains variation info:
+                    → put inside "variants"
+
+                - If no clear attribute:
+                    → create:
+                        "attributes": {
+                            "Variant": "<value from row>"
+                        }
 
                 Return:
 
@@ -760,13 +775,21 @@ class VendorImportJob(models.Model):
                 OUTPUT FORMAT
                 =====================================
 
-               [
-                    {{
+                [
+                    {
                         "name": "",
                         "description": "",
                         "category": "",
-                        "variant_group": ""
-                    }}
+                        "variant_group": "",
+                        "variants": [
+                            {
+                                "attributes": {
+                                    "Color": "",
+                                    "Size": ""
+                                }
+                            }
+                        ]
+                    }
                 ]
 
                 =====================================
