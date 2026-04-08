@@ -1500,10 +1500,76 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"RAW PRODUCT DATA → {product_data}")
 
                     name = (product_data.get("name") or "").strip()
-                    variant_group = product_data.get("variant_group")
+
+                    # 🔥 PREVENT BAD NAME (date, range, etc.)
+                    #product name
+                    if name and any(x in name for x in ["-", "/", "."]) and len(name) < 12:
+                        _logger.warning(f"BAD NAME DETECTED → {name}")
+
+                        # fallback to readable text from row
+                        row_text = page_data.get("text", "")
+                        if "ROW_DATA:" in row_text:
+                            raw_line = row_text.split("ROW_DATA:")[1].split("RULE:")[0].strip()
+                            parts = [p.strip() for p in raw_line.split("|") if p.strip()]
+
+                            for part in parts:
+                                if len(part) > 5 and not part.isdigit():
+                                    name = part
+                                    _logger.warning(f"FIXED NAME FROM ROW → {name}")
+                                    break
+                  
+                    # 🔥 EXTRACT TRUE ID FROM ORIGINAL ROW TEXT (NOT AI)
+                    #product id/variant name
+                    row_text = page_data.get("text", "")
+
+                    variant_group = None
+
+                    if "ROW_DATA:" in row_text:
+                        try:
+                            raw_line = row_text.split("ROW_DATA:")[1].split("RULE:")[0].strip()
+                            parts = [p.strip() for p in raw_line.split("|") if p.strip()]
+
+                            _logger.warning(f"ROW PARTS → {parts}")
+
+                            # 🔥 RULE: FIRST NUMERIC / CODE-LIKE VALUE = PRODUCT ID
+                            for part in parts:
+                                if part.isdigit() or (len(part) <= 10 and any(c.isdigit() for c in part)):
+                                    variant_group = part
+                                    _logger.warning(f"EXTRACTED VARIANT GROUP (FROM EXCEL) → {variant_group}")
+                                    break
+
+                        except Exception as e:
+                            _logger.warning(f"VARIANT EXTRACTION FAILED → {str(e)}")
+
+                    # fallback (only if nothing found)
+                    if not variant_group:
+                        variant_group = product_data.get("variant_group") or name
+                        _logger.warning(f"FALLBACK VARIANT GROUP → {variant_group}")
+
+                    _logger.warning(f"""
+                    FINAL GROUPING DECISION:
+                    Name → {name}
+                    Variant Group → {variant_group}
+                    Row Text Present → {"YES" if row_text else "NO"}
+                    """)
+
                     description = product_data.get("description", "")
                     raw_category = (product_data.get("category") or "").lower()
+                    # variants = product_data.get("variants", [])
                     variants = product_data.get("variants", [])
+
+                    # 🔥 AUTO-GENERATE VARIANTS IF AI FAILED
+                    if not variants:
+                        _logger.warning("AI FAILED VARIANTS → AUTO GENERATING")
+
+                        image = product_data.get("image")
+
+                        variants = [{
+                            "attributes": {
+                                "Variant": name  # fallback grouping
+                            },
+                            "image": image
+                        }]
 
                     _logger.warning(f"NAME → {name}")
                     _logger.warning(f"VARIANT GROUP (AI) → {variant_group}")
