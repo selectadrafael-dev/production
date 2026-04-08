@@ -455,11 +455,11 @@ class VendorImportJob(models.Model):
         _logger.warning("PDF EXTRACTION BATCH COMPLETED")
 
     # ---------------- OPENAI ----------------
-
     def send_to_openai_url(self):
 
         import time
         import re
+        import json
 
         self.state = "ai_processing"
 
@@ -480,7 +480,7 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # ================= LOAD EXISTING PROGRESS =================
+        # ================= LOAD EXISTING =================
         existing_products = []
         if self.ai_response:
             try:
@@ -491,48 +491,61 @@ class VendorImportJob(models.Model):
         current_batch = getattr(self, "url_batch_index", 0)
 
         # ================= FLATTEN =================
-      
         all_blocks = [
             b for p in pages for b in p.get("blocks", [])
         ]
 
-        # 🔥 STRONG CLEAN (REPLACE your weak filtering)
-        all_blocks = self._clean_scraped_blocks(all_blocks)
+        _logger.warning(f"RAW BLOCKS → {len(all_blocks)}")
 
-        # Optional sort after cleaning
-        all_blocks = sorted(all_blocks, key=lambda x: (x.get("text") or "")[:50])
+        # ================= CLEAN =================
+        cleaned_blocks = self._clean_scraped_blocks(all_blocks)
+
+        _logger.warning(f"CLEAN BLOCKS → {len(cleaned_blocks)}")
+        _logger.warning(f"REMOVED BLOCKS → {len(all_blocks) - len(cleaned_blocks)}")
+
+        # Sort for consistency
+        cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
 
         # ================= BATCH =================
-        BLOCK_BATCH_SIZE = 20
+        BLOCK_BATCH_SIZE = 20  # 🔥 SAFE for memory
 
         batched_blocks = [
-            all_blocks[i:i + BLOCK_BATCH_SIZE]
-            for i in range(0, len(all_blocks), BLOCK_BATCH_SIZE)
+            cleaned_blocks[i:i + BLOCK_BATCH_SIZE]
+            for i in range(0, len(cleaned_blocks), BLOCK_BATCH_SIZE)
         ]
 
-        _logger.warning(f"TOTAL BLOCK BATCHES → {len(batched_blocks)}")
+        total_batches = len(batched_blocks)
+
+        _logger.warning(f"TOTAL BLOCK BATCHES → {total_batches}")
         _logger.warning(f"CURRENT BATCH → {current_batch}")
 
-        # 🔥 STOP IF DONE
-        if current_batch >= len(batched_blocks):
-            _logger.warning("ALL URL BATCHES PROCESSED")
+        # ================= STOP IF DONE =================
+        if current_batch >= total_batches:
+            _logger.warning("ALL URL BATCHES PROCESSED ✅")
             return
 
         # ================= PROCESS ONE BATCH =================
         block_batch = batched_blocks[current_batch]
 
+        _logger.warning(f"PROCESSING BLOCK COUNT → {len(block_batch)}")
         _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
 
-        blocks_limited = block_batch[:20]  # limit number of items instead of cutting text
-
+        # 🔥 DO NOT LIMIT AGAIN (FIXED)
         combined_text = "\n\n---\n\n".join([
             f"{b.get('text','')}\nIMAGE_URL: {b.get('image','')}"
-            for b in blocks_limited
+            for b in block_batch
         ])
 
         if not combined_text.strip():
+            _logger.warning("EMPTY COMBINED TEXT → SKIP")
             return
 
+        # ================= SAFETY LIMIT =================
+        if len(combined_text) > 15000:
+            combined_text = combined_text[:15000]
+            _logger.warning("TEXT TRIMMED → PREVENT TOKEN OVERFLOW")
+
+        # ================= PROMPT =================
         prompt = f"""
             You are a highly precise e-commerce product extraction engine.
 
@@ -619,6 +632,7 @@ class VendorImportJob(models.Model):
         {combined_text}
         """
 
+        # ================= OPENAI =================
         try:
             response = client.responses.create(
                 model="gpt-4.1-mini",
@@ -633,20 +647,33 @@ class VendorImportJob(models.Model):
             parsed = json.loads(result)
 
             if isinstance(parsed, list):
+
                 cleaned = [p for p in parsed if p.get("name")]
+
+                _logger.warning(f"AI RETURNED → {len(cleaned)} PRODUCTS")
+
+                if len(cleaned) < 5:
+                    _logger.warning("⚠️ LOW EXTRACTION → CHECK BLOCK QUALITY")
+
                 existing_products.extend(cleaned)
-                _logger.warning(f"BATCH PRODUCTS → {len(cleaned)}")
+
+                _logger.warning(f"TOTAL ACCUMULATED → {len(existing_products)}")
+
+            else:
+                _logger.warning("AI RESPONSE NOT LIST")
 
         except Exception as e:
             _logger.warning(f"AI ERROR → {str(e)}")
+            return
 
         # ================= SAVE PROGRESS =================
         self.ai_response = json.dumps(existing_products)
         self.url_batch_index = current_batch + 1
 
-        _logger.warning(f"NEXT BATCH → {self.url_batch_index}")
+        _logger.warning(f"NEXT BATCH INDEX → {self.url_batch_index}")
 
-        # 🔥 EXIT EARLY (CRITICAL)
+        # ================= SAFE EXIT =================
+        _logger.warning("CRON EXIT → CONTINUE NEXT RUN")
         return
 
     #===========pdf and excel open ai OPENAI=========================
