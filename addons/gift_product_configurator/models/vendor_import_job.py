@@ -1429,7 +1429,7 @@ class VendorImportJob(models.Model):
 
 
     #==========create pdf and excel product======================
-
+    
     def create_products_pdf_excel(self):
 
         import json
@@ -1590,6 +1590,18 @@ class VendorImportJob(models.Model):
                             if value.id not in line.value_ids.ids:
                                 line.value_ids = [(4, value.id)]
 
+                        # ✅ EXCEL VARIANT IMAGE FIX
+                        variant_image = item.get("image")
+
+                        if variant_image:
+                            variant_record = self.env['product.product'].search([
+                                ('product_tmpl_id', '=', product.id)
+                            ], limit=1)
+
+                            if variant_record:
+                                variant_record.image_1920 = variant_image
+                                _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id}")
+
                 continue  # 🔥 protect PDF
 
             # ================= PDF FLOW =================
@@ -1638,7 +1650,6 @@ class VendorImportJob(models.Model):
                             'website_published': False,
                         }
 
-                        # ✅ FIXED PRODUCT IMAGE
                         if images:
                             vals['image_1920'] = images[0]
                             _logger.warning("PRODUCT IMAGE SET")
@@ -1693,7 +1704,6 @@ class VendorImportJob(models.Model):
                                 if value.id not in line.value_ids.ids:
                                     line.value_ids = [(4, value.id)]
 
-                        # ✅ FIXED VARIANT IMAGE
                         if images and idx < len(images):
                             variant_record = self.env['product.product'].search([
                                 ('product_tmpl_id', '=', product.id)
