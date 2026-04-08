@@ -1047,7 +1047,7 @@ class VendorImportJob(models.Model):
             ]
 
             PAGE CONTEXT:
-            - This page contains {image_count} product images
+            - This page contains product images
 
             TEXT TO ANALYZE:
             {page_text}
@@ -1506,12 +1506,50 @@ class VendorImportJob(models.Model):
                     # ==================================================
                     # CATEGORY
                     # ==================================================
-                    category = category_obj.search([('name', '=', "General")], limit=1)
+
+                    
+                    CATEGORY_MAPPING = {
+                        "t-shirt": "Apparel",
+                        "shirt": "Apparel",
+                        "polo": "Apparel",
+                        "bag": "Bags",
+                        "backpack": "Bags",
+                        "cap": "Headwear",
+                        "hat": "Headwear",
+                        "bottle": "Drinkware",
+                        "drinkware": "Drinkware",
+                        "pen": "Stationery",
+                        "notebook": "Stationery",
+                        "powerbank": "Electronics",
+                        "charger": "Electronics",
+                        "laptop": "Electronics",
+                    }
+
+
+                    # category = category_obj.search([('name', '=', "General")], limit=1)
+                    # if not category:
+                    #     category = category_obj.create({
+                    #         'name': "General",
+                    #         'parent_id': parent_category.id
+                    #     })
+
+                    #previous working
+                    mapped_category = "General"
+                    for key, val in CATEGORY_MAPPING.items():
+                            if key in raw_category:
+                                mapped_category = val
+                                break
+
+                    category = category_obj.search([
+                            ('name', '=', mapped_category),
+                            ('parent_id', '=', parent_category.id)
+                    ], limit=1)
+
                     if not category:
-                        category = category_obj.create({
-                            'name': "General",
-                            'parent_id': parent_category.id
-                        })
+                            category = category_obj.create({
+                                'name': mapped_category,
+                                'parent_id': parent_category.id
+                            })
 
                     # ==================================================
                     # GROUPING (NO DUPLICATE)
