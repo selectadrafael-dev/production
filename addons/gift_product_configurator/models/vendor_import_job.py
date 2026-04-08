@@ -284,13 +284,28 @@ class VendorImportJob(models.Model):
             else:
                 raise Exception("No input found")
 
-            # ================= FINAL STATE =================
-            if self.current_page >= self.total_pages:
-                _logger.warning("PROCESS IMPORT → ALL PAGES COMPLETED")
-                self.state = 'done'
+            # ================= FINAL STATE CONTROL =================
+
+            # ✅ URL FLOW
+            if self.data_url:
+                total_batches = getattr(self, "url_total_batches", 0)
+                current_batch = getattr(self, "url_batch_index", 0)
+
+                if total_batches and current_batch >= total_batches:
+                    _logger.warning("URL → ALL BATCHES COMPLETED ✅")
+                    self.state = 'done'
+                else:
+                    _logger.warning("URL → WAITING FOR NEXT BATCH")
+                    self.state = 'processing'
+
+            # ✅ PDF / EXCEL FLOW
             else:
-                _logger.warning("PROCESS IMPORT → WAITING FOR NEXT BATCH")
-                self.state = 'processing'
+                if self.current_page >= self.total_pages:
+                    _logger.warning("PROCESS IMPORT → ALL PAGES COMPLETED")
+                    self.state = 'done'
+                else:
+                    _logger.warning("PROCESS IMPORT → WAITING FOR NEXT BATCH")
+                    self.state = 'processing'
 
         except Exception as e:
             _logger.error(f"PROCESS FAILED → {str(e)}")
@@ -1622,16 +1637,6 @@ class VendorImportJob(models.Model):
                                 line.value_ids = [(4, value.id)]
 
                         # ✅ EXCEL VARIANT IMAGE FIX
-                        #variant_image = item.get("image")
-
-                        #if variant_image:
-                            # variant_record = self.env['product.product'].search([
-                            #     ('product_tmpl_id', '=', product.id)
-                            # ], limit=1)
-
-                            # if variant_record:
-                            #     variant_record.image_1920 = variant_image
-                            #     _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id}")
 
                             variant_record = self.env['product.product'].search([
                                 ('product_tmpl_id', '=', product.id),
@@ -2102,9 +2107,3 @@ class VendorImportJob(models.Model):
     #=======keep cron alive================
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
-    
-    #=======model name update===================
-    # def run_pending_jobs(self):
-    #     jobs = self.search([('state', 'in', ['draft', 'processing'])])
-    #     for job in jobs:
-    #         job.process_import()
