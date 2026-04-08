@@ -1489,12 +1489,13 @@ class VendorImportJob(models.Model):
                                 'parent_id': parent_category.id
                             })
 
-                        # ================= VARIANT GROUPING =================
+                        # ================= VARIANT GROUPING ================
+
                         existing_product = None
 
                         if variant_group:
                             existing_product = product_obj.search([
-                                ('default_code', '=', variant_group)
+                                ('name', '=', variant_group)
                             ], limit=1)
 
                         if existing_product:
@@ -1503,13 +1504,14 @@ class VendorImportJob(models.Model):
 
                         else:
                             vals = {
-                                'name': name,
+                               'name': variant_group or name,
                                 'default_code': variant_group or name,
                                 'description_sale': description,
                                 'categ_id': category.id,
                                 'sale_ok': True,
                                 'website_published': False,
                             }
+
 
                             # ================= IMAGE (FIXED) =================
                             image_base64 = product_data.get("image")
@@ -1520,8 +1522,13 @@ class VendorImportJob(models.Model):
                             else:
                                 _logger.warning("NO IMAGE FROM AI")
 
-                            product = product_obj.create(vals)
-                            created_count += 1
+                            if existing_product:
+                                product = existing_product
+                                _logger.warning(f"USING EXISTING PRODUCT → {product.name}")
+                            else:
+                                product = product_obj.create(vals)
+                                created_count += 1
+                                _logger.warning(f"CREATED NEW PRODUCT → {product.name}")
 
                             _logger.warning(f"CREATED NEW PRODUCT → {name}")
 
