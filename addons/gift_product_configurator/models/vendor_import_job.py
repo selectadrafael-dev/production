@@ -1486,7 +1486,7 @@ class VendorImportJob(models.Model):
             if not products:
                 continue
 
-            #================= EXCEL FLOW ======================
+            #================= EXCEL FLOW ===========================
             if self.excel_file:
 
                 grouped_products = {}
