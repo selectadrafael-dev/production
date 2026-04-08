@@ -756,9 +756,9 @@ class VendorImportJob(models.Model):
 
                 - If no clear attribute:
                     → create:
-                        "attributes": {
+                       "attributes": {{
                             "Variant": "<value from row>"
-                        }
+                        }}
 
                 Return:
 
