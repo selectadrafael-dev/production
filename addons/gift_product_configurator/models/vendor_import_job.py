@@ -1279,12 +1279,17 @@ class VendorImportJob(models.Model):
             _logger.error(f"INVALID AI JSON → {str(e)}")
             return
 
+        TOTAL_PRODUCTS = len(products)
+        start_index = self.last_processed_product_index or 0
+
+        _logger.warning(f"TOTAL AI PRODUCTS → {TOTAL_PRODUCTS}")
+        _logger.warning(f"START INDEX → {start_index}")
+
         created_count = 0
-        processed = 0
+        skipped_count = 0
 
-        MAX_PRODUCTS_PER_RUN = 20  # 🔥 CRITICAL LIMIT
+        MAX_PRODUCTS_PER_RUN = 30  # ✅ safe batching
 
-        # ================= CATEGORY CONFIG =================
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
             "shirt": "Apparel",
@@ -1303,63 +1308,52 @@ class VendorImportJob(models.Model):
             "laptop": "Electronics",
         }
 
-        DEFAULT_PARENT = "All Products"
-
-        # 🔥 Ensure parent category exists
-        parent_category = category_obj.search([('name', '=', DEFAULT_PARENT)], limit=1)
+        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
         if not parent_category:
-            parent_category = category_obj.create({'name': DEFAULT_PARENT})
+            parent_category = category_obj.create({'name': "All Products"})
 
-        for product in products:
+        end_index = min(start_index + MAX_PRODUCTS_PER_RUN, TOTAL_PRODUCTS)
 
-            if processed >= MAX_PRODUCTS_PER_RUN:
-                _logger.warning("CRON LIMIT REACHED → CONTINUE NEXT RUN")
-                break
+        _logger.warning(f"PROCESSING RANGE → {start_index} to {end_index}")
 
-            processed += 1
+        for idx in range(start_index, end_index):
+
+            product = products[idx]
 
             name = product.get("name")
             if not name:
+                skipped_count += 1
                 continue
-
-            name_clean = name.strip().lower()
 
             description = product.get("description", "")
             raw_category = (product.get("category") or "").lower()
 
-            # ================= CATEGORY MAPPING =================
-            mapped_category_name = None
-
-            for key, value in CATEGORY_MAPPING.items():
+            # ================= CATEGORY =================
+            mapped_category = "General"
+            for key, val in CATEGORY_MAPPING.items():
                 if key in raw_category:
-                    mapped_category_name = value
+                    mapped_category = val
                     break
 
-            if not mapped_category_name:
-                mapped_category_name = "General"
-
-            # ================= ENSURE CATEGORY =================
             category = category_obj.search([
-                ('name', '=', mapped_category_name),
+                ('name', '=', mapped_category),
                 ('parent_id', '=', parent_category.id)
             ], limit=1)
 
             if not category:
-                _logger.warning(f"CREATING CATEGORY → {mapped_category_name}")
-
                 category = category_obj.create({
-                    'name': mapped_category_name,
+                    'name': mapped_category,
                     'parent_id': parent_category.id
                 })
 
-            # ================= STRONG DUPLICATE CHECK =================
-          
+            # ================= DUPLICATE CHECK =================
             existing = product_obj.search([
                 ('name', 'ilike', name.strip())
             ], limit=1)
 
             if existing:
-                _logger.warning(f"DUPLICATE SKIPPED → {name}")
+                _logger.warning(f"SKIPPED DUPLICATE → {name}")
+                skipped_count += 1
                 continue
 
             vals = {
@@ -1370,8 +1364,7 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             }
 
-            # ================= IMAGE HANDLING =================
-
+            # ================= IMAGE =======================
             image_url = product.get("image")
 
             if image_url and isinstance(image_url, str) and image_url.startswith("http"):
@@ -1379,36 +1372,17 @@ class VendorImportJob(models.Model):
                 try:
                     _logger.warning(f"FETCHING IMAGE → {image_url}")
 
-                    res = requests.get(image_url, timeout=10)
+                    res = requests.get(image_url, timeout=5, stream=True)
+                    content = res.content[:500000]  # limit to ~500KB
+                    vals['image_1920'] = base64.b64encode(content).decode("utf-8")
 
-                    if res.status_code == 200 and res.content:
-                        vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
-                    else:
-                        _logger.warning(f"INVALID IMAGE RESPONSE → {image_url}")
-
-                except Exception as e:
-                    _logger.warning(f"IMAGE FETCH FAILED → {image_url} | {str(e)}")
-
-            else:
-                _logger.warning(f"NO VALID IMAGE → {name}")
-
-            if image_url and isinstance(image_url, str) and image_url.startswith("http"):
-
-                try:
-                    _logger.warning(f"FETCHING IMAGE → {image_url}")
-
-                    res = requests.get(image_url, timeout=10)
-
-                    if res.status_code == 200 and res.content:
-                        vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
-                    else:
-                        _logger.warning(f"INVALID IMAGE RESPONSE → {image_url}")
+                    #if res.status_code == 200 and res.content:
+                        #vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
+                    #else:
+                        #_logger.warning(f"INVALID IMAGE → {image_url}")
 
                 except Exception as e:
-                    _logger.warning(f"IMAGE FETCH FAILED → {image_url} | {str(e)}")
-
-            else:
-                _logger.warning(f"NO VALID IMAGE → {name}")
+                    _logger.warning(f"IMAGE FAILED → {str(e)}")
 
             # ================= CREATE =================
             try:
@@ -1416,17 +1390,28 @@ class VendorImportJob(models.Model):
                 created_count += 1
 
             except Exception as e:
-                _logger.error(f"PRODUCT CREATE FAILED → {name} | {str(e)}")
+                _logger.error(f"CREATE FAILED → {name} | {str(e)}")
+                skipped_count += 1
                 continue
 
-            # ================= SAFE COMMIT ===================
+            # ================= SAFE COMMIT =================
             if created_count % 10 == 0:
                 self.env.cr.commit()
 
+        # ================= SAVE PROGRESS =================
+        self.last_processed_product_index = end_index
+
+        _logger.warning(f"CREATED THIS RUN → {created_count}")
+        _logger.warning(f"SKIPPED THIS RUN → {skipped_count}")
+        _logger.warning(f"NEXT START INDEX → {self.last_processed_product_index}")
+
+        # ================= FINAL =================
+        if self.last_processed_product_index >= TOTAL_PRODUCTS:
+            _logger.warning("ALL PRODUCTS CREATED ✅")
+        else:
+            _logger.warning("MORE PRODUCTS REMAIN → NEXT CRON WILL CONTINUE")
+
         self.env.cr.commit()
-
-        _logger.warning(f"TOTAL PRODUCTS CREATED THIS RUN: {created_count}")
-
 
     #==========create pdf and excel product======================
     
@@ -1591,16 +1576,30 @@ class VendorImportJob(models.Model):
                                 line.value_ids = [(4, value.id)]
 
                         # ✅ EXCEL VARIANT IMAGE FIX
-                        variant_image = item.get("image")
+                        #variant_image = item.get("image")
 
-                        if variant_image:
+                        #if variant_image:
+                            # variant_record = self.env['product.product'].search([
+                            #     ('product_tmpl_id', '=', product.id)
+                            # ], limit=1)
+
+                            # if variant_record:
+                            #     variant_record.image_1920 = variant_image
+                            #     _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id}")
+
                             variant_record = self.env['product.product'].search([
-                                ('product_tmpl_id', '=', product.id)
+                                ('product_tmpl_id', '=', product.id),
+                                ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
                             ], limit=1)
 
                             if variant_record:
-                                variant_record.image_1920 = variant_image
-                                _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id}")
+                                variant_image = item.get("image")
+
+                                if variant_image:
+                                    variant_record.image_1920 = variant_image
+                                    _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id} | {value.name}")
+                                else:
+                                    _logger.warning(f"[EXCEL] NO IMAGE FOR VARIANT → {group_id} | {value.name}")
 
                 continue  # 🔥 protect PDF
 
@@ -2059,7 +2058,7 @@ class VendorImportJob(models.Model):
         _logger.warning("KEEP ALIVE PING")
     
     #=======model name update===================
-    def run_pending_jobs(self):
-        jobs = self.search([('state', 'in', ['draft', 'processing'])])
-        for job in jobs:
-            job.process_import()
+    # def run_pending_jobs(self):
+    #     jobs = self.search([('state', 'in', ['draft', 'processing'])])
+    #     for job in jobs:
+    #         job.process_import()
