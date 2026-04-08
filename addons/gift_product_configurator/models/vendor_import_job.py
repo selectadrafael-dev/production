@@ -1429,6 +1429,8 @@ class VendorImportJob(models.Model):
 
 
     #==========create pdf and excel product======================
+
+    
     def create_products_pdf_excel(self):
 
         import json
@@ -1473,23 +1475,118 @@ class VendorImportJob(models.Model):
                 try:
                     name = (product_data.get("name") or "").strip()
                     description = product_data.get("description", "")
+                    raw_category = (product_data.get("category") or "").lower()
                     variants = product_data.get("variants", [])
 
                     # ==================================================
                     # 🔥 CRITICAL: SEPARATE EXCEL vs PDF
                     # ==================================================
 
-                    # ================= EXCEL =================
+                    # ================= EXCEL FLOW =================
                     if self.excel_file:
 
-                        match = re.search(r'Product\s+([A-Za-z0-9]+)', name)
+                        import re
 
-                        if match:
-                            variant_group = match.group(1)
-                            _logger.warning(f"[EXCEL] GROUP → {variant_group}")
-                        else:
-                            variant_group = name
-                            _logger.warning(f"[EXCEL] FALLBACK → {variant_group}")
+                        # ---------- GROUP PRODUCTS BY ID ----------
+                        grouped_products = {}
+
+                        for p in products:
+                            raw_name = (p.get("name") or "").strip()
+
+                            match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
+
+                            if match:
+                                group_id = match.group(1).upper()
+                            else:
+                                group_id = raw_name.upper()
+
+                            if group_id not in grouped_products:
+                                grouped_products[group_id] = []
+
+                            grouped_products[group_id].append(p)
+
+                        _logger.warning(f"[EXCEL] GROUPS → {len(grouped_products)}")
+
+                        # ---------- PROCESS GROUPS ----------
+                        for group_id, group_items in grouped_products.items():
+
+                            main_product = group_items[0]
+
+                            name = (main_product.get("name") or "").strip()
+                            description = main_product.get("description", "")
+
+                            _logger.warning(f"""
+                            [EXCEL GROUP]
+                            Group ID → {group_id}
+                            Items → {len(group_items)}
+                            Name → {name}
+                            """)
+
+                            # ---------- FIND OR CREATE TEMPLATE ----------
+                            existing_product = product_obj.search([
+                                ('default_code', '=', group_id)
+                            ], limit=1)
+
+                            if existing_product:
+                                product = existing_product
+                                _logger.warning(f"USING EXISTING → {group_id}")
+                            else:
+                                vals = {
+                                    'name': name,
+                                    'default_code': group_id,
+                                    'description_sale': description,
+                                    'sale_ok': True,
+                                    'website_published': False,
+                                }
+
+                                image = main_product.get("image")
+                                if image:
+                                    vals['image_1920'] = image
+
+                                product = product_obj.create(vals)
+                                _logger.warning(f"CREATED TEMPLATE → {group_id}")
+
+                            # ---------- CREATE VARIANTS ----------
+                            for idx, item in enumerate(group_items):
+
+                                attr_value = f"Variant {idx+1}"
+
+                                attribute = self.env['product.attribute'].search([
+                                    ('name', '=', "Variant")
+                                ], limit=1)
+
+                                if not attribute:
+                                    attribute = self.env['product.attribute'].create({
+                                        'name': "Variant"
+                                    })
+
+                                value = self.env['product.attribute.value'].search([
+                                    ('name', '=', attr_value),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
+
+                                if not value:
+                                    value = self.env['product.attribute.value'].create({
+                                        'name': attr_value,
+                                        'attribute_id': attribute.id
+                                    })
+
+                                line = self.env['product.template.attribute.line'].search([
+                                    ('product_tmpl_id', '=', product.id),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
+
+                                if not line:
+                                    self.env['product.template.attribute.line'].create({
+                                        'product_tmpl_id': product.id,
+                                        'attribute_id': attribute.id,
+                                        'value_ids': [(6, 0, [value.id])]
+                                    })
+                                else:
+                                    if value.id not in line.value_ids.ids:
+                                        line.value_ids = [(4, value.id)]
+
+                        continue   # 🔥 VERY IMPORTANT (SKIP PDF LOGIC)
 
                     # ================= PDF =================
                     else:
@@ -1525,13 +1622,6 @@ class VendorImportJob(models.Model):
                         "laptop": "Electronics",
                     }
 
-
-                    # category = category_obj.search([('name', '=', "General")], limit=1)
-                    # if not category:
-                    #     category = category_obj.create({
-                    #         'name': "General",
-                    #         'parent_id': parent_category.id
-                    #     })
 
                     #previous working
                     mapped_category = "General"
