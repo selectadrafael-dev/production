@@ -1419,7 +1419,7 @@ class VendorImportJob(models.Model):
                 _logger.error(f"PRODUCT CREATE FAILED → {name} | {str(e)}")
                 continue
 
-            # ================= SAFE COMMIT =================
+            # ================= SAFE COMMIT ===================
             if created_count % 10 == 0:
                 self.env.cr.commit()
 
