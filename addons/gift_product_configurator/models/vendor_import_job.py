@@ -1430,7 +1430,6 @@ class VendorImportJob(models.Model):
 
     #==========create pdf and excel product======================
 
-    
     def create_products_pdf_excel(self):
 
         import json
@@ -1450,9 +1449,26 @@ class VendorImportJob(models.Model):
             _logger.error("INVALID JSON → STOP")
             return
 
-        _logger.warning("CREATING PRODUCTS (PDF + EXCEL SAFE MODE)")
+        _logger.warning("CREATING PRODUCTS (PDF + EXCEL FINAL MODE)")
 
         created_count = 0
+
+        CATEGORY_MAPPING = {
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
+        }
 
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
         if not parent_category:
@@ -1470,6 +1486,116 @@ class VendorImportJob(models.Model):
             if not products:
                 continue
 
+            # ================= EXCEL FLOW =================
+            if self.excel_file:
+
+                grouped_products = {}
+
+                for p in products:
+                    raw_name = (p.get("name") or "").strip()
+
+                    match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
+
+                    if match:
+                        group_id = match.group(1).upper()
+                    else:
+                        group_id = raw_name.upper()
+
+                    grouped_products.setdefault(group_id, []).append(p)
+
+                _logger.warning(f"[EXCEL] GROUPS → {len(grouped_products)}")
+
+                for group_id, group_items in grouped_products.items():
+
+                    main_product = group_items[0]
+
+                    name = (main_product.get("name") or "").strip()
+                    description = main_product.get("description", "")
+                    raw_category = (main_product.get("category") or "").lower()
+
+                    mapped_category = "General"
+                    for key, val in CATEGORY_MAPPING.items():
+                        if key in raw_category:
+                            mapped_category = val
+                            break
+
+                    category = category_obj.search([
+                        ('name', '=', mapped_category),
+                        ('parent_id', '=', parent_category.id)
+                    ], limit=1)
+
+                    if not category:
+                        category = category_obj.create({
+                            'name': mapped_category,
+                            'parent_id': parent_category.id
+                        })
+
+                    product = product_obj.search([
+                        ('default_code', '=', group_id)
+                    ], limit=1)
+
+                    if not product:
+                        vals = {
+                            'name': name,
+                            'default_code': group_id,
+                            'description_sale': description,
+                            'categ_id': category.id,
+                            'sale_ok': True,
+                            'website_published': False,
+                        }
+
+                        image = main_product.get("image")
+                        if image:
+                            vals['image_1920'] = image
+
+                        product = product_obj.create(vals)
+                        created_count += 1
+
+                    for idx, item in enumerate(group_items):
+
+                        attr_value = f"Variant {idx+1}"
+
+                        attribute = self.env['product.attribute'].search([
+                            ('name', '=', "Variant")
+                        ], limit=1)
+
+                        if not attribute:
+                            attribute = self.env['product.attribute'].create({
+                                'name': "Variant"
+                            })
+
+                        value = self.env['product.attribute.value'].search([
+                            ('name', '=', attr_value),
+                            ('attribute_id', '=', attribute.id)
+                        ], limit=1)
+
+                        if not value:
+                            value = self.env['product.attribute.value'].create({
+                                'name': attr_value,
+                                'attribute_id': attribute.id
+                            })
+
+                        line = self.env['product.template.attribute.line'].search([
+                            ('product_tmpl_id', '=', product.id),
+                            ('attribute_id', '=', attribute.id)
+                        ], limit=1)
+
+                        if not line:
+                            self.env['product.template.attribute.line'].create({
+                                'product_tmpl_id': product.id,
+                                'attribute_id': attribute.id,
+                                'value_ids': [(6, 0, [value.id])]
+                            })
+                        else:
+                            if value.id not in line.value_ids.ids:
+                                line.value_ids = [(4, value.id)]
+
+                continue  # 🔥 protect PDF
+
+            # ================= PDF FLOW =================
+            images = page_data.get("images", [])
+            _logger.warning(f"[PDF] IMAGES FOUND → {len(images)}")
+
             for product_data in products:
 
                 try:
@@ -1478,180 +1604,31 @@ class VendorImportJob(models.Model):
                     raw_category = (product_data.get("category") or "").lower()
                     variants = product_data.get("variants", [])
 
-                    # ==================================================
-                    # 🔥 CRITICAL: SEPARATE EXCEL vs PDF
-                    # ==================================================
-
-                    # ================= EXCEL FLOW =================
-                    if self.excel_file:
-
-                        import re
-
-                        # ---------- GROUP PRODUCTS BY ID ----------
-                        grouped_products = {}
-
-                        for p in products:
-                            raw_name = (p.get("name") or "").strip()
-
-                            match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
-
-                            if match:
-                                group_id = match.group(1).upper()
-                            else:
-                                group_id = raw_name.upper()
-
-                            if group_id not in grouped_products:
-                                grouped_products[group_id] = []
-
-                            grouped_products[group_id].append(p)
-
-                        _logger.warning(f"[EXCEL] GROUPS → {len(grouped_products)}")
-
-                        # ---------- PROCESS GROUPS ----------
-                        for group_id, group_items in grouped_products.items():
-
-                            main_product = group_items[0]
-
-                            name = (main_product.get("name") or "").strip()
-                            description = main_product.get("description", "")
-
-                            _logger.warning(f"""
-                            [EXCEL GROUP]
-                            Group ID → {group_id}
-                            Items → {len(group_items)}
-                            Name → {name}
-                            """)
-
-                            # ---------- FIND OR CREATE TEMPLATE ----------
-                            existing_product = product_obj.search([
-                                ('default_code', '=', group_id)
-                            ], limit=1)
-
-                            if existing_product:
-                                product = existing_product
-                                _logger.warning(f"USING EXISTING → {group_id}")
-                            else:
-                                vals = {
-                                    'name': name,
-                                    'default_code': group_id,
-                                    'description_sale': description,
-                                    'sale_ok': True,
-                                    'website_published': False,
-                                }
-
-                                image = main_product.get("image")
-                                if image:
-                                    vals['image_1920'] = image
-
-                                product = product_obj.create(vals)
-                                _logger.warning(f"CREATED TEMPLATE → {group_id}")
-
-                            # ---------- CREATE VARIANTS ----------
-                            for idx, item in enumerate(group_items):
-
-                                attr_value = f"Variant {idx+1}"
-
-                                attribute = self.env['product.attribute'].search([
-                                    ('name', '=', "Variant")
-                                ], limit=1)
-
-                                if not attribute:
-                                    attribute = self.env['product.attribute'].create({
-                                        'name': "Variant"
-                                    })
-
-                                value = self.env['product.attribute.value'].search([
-                                    ('name', '=', attr_value),
-                                    ('attribute_id', '=', attribute.id)
-                                ], limit=1)
-
-                                if not value:
-                                    value = self.env['product.attribute.value'].create({
-                                        'name': attr_value,
-                                        'attribute_id': attribute.id
-                                    })
-
-                                line = self.env['product.template.attribute.line'].search([
-                                    ('product_tmpl_id', '=', product.id),
-                                    ('attribute_id', '=', attribute.id)
-                                ], limit=1)
-
-                                if not line:
-                                    self.env['product.template.attribute.line'].create({
-                                        'product_tmpl_id': product.id,
-                                        'attribute_id': attribute.id,
-                                        'value_ids': [(6, 0, [value.id])]
-                                    })
-                                else:
-                                    if value.id not in line.value_ids.ids:
-                                        line.value_ids = [(4, value.id)]
-
-                        continue   # 🔥 VERY IMPORTANT (SKIP PDF LOGIC)
-
-                    # ================= PDF =================
-                    else:
-                        variant_group = product_data.get("variant_group")
-
-                        if variant_group:
-                            _logger.warning(f"[PDF] GROUP → {variant_group}")
-                        else:
-                            variant_group = name
-                            _logger.warning(f"[PDF] FALLBACK → {variant_group}")
-
+                    variant_group = product_data.get("variant_group") or name
                     variant_group = str(variant_group).strip().upper()
 
-                    # ==================================================
-                    # CATEGORY
-                    # ==================================================
-
-                    
-                    CATEGORY_MAPPING = {
-                        "t-shirt": "Apparel",
-                        "shirt": "Apparel",
-                        "polo": "Apparel",
-                        "bag": "Bags",
-                        "backpack": "Bags",
-                        "cap": "Headwear",
-                        "hat": "Headwear",
-                        "bottle": "Drinkware",
-                        "drinkware": "Drinkware",
-                        "pen": "Stationery",
-                        "notebook": "Stationery",
-                        "powerbank": "Electronics",
-                        "charger": "Electronics",
-                        "laptop": "Electronics",
-                    }
-
-
-                    #previous working
                     mapped_category = "General"
                     for key, val in CATEGORY_MAPPING.items():
-                            if key in raw_category:
-                                mapped_category = val
-                                break
+                        if key in raw_category:
+                            mapped_category = val
+                            break
 
                     category = category_obj.search([
-                            ('name', '=', mapped_category),
-                            ('parent_id', '=', parent_category.id)
+                        ('name', '=', mapped_category),
+                        ('parent_id', '=', parent_category.id)
                     ], limit=1)
 
                     if not category:
-                            category = category_obj.create({
-                                'name': mapped_category,
-                                'parent_id': parent_category.id
-                            })
+                        category = category_obj.create({
+                            'name': mapped_category,
+                            'parent_id': parent_category.id
+                        })
 
-                    # ==================================================
-                    # GROUPING (NO DUPLICATE)
-                    # ==================================================
-                    existing_product = product_obj.search([
+                    product = product_obj.search([
                         ('default_code', '=', variant_group)
                     ], limit=1)
 
-                    if existing_product:
-                        product = existing_product
-                        _logger.warning(f"USING EXISTING → {variant_group}")
-                    else:
+                    if not product:
                         vals = {
                             'name': name,
                             'default_code': variant_group,
@@ -1661,24 +1638,18 @@ class VendorImportJob(models.Model):
                             'website_published': False,
                         }
 
-                        image = product_data.get("image")
-                        if image:
-                            vals['image_1920'] = image
+                        # ✅ FIXED PRODUCT IMAGE
+                        if images:
+                            vals['image_1920'] = images[0]
+                            _logger.warning("PRODUCT IMAGE SET")
 
                         product = product_obj.create(vals)
                         created_count += 1
 
-                        _logger.warning(f"CREATED → {variant_group}")
-
-                    # ==================================================
-                    # VARIANTS
-                    # ==================================================
                     if not variants:
-                        variants = [{
-                            "attributes": {"Variant": name}
-                        }]
+                        variants = [{"attributes": {"Variant": name}}]
 
-                    for variant in variants:
+                    for idx, variant in enumerate(variants):
 
                         attributes = variant.get("attributes", {})
 
@@ -1721,6 +1692,16 @@ class VendorImportJob(models.Model):
                             else:
                                 if value.id not in line.value_ids.ids:
                                     line.value_ids = [(4, value.id)]
+
+                        # ✅ FIXED VARIANT IMAGE
+                        if images and idx < len(images):
+                            variant_record = self.env['product.product'].search([
+                                ('product_tmpl_id', '=', product.id)
+                            ], limit=1)
+
+                            if variant_record:
+                                variant_record.image_1920 = images[idx]
+                                _logger.warning(f"VARIANT IMAGE SET → {idx}")
 
                     if created_count % 10 == 0:
                         self.env.cr.commit()
