@@ -775,22 +775,23 @@ class VendorImportJob(models.Model):
                 OUTPUT FORMAT
                 =====================================
 
-                [
-                    {
+                 [
+                    {{
                         "name": "",
                         "description": "",
                         "category": "",
-                        "variant_group": "",
                         "variants": [
-                            {
-                                "attributes": {
-                                    "Color": "",
-                                    "Size": ""
-                                }
-                            }
+                            {{
+                                "attributes": {{
+                                    "Color": ""
+                                }},
+                                "image_index": 0,
+                                "stock": null
+                            }}
                         ]
-                    }
+                    }}
                 ]
+
 
                 =====================================
                 ROW DATA
