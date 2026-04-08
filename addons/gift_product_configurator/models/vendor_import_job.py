@@ -1373,16 +1373,34 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"FETCHING IMAGE → {image_url}")
 
                     res = requests.get(image_url, timeout=5, stream=True)
-                    content = res.content[:500000]  # limit to ~500KB
+
+                    # ✅ STATUS CHECK
+                    if res.status_code != 200:
+                        _logger.warning(f"IMAGE HTTP ERROR → {res.status_code}")
+                        return
+
+                    # ✅ CONTENT TYPE CHECK
+                    content_type = res.headers.get("Content-Type", "")
+                    if "image" not in content_type:
+                        _logger.warning(f"NOT AN IMAGE → {content_type}")
+                        return
+
+                    # ✅ MEMORY SAFE READ (LIMIT SIZE)
+                    content = res.raw.read(500000, decode_content=True)
+
+                    if not content:
+                        _logger.warning("EMPTY IMAGE CONTENT")
+                        return
+
                     vals['image_1920'] = base64.b64encode(content).decode("utf-8")
 
-                    #if res.status_code == 200 and res.content:
-                        #vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
-                    #else:
-                        #_logger.warning(f"INVALID IMAGE → {image_url}")
+                    _logger.warning("IMAGE STORED SUCCESSFULLY")
 
                 except Exception as e:
                     _logger.warning(f"IMAGE FAILED → {str(e)}")
+
+            else:
+                _logger.warning(f"NO VALID IMAGE URL → {image_url}")
 
             # ================= CREATE =================
             try:
@@ -1412,6 +1430,7 @@ class VendorImportJob(models.Model):
             _logger.warning("MORE PRODUCTS REMAIN → NEXT CRON WILL CONTINUE")
 
         self.env.cr.commit()
+
 
     #==========create pdf and excel product======================
     
