@@ -1429,6 +1429,7 @@ class VendorImportJob(models.Model):
 
 
     #==========create pdf and excel product======================
+
     def create_products_pdf_excel(self):
 
         import json
@@ -1495,17 +1496,31 @@ class VendorImportJob(models.Model):
             for product_data in products:
 
                 try:
+                    _logger.warning("========== PRODUCT DEBUG START ==========")
+                    _logger.warning(f"RAW PRODUCT DATA → {product_data}")
+
                     name = (product_data.get("name") or "").strip()
                     variant_group = product_data.get("variant_group")
                     description = product_data.get("description", "")
                     raw_category = (product_data.get("category") or "").lower()
+                    variants = product_data.get("variants", [])
 
-                    # 🔥 FORCE VARIANT GROUP (CRITICAL FIX)
+                    _logger.warning(f"NAME → {name}")
+                    _logger.warning(f"VARIANT GROUP (AI) → {variant_group}")
+                    _logger.warning(f"VARIANTS COUNT → {len(variants)}")
+
+                    if variants:
+                        _logger.warning(f"VARIANT SAMPLE → {variants[0]}")
+                    else:
+                        _logger.warning("NO VARIANTS RETURNED BY AI")
+
+                    # 🔥 FORCE VARIANT GROUP IF MISSING
                     if not variant_group:
                         variant_group = name
                         _logger.warning(f"FORCED VARIANT GROUP → {variant_group}")
 
                     if not name or len(name) < 2:
+                        _logger.warning("SKIPPED → INVALID NAME")
                         continue
 
                     # ================= CATEGORY =================
@@ -1526,11 +1541,16 @@ class VendorImportJob(models.Model):
                             'parent_id': parent_category.id
                         })
 
-                    # ================= GROUPING (FIXED) =================
+                    # ================= GROUPING DEBUG =================
+                    _logger.warning(f"SEARCHING TEMPLATE WITH default_code → {variant_group}")
+
                     existing_product = product_obj.search([
                         ('default_code', '=', variant_group)
                     ], limit=1)
 
+                    _logger.warning(f"SEARCH RESULT → {existing_product.id if existing_product else 'NOT FOUND'}")
+
+                    # ================= CREATE / REUSE =================
                     if existing_product:
                         product = existing_product
                         _logger.warning(f"USING EXISTING TEMPLATE → {variant_group}")
@@ -1544,7 +1564,6 @@ class VendorImportJob(models.Model):
                             'website_published': False,
                         }
 
-                        # ================= IMAGE =================
                         image_base64 = product_data.get("image")
 
                         if image_base64:
@@ -1558,20 +1577,13 @@ class VendorImportJob(models.Model):
 
                         _logger.warning(f"CREATED NEW TEMPLATE → {variant_group}")
 
-                    # ================= DEBUG =================
-                    _logger.warning(f"""
-                    FINAL PRODUCT DEBUG:
-                    Name → {name}
-                    Variant Group → {variant_group}
-                    Product ID → {product.id}
-                    """)
+                    _logger.warning(f"FINAL TEMPLATE USED → {product.name} | ID → {product.id}")
 
                     # ================= VARIANTS =================
-                    variants = product_data.get("variants", [])
-
                     for variant in variants:
 
                         attributes = variant.get("attributes", {})
+                        _logger.warning(f"PROCESSING VARIANT → {attributes}")
 
                         created_values = []
 
@@ -1617,13 +1629,8 @@ class VendorImportJob(models.Model):
                                 if value.id not in line.value_ids.ids:
                                     line.value_ids = [(4, value.id)]
 
-                        # 🔥 FORCE VARIANT GENERATION
-                        if created_values:
-                            self.env['product.product'].search([
-                                ('product_tmpl_id', '=', product.id)
-                            ])
+                    _logger.warning("========== PRODUCT DEBUG END ==========")
 
-                    # ================= COMMIT =================
                     if created_count % 10 == 0:
                         self.env.cr.commit()
 
