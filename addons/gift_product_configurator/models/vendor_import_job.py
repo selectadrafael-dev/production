@@ -24,6 +24,10 @@ class VendorImportJob(models.Model):
 
     _name = "vendor.import.job"
     _description = "Vendor Import Job"
+    _inherit = 'res.partner'
+
+    #Vendor user role
+    is_vendor_user = fields.Boolean(string="Vendor User")
 
     name = fields.Char(default="Vendor Data Import")
 
