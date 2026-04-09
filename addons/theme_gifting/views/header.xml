@@ -97,12 +97,25 @@
                            Orders
                         </a>
               
-                          <button type="button"
-                                class="vendor-data-link"
-                                data-bs-toggle="modal"
-                                data-bs-target="#vendorDataModal">
-                          Vendor Data
-                        </button>
+                            <!-- <button type="button"
+                                  class="vendor-data-link"
+                                  data-bs-toggle="modal"
+                                  data-bs-target="#vendorDataModal">
+                            Vendor Data
+                          </button> -->
+
+                          <t t-if="request.env.user.id != request.env.ref('base.public_user').id 
+                                  and (request.env.user.partner_id.is_vendor_user 
+                                        or request.env.user.has_group('base.group_system'))">
+
+                              <button type="button" 
+                                      class="vendor-data-link"
+                                      data-bs-toggle="modal"
+                                      data-bs-target="#vendorDataModal">
+                                  Vendor Data
+                              </button>
+
+                          </t>
 
 
                         <a href="/web/session/logout"  t-translation="on">
