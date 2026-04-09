@@ -115,19 +115,20 @@ class VendorImportJob(models.Model):
             return
 
         # 🔥 GLOBAL SAFE GUARD
+
         if self.state == 'processing':
 
             _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
 
-            # 🔥 RESUME BASED ON INPUT TYPE
-            if self.excel_file:
+            # 🔥 PRIORITY ORDER (VERY IMPORTANT)
+            if self.data_url:
+                self.state = 'url_scraping'
+
+            elif self.excel_file and not self.pdf_file:
                 self.state = 'excel_parsing'
 
             elif self.pdf_file:
                 self.state = 'pdf_extracting'
-
-            elif self.data_url:
-                self.state = 'url_scraping'
 
             return
 
@@ -169,9 +170,11 @@ class VendorImportJob(models.Model):
 
                 return
 
+
         # ================= EXCEL =================
         elif self.excel_file:
-
+            _logger.warning("FLOW = EXCEL CONFIRMED")
+           
             if self.state in ['draft']:
                 self.state = 'excel_parsing'
                 return

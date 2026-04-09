@@ -23,39 +23,56 @@ class VendorDataController(http.Controller):
             excel = request.httprequest.files.get("excel_file")
             logo = request.httprequest.files.get("logo_file")
 
-            # ---------------- CREATE JOB ----------------
-            job = request.env['vendor.import.job'].sudo().create({
-                'data_url': url,
+            # 🔥 DETERMINE INPUT TYPE (STRICT)
+            job_vals = {
                 'extra_info': extra_info,
                 'state': 'draft'
-            })
+            }
 
+            # ================= PRIORITY =================
+            if url:
+                job_vals['data_url'] = url
+                job_vals['pdf_file'] = False
+                job_vals['excel_file'] = False
 
-            # ---------------- FILE HANDLING ----------------
-            if pdf:
-                job.pdf_file = base64.b64encode(pdf.read())
+                _logger.info("INPUT TYPE → URL")
 
-            if excel:
-                job.excel_file = base64.b64encode(excel.read())
+            elif excel:
+                job_vals['excel_file'] = base64.b64encode(excel.read())
+                job_vals['pdf_file'] = False
+                job_vals['data_url'] = False
 
+                _logger.info("INPUT TYPE → EXCEL")
+
+            elif pdf:
+                job_vals['pdf_file'] = base64.b64encode(pdf.read())
+                job_vals['excel_file'] = False
+                job_vals['data_url'] = False
+
+                _logger.info("INPUT TYPE → PDF")
+
+            else:
+                return request.make_response(
+                    json.dumps({"error": "No valid input provided"}),
+                    headers=[('Content-Type', 'application/json')]
+                )
+
+            # ---------------- CREATE JOB ----------------
+            job = request.env['vendor.import.job'].sudo().create(job_vals)
+
+            # ---------------- OPTIONAL LOGO ----------------
             if logo:
                 job.logo_file = base64.b64encode(logo.read())
 
-             # 🔥 SAFE BACKGROUND EXECUTION
-            request.env.cr.commit()  # ensure record saved
-
-            #request.env['vendor.import.job'].sudo().browse(job.id)._process_async()
+            # 🔥 COMMIT FOR CRON VISIBILITY
+            request.env.cr.commit()
 
             _logger.info(f"Job created: {job.id}")
-          
-            # 🚫 DO NOT PROCESS HERE (CRITICAL)
-            # job.process_import()  ← NEVER CALL THIS
 
-            # ---------------- FAST RESPONSE ----------------
             return request.make_response(
                 json.dumps({
                     "success": True,
-                    "message": "Upload successful. Processing in background. This may take 2-5 mins depending on the file size."
+                    "message": "Upload successful. Processing in background."
                 }),
                 headers=[('Content-Type', 'application/json')]
             )
