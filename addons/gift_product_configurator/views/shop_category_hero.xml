@@ -1,0 +1,107 @@
+<odoo>
+  <data>
+
+    <template id="shop_category_hero_perfect"
+              inherit_id="website_sale.products"
+              name="Category Hero Banner (Perfect Placement — Fully Safe)">
+
+      <!-- INSERT HERO BEFORE PRODUCTS ROW -->
+      <xpath expr="//div[contains(@class,'o_wsale_products_main_row')]"
+             position="before">
+
+        <!--GET CURRENT URL -->
+        <t t-set="path" t-value="request.httprequest.path"/>
+
+        <!--EXTRACT CATEGORY ID FROM /shop/category/...-ID -->
+        <t t-set="cat_id"
+           t-value="int(path.rsplit('-', 1)[-1])
+                    if '/shop/category/' in path and '-' in path
+                    else False"/>
+
+        <!-- LOAD CATEGORY SAFELY -->
+        <t t-set="cat"
+           t-value="request.env['product.public.category'].sudo().browse(cat_id)
+                    if cat_id else False"/>
+
+        <!-- RENDER ONLY IF CATEGORY EXISTS -->
+        <t t-if="cat and cat.exists()">
+
+          <!-- 🛡️ SAFE FIELD ACCESS (NO getattr, NO CRASH) -->
+
+          <t t-set="hero_title"
+             t-value="cat.hero_title
+                      if 'hero_title' in cat._fields and cat.hero_title
+                      else cat.name"/>
+
+          <t t-set="hero_subtitle"
+             t-value="cat.hero_subtitle
+                      if 'hero_subtitle' in cat._fields and cat.hero_subtitle
+                      else ''"/>
+
+          <t t-set="hero_description"
+             t-value="cat.hero_description
+                      if 'hero_description' in cat._fields and cat.hero_description
+                      else ''"/>
+
+          <t t-set="hero_color"
+             t-value="cat.hero_bg_color
+                      if 'hero_bg_color' in cat._fields and cat.hero_bg_color
+                      else '#6E8FC6'"/>
+
+          <!-- ⭐ HERO SECTION -->
+          <section class="category-hero"
+                   t-att-style="'background:%s;' % hero_color">
+
+            <div class="container">
+
+              <div class="row">
+
+                <!-- LEFT SPACE (FOR FILTER SIDEBAR ALIGNMENT) -->
+                <div class="col-lg-3 d-none d-lg-block"></div>
+
+                <!-- HERO CONTENT -->
+                <div class="col-lg-9 text-dark py-5">
+
+                  <nav class="mb-2 text-light">
+                    Home /
+                    <t t-esc="cat.name"/>
+                  </nav>
+
+                  <h1 class="fw-bold mb-3">
+                    <t t-esc="hero_title"/>
+                  </h1>
+
+                  <h4 class="mb-3">
+                    <t t-esc="hero_subtitle"/>
+                  </h4>
+
+                  <p class="mb-4">
+                    <t t-esc="hero_description"/>
+                  </p>
+
+                  <a href="/contactus"
+                     class="btn btn-dark me-3">
+                    Get An Express Quote
+                  </a>
+
+                  <a href="/contactus"
+                     class="btn btn-light">
+                    Contact Us
+                  </a>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </section>
+
+        </t>
+
+      </xpath>
+
+    </template>
+
+  </data>
+</odoo>

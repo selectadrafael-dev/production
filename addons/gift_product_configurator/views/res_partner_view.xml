@@ -1,0 +1,17 @@
+<odoo>
+    <record id="view_partner_form_inherit_vendor" model="ir.ui.view">
+        <field name="name">res.partner.form.vendor</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+
+            <!-- Place field under Sales & Purchase tab -->
+           <xpath expr="//sheet/group" position="inside">
+                <group>
+                    <field name="is_vendor_user"/>
+                </group>
+            </xpath>
+
+        </field>
+    </record>
+</odoo>

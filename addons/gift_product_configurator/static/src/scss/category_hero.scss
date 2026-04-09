@@ -1,0 +1,15 @@
+.category-hero-full {
+  width: 100%;
+  padding-bottom: 40px;
+  margin-bottom: 30px;
+}
+
+/* Match product column width visually */
+.category-hero-full .col-lg-9 {
+  max-width: 75%;
+}
+
+.category-hero-full h1 {
+  font-size: 44px;
+  font-weight: 700;
+}

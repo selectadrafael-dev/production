@@ -1,0 +1,29 @@
+.promo-category-card {
+  display: block;
+}
+
+.promo-image-card {
+  height: 420px;            /* ⭐ MUCH BIGGER */
+  border-radius: 22px;
+  background: #fff;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: .25s;
+}
+
+.promo-image-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 25px 45px rgba(0,0,0,.12);
+}
+
+.promo-image-card img {
+  max-height: 360px;
+  width: auto;
+}
+
+.promo-name {
+  font-size: 18px;
+  font-weight: 600;
+}

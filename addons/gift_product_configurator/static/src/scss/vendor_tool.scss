@@ -1,0 +1,26 @@
+.vendor-modal .modal-header
+{
+    background: #5c8567!important;
+}
+
+.vendor_logo{
+    margin-top: 50px!important;
+    margin-bottom: 20px!important;
+}
+#uploadProgressBar {
+    position: relative;
+    font-weight: 600;
+}
+
+#uploadPercentText {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-size: 13px;
+}
+
+/*vendor button*/
+.vendor-tool-card{
+  margin-top: 40px;
+}

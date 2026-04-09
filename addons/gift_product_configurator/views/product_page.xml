@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+<template id="gift_custom_product_page"
+          inherit_id="website_sale.product">
+
+    <xpath expr="//div[@id='product_detail_main']" position="inside">
+
+        <!--Your custom wrapper-->
+         <div class="gift-top-banner">
+
+              <a href="/bestsellers"
+              class="banner-link">
+
+                  ⭐ CLICK HERE FOR OUR MOST POPULAR PICKS ⭐
+                  <span>Buy tried and tested items customers love</span>
+
+              </a>
+            </div>
+
+<div id="middle_content_container_main"    class="middle_content_container_main">
+                <div class="gift-configurator">
+                    <!--form method="post"-->
+                        <!-- PRINT METHOD -->
+                        <div class="config-block">
+                            <div class="config-header">Print Method</div>
+                            <select class="form-select" id="print_method_select">
+                                <option value="branded" >Branded</option>
+                                <option value="non-branded">Non-Branded</option>
+                            </select>
+                        </div> 
+
+                       <div class="branding-fields">
+                         <!-- LOGO COLOURS -->
+                            <div class="config-block">
+                                <div class="config-header">Logo Colours</div>
+                                <select class="form-select">
+                                    <option>1 colour</option>
+                                    <option>2 colours</option>
+                                    <option>Full colour</option>
+                                </select>
+                            </div>
+
+                            <!-- QUANTITY TIERS -->
+                            <div class="config-block">
+
+                                <div class="config-header">Quantity</div>
+
+                                <div class="qty_wrapper d-flex">
+                                    <div id="qty_tiers">
+                                            <div class="tier-card active qty_tiers_card">
+                                                <strong>1000+</strong>
+                                                <div id="actual_price">
+                                                    <span class="price">
+                                                    <t t-call="website_sale.product_price" />
+                                                    </span> each
+                                                </div>
+                                            </div>
+
+                                            <div class="tier-card popular qty_tiers_card">
+                                                <strong>2000+</strong>
+                                                <span class="price">$5.40 each</span>
+                                            </div>
+
+                                            <div class="tier-card qty_tiers_card">
+                                                <strong>3000+</strong>
+                                                <span class="price">$4.80 each</span>
+                                            </div>
+
+                                            <div class="tier-card qty_tiers_card">
+                                                <strong>4000+</strong>
+                                                <span class="price">$4.10 each</span>
+                                            </div>
+
+                                            <!--larger qty-->
+                                            <div class="qty_tiers_card">
+                                            <a href="/larger-quantity">
+                                                    <div>
+                                                        <span>Larger order?</span>
+                                                        <span> Get an express quote now →</span>
+                                                    </div>
+                                                </a>
+                                            </div>
+                                        </div>
+                                
+                                    </div>
+                                <!-- QUANTITY TIERS -->
+
+                                        <div class="qty_divider">OR</div>
+
+                                        <!-- MANUAL QTY -->
+                                        <div class="custom-qty">
+                                            <button type="button" class="qty-minus">−</button>
+                                            <input type="number" placeholder="Enter Custom Value" value="50"/>
+                                            <button type="button" class="qty-plus">+</button>
+                                        </div>
+                                </div>
+                            </div>
+                        </div>
+</div>
+
+             <!-- ===================================== -->
+            <!-- RIGHT: QUOTE PANEL -->
+            <!-- ===================================== -->
+            <div id="add-to-quote-deal">
+                 <div class="gift-quote-panel">
+                <!--product price-->
+                <div class="price-display">
+                    <!--span class="price">£7.71</span-->
+                   <span id="dynamic_main_price" class="price">
+                        <t t-call="website_sale.product_price" />
+                    </span>
+                    <div class="per-unit">per unit (exc. VAT)</div>
+                </div>
+
+                <button
+                class="js-add-quote btn-quote"
+                t-att-data-product-id="product.product_variant_id.id"
+                t-att-data-product-name="product.name"
+                t-att-data-product-image="product.image_1920 and ('/web/image/product.product/' + str(product.product_variant_id.id) + '/image_1920')"
+                t-att-data-product-price="product.product_variant_id.lst_price"
+                >
+                Create Quote
+                </button>
+
+                <button class="btn-ideas">
+                    Need Ideas?
+                </button>
+
+                <div class="qty_divider">OR</div>
+
+                <button
+                class="btn-sample js-add-sample"
+                t-att-data-product-id="product.product_variant_id.id"
+                t-att-data-product-name="product.name"
+                t-att-data-product-price="product.product_variant_id.lst_price"
+                t-att-data-product-image="product.image_1920 and ('/web/image/product.product/' + str(product.product_variant_id.id) + '/image_1920')"
+                >
+                Buy 1 Sample
+                </button>
+
+            </div>
+            </div>
+
+    </xpath>
+
+</template>
+</odoo>
