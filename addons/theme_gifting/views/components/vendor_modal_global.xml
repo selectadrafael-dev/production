@@ -23,7 +23,7 @@
 
                 <div class="modal-body">
 
-                   <!-- progress bar -->
+                   <!--progress bar -->
                 <div id="uploadProgressWrapper" class="progress mb-3 d-none" style="height:26px;">
                   <div id="uploadProgressBar"
                       class="progress-bar progress-bar-striped progress-bar-animated"
