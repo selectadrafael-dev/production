@@ -1,0 +1,10 @@
+<odoo>
+    <template id="vendor_modal_global_inherit" inherit_id="website.layout">
+
+        <!-- Inject modal into EVERY page -->
+        <xpath expr="//body" position="inside">
+            <t t-call="theme_gifting.vendor_data.modal"/>
+        </xpath>
+
+    </template>
+</odoo>
