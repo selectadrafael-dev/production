@@ -4,7 +4,7 @@
   <template id="selectad_global_modals" inherit_id="website.layout">
     <xpath expr="//body" position="inside">
          <!--vendor data modalbox-->
-        <t t-name="vendor_data.modal">
+        <!--t t-name="vendor_data.modal"-->
           <div class="modal fade" id="vendorDataModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
               <div class="modal-content vendor-modal">
@@ -101,7 +101,7 @@
               </div>
             </div>
           </div>
-        </t>
+        <!--/t!-->
     </xpath>
   </template>
 </odoo>
