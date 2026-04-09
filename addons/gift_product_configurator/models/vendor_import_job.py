@@ -95,7 +95,7 @@ class VendorImportJob(models.Model):
     ], default='draft')
 
 
-     #============================= MAIN FLOW (process steps) ====================== 
+     #============================= MAIN FLOW (process steps) =====================
 
     def process_import(self):
 
