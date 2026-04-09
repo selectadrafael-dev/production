@@ -97,13 +97,6 @@
                            Orders
                         </a>
               
-                            <!-- <button type="button"
-                                  class="vendor-data-link"
-                                  data-bs-toggle="modal"
-                                  data-bs-target="#vendorDataModal">
-                            Vendor Data
-                          </button> -->
-
                             <t t-set="user" t-value="request.env.user"/>
 
                             <t t-if="not user._is_public() and 

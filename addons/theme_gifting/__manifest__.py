@@ -35,6 +35,7 @@
         "views/section_promotional_products.xml",
         "views/footer_custom.xml",
         "views/components/vendor_modal_global.xml",
+        "views/portal_vendor_button.xml",
     ],
     "assets": {
         "web.assets_frontend": [

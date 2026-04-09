@@ -4,10 +4,23 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+# ✅ Extend existing model
+class ResPartner(models.Model):
+    _inherit = 'res.partner'
+
+    #Vendor user role
+    is_vendor_user = fields.Boolean(
+        string="Vendor User",
+        default=False
+    )
+
 
 class VendorScraperJob(models.Model):
     _name = 'vendor.scraper.job'
     _description = 'Vendor Scraper Job'
+
+    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
+
 
     name = fields.Char()
     url = fields.Char(required=True)
