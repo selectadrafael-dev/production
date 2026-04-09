@@ -1,8 +1,10 @@
+
+<!---working modal-->
 <odoo>
-    <!-- Modal Template -->
-   <template id="vendor_data_modal_template">
+  <template id="selectad_global_modals" inherit_id="website.layout">
+    <xpath expr="//body" position="inside">
          <!--vendor data modalbox-->
-     <t t-name="vendor_data.modal">
+        <t t-name="vendor_data.modal">
           <div class="modal fade" id="vendorDataModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
               <div class="modal-content vendor-modal">
@@ -99,15 +101,7 @@
               </div>
             </div>
           </div>
-         </t>
-    </template>
-
-     <template id="vendor_modal_global_inherit" inherit_id="website.layout">
-
-        <!-- Inject modal into EVERY page -->
-        <xpath expr="//body" position="inside">
-            <t t-call="theme_gifting.vendor_data.modal"/>
-        </xpath>
-
-    </template>
+        </t>
+    </xpath>
+  </template>
 </odoo>
