@@ -23,7 +23,7 @@
      "views/larger_quantity_template.xml",
      'views/vendor_import_job_views.xml',
      'data/cron.xml',
-    #'security/ir.model.access.csv'
+     'models/res_partner_view.xml'
 ],
 "assets": {
     "web.assets_frontend": [
