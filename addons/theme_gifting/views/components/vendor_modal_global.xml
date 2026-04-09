@@ -2,7 +2,7 @@
     <!-- Modal Template -->
    <template id="vendor_data_modal_template">
          <!--vendor data modalbox-->
-     <t t-name="theme_gifting.vendor_data.modal">
+     <t t-name="vendor_data.modal">
           <div class="modal fade" id="vendorDataModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
               <div class="modal-content vendor-modal">
