@@ -1,4 +1,4 @@
 from . import models
 from . import controllers
 from . import models
-#from . import services
+from .hooks import add_vendor_column

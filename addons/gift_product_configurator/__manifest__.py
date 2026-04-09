@@ -41,4 +41,6 @@
     ],
 },
  'installable': True,
+ # ✅ CUSTOM FIELD
+'post_init_hook': 'add_vendor_column',
 }
