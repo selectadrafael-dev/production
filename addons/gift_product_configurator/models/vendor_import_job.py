@@ -8,7 +8,6 @@ from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl_image_loader import SheetImageLoader
 from PIL import Image
-import time
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -53,10 +52,16 @@ class VendorImportJob(models.Model):
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
 
+    source_type = fields.Selection([
+        ("pdf", "PDF"),
+        ("excel", "Excel"),
+        ("url", "URL"),
+    ])
+
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
-        ('ai_processing', 'AI Processing'),
         ('review', 'Vendor Review'),
         ('done', 'Completed'),
         ('error', 'Error'),
@@ -77,7 +82,148 @@ class VendorImportJob(models.Model):
 
     ], default='draft')
 
-    
+
+     #============================= MAIN FLOW (process steps) ====================== 
+
+    def process_import(self):
+
+        _logger.warning(f"PROCESS START → Job {self.id}")
+
+        try:
+            if self.state == 'review':
+                self.state = 'processing'
+
+            if self.state == 'draft':
+                self.state = 'processing'
+
+            self._process_step()
+
+        except Exception as e:
+            _logger.error(f"PROCESS FAILED → {str(e)}")
+            self.state = "failed"
+
+
+    #============Procsing Jobs===================================================
+
+    def _process_step(self):
+
+        _logger.warning(f"[STEP] JOB {self.id} STATE → {self.state}")
+
+        # 🔥 FIX STUCK STATE
+        if self.state == 'review':
+            self.state = 'processing'
+            return
+
+        # 🔥 GLOBAL SAFE GUARD
+        if self.state == 'processing':
+            _logger.warning("STATE = PROCESSING → WAIT NEXT CRON")
+            return
+
+        # ================= URL =================
+        if self.data_url:
+
+            if self.state in ['draft']:
+                self.state = 'url_scraping'
+                return
+
+            if self.state == 'url_scraping':
+                self.parse_url()
+
+                if self.extracted_text:
+                    self.state = 'url_ai'
+
+                return
+
+            if self.state == 'url_ai':
+                self.send_to_openai_url()
+
+                if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
+                    self.state = 'url_creating'
+
+                return
+
+            if self.state == 'url_creating':
+                self.create_products_url()
+
+                try:
+                    total = len(json.loads(self.ai_response or "[]"))
+                except:
+                    total = 0
+
+                if self.last_processed_product_index >= total:
+                    self.state = 'done'
+                else:
+                    self.state = 'processing'
+
+                return
+
+        # ================= EXCEL =================
+        elif self.excel_file:
+
+            if self.state in ['draft']:
+                self.state = 'excel_parsing'
+                return
+
+            if self.state == 'excel_parsing':
+                self.parse_excel()
+
+                # 🔥 STAY HERE UNTIL FULLY PARSED
+                if self.state == 'processing':
+                    return
+
+                # Only move when parsing is complete
+                self.state = 'excel_ai'
+                return
+
+            if self.state == 'excel_ai':
+                self.send_to_openai_pdf_excel()
+
+                # 🔥 WAIT until AI is fully done
+                if self.state == 'processing':
+                    return
+
+                self.state = 'excel_creating'
+                return
+
+            if self.state == 'excel_creating':
+                self.create_products_pdf_excel()
+
+                # 🔥 For now assume done (we'll optimize later)
+                self.state = 'done'
+                return
+
+        # ================= PDF =================
+        elif self.pdf_file:
+
+            if self.state in ['draft']:
+                self.state = 'pdf_extracting'
+                return
+
+            if self.state == 'pdf_extracting':
+                self.extract_pdf()
+
+                if self.current_page >= self.total_pages:
+                    self.state = 'pdf_ai'
+                else:
+                    self.state = 'processing'
+
+                return
+
+            if self.state == 'pdf_ai':
+                self.send_to_openai_pdf_excel()
+
+                if self.last_ai_page >= self.total_pages:
+                    self.state = 'pdf_creating'
+                else:
+                    self.state = 'processing'
+
+                return
+
+            if self.state == 'pdf_creating':
+                self.create_products_pdf_excel()
+                self.state = 'done'
+                return
+
     #------------parse url----------------------------
     def parse_url(self):
 
@@ -110,222 +256,123 @@ class VendorImportJob(models.Model):
 
 
     #------excel processing methof---------------
-    
+
     def parse_excel(self):
 
-        _logger.warning("EXCEL → START PARSING")
+        _logger.warning("EXCEL → START PARSING (BATCH MODE)")
 
         excel_bytes = base64.b64decode(self.excel_file)
-
         wb = load_workbook(filename=BytesIO(excel_bytes))
 
         headers = {"User-Agent": "Mozilla/5.0"}
 
         pages = []
-        page_number = 1
 
-        # 🔥 PROCESS ALL SHEETS
+        # 🔥 BATCH CONTROL
+        BATCH_SIZE = 20
+        start_index = self.last_processed_product_index or 0
+        current_count = 0
+        global_index = 0
+
+        _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
+
         for sheet in wb.worksheets:
 
             _logger.warning(f"PROCESSING SHEET → {sheet.title}")
-
             image_loader = SheetImageLoader(sheet)
 
             for idx, row in enumerate(sheet.iter_rows()):
 
+                # 🔥 GLOBAL INDEX TRACKING
+                global_index += 1
+
+                if global_index <= start_index:
+                    continue
+
+                if current_count >= BATCH_SIZE:
+                    _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
+                    break
+
                 row_text_parts = []
                 row_images = []
 
-                # ================= TEXT =================
                 for cell in row:
                     val = str(cell.value or "").strip()
                     if val:
                         row_text_parts.append(val)
 
-                # skip empty rows
                 if not row_text_parts:
                     continue
 
-                # skip header
                 if idx == 0:
-                    _logger.warning(f"SKIP HEADER ROW → {sheet.title}")
                     continue
 
-                # ================= STRUCTURED TEXT =================
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
-
-                RULE:
-                - THIS IS EXACTLY ONE PRODUCT
-                - DO NOT SPLIT THIS ROW
-                - THIS ROW MAY BE A VARIANT OF ANOTHER ROW
-                - USE SIMILAR ID/SKU TO GROUP VARIANTS
                 """
 
-                # ================= IMAGE (EMBEDDED FIRST) =================
+                # IMAGE (EMBEDDED)
                 for cell in row:
                     try:
                         if image_loader.image_in(cell.coordinate):
-
                             pil_img = image_loader.get(cell.coordinate)
-
                             buffer = BytesIO()
                             pil_img.save(buffer, format="JPEG")
-
                             img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
                             row_images.append(img_base64)
-
-                            _logger.warning(f"ROW {idx} → EMBED IMAGE FOUND")
                             break
-
-                    except Exception:
+                    except:
                         continue
 
-                # ================= IMAGE (URL FALLBACK) =================
+                # IMAGE (URL)
                 if not row_images:
-
                     for cell in row:
                         val = str(cell.value or "").strip()
-
                         if val.startswith("http"):
                             try:
-                                response = requests.get(val, headers=headers, timeout=10)
-
-                                if response.status_code != 200:
-                                    continue
-
-                                if "image" in response.headers.get("Content-Type", ""):
+                                response = requests.get(val, headers=headers, timeout=5)
+                                if response.status_code == 200 and "image" in response.headers.get("Content-Type", ""):
                                     img_base64 = base64.b64encode(response.content).decode("utf-8")
                                     row_images.append(img_base64)
-
-                                    _logger.warning(f"ROW {idx} → IMAGE FROM URL")
                                     break
+                            except:
+                                continue
 
-                            except Exception:
-                                _logger.warning(f"ROW {idx} → IMAGE URL FAILED")
-
-                # ================= DEBUG =================
-                _logger.warning(f"SHEET → {sheet.title} | ROW → {idx}")
-                _logger.warning(f"TEXT PARTS → {len(row_text_parts)}")
-                _logger.warning(f"IMAGES FOUND → {len(row_images)}")
-
-                # ================= STORE =================
                 pages.append({
-                    "page": page_number,
+                    "page": global_index,
                     "text": row_text,
                     "images": row_images,
-                    "row_index": idx,
-                    "sheet": sheet.title
+                    "row_index": global_index
                 })
 
-                page_number += 1
+                current_count += 1
 
-        # ================= FINAL =================
-        self.extracted_text = json.dumps(pages)
+            if current_count >= BATCH_SIZE:
+                break
 
-        _logger.warning(f"EXCEL DONE → TOTAL ROWS: {len(pages)}")
+        # 🔥 STORE
+        existing = []
+        if self.extracted_text:
+            try:
+                existing = json.loads(self.extracted_text)
+            except:
+                existing = []
 
-    #---------------- MAIN FLOW ----------------
-   
-    def process_import(self):
+        combined = existing + pages
+        self.extracted_text = json.dumps(combined)
 
-        _logger.warning(f"PROCESS START → Job {self.id}")
+        # 🔥 SAVE PROGRESS
+        self.last_processed_product_index = start_index + current_count
 
-        try:
+        _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
-            #================= URL FLOW =================
-            if self.data_url:
-                _logger.warning("FLOW → URL")
+        # 🔥 STATE CONTROL
+        if current_count < BATCH_SIZE:
+            _logger.warning("EXCEL FULLY PROCESSED ✅")
+        else:
+            self.state = "processing"
 
-                self.parse_url()
-
-                if not self.extracted_text:
-                    _logger.warning("URL NOT READY → WAIT NEXT CRON")
-                    return
-
-                _logger.warning("STEP → SEND TO AI (URL)")
-                self.send_to_openai_url()
-
-                if not self.ai_response:
-                    _logger.error("URL AI FAILED → STOP")
-                    return
-
-                _logger.warning("STEP → CREATE PRODUCTS (URL)")
-                self.create_products_url()
-
-            # ================= EXCEL FLOW =================
-            elif self.excel_file:
-                _logger.warning("FLOW → EXCEL")
-
-                self.parse_excel()
-
-                if not self.extracted_text:
-                    _logger.error("EXCEL PARSE FAILED → STOP")
-                    return
-
-                _logger.warning("STEP → SEND TO AI (EXCEL)")
-                self.send_to_openai_pdf_excel()
-
-                # 🔥 CRITICAL FIX
-                if not self.ai_response:
-                    _logger.error("EXCEL AI FAILED → STOP")
-                    return
-
-                _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
-                self.create_products_pdf_excel()
-
-            # ================= PDF FLOW =================
-            elif self.pdf_file:
-                _logger.warning("FLOW → PDF")
-
-                self.extract_pdf()
-
-                if not self.extracted_text:
-                    _logger.error("PDF EXTRACTION FAILED → STOP")
-                    return
-
-                _logger.warning("STEP → SEND TO AI (PDF)")
-                self.send_to_openai_pdf_excel()
-
-                if not self.ai_response:
-                    _logger.error("PDF AI FAILED → STOP")
-                    return
-
-                _logger.warning("STEP → CREATE PRODUCTS (PDF)")
-                self.create_products_pdf_excel()
-
-            else:
-                raise Exception("No input found")
-
-            # ================= FINAL STATE CONTROL =================
-
-            # ✅ URL FLOW
-            if self.data_url:
-                total_batches = getattr(self, "url_total_batches", 0)
-                current_batch = getattr(self, "url_batch_index", 0)
-
-                if total_batches and current_batch >= total_batches:
-                    _logger.warning("URL → ALL BATCHES COMPLETED ✅")
-                    self.state = 'done'
-                else:
-                    _logger.warning("URL → WAITING FOR NEXT BATCH")
-                    self.state = 'processing'
-
-            # ✅ PDF / EXCEL FLOW
-            else:
-                if self.current_page >= self.total_pages:
-                    _logger.warning("PROCESS IMPORT → ALL PAGES COMPLETED")
-                    self.state = 'done'
-                else:
-                    _logger.warning("PROCESS IMPORT → WAITING FOR NEXT BATCH")
-                    self.state = 'processing'
-
-        except Exception as e:
-            _logger.error(f"PROCESS FAILED → {str(e)}")
-            self.state = "failed"
-   
     # ---------------- PDF ----------------
 
     def extract_pdf(self):
@@ -337,9 +384,7 @@ class VendorImportJob(models.Model):
 
         # 🔥 BATCH CONFIG
         BATCH_SIZE = 3
-        PAGE_DELAY = 2
-        BATCH_DELAY = 5
-
+    
         all_pages = []
 
         try:
@@ -392,6 +437,10 @@ class VendorImportJob(models.Model):
                         files={"file": ("page.pdf", pdf_bytes_io, "application/pdf")},
                         timeout=120
                     )
+
+                    # 👉 AFTER finishing with page (VERY IMPORTANT)
+                    pdf_bytes_io.close()
+                    single_pdf.close()
 
                     if response.status_code != 200:
                         _logger.warning(f"FLASK ERROR PAGE {i+1}: {response.status_code}")
@@ -468,14 +517,12 @@ class VendorImportJob(models.Model):
             return
 
         # ================= 🔥 CRITICAL FIX =================
+
         if self.current_page < total_pages:
 
             _logger.warning(f"JOB NOT FINISHED → NEXT START PAGE {self.current_page + 1}")
 
-            # 🔥 FORCE JOB TO CONTINUE
-            self.state = "processing"
-
-            # time.sleep(BATCH_DELAY)
+            self.state = "pdf_extracting"
 
         else:
 
@@ -484,14 +531,13 @@ class VendorImportJob(models.Model):
 
         _logger.warning("PDF EXTRACTION BATCH COMPLETED")
 
+
     # ---------------- OPENAI ----------------
     def send_to_openai_url(self):
 
-        import time
         import re
         import json
 
-        self.state = "ai_processing"
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
 
@@ -709,13 +755,9 @@ class VendorImportJob(models.Model):
 
     #===========pdf and excel open ai OPENAI=========================
 
-
     def send_to_openai_pdf_excel(self):
 
         import json
-        import time
-
-        self.state = "ai_processing"
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
 
@@ -739,20 +781,30 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"MODE DETECTED → {'EXCEL' if is_excel else 'PDF'}")
 
-        # ================= EXCEL MODE =================
+        # ================= EXCEL MODE (FIXED) =================
         if is_excel:
 
-            _logger.warning(f"EXCEL MODE → TOTAL ROWS: {len(pages)}")
+            BATCH_SIZE = 20
+            start = self.last_ai_page or 0
 
-            products = []
+            batch = pages[start:start + BATCH_SIZE]
 
-            for idx, row in enumerate(pages):
+            _logger.warning(f"EXCEL AI → PROCESSING ROWS {start} to {start + len(batch)}")
+
+            # 🔥 LOAD EXISTING
+            existing_products = []
+            if self.ai_response:
+                try:
+                    existing_products = json.loads(self.ai_response)[0]["products"]
+                except:
+                    existing_products = []
+
+            new_products = []
+
+            for idx, row in enumerate(batch, start=start):
 
                 row_text = row.get("text", "")
                 images = row.get("images", [])
-
-                _logger.warning(f"ROW {idx} → PROCESSING")
-                _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
 
                 prompt = f"""
                 You are a structured Excel product parser.
@@ -884,32 +936,42 @@ class VendorImportJob(models.Model):
 
                     parsed = json.loads(result)
 
-                    # 🔥 enforce ONE product per row
                     if isinstance(parsed, list) and parsed:
                         parsed = parsed[0]
 
                     if not isinstance(parsed, dict):
                         continue
 
-                    # 🔥 attach image (CRITICAL FIX)
                     if images:
                         parsed["image"] = images[0]
 
-                    products.append(parsed)
+                    new_products.append(parsed)
 
-                    _logger.warning(f"ROW {idx} → PRODUCT PARSED WITH IMAGE")
+                    _logger.warning(f"ROW {idx} → OK")
 
                 except Exception as e:
                     _logger.warning(f"ROW {idx} FAILED → {str(e)}")
                     continue
 
-            # final structure
+            # 🔥 MERGE RESULTS
+            combined = existing_products + new_products
+
             self.ai_response = json.dumps([{
                 "page": 1,
-                "products": products
+                "products": combined
             }])
 
-            _logger.warning(f"EXCEL PRODUCTS TOTAL → {len(products)}")
+            # 🔥 SAVE PROGRESS
+            self.last_ai_page = start + len(batch)
+
+            _logger.warning(f"EXCEL AI PROGRESS → {self.last_ai_page}/{len(pages)}")
+
+            # 🔥 CONTROL FLOW
+            if self.last_ai_page < len(pages):
+                _logger.warning("EXCEL AI NOT FINISHED → NEXT CRON")
+                self.state = "processing"
+            else:
+                _logger.warning("EXCEL AI COMPLETE ✅")
 
             return
 
@@ -1112,20 +1174,9 @@ class VendorImportJob(models.Model):
             """
 
             try:
-                image_inputs = [
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:image/jpeg;base64,{img}"
-                    }
-                    for img in images[:10]
-                ]
-
                 response = client.responses.create(
                     model="gpt-4.1-mini",
-                    input=[{
-                        "role": "user",
-                        "content": [{"type": "input_text", "text": prompt}] + image_inputs
-                    }],
+                    input=prompt,
                     timeout=60
                 )
 
@@ -1135,15 +1186,9 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
 
-            if "```" in result:
-                result = result.split("```")[1]
-
-            if result.lower().startswith("json"):
-                result = result[4:]
-
             try:
                 parsed = json.loads(result)
-            except Exception:
+            except:
                 parsed = []
 
             if not isinstance(parsed, list):
@@ -1156,13 +1201,7 @@ class VendorImportJob(models.Model):
 
             self.last_ai_page = i + 1
 
-            _logger.warning(f"PAGE {page_no} → STORED: {len(parsed)}")
-
-            # time.sleep(1)
-
         self.ai_response = json.dumps(page_products)
-
-        _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -1346,7 +1385,7 @@ class VendorImportJob(models.Model):
         created_count = 0
         skipped_count = 0
 
-        MAX_PRODUCTS_PER_RUN = 10  # ✅ safe batching
+        MAX_PRODUCTS_PER_RUN = 10
 
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
@@ -1422,7 +1461,7 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             }
 
-            # ================= IMAGE =======================
+            # ================= IMAGE =================
             image_url = product.get("image")
 
             if image_url and isinstance(image_url, str) and image_url.startswith("http"):
@@ -1432,23 +1471,20 @@ class VendorImportJob(models.Model):
 
                     res = requests.get(image_url, timeout=5, stream=True)
 
-                    # ✅ STATUS CHECK
                     if res.status_code != 200:
                         _logger.warning(f"IMAGE HTTP ERROR → {res.status_code}")
-                        return
+                        continue
 
-                    # ✅ CONTENT TYPE CHECK
                     content_type = res.headers.get("Content-Type", "")
                     if "image" not in content_type:
                         _logger.warning(f"NOT AN IMAGE → {content_type}")
-                        return
+                        continue
 
-                    # ✅ MEMORY SAFE READ (LIMIT SIZE)
                     content = res.raw.read(500000, decode_content=True)
 
                     if not content:
                         _logger.warning("EMPTY IMAGE CONTENT")
-                        return
+                        continue
 
                     vals['image_1920'] = base64.b64encode(content).decode("utf-8")
 
@@ -1470,7 +1506,6 @@ class VendorImportJob(models.Model):
                 skipped_count += 1
                 continue
 
-            # ================= SAFE COMMIT =================
             if created_count % 10 == 0:
                 self.env.cr.commit()
 
@@ -1481,14 +1516,12 @@ class VendorImportJob(models.Model):
         _logger.warning(f"SKIPPED THIS RUN → {skipped_count}")
         _logger.warning(f"NEXT START INDEX → {self.last_processed_product_index}")
 
-        # ================= FINAL =================
         if self.last_processed_product_index >= TOTAL_PRODUCTS:
             _logger.warning("ALL PRODUCTS CREATED ✅")
         else:
-            _logger.warning("MORE PRODUCTS REMAIN → NEXT CRON WILL CONTINUE")
+            _logger.warning("MORE PRODUCTS REMAIN → NEXT CRON")
 
         self.env.cr.commit()
-
 
     #==========create pdf and excel product======================
     
@@ -1917,97 +1950,6 @@ class VendorImportJob(models.Model):
 
             finally:
                 job.lock = False
-
-    #=======process steps====================================
-    def _process_step(self):
-
-        _logger.warning(f"[STEP] JOB {self.id} STATE → {self.state}")
-
-    # ================= URL =================
-        if self.data_url:
-
-            if self.state in ['draft', 'processing']:
-                self.state = 'url_scraping'
-                return
-
-            if self.state == 'url_scraping':
-                self.parse_url()
-
-                if self.extracted_text:
-                    self.state = 'url_ai'
-
-                return
-
-            if self.state == 'url_ai':
-                self.send_to_openai_url()
-
-                if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
-                    self.state = 'url_creating'
-
-                return
-
-            if self.state == 'url_creating':
-                self.create_products_url()
-
-                try:
-                    total = len(json.loads(self.ai_response or "[]"))
-                except:
-                    total = 0
-
-                if self.last_processed_product_index >= total:
-                    self.state = 'done'
-
-                return
-
-        # ================= EXCEL =================
-        elif self.excel_file:
-
-            if self.state in ['draft', 'processing']:
-                self.state = 'excel_parsing'
-                return
-
-            if self.state == 'excel_parsing':
-                self.parse_excel()
-                self.state = 'excel_ai'
-                return
-
-            if self.state == 'excel_ai':
-                self.send_to_openai_pdf_excel()
-                self.state = 'excel_creating'
-                return
-
-            if self.state == 'excel_creating':
-                self.create_products_pdf_excel()
-                self.state = 'done'
-                return
-
-        # ================= PDF =================
-        elif self.pdf_file:
-
-            if self.state in ['draft', 'processing']:
-                self.state = 'pdf_extracting'
-                return
-
-            if self.state == 'pdf_extracting':
-                self.extract_pdf()
-
-                if self.current_page >= self.total_pages:
-                    self.state = 'pdf_ai'
-
-                return
-
-            if self.state == 'pdf_ai':
-                self.send_to_openai_pdf_excel()
-
-                if self.last_ai_page >= self.total_pages:
-                    self.state = 'pdf_creating'
-
-                return
-
-            if self.state == 'pdf_creating':
-                self.create_products_pdf_excel()
-                self.state = 'done'
-                return
    
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
@@ -2214,3 +2156,4 @@ class VendorImportJob(models.Model):
     #=======keep cron alive================
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
+    
