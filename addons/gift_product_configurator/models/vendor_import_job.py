@@ -24,11 +24,10 @@ class ResPartner(models.Model):
     _inherit = 'res.partner'
 
     #Vendor user role
-    # is_vendor_user = fields.Boolean(string="Vendor User")
-    is_vendor_user = fields.Boolean(
-        string="Vendor User",
-        default=False
-    )
+    # is_vendor_user = fields.Boolean(
+    #     string="Vendor User",
+    #     default=False
+    # )
 
 
 class VendorImportJob(models.Model):
