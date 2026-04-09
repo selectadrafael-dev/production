@@ -51,6 +51,7 @@ class VendorImportJob(models.Model):
     url_batch_index = fields.Integer(default=0)
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
+    lock = fields.Boolean(default=False)
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -59,7 +60,21 @@ class VendorImportJob(models.Model):
         ('review', 'Vendor Review'),
         ('done', 'Completed'),
         ('error', 'Error'),
-         ('failed', 'Failed'),
+        ('failed', 'Failed'),
+
+         #New
+        ('url_scraping', 'URL Scraping'),
+        ('url_ai', 'URL AI'),
+        ('url_creating', 'URL Creating'),
+
+        ('pdf_extracting', 'PDF Extracting'),
+        ('pdf_ai', 'PDF AI'),
+        ('pdf_creating', 'PDF Creating'),
+
+        ('excel_parsing', 'Excel Parsing'),
+        ('excel_ai', 'Excel AI'),
+        ('excel_creating', 'Excel Creating'),
+
     ], default='draft')
 
     
@@ -419,12 +434,12 @@ class VendorImportJob(models.Model):
                 except Exception as e:
                     _logger.exception(f"FLASK CALL FAILED PAGE {i+1} → {str(e)}")
 
-                time.sleep(5)
+                # time.sleep(5)
 
             if not page_success:
                 _logger.error(f"PAGE {i+1} FAILED AFTER RETRIES")
 
-            time.sleep(PAGE_DELAY)
+            # time.sleep(PAGE_DELAY)
 
         # ================= UPDATE PROGRESS =================
         self.current_page = end_page
@@ -460,7 +475,7 @@ class VendorImportJob(models.Model):
             # 🔥 FORCE JOB TO CONTINUE
             self.state = "processing"
 
-            time.sleep(BATCH_DELAY)
+            # time.sleep(BATCH_DELAY)
 
         else:
 
@@ -530,6 +545,7 @@ class VendorImportJob(models.Model):
         ]
 
         total_batches = len(batched_blocks)
+        self.url_total_batches = total_batches
 
         _logger.warning(f"TOTAL BLOCK BATCHES → {total_batches}")
         _logger.warning(f"CURRENT BATCH → {current_batch}")
@@ -1142,7 +1158,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"PAGE {page_no} → STORED: {len(parsed)}")
 
-            time.sleep(1)
+            # time.sleep(1)
 
         self.ai_response = json.dumps(page_products)
 
@@ -1330,7 +1346,7 @@ class VendorImportJob(models.Model):
         created_count = 0
         skipped_count = 0
 
-        MAX_PRODUCTS_PER_RUN = 30  # ✅ safe batching
+        MAX_PRODUCTS_PER_RUN = 10  # ✅ safe batching
 
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
@@ -1871,12 +1887,12 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
-    #---------------- CRON ----------------
-    
+    #---------------- CRON ---------------
+
     def run_pending_jobs(self):
 
         jobs = self.search(
-            [('state', 'in', ['draft', 'processing'])],
+            [('state', 'not in', ['done', 'failed'])],
             order="priority asc, id asc",
             limit=1
         )
@@ -1884,24 +1900,115 @@ class VendorImportJob(models.Model):
         _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
         for job in jobs:
+
+            if job.lock:
+                _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
+                continue
+
             try:
                 _logger.warning(f"CRON → START JOB {job.id}")
-                _logger.warning(f"CRON → JOB {job.id} CURRENT STATE: {job.state}")
+                job.lock = True
 
-                job.state = 'processing'
-
-                job.process_import()
-
-                _logger.warning(f"CRON → JOB {job.id} FINAL STATE: {job.state}")
-
-                # ❌ DO NOT TOUCH STATE HERE
-
-                _logger.warning(f"CRON → JOB {job.id} DONE")
+                job._process_step()
 
             except Exception as e:
                 _logger.exception(f"PROCESS FAILED → {str(e)}")
                 job.state = 'failed'
 
+            finally:
+                job.lock = False
+
+    #=======process steps====================================
+    def _process_step(self):
+
+        _logger.warning(f"[STEP] JOB {self.id} STATE → {self.state}")
+
+    # ================= URL =================
+        if self.data_url:
+
+            if self.state in ['draft', 'processing']:
+                self.state = 'url_scraping'
+                return
+
+            if self.state == 'url_scraping':
+                self.parse_url()
+
+                if self.extracted_text:
+                    self.state = 'url_ai'
+
+                return
+
+            if self.state == 'url_ai':
+                self.send_to_openai_url()
+
+                if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
+                    self.state = 'url_creating'
+
+                return
+
+            if self.state == 'url_creating':
+                self.create_products_url()
+
+                try:
+                    total = len(json.loads(self.ai_response or "[]"))
+                except:
+                    total = 0
+
+                if self.last_processed_product_index >= total:
+                    self.state = 'done'
+
+                return
+
+        # ================= EXCEL =================
+        elif self.excel_file:
+
+            if self.state in ['draft', 'processing']:
+                self.state = 'excel_parsing'
+                return
+
+            if self.state == 'excel_parsing':
+                self.parse_excel()
+                self.state = 'excel_ai'
+                return
+
+            if self.state == 'excel_ai':
+                self.send_to_openai_pdf_excel()
+                self.state = 'excel_creating'
+                return
+
+            if self.state == 'excel_creating':
+                self.create_products_pdf_excel()
+                self.state = 'done'
+                return
+
+        # ================= PDF =================
+        elif self.pdf_file:
+
+            if self.state in ['draft', 'processing']:
+                self.state = 'pdf_extracting'
+                return
+
+            if self.state == 'pdf_extracting':
+                self.extract_pdf()
+
+                if self.current_page >= self.total_pages:
+                    self.state = 'pdf_ai'
+
+                return
+
+            if self.state == 'pdf_ai':
+                self.send_to_openai_pdf_excel()
+
+                if self.last_ai_page >= self.total_pages:
+                    self.state = 'pdf_creating'
+
+                return
+
+            if self.state == 'pdf_creating':
+                self.create_products_pdf_excel()
+                self.state = 'done'
+                return
+   
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
       

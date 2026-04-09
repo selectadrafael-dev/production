@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from openai import OpenAI
 import re
+import fitz
 
  
 
@@ -36,7 +37,20 @@ class VendorImportJob(models.Model):
     logo_file = fields.Binary()
 
     extracted_text = fields.Text()
+    current_page = fields.Integer(
+        string="Current PDF Page",
+        default=0
+    )
+    total_pages = fields.Integer(string="Total Pages", default=0)
+    last_ai_page = fields.Integer(string="Last AI Page", default=0)
     ai_response = fields.Text()
+    priority = fields.Integer(default=10)
+
+    apify_run_id = fields.Char()
+    apify_dataset_id = fields.Char()
+    url_batch_index = fields.Integer(default=0)
+    last_processed_product_index = fields.Integer(default=0)
+    last_created_page = fields.Integer(default=0)
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -55,10 +69,16 @@ class VendorImportJob(models.Model):
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
 
         raw_data = self._run_apify_actor(self.data_url)
-        _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:300]}")
+
+        _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:200]}")
+
+        # 🔥 VERY IMPORTANT FIX
+        if raw_data is None:
+            _logger.warning("APIFY NOT READY → WAIT NEXT CRON")
+            return
 
         if not raw_data:
-            _logger.error("APIFY FAILED → NO DATA")
+            _logger.error("APIFY FAILED → EMPTY DATASET")
             return
 
         structured_data = self._normalize_url_data(raw_data)
@@ -75,7 +95,6 @@ class VendorImportJob(models.Model):
 
 
     #------excel processing methof---------------
-
     
     def parse_excel(self):
 
@@ -84,163 +103,114 @@ class VendorImportJob(models.Model):
         excel_bytes = base64.b64decode(self.excel_file)
 
         wb = load_workbook(filename=BytesIO(excel_bytes))
-        sheet = wb.active
 
-        image_loader = SheetImageLoader(sheet)
-
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-        }
+        headers = {"User-Agent": "Mozilla/5.0"}
 
         pages = []
-        current_page = []
         page_number = 1
-        page_size = 20
 
-        for idx, row in enumerate(sheet.iter_rows()):
+        # 🔥 PROCESS ALL SHEETS
+        for sheet in wb.worksheets:
 
-            _logger.warning(f"ROW {idx} PROCESSING")
+            _logger.warning(f"PROCESSING SHEET → {sheet.title}")
 
-            row_text_parts = []
-            row_images = []
+            image_loader = SheetImageLoader(sheet)
 
-            # -------- TEXT --------
-            for cell in row:
-                val = str(cell.value or "").strip()
-                if val:
-                    row_text_parts.append(val)
+            for idx, row in enumerate(sheet.iter_rows()):
 
-            row_text = " ".join(row_text_parts).strip()
+                row_text_parts = []
+                row_images = []
 
-            if not row_text:
-                _logger.warning(f"ROW {idx} EMPTY → SKIPPED")
-                continue
-
-            # -------- 1️⃣ EMBEDDED IMAGE --------
-            for cell in row:
-                try:
-                    if image_loader.image_in(cell.coordinate):
-
-                        pil_img = image_loader.get(cell.coordinate)
-
-                        buffer = BytesIO()
-                        pil_img.save(buffer, format="JPEG")
-
-                        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-                        row_images.append(img_base64)
-
-                        _logger.warning(f"ROW {idx} → EMBED IMAGE USED")
-                        break
-
-                except Exception:
-                    continue
-
-            # -------- 2️⃣ URL IMAGE --------
-            if not row_images:
-
+                # ================= TEXT =================
                 for cell in row:
                     val = str(cell.value or "").strip()
+                    if val:
+                        row_text_parts.append(val)
 
-                    if val.startswith("http"):
+                # skip empty rows
+                if not row_text_parts:
+                    continue
 
-                        try:
-                            response = requests.get(val, headers=headers, timeout=10)
+                # skip header
+                if idx == 0:
+                    _logger.warning(f"SKIP HEADER ROW → {sheet.title}")
+                    continue
 
-                            if response.status_code != 200:
-                                continue
+                # ================= STRUCTURED TEXT =================
+                row_text = f"""
+                ROW_DATA:
+                {" | ".join(row_text_parts)}
 
-                            content_type = response.headers.get("Content-Type", "")
+                RULE:
+                - THIS IS EXACTLY ONE PRODUCT
+                - DO NOT SPLIT THIS ROW
+                - THIS ROW MAY BE A VARIANT OF ANOTHER ROW
+                - USE SIMILAR ID/SKU TO GROUP VARIANTS
+                """
 
-                            # DIRECT IMAGE
-                            if "image" in content_type:
+                # ================= IMAGE (EMBEDDED FIRST) =================
+                for cell in row:
+                    try:
+                        if image_loader.image_in(cell.coordinate):
 
-                                if len(response.content) > 5000:
+                            pil_img = image_loader.get(cell.coordinate)
+
+                            buffer = BytesIO()
+                            pil_img.save(buffer, format="JPEG")
+
+                            img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+                            row_images.append(img_base64)
+
+                            _logger.warning(f"ROW {idx} → EMBED IMAGE FOUND")
+                            break
+
+                    except Exception:
+                        continue
+
+                # ================= IMAGE (URL FALLBACK) =================
+                if not row_images:
+
+                    for cell in row:
+                        val = str(cell.value or "").strip()
+
+                        if val.startswith("http"):
+                            try:
+                                response = requests.get(val, headers=headers, timeout=10)
+
+                                if response.status_code != 200:
+                                    continue
+
+                                if "image" in response.headers.get("Content-Type", ""):
                                     img_base64 = base64.b64encode(response.content).decode("utf-8")
                                     row_images.append(img_base64)
 
-                                    _logger.warning(f"ROW {idx} → DIRECT IMAGE URL")
+                                    _logger.warning(f"ROW {idx} → IMAGE FROM URL")
                                     break
 
-                            # HTML PAGE
-                            elif "text/html" in content_type:
+                            except Exception:
+                                _logger.warning(f"ROW {idx} → IMAGE URL FAILED")
 
-                                soup = BeautifulSoup(response.text, "html.parser")
+                # ================= DEBUG =================
+                _logger.warning(f"SHEET → {sheet.title} | ROW → {idx}")
+                _logger.warning(f"TEXT PARTS → {len(row_text_parts)}")
+                _logger.warning(f"IMAGES FOUND → {len(row_images)}")
 
-                                best_img = None
-
-                                for img in soup.find_all("img"):
-
-                                    src = img.get("src")
-                                    if not src:
-                                        continue
-
-                                    if src.startswith("/"):
-                                        src = urljoin(val, src)
-
-                                    try:
-                                        img_res = requests.get(src, headers=headers, timeout=5)
-
-                                        if img_res.status_code == 200 and len(img_res.content) > 10000:
-                                            best_img = img_res.content
-                                            break
-
-                                    except Exception:
-                                        continue
-
-                                if best_img:
-                                    img_base64 = base64.b64encode(best_img).decode("utf-8")
-                                    row_images.append(img_base64)
-
-                                    _logger.warning(f"ROW {idx} → SCRAPED IMAGE")
-                                    break
-
-                        except Exception:
-                            _logger.warning(f"ROW {idx} → URL FAILED")
-
-            # -------- DEBUG --------
-            _logger.warning(f"ROW {idx} → TEXT LENGTH: {len(row_text)}")
-            _logger.warning(f"ROW {idx} → IMAGES FOUND: {len(row_images)}")
-
-            # -------- STORE --------
-            current_page.append({
-                "text": row_text,
-                "images": row_images
-            })
-
-            # -------- PAGINATION --------
-            if len(current_page) >= page_size:
+                # ================= STORE =================
                 pages.append({
                     "page": page_number,
-                    "rows": current_page
+                    "text": row_text,
+                    "images": row_images,
+                    "row_index": idx,
+                    "sheet": sheet.title
                 })
-                current_page = []
+
                 page_number += 1
 
-        # -------- LAST PAGE --------
-        if current_page:
-            pages.append({
-                "page": page_number,
-                "rows": current_page
-            })
+        # ================= FINAL =================
+        self.extracted_text = json.dumps(pages)
 
-        # -------- FINAL FORMAT --------
-        final_pages = []
-
-        for page in pages:
-
-            combined_text = "\n".join([r["text"] for r in page["rows"]])
-
-            final_pages.append({
-                "page": page["page"],
-                "text": combined_text,
-                "images": page["rows"]
-            })
-
-        self.extracted_text = json.dumps(final_pages)
-
-        _logger.warning(f"EXCEL DONE → {len(final_pages)} PAGES")
-
+        _logger.warning(f"EXCEL DONE → TOTAL ROWS: {len(pages)}")
 
     #---------------- MAIN FLOW ----------------
    
@@ -250,22 +220,24 @@ class VendorImportJob(models.Model):
 
         try:
 
-            # ================= URL FLOW =================
+            #================= URL FLOW =================
             if self.data_url:
                 _logger.warning("FLOW → URL")
 
                 self.parse_url()
 
                 if not self.extracted_text:
-                    _logger.error("URL PARSE FAILED")
+                    _logger.warning("URL NOT READY → WAIT NEXT CRON")
                     return
 
+                _logger.warning("STEP → SEND TO AI (URL)")
                 self.send_to_openai_url()
 
                 if not self.ai_response:
-                    _logger.error("URL AI FAILED")
+                    _logger.error("URL AI FAILED → STOP")
                     return
 
+                _logger.warning("STEP → CREATE PRODUCTS (URL)")
                 self.create_products_url()
 
             # ================= EXCEL FLOW =================
@@ -273,7 +245,20 @@ class VendorImportJob(models.Model):
                 _logger.warning("FLOW → EXCEL")
 
                 self.parse_excel()
+
+                if not self.extracted_text:
+                    _logger.error("EXCEL PARSE FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → SEND TO AI (EXCEL)")
                 self.send_to_openai_pdf_excel()
+
+                # 🔥 CRITICAL FIX
+                if not self.ai_response:
+                    _logger.error("EXCEL AI FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
                 self.create_products_pdf_excel()
 
             # ================= PDF FLOW =================
@@ -281,103 +266,215 @@ class VendorImportJob(models.Model):
                 _logger.warning("FLOW → PDF")
 
                 self.extract_pdf()
+
+                if not self.extracted_text:
+                    _logger.error("PDF EXTRACTION FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → SEND TO AI (PDF)")
                 self.send_to_openai_pdf_excel()
+
+                if not self.ai_response:
+                    _logger.error("PDF AI FAILED → STOP")
+                    return
+
+                _logger.warning("STEP → CREATE PRODUCTS (PDF)")
                 self.create_products_pdf_excel()
 
             else:
                 raise Exception("No input found")
 
-            self.state = "done"
+            # ================= FINAL STATE CONTROL =================
+
+            # ✅ URL FLOW
+            if self.data_url:
+                total_batches = getattr(self, "url_total_batches", 0)
+                current_batch = getattr(self, "url_batch_index", 0)
+
+                if total_batches and current_batch >= total_batches:
+                    _logger.warning("URL → ALL BATCHES COMPLETED ✅")
+                    self.state = 'done'
+                else:
+                    _logger.warning("URL → WAITING FOR NEXT BATCH")
+                    self.state = 'processing'
+
+            # ✅ PDF / EXCEL FLOW
+            else:
+                if self.current_page >= self.total_pages:
+                    _logger.warning("PROCESS IMPORT → ALL PAGES COMPLETED")
+                    self.state = 'done'
+                else:
+                    _logger.warning("PROCESS IMPORT → WAITING FOR NEXT BATCH")
+                    self.state = 'processing'
 
         except Exception as e:
             _logger.error(f"PROCESS FAILED → {str(e)}")
             self.state = "failed"
-
    
     # ---------------- PDF ----------------
 
     def extract_pdf(self):
 
-        _logger.warning("PDF → START EXTRACTION")
-
+        _logger.warning("PDF → START EXTRACTION (BATCH MODE)")
         pdf_bytes = base64.b64decode(self.pdf_file)
 
-        MAX_RETRIES = 2
-        success = False
+        MAX_RETRIES = 3
 
-        for attempt in range(MAX_RETRIES):
+        # 🔥 BATCH CONFIG
+        BATCH_SIZE = 3
+        PAGE_DELAY = 2
+        BATCH_DELAY = 5
 
+        all_pages = []
+
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        except Exception as e:
+            _logger.exception(f"PDF OPEN FAILED → {str(e)}")
+            self.state = "failed"
+            return
+
+        total_pages = len(doc)
+        self.total_pages = total_pages
+
+        # 🔥 RESUME LOG (NEW)
+        _logger.warning(f"RESUMING FROM PAGE → {self.current_page or 0}")
+
+        start_page = self.current_page or 0
+        end_page = min(start_page + BATCH_SIZE, total_pages)
+
+        _logger.warning(f"PDF TOTAL PAGES → {total_pages}")
+        _logger.warning(f"BATCH → Processing pages {start_page+1} to {end_page}")
+
+        for i in range(start_page, end_page):
+
+            page = doc[i]
+            _logger.warning(f"PROCESSING PAGE {i + 1}")
+
+            # ================= CREATE SINGLE PAGE PDF =================
             try:
-                _logger.warning(f"FLASK CALL ATTEMPT {attempt + 1}")
+                single_pdf = fitz.open()
+                single_pdf.insert_pdf(doc, from_page=i, to_page=i)
 
-                response = requests.post(
-                    "https://pdf-extractor-staging.onrender.com/extract",
-                    files={"file": ("catalog.pdf", pdf_bytes, "application/pdf")},
-                    timeout=180
-                )
-
-                if response.status_code != 200:
-                    _logger.warning(f"FLASK ERROR: {response.status_code}")
-                    continue
-
-                pages = response.json()
-
-                # ================= VALIDATION =================
-                if not isinstance(pages, list) or not pages:
-                    _logger.error("INVALID FLASK RESPONSE → EMPTY OR WRONG FORMAT")
-                    continue
-
-                _logger.warning(f"RECEIVED {len(pages)} PAGES FROM FLASK")
-
-                # ================= NORMALIZATION =================
-                normalized_pages = []
-
-                for page in pages:
-
-                    text = page.get("text", "")
-                    images = page.get("images", [])
-
-                    if not text and not images:
-                        continue
-
-                    normalized_pages.append({
-                        "page": page.get("page"),
-                        "text": text,
-                        "images": images
-                    })
-
-                if not normalized_pages:
-                    _logger.error("NO VALID PAGES AFTER NORMALIZATION")
-                    continue
-
-                # ================= STORE =================
-                self.extracted_text = json.dumps(normalized_pages)
-
-                _logger.warning(
-                    f"PDF EXTRACTED SAMPLE → {self.extracted_text[:200]}"
-                )
-
-                success = True
-                break
+                pdf_bytes_io = io.BytesIO()
+                single_pdf.save(pdf_bytes_io)
+                pdf_bytes_io.seek(0)
 
             except Exception as e:
-                _logger.exception(f"FLASK CALL FAILED → {str(e)}")
+                _logger.exception(f"FAILED TO SPLIT PAGE {i+1} → {str(e)}")
+                continue
 
-            time.sleep(5)
+            # ================= CALL FLASK =================
+            page_success = False
 
-        # ================= FINAL STATUS =================
-        if not success:
-            _logger.error("PDF EXTRACTION FAILED AFTER RETRIES")
+            for attempt in range(MAX_RETRIES):
+
+                try:
+                    _logger.warning(f"FLASK CALL PAGE {i+1} → ATTEMPT {attempt + 1}")
+
+                    response = requests.post(
+                        "https://pdf-extractor-staging.onrender.com/extract",
+                        files={"file": ("page.pdf", pdf_bytes_io, "application/pdf")},
+                        timeout=120
+                    )
+
+                    if response.status_code != 200:
+                        _logger.warning(f"FLASK ERROR PAGE {i+1}: {response.status_code}")
+                        continue
+
+                    page_data = response.json()
+
+                    # ================= FORMAT SUPPORT =================
+                    if isinstance(page_data, dict):
+                        pages = page_data.get("pages", [])
+                    elif isinstance(page_data, list):
+                        pages = page_data
+                    else:
+                        pages = []
+
+                    if not pages:
+                        _logger.warning(f"EMPTY PAGE DATA PAGE {i+1}")
+                        continue
+
+                    _logger.warning(f"PAGE {i+1} → RECEIVED {len(pages)} BLOCKS")
+
+                    # ================= NORMALIZATION =================
+                    for p in pages:
+
+                        text = p.get("text", "")
+                        images = p.get("images", [])
+
+                        if not text and not images:
+                            continue
+
+                        all_pages.append({
+                            "page": i + 1,
+                            "text": text,
+                            "images": images
+                        })
+
+                    page_success = True
+                    break
+
+                except Exception as e:
+                    _logger.exception(f"FLASK CALL FAILED PAGE {i+1} → {str(e)}")
+
+                time.sleep(5)
+
+            if not page_success:
+                _logger.error(f"PAGE {i+1} FAILED AFTER RETRIES")
+
+            time.sleep(PAGE_DELAY)
+
+        # ================= UPDATE PROGRESS =================
+        self.current_page = end_page
+
+        # ================= STORE =================
+        try:
+            existing = []
+
+            if self.extracted_text:
+                try:
+                    existing = json.loads(self.extracted_text)
+                except Exception:
+                    existing = []
+
+            combined = existing + all_pages
+
+            self.extracted_text = json.dumps(combined)
+
+            _logger.warning(f"BATCH STORED → {len(all_pages)} pages")
+            _logger.warning(f"TOTAL STORED → {len(combined)} pages")
+            _logger.warning(f"EXTRACTED DATA SIZE → {len(self.extracted_text)}")
+
+        except Exception as e:
+            _logger.exception(f"FAILED TO STORE DATA → {str(e)}")
             self.state = "failed"
+            return
 
+        # ================= 🔥 CRITICAL FIX =================
+        if self.current_page < total_pages:
 
+            _logger.warning(f"JOB NOT FINISHED → NEXT START PAGE {self.current_page + 1}")
+
+            # 🔥 FORCE JOB TO CONTINUE
+            self.state = "processing"
+
+            time.sleep(BATCH_DELAY)
+
+        else:
+
+            _logger.warning("ALL PAGES PROCESSED ✅")
+            self.state = "done"
+
+        _logger.warning("PDF EXTRACTION BATCH COMPLETED")
 
     # ---------------- OPENAI ----------------
-
     def send_to_openai_url(self):
 
         import time
         import re
+        import json
 
         self.state = "ai_processing"
 
@@ -398,86 +495,73 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # 🔥 FLATTEN BLOCKS
+        # ================= LOAD EXISTING =================
+        existing_products = []
+        if self.ai_response:
+            try:
+                existing_products = json.loads(self.ai_response)
+            except:
+                existing_products = []
+
+        current_batch = getattr(self, "url_batch_index", 0)
+
+        # ================= FLATTEN =================
         all_blocks = [
             b for p in pages for b in p.get("blocks", [])
         ]
 
-        # 🔥 MAKE ORDER CONSISTENT
-        all_blocks = sorted(all_blocks, key=lambda x: (x.get("text") or "")[:50])
+        _logger.warning(f"RAW BLOCKS → {len(all_blocks)}")
 
-        _logger.warning(f"TOTAL BLOCKS → {len(all_blocks)}")
+        # ================= CLEAN =================
+        cleaned_blocks = self._clean_scraped_blocks(all_blocks)
 
-        # 🔥 LIMIT TO PREVENT OVERLOAD
-        MAX_BLOCKS = 400
-        if len(all_blocks) > MAX_BLOCKS:
-            all_blocks = all_blocks[:MAX_BLOCKS]
+        _logger.warning(f"CLEAN BLOCKS → {len(cleaned_blocks)}")
+        _logger.warning(f"REMOVED BLOCKS → {len(all_blocks) - len(cleaned_blocks)}")
 
-        # ======================================================
-        # 🔥🔥 NEW: FILTER OUT NON-PRODUCT BLOCKS (SAFE INSERT)
-        # ======================================================
+        # Sort for consistency
+        cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
 
-        def is_valid_block(text):
-            if not text:
-                return False
-
-            text = text.lower().strip()
-
-            # ❌ noise
-            noise_keywords = [
-                "cookie", "privacy", "login", "menu",
-                "navigation", "home", "accept", "terms"
-            ]
-
-            if any(n in text for n in noise_keywords):
-                return False
-
-            # ✅ allow more product-like text
-            if len(text) < 15:
-                return False
-
-            return True
-
-        # 🔥 APPLY FILTER
-        all_blocks = [
-            b for b in all_blocks
-            if is_valid_block(b.get("text", ""))
-        ]
-
-        _logger.warning(f"FILTERED BLOCKS → {len(all_blocks)}")
-
-        # =====================================================
-        # 🔥 CONTINUE NORMAL FLOW (UNCHANGED)
-        # =====================================================
-
-        BLOCK_BATCH_SIZE = 20
+        # ================= BATCH =================
+        BLOCK_BATCH_SIZE = 20  # 🔥 SAFE for memory
 
         batched_blocks = [
-            all_blocks[i:i + BLOCK_BATCH_SIZE]
-            for i in range(0, len(all_blocks), BLOCK_BATCH_SIZE)
+            cleaned_blocks[i:i + BLOCK_BATCH_SIZE]
+            for i in range(0, len(cleaned_blocks), BLOCK_BATCH_SIZE)
         ]
 
-        _logger.warning(f"TOTAL BLOCK BATCHES → {len(batched_blocks)}")
+        total_batches = len(batched_blocks)
 
-        all_products = []
+        _logger.warning(f"TOTAL BLOCK BATCHES → {total_batches}")
+        _logger.warning(f"CURRENT BATCH → {current_batch}")
 
-        for batch_index, block_batch in enumerate(batched_blocks):
+        # ================= STOP IF DONE =================
+        if current_batch >= total_batches:
+            _logger.warning("ALL URL BATCHES PROCESSED ✅")
+            return
 
-            _logger.warning(f"AI → PROCESSING BLOCK BATCH {batch_index + 1}")
+        # ================= PROCESS ONE BATCH =================
+        block_batch = batched_blocks[current_batch]
 
-            combined_text = "\n\n".join([
-                f"{b.get('text','')} | IMAGE: {b.get('image','')}"
-                for b in block_batch
-            ])
+        _logger.warning(f"PROCESSING BLOCK COUNT → {len(block_batch)}")
+        _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
 
-            # 🔥 HARD LIMIT (prevents timeout)
-            combined_text = combined_text[:12000]
+        # 🔥 DO NOT LIMIT AGAIN (FIXED)
+        combined_text = "\n\n---\n\n".join([
+            f"{b.get('text','')}\nIMAGE_URL: {b.get('image','')}"
+            for b in block_batch
+        ])
 
-            if not combined_text.strip():
-                continue
+        if not combined_text.strip():
+            _logger.warning("EMPTY COMBINED TEXT → SKIP")
+            return
 
-            # ✅ FULL STRONG PROMPT (UNCHANGED)
-            prompt = f"""
+        # ================= SAFETY LIMIT =================
+        if len(combined_text) > 15000:
+            combined_text = combined_text[:15000]
+            _logger.warning("TEXT TRIMMED → PREVENT TOKEN OVERFLOW")
+
+        # ================= PROMPT =================
+        prompt = f"""
             You are a highly precise e-commerce product extraction engine.
 
             You are processing raw scraped website content.
@@ -560,59 +644,60 @@ class VendorImportJob(models.Model):
             TEXT TO PROCESS
             =====================================
 
-            {combined_text}
-            """
+        {combined_text}
+        """
 
-            try:
-                response = client.responses.create(
-                    model="gpt-4.1-mini",
-                    input=prompt,
-                    temperature=0,  
-                    timeout=60
-                )
+        # ================= OPENAI =================
+        try:
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=prompt,
+                temperature=0,
+                timeout=60
+            )
 
-                result = response.output_text.strip()
+            result = response.output_text.strip()
+            result = re.sub(r"^```(?:json)?|```$", "", result).strip()
 
-                # 🔥 SAFE MARKDOWN CLEANUP
-                result = re.sub(r"^```(?:json)?|```$", "", result).strip()
+            parsed = json.loads(result)
 
-                # 🔥 SAFE JSON PARSE
-                try:
-                    parsed = json.loads(result)
-                except Exception:
-                    _logger.warning("JSON PARSE FAILED → SKIPPING BATCH")
-                    continue
+            if isinstance(parsed, list):
 
-                # 🔥 FILTER EMPTY PRODUCTS
-                if isinstance(parsed, list):
-                    cleaned = [p for p in parsed if p.get("name")]
-                    all_products.extend(cleaned)
-                    _logger.warning(f"BATCH PRODUCTS → {len(cleaned)}")
+                cleaned = [p for p in parsed if p.get("name")]
 
-            except Exception as e:
-                _logger.warning(f"AI ERROR → {str(e)}")
-                continue
+                _logger.warning(f"AI RETURNED → {len(cleaned)} PRODUCTS")
 
-            time.sleep(1)
+                if len(cleaned) < 5:
+                    _logger.warning("⚠️ LOW EXTRACTION → CHECK BLOCK QUALITY")
 
-        # 🔥 DEDUPLICATE PRODUCTS
-        unique = {}
-        for p in all_products:
-            key = (p.get("name") or "").lower().strip()[:40]
-            if key and key not in unique:
-                unique[key] = p
+                existing_products.extend(cleaned)
 
-        all_products = list(unique.values())
+                _logger.warning(f"TOTAL ACCUMULATED → {len(existing_products)}")
 
-        _logger.warning(f"FINAL UNIQUE PRODUCTS → {len(all_products)}")
+            else:
+                _logger.warning("AI RESPONSE NOT LIST")
 
-        self.ai_response = json.dumps(all_products)
+        except Exception as e:
+            _logger.warning(f"AI ERROR → {str(e)}")
+            return
 
-        _logger.warning(f"TOTAL AI PRODUCTS → {len(all_products)}")
+        # ================= SAVE PROGRESS =================
+        self.ai_response = json.dumps(existing_products)
+        self.url_batch_index = current_batch + 1
 
-    #===========pdf and excel open ai OPENAI======================
+        _logger.warning(f"NEXT BATCH INDEX → {self.url_batch_index}")
+
+        # ================= SAFE EXIT =================
+        _logger.warning("CRON EXIT → CONTINUE NEXT RUN")
+        return
+
+    #===========pdf and excel open ai OPENAI=========================
+
 
     def send_to_openai_pdf_excel(self):
+
+        import json
+        import time
 
         self.state = "ai_processing"
 
@@ -633,33 +718,204 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # ================= BATCHING =================
-        BATCH_SIZE = 5
+        # 🔥 detect excel
+        is_excel = any("row_index" in p for p in pages)
 
-        batched_pages = [
-            pages[i:i + BATCH_SIZE]
-            for i in range(0, len(pages), BATCH_SIZE)
-        ]
+        _logger.warning(f"MODE DETECTED → {'EXCEL' if is_excel else 'PDF'}")
 
-        _logger.warning(f"TOTAL BATCHES → {len(batched_pages)}")
+        # ================= EXCEL MODE =================
+        if is_excel:
+
+            _logger.warning(f"EXCEL MODE → TOTAL ROWS: {len(pages)}")
+
+            products = []
+
+            for idx, row in enumerate(pages):
+
+                row_text = row.get("text", "")
+                images = row.get("images", [])
+
+                _logger.warning(f"ROW {idx} → PROCESSING")
+                _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
+
+                prompt = f"""
+                You are a structured Excel product parser.
+
+                Each input represents EXACTLY ONE ROW = ONE PRODUCT.
+
+                =====================================
+                COLUMN UNDERSTANDING (CRITICAL)
+                =====================================
+
+                The row contains mixed values like:
+
+                - ID (e.g. 94601, 12345)
+                - Range (e.g. 2-66, 11-00)
+                - Stock numbers
+                - Prices
+                - Links (http...)
+                - Image references
+
+                YOU MUST:
+
+                1. IDENTIFY PRODUCT ID
+                - Usually numeric (e.g. 94601)
+                - Column name may vary (KOD, SKU, ID, CODE)
+
+                2. IDENTIFY PRODUCT NAME
+                - MUST NOT be:
+                    - pure numbers
+                    - ranges (e.g. 2-66)
+                    - links
+                    - dates
+                    - column headers like FOTO
+
+                - If no clear name:
+                    → GENERATE NAME like:
+                    "Product <ID>"
+
+                3. DESCRIPTION:
+                - Short summary from row
+
+                4. CATEGORY:
+                - Guess intelligently (e.g. bottle → Drinkware)
+
+                =====================================
+                VARIANT DETECTION (VERY IMPORTANT)
+                =====================================
+
+                - If multiple rows share SAME ID
+                → they are VARIANTS of same product
+                - ALSO extract variant attributes from the row:
+    
+                Examples:
+                - Colors → Black, Blue, Red
+                - Sizes → S, M, L
+                - Range values (e.g. 2-66) → treat as Size or Option
+
+                - If row contains variation info:
+                    → put inside "variants"
+
+                - If no clear attribute:
+                    → create:
+                       "attributes": {{
+                            "Variant": "<value from row>"
+                        }}
+
+               =====================================
+                VARIANT GROUPING (MANDATORY - STRICT)
+                =====================================
+
+                - Every product MUST have "variant_group"
+
+                - Extract product ID from the row:
+                    (examples: 94601, 92070, ANT021)
+
+                - That ID MUST be used as variant_group
+
+                - RULES:
+                    - SAME ID → SAME variant_group
+                    - DIFFERENT ID → DIFFERENT product
+                    - NEVER leave variant_group empty
+                    - NEVER return null
+
+                - If ID exists → use it
+                - If ID is a mixture of numerical data and string → use it, but never use date or range
+                - If ID unclear → use first numeric value in row
+
+                =====================================
+                OUTPUT FORMAT (STRICT)
+                =====================================
+
+                 [
+                    {{
+                        "name": "",
+                        "description": "",
+                        "category": "",
+                        "variants": [
+                            {{
+                                "attributes": {{
+                                    "Color": ""
+                                }},
+                                "image_index": 0,
+                                "stock": null
+                            }}
+                        ]
+                    }}
+                ]
+
+                =====================================
+                ROW DATA
+                =====================================
+
+                {row_text}
+                """
+
+                try:
+                    response = client.responses.create(
+                        model="gpt-4.1-mini",
+                        input=prompt,
+                        timeout=60
+                    )
+
+                    result = response.output_text.strip()
+
+                    if "```" in result:
+                        result = result.split("```")[1]
+
+                    if result.lower().startswith("json"):
+                        result = result[4:]
+
+                    parsed = json.loads(result)
+
+                    # 🔥 enforce ONE product per row
+                    if isinstance(parsed, list) and parsed:
+                        parsed = parsed[0]
+
+                    if not isinstance(parsed, dict):
+                        continue
+
+                    # 🔥 attach image (CRITICAL FIX)
+                    if images:
+                        parsed["image"] = images[0]
+
+                    products.append(parsed)
+
+                    _logger.warning(f"ROW {idx} → PRODUCT PARSED WITH IMAGE")
+
+                except Exception as e:
+                    _logger.warning(f"ROW {idx} FAILED → {str(e)}")
+                    continue
+
+            # final structure
+            self.ai_response = json.dumps([{
+                "page": 1,
+                "products": products
+            }])
+
+            _logger.warning(f"EXCEL PRODUCTS TOTAL → {len(products)}")
+
+            return
+
+        # ================= PDF MODE (UNCHANGED) =================
 
         page_products = []
 
-        # ================= LOOP =================
-        for batch_index, batch in enumerate(batched_pages):
+        start_index = self.last_ai_page or 0
+        _logger.warning(f"AI RESUME FROM PAGE INDEX → {start_index}")
 
-            _logger.warning(f"AI → PROCESSING BATCH {batch_index + 1}")
+        for i, page in enumerate(pages[start_index:], start=start_index):
 
-            combined_text = "\n\n".join([
-                p.get("text", "") for p in batch if p.get("text")
-            ])
+            page_no = page.get("page")
+            page_text = page.get("text", "")
+            images = page.get("images", [])
 
-            if not combined_text.strip():
-                _logger.warning("EMPTY TEXT → SKIP BATCH")
+            if not page_text.strip() and not images:
                 continue
 
-            prompt = f"""
-            You are an advanced product extraction and interpretation engine for catalog PDFs.
+            _logger.warning(f"AI → PROCESSING PAGE {page_no}")
+
+            prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
             =====================
             CORE RULES (STRICT)
@@ -669,9 +925,16 @@ class VendorImportJob(models.Model):
             2. NO explanation
             3. NO markdown
             4. NO text outside JSON
-            5. DO NOT duplicate products
+            5. DO NOT duplicate products WITHIN THE SAME PAGE
             6. DO NOT skip any product
-            7. EACH product must appear exactly once
+            7. EACH product must appear exactly once PER PAGE
+
+            IMPORTANT GLOBAL RULE:
+
+            - This input represents ONLY ONE PAGE of a catalog
+            - You MUST extract ONLY products visible on THIS PAGE
+            - DO NOT repeat products from previous pages
+            - DO NOT assume products continue across pages
 
             =====================
             PRODUCT DETECTION LOGIC
@@ -688,169 +951,281 @@ class VendorImportJob(models.Model):
             - If SINGLE main product:
             → return ONE product
 
-            - If MULTIPLE products:
+            - If MULTIPLE distinct products:
             → extract EACH product separately
 
-            - If repeated items:
-            → treat EACH visible item as a unique product
+            IMPORTANT:
+
+            - If multiple images exist → assume multiple products
+            - DO NOT collapse multiple items into one product
+            - If unsure → split into multiple products instead of merging
+
+            CRITICAL:
+
+            - Products are typically aligned with images
+            - Each image or grouped images usually represent a product
+            - DO NOT treat the whole page as one product
+
+            =====================
+            VARIANT DETECTION LOGIC (CRITICAL)
+            =====================
+
+            Products in catalogs may appear as multiple similar images WITHOUT explicit labels like "color" or "size".
+
+            You MUST detect variants using visual, structural, and contextual clues.
+
+            A product HAS VARIANTS ONLY IF:
+
+            - The items are clearly the SAME product design
+            - Differences are ONLY color, size, or minor variation
+            - The items would share the same product name in a store
+
+            DO NOT group items as variants if:
+            - They are different product types
+            - They have different shapes or purposes
+            - They would be listed separately in an e-commerce store
+
+            =====================
+            🔥 CRITICAL VARIANT COUNT RULE (NEW)
+            =====================
+
+            - If multiple similar items are displayed in a row or grid:
+            → EACH visible item MUST be treated as a variant
+
+            - You MUST COUNT the number of visible items
+            - DO NOT estimate
+            - DO NOT reduce the count
+
+            EXAMPLES:
+
+            - If 10 shirts are visible → return 10 variants
+            - If 6 bottles are shown → return 6 variants
+
+            GRID RULE:
+
+            - Each grid item = 1 variant
+
+            VISUAL PRIORITY:
+
+            - Images override text
+            - If images show more items than text → trust images
+
+            FAIL CONDITION:
+
+            - Returning fewer variants than visible items is WRONG
+
+            =====================
+            VARIANT RULES
+            =====================
+
+            - Each product appears ONLY ONCE per page
+            - Variants must be grouped under "variants"
+            - If no variants exist → DO NOT include "variants"
+
+            ATTRIBUTE INFERENCE:
+
+            - If difference looks like color → use "Color"
+            - If difference looks like size → use "Size"
+            - If unclear → use "Variant"
+
+            =====================
+            VARIANT IMAGE MAPPING (VERY IMPORTANT)
+            =====================
+
+            - Each variant MUST map to an image
+
+            - Provide:
+            "image_index": index of image (starting from 0)
+
+            STRICT RULE:
+
+            - Number of variants MUST NOT exceed number of images
+            - If multiple variants exist → distribute across images
+
+            =====================
+            WHEN TO SPLIT PRODUCTS
+            =====================
+
+            Treat items as SEPARATE products ONLY IF:
+            - Names are clearly different
+            - Designs are significantly different
+            - They are unrelated items
+
+            If unsure:
+            → Prefer splitting into separate products
+
+            =====================
+            ANTI-REPETITION RULE
+            =====================
+
+            - If same product appears multiple times on THIS PAGE → return it ONLY ONCE
+
+            =====================
+            MINIMUM EXTRACTION RULE
+            =====================
+
+            - You MUST extract at least ONE product
+            - NEVER return empty list
 
             =====================
             OUTPUT FORMAT
             =====================
 
             [
-            {{
-                "name": "",
-                "description": "",
-                "category": ""
-            }}
+                {{
+                    "name": "",
+                    "description": "",
+                    "category": "",
+                    "variants": [
+                        {{
+                            "attributes": {{
+                                "Color": ""
+                            }},
+                            "image_index": 0,
+                            "stock": null
+                        }}
+                    ]
+                }}
             ]
 
-            =====================
-            TEXT TO ANALYZE
-            =====================
+            PAGE CONTEXT:
+            - This page contains product images
 
-            {combined_text}
+            TEXT TO ANALYZE:
+            {page_text}
             """
 
-            MAX_RETRIES = 3
-            success = False
+            try:
+                image_inputs = [
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:image/jpeg;base64,{img}"
+                    }
+                    for img in images[:10]
+                ]
 
-            for attempt in range(MAX_RETRIES):
-                try:
-                    response = client.responses.create(
-                        model="gpt-4.1-mini",
-                        input=prompt,
-                        temperature=0,
-                        timeout=60
-                    )
+                response = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=[{
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": prompt}] + image_inputs
+                    }],
+                    timeout=60
+                )
 
-                    result = response.output_text.strip()
-                    success = True
-                    break
+                result = response.output_text.strip()
 
-                except Exception as e:
-                    _logger.warning(f"RETRY {attempt+1} FAILED → {str(e)}")
-
-            if not success:
-                _logger.error("FINAL FAILURE → SKIP BATCH")
+            except Exception as e:
+                _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 continue
 
-            # ================= CLEAN RESPONSE =================
             if "```" in result:
                 result = result.split("```")[1]
 
             if result.lower().startswith("json"):
                 result = result[4:]
 
-            result = result.strip()
-
             try:
                 parsed = json.loads(result)
             except Exception:
-                _logger.warning("INVALID JSON → SKIP BATCH")
-                continue
+                parsed = []
 
-            if isinstance(parsed, list) and parsed:
+            if not isinstance(parsed, list):
+                parsed = []
 
-                for page in batch:
+            page_products.append({
+                "page": page_no,
+                "products": parsed
+            })
 
-                    page_products.append({
-                        "page": page.get("page"),
-                        "products": parsed
-                    })
+            self.last_ai_page = i + 1
 
-                _logger.warning(f"BATCH PRODUCTS → {len(parsed)}")
+            _logger.warning(f"PAGE {page_no} → STORED: {len(parsed)}")
 
-            import time
             time.sleep(1)
 
-        # ================= FINAL =================
         self.ai_response = json.dumps(page_products)
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
-       #self.state = "ai_done"
-
-
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
 
-            best_img = None
-            best_score = 0
-            seen_hashes = set()
+                best_img = None
+                best_score = 0
+                seen_hashes = set()
 
-            for img in images:
+                for img in images:
 
-                try:
-                    img_bytes = base64.b64decode(img)
-                    size = len(img_bytes)
+                    try:
+                        img_bytes = base64.b64decode(img)
+                        size = len(img_bytes)
 
-                    # ❌ Skip tiny images (logos/icons)
-                    if size < 10000:
+                        # ❌ Skip tiny images (logos/icons)
+                        if size < 10000:
+                            continue
+
+                        # ❌ Skip extremely large (full lifestyle pages)
+                        if size > 800000:
+                            continue
+
+                        # ================= IMAGE ANALYSIS =================
+                        pil_img = Image.open(BytesIO(img_bytes))
+                        width, height = pil_img.size
+
+                        # ❌ Skip extremely small resolution
+                        if width < 150 or height < 150:
+                            continue
+
+                        # ❌ Skip extreme aspect ratios (banners, strips)
+                        aspect_ratio = width / height if height else 1
+
+                        if aspect_ratio > 3 or aspect_ratio < 0.3:
+                            continue
+
+                        # ================= DUPLICATE CHECK =================
+                        img_hash = hash(img_bytes[:100])  # fast partial hash
+
+                        if img_hash in seen_hashes:
+                            continue
+
+                        seen_hashes.add(img_hash)
+
+                        # ================= SCORING =================
+                        score = 0
+
+                        # ✅ Prefer medium-good sizes
+                        if 20000 < size < 300000:
+                            score += 200
+
+                        # ✅ Prefer square-ish product images
+                        if 0.7 < aspect_ratio < 1.5:
+                            score += 150
+
+                        # ✅ Prefer decent resolution
+                        if width > 400 and height > 400:
+                            score += 150
+
+                        # ❌ Penalize too wide/tall
+                        if aspect_ratio > 2 or aspect_ratio < 0.5:
+                            score -= 100
+
+                        # ❌ Penalize very large images (likely lifestyle)
+                        if size > 500000:
+                            score -= 150
+
+                        # Base size contribution
+                        score += size / 2000
+
+                        # ================= SELECT BEST =================
+                        if score > best_score:
+                            best_score = score
+                            best_img = img
+
+                    except Exception:
                         continue
 
-                    # ❌ Skip extremely large (full lifestyle pages)
-                    if size > 800000:
-                        continue
-
-                    # ================= IMAGE ANALYSIS =================
-                    pil_img = Image.open(BytesIO(img_bytes))
-                    width, height = pil_img.size
-
-                    # ❌ Skip extremely small resolution
-                    if width < 150 or height < 150:
-                        continue
-
-                    # ❌ Skip extreme aspect ratios (banners, strips)
-                    aspect_ratio = width / height if height else 1
-
-                    if aspect_ratio > 3 or aspect_ratio < 0.3:
-                        continue
-
-                    # ================= DUPLICATE CHECK =================
-                    img_hash = hash(img_bytes[:100])  # fast partial hash
-
-                    if img_hash in seen_hashes:
-                        continue
-
-                    seen_hashes.add(img_hash)
-
-                    # ================= SCORING =================
-                    score = 0
-
-                    # ✅ Prefer medium-good sizes
-                    if 20000 < size < 300000:
-                        score += 200
-
-                    # ✅ Prefer square-ish product images
-                    if 0.7 < aspect_ratio < 1.5:
-                        score += 150
-
-                    # ✅ Prefer decent resolution
-                    if width > 400 and height > 400:
-                        score += 150
-
-                    # ❌ Penalize too wide/tall
-                    if aspect_ratio > 2 or aspect_ratio < 0.5:
-                        score -= 100
-
-                    # ❌ Penalize very large images (likely lifestyle)
-                    if size > 500000:
-                        score -= 150
-
-                    # Base size contribution
-                    score += size / 2000
-
-                    # ================= SELECT BEST =================
-                    if score > best_score:
-                        best_score = score
-                        best_img = img
-
-                except Exception:
-                    continue
-
-            return best_img
+                return best_img
 
 
     #----marchin AI-----------------------------------
@@ -921,12 +1296,13 @@ class VendorImportJob(models.Model):
         return None
 
 
-    # ---------------- PRODUCT CREATION ----------------
+    # ---------------- PRODUCT CREATION URL----------------
 
     def create_products_url(self):
 
         import requests
         import base64
+        import json
 
         if not self.ai_response:
             _logger.warning("NO AI RESPONSE")
@@ -938,7 +1314,6 @@ class VendorImportJob(models.Model):
         try:
             products = json.loads(self.ai_response)
 
-            # ✅ safety (AI may return dict instead of list)
             if isinstance(products, dict):
                 products = [products]
 
@@ -946,29 +1321,81 @@ class VendorImportJob(models.Model):
             _logger.error(f"INVALID AI JSON → {str(e)}")
             return
 
-        created_count = 0
+        TOTAL_PRODUCTS = len(products)
+        start_index = self.last_processed_product_index or 0
 
-        for product in products:
+        _logger.warning(f"TOTAL AI PRODUCTS → {TOTAL_PRODUCTS}")
+        _logger.warning(f"START INDEX → {start_index}")
+
+        created_count = 0
+        skipped_count = 0
+
+        MAX_PRODUCTS_PER_RUN = 30  # ✅ safe batching
+
+        CATEGORY_MAPPING = {
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "cup": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
+        }
+
+        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
+        if not parent_category:
+            parent_category = category_obj.create({'name': "All Products"})
+
+        end_index = min(start_index + MAX_PRODUCTS_PER_RUN, TOTAL_PRODUCTS)
+
+        _logger.warning(f"PROCESSING RANGE → {start_index} to {end_index}")
+
+        for idx in range(start_index, end_index):
+
+            product = products[idx]
 
             name = product.get("name")
             if not name:
+                skipped_count += 1
                 continue
 
             description = product.get("description", "")
-            category_name = product.get("category") or "Uncategorized"
+            raw_category = (product.get("category") or "").lower()
 
-            # ✅ CATEGORY
-            category = category_obj.search([('name', '=', category_name)], limit=1)
+            # ================= CATEGORY =================
+            mapped_category = "General"
+            for key, val in CATEGORY_MAPPING.items():
+                if key in raw_category:
+                    mapped_category = val
+                    break
+
+            category = category_obj.search([
+                ('name', '=', mapped_category),
+                ('parent_id', '=', parent_category.id)
+            ], limit=1)
+
             if not category:
-                category = category_obj.create({'name': category_name})
+                category = category_obj.create({
+                    'name': mapped_category,
+                    'parent_id': parent_category.id
+                })
 
-            # ✅ DUPLICATE PROTECTION (IMPROVED)
+            # ================= DUPLICATE CHECK =================
             existing = product_obj.search([
                 ('name', 'ilike', name.strip())
             ], limit=1)
 
             if existing:
-                _logger.warning(f"DUPLICATE SKIPPED → {name}")
+                _logger.warning(f"SKIPPED DUPLICATE → {name}")
+                skipped_count += 1
                 continue
 
             vals = {
@@ -979,56 +1406,80 @@ class VendorImportJob(models.Model):
                 'website_published': False,
             }
 
-            #================= IMAGE HANDLING (IMPROVED) =================
-
-            image_url = (
-                product.get("image")
-                or product.get("image_url")
-                or product.get("raw_image")
-            )
+            # ================= IMAGE =======================
+            image_url = product.get("image")
 
             if image_url and isinstance(image_url, str) and image_url.startswith("http"):
+
                 try:
                     _logger.warning(f"FETCHING IMAGE → {image_url}")
 
-                    res = requests.get(image_url, timeout=15)
+                    res = requests.get(image_url, timeout=5, stream=True)
 
-                    if res.status_code == 200 and res.content:
-                        #vals['image_1920'] = base64.b64encode(res.content)
-                        vals['image_1920'] = base64.b64encode(res.content).decode("utf-8")
-                    else:
-                        _logger.warning(f"INVALID IMAGE RESPONSE → {image_url}")
+                    # ✅ STATUS CHECK
+                    if res.status_code != 200:
+                        _logger.warning(f"IMAGE HTTP ERROR → {res.status_code}")
+                        return
+
+                    # ✅ CONTENT TYPE CHECK
+                    content_type = res.headers.get("Content-Type", "")
+                    if "image" not in content_type:
+                        _logger.warning(f"NOT AN IMAGE → {content_type}")
+                        return
+
+                    # ✅ MEMORY SAFE READ (LIMIT SIZE)
+                    content = res.raw.read(500000, decode_content=True)
+
+                    if not content:
+                        _logger.warning("EMPTY IMAGE CONTENT")
+                        return
+
+                    vals['image_1920'] = base64.b64encode(content).decode("utf-8")
+
+                    _logger.warning("IMAGE STORED SUCCESSFULLY")
 
                 except Exception as e:
-                    _logger.warning(f"IMAGE FETCH FAILED → {image_url} | {str(e)}")
+                    _logger.warning(f"IMAGE FAILED → {str(e)}")
 
             else:
-                _logger.warning(f"NO VALID IMAGE → {name}")
+                _logger.warning(f"NO VALID IMAGE URL → {image_url}")
 
-            #================= CREATE PRODUCT =================
-
+            # ================= CREATE =================
             try:
                 product_obj.create(vals)
                 created_count += 1
+
             except Exception as e:
-                _logger.error(f"PRODUCT CREATE FAILED → {name} | {str(e)}")
+                _logger.error(f"CREATE FAILED → {name} | {str(e)}")
+                skipped_count += 1
                 continue
 
-            # ✅ commit in batches (safe for large imports)
-            if created_count % 50 == 0:
+            # ================= SAFE COMMIT =================
+            if created_count % 10 == 0:
                 self.env.cr.commit()
+
+        # ================= SAVE PROGRESS =================
+        self.last_processed_product_index = end_index
+
+        _logger.warning(f"CREATED THIS RUN → {created_count}")
+        _logger.warning(f"SKIPPED THIS RUN → {skipped_count}")
+        _logger.warning(f"NEXT START INDEX → {self.last_processed_product_index}")
+
+        # ================= FINAL =================
+        if self.last_processed_product_index >= TOTAL_PRODUCTS:
+            _logger.warning("ALL PRODUCTS CREATED ✅")
+        else:
+            _logger.warning("MORE PRODUCTS REMAIN → NEXT CRON WILL CONTINUE")
 
         self.env.cr.commit()
 
-        _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
-    
 
     #==========create pdf and excel product======================
     
     def create_products_pdf_excel(self):
 
-        def is_valid_product_image(img_base64):
-            return True  # keep Excel safe
+        import json
+        import re
 
         if not self.ai_response or not self.extracted_text:
             _logger.warning("NO AI OR EXTRACTED DATA → STOP")
@@ -1044,137 +1495,285 @@ class VendorImportJob(models.Model):
             _logger.error("INVALID JSON → STOP")
             return
 
-        _logger.warning("CREATING PRODUCTS WITH PAGE-AWARE MAPPING")
-        _logger.warning(f"AI PAGES COUNT: {len(ai_pages)}")
+        _logger.warning("CREATING PRODUCTS (PDF + EXCEL FINAL MODE)")
 
         created_count = 0
 
-        # ✅ GLOBAL CACHE (VERY IMPORTANT)
-        used_images = set()
-        image_cache = {}
+        CATEGORY_MAPPING = {
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
+        }
 
-        # ================= LOOP 1 (PAGES) =================
+        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
+        if not parent_category:
+            parent_category = category_obj.create({'name': "All Products"})
+
         for page_data in pages:
 
             page_no = page_data.get("page")
 
             ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
-
             if not ai_page:
-                _logger.warning(f"NO AI DATA FOR PAGE {page_no}")
                 continue
 
             products = ai_page.get("products", [])
-
             if not products:
-                _logger.warning(f"NO PRODUCTS FOUND ON PAGE {page_no}")
                 continue
 
-            _logger.warning(f"PAGE {page_no} → {len(products)} PRODUCTS")
+            #================= EXCEL FLOW ===========================
+            if self.excel_file:
 
-            # ================= LOOP 2 (PRODUCTS) =================
-            for i, product in enumerate(products):
+                grouped_products = {}
 
-                name = product.get("name")
+                for p in products:
+                    raw_name = (p.get("name") or "").strip()
 
-                if not name:
-                    _logger.warning("SKIPPING EMPTY PRODUCT")
-                    continue
+                    match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
 
-                description = product.get("description", "")
-                category_name = product.get("category") or "Uncategorized"
+                    if match:
+                        group_id = match.group(1).upper()
+                    else:
+                        group_id = raw_name.upper()
 
-                category = category_obj.search([('name', '=', category_name)], limit=1)
-                if not category:
-                    category = category_obj.create({'name': category_name})
+                    grouped_products.setdefault(group_id, []).append(p)
 
-                vals = {
-                    'name': name,
-                    'description_sale': description,
-                    'categ_id': category.id,
-                    'sale_ok': True,
-                    'website_published': False,
-                }
+                _logger.warning(f"[EXCEL] GROUPS → {len(grouped_products)}")
 
-                # ================= DUPLICATE PROTECTION =================
-                existing = product_obj.search([('name', '=', name)], limit=1)
-                if existing:
-                    _logger.warning(f"SKIPPED DUPLICATE → {name}")
-                    continue
+                for group_id, group_items in grouped_products.items():
 
-                # ================= IMAGE ENGINE =================
-                row_data = page_data.get("images", [])
-                selected_image = None
+                    main_product = group_items[0]
 
-                if row_data:
+                    name = (main_product.get("name") or "").strip()
+                    description = main_product.get("description", "")
+                    raw_category = (main_product.get("category") or "").lower()
 
-                    # ================= PDF MODE =================
-                    if isinstance(row_data, list) and row_data and isinstance(row_data[0], str):
+                    mapped_category = "General"
+                    for key, val in CATEGORY_MAPPING.items():
+                        if key in raw_category:
+                            mapped_category = val
+                            break
 
-                        available_images = [img for img in row_data if img not in used_images]
+                    category = category_obj.search([
+                        ('name', '=', mapped_category),
+                        ('parent_id', '=', parent_category.id)
+                    ], limit=1)
 
-                        _logger.warning(f"PDF IMAGE MODE → {len(available_images)} usable images")
+                    if not category:
+                        category = category_obj.create({
+                            'name': mapped_category,
+                            'parent_id': parent_category.id
+                        })
 
-                        if available_images:
+                    product = product_obj.search([
+                        ('default_code', '=', group_id)
+                    ], limit=1)
 
-                            if len(available_images) == 1:
-                                selected_image = available_images[0]
+                    if not product:
+                        vals = {
+                            'name': name,
+                            'default_code': group_id,
+                            'description_sale': description,
+                            'categ_id': category.id,
+                            'sale_ok': True,
+                            'website_published': False,
+                        }
 
-                            else:
-                                if name in image_cache:
-                                    selected_image = image_cache[name]
-                                    _logger.warning(f"CACHE HIT → {name}")
+                        image = main_product.get("image")
+                        if image:
+                            vals['image_1920'] = image
 
+                        product = product_obj.create(vals)
+                        created_count += 1
+
+                    for idx, item in enumerate(group_items):
+
+                        attr_value = f"Variant {idx+1}"
+
+                        attribute = self.env['product.attribute'].search([
+                            ('name', '=', "Variant")
+                        ], limit=1)
+
+                        if not attribute:
+                            attribute = self.env['product.attribute'].create({
+                                'name': "Variant"
+                            })
+
+                        value = self.env['product.attribute.value'].search([
+                            ('name', '=', attr_value),
+                            ('attribute_id', '=', attribute.id)
+                        ], limit=1)
+
+                        if not value:
+                            value = self.env['product.attribute.value'].create({
+                                'name': attr_value,
+                                'attribute_id': attribute.id
+                            })
+
+                        line = self.env['product.template.attribute.line'].search([
+                            ('product_tmpl_id', '=', product.id),
+                            ('attribute_id', '=', attribute.id)
+                        ], limit=1)
+
+                        if not line:
+                            self.env['product.template.attribute.line'].create({
+                                'product_tmpl_id': product.id,
+                                'attribute_id': attribute.id,
+                                'value_ids': [(6, 0, [value.id])]
+                            })
+                        else:
+                            if value.id not in line.value_ids.ids:
+                                line.value_ids = [(4, value.id)]
+
+                        # ✅ EXCEL VARIANT IMAGE FIX
+
+                            variant_record = self.env['product.product'].search([
+                                ('product_tmpl_id', '=', product.id),
+                                ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
+                            ], limit=1)
+
+                            if variant_record:
+                                variant_image = item.get("image")
+
+                                if variant_image:
+                                    variant_record.image_1920 = variant_image
+                                    _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id} | {value.name}")
                                 else:
-                                    selected_image = self.match_image_with_ai(name, available_images)
+                                    _logger.warning(f"[EXCEL] NO IMAGE FOR VARIANT → {group_id} | {value.name}")
 
-                                    if selected_image:
-                                        image_cache[name] = selected_image
-                                        _logger.warning("AI MATCHED IMAGE SUCCESS")
-                                    else:
-                                        selected_image = available_images[0]
-                                        _logger.warning("AI FALLBACK USED")
+                continue  # 🔥 protect PDF
 
-                    # ================= EXCEL MODE =================
-                    elif isinstance(row_data, list) and row_data and isinstance(row_data[0], dict):
+            # ================= PDF FLOW =================
+            images = page_data.get("images", [])
+            _logger.warning(f"[PDF] IMAGES FOUND → {len(images)}")
 
-                        total_rows = len(row_data)
+            for product_data in products:
 
-                        row_index = i % total_rows
-                        row_images = row_data[row_index].get("images", [])
+                try:
+                    name = (product_data.get("name") or "").strip()
+                    description = product_data.get("description", "")
+                    raw_category = (product_data.get("category") or "").lower()
+                    variants = product_data.get("variants", [])
 
-                        valid_images = [img for img in row_images if is_valid_product_image(img)]
+                    variant_group = product_data.get("variant_group") or name
+                    variant_group = str(variant_group).strip().upper()
 
-                        if valid_images:
-                            selected_image = valid_images[0]
-                            _logger.warning(f"EXCEL IMAGE SELECTED → ROW {row_index}")
+                    mapped_category = "General"
+                    for key, val in CATEGORY_MAPPING.items():
+                        if key in raw_category:
+                            mapped_category = val
+                            break
 
-                # ================= APPLY IMAGE =================
-                if selected_image:
-                    vals['image_1920'] = selected_image
-                    used_images.add(selected_image)
-                    _logger.warning(f"IMAGE ASSIGNED → {name}")
-                else:
-                    _logger.warning(f"NO IMAGE → {name}")
+                    category = category_obj.search([
+                        ('name', '=', mapped_category),
+                        ('parent_id', '=', parent_category.id)
+                    ], limit=1)
 
-                # ================= CREATE =================
-                product_obj.create(vals)
-                created_count += 1
+                    if not category:
+                        category = category_obj.create({
+                            'name': mapped_category,
+                            'parent_id': parent_category.id
+                        })
 
-                # ✅ COMMIT EVERY 50 PRODUCTS (VERY IMPORTANT)
-                if created_count % 50 == 0:
-                    self.env.cr.commit()
-                    _logger.warning(f"PARTIAL COMMIT → {created_count}")
+                    product = product_obj.search([
+                        ('default_code', '=', variant_group)
+                    ], limit=1)
 
-            _logger.warning(f"PAGE {page_no} DONE")
+                    if not product:
+                        vals = {
+                            'name': name,
+                            'default_code': variant_group,
+                            'description_sale': description,
+                            'categ_id': category.id,
+                            'sale_ok': True,
+                            'website_published': False,
+                        }
 
-        # ================= FINAL COMMIT =================
-        self.env.cr.commit()
+                        if images:
+                            vals['image_1920'] = images[0]
+                            _logger.warning("PRODUCT IMAGE SET")
+
+                        product = product_obj.create(vals)
+                        created_count += 1
+
+                    if not variants:
+                        variants = [{"attributes": {"Variant": name}}]
+
+                    for idx, variant in enumerate(variants):
+
+                        attributes = variant.get("attributes", {})
+
+                        for attr_name, attr_value in attributes.items():
+
+                            if not attr_value:
+                                continue
+
+                            attribute = self.env['product.attribute'].search([
+                                ('name', '=', attr_name)
+                            ], limit=1)
+
+                            if not attribute:
+                                attribute = self.env['product.attribute'].create({
+                                    'name': attr_name
+                                })
+
+                            value = self.env['product.attribute.value'].search([
+                                ('name', '=', attr_value),
+                                ('attribute_id', '=', attribute.id)
+                            ], limit=1)
+
+                            if not value:
+                                value = self.env['product.attribute.value'].create({
+                                    'name': attr_value,
+                                    'attribute_id': attribute.id
+                                })
+
+                            line = self.env['product.template.attribute.line'].search([
+                                ('product_tmpl_id', '=', product.id),
+                                ('attribute_id', '=', attribute.id)
+                            ], limit=1)
+
+                            if not line:
+                                self.env['product.template.attribute.line'].create({
+                                    'product_tmpl_id': product.id,
+                                    'attribute_id': attribute.id,
+                                    'value_ids': [(6, 0, [value.id])]
+                                })
+                            else:
+                                if value.id not in line.value_ids.ids:
+                                    line.value_ids = [(4, value.id)]
+
+                        if images and idx < len(images):
+                            variant_record = self.env['product.product'].search([
+                                ('product_tmpl_id', '=', product.id)
+                            ], limit=1)
+
+                            if variant_record:
+                                variant_record.image_1920 = images[idx]
+                                _logger.warning(f"VARIANT IMAGE SET → {idx}")
+
+                    if created_count % 10 == 0:
+                        self.env.cr.commit()
+
+                except Exception as e:
+                    _logger.error(f"PRODUCT FAILED → {str(e)}")
+                    self.env.cr.rollback()
+                    continue
+
+            self.env.cr.commit()
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
-        _logger.warning("PRODUCT CREATION LOOP COMPLETED")
-
-
 
     #-----URL API FLOW-------------------------------------------
 
@@ -1273,30 +1872,37 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     #---------------- CRON ----------------
+    
     def run_pending_jobs(self):
 
-        jobs = self.search([('state', '=', 'draft')])
+        jobs = self.search(
+            [('state', 'in', ['draft', 'processing'])],
+            order="priority asc, id asc",
+            limit=1
+        )
 
         _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
         for job in jobs:
             try:
                 _logger.warning(f"CRON → START JOB {job.id}")
+                _logger.warning(f"CRON → JOB {job.id} CURRENT STATE: {job.state}")
 
                 job.state = 'processing'
 
                 job.process_import()
 
-                if job.state != 'failed':
-                    job.state = 'done'
+                _logger.warning(f"CRON → JOB {job.id} FINAL STATE: {job.state}")
+
+                # ❌ DO NOT TOUCH STATE HERE
 
                 _logger.warning(f"CRON → JOB {job.id} DONE")
 
-            except Exception:
-                _logger.exception("CRON FAILED")
-                job.state = 'error'
-   
-   #flask setup/installation 
+            except Exception as e:
+                _logger.exception(f"PROCESS FAILED → {str(e)}")
+                job.state = 'failed'
+
+   #=============flask setup/installation=================== 
     def ping_flask_server(self):
       
         try:
@@ -1313,12 +1919,15 @@ class VendorImportJob(models.Model):
 
         for item in items:
 
-            # ✅ FIX: USE "text" FROM APIFY
             text = (item.get("text") or "").strip()
             image = item.get("image")
 
-            if not text:
+            # 🔥 STRICT VALIDATION
+            if not text or len(text) < 5:
                 continue
+
+            if image and isinstance(image, str) and not image.startswith("http"):
+                image = None
 
             blocks.append({
                 "text": text,
@@ -1327,10 +1936,26 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
 
-        return [{
-            "page": 1,
-            "blocks": blocks
-        }]
+        # =====================================================
+        # 🔥 SPLIT INTO MULTIPLE PAGES (CRITICAL FIX)
+        # =====================================================
+
+        PAGE_SIZE = 20  # 🔥 prevents AI overload
+
+        pages = []
+
+        for i in range(0, len(blocks), PAGE_SIZE):
+
+            chunk = blocks[i:i + PAGE_SIZE]
+
+            pages.append({
+                "page": len(pages) + 1,
+                "blocks": chunk
+            })
+
+        _logger.warning(f"NORMALIZED PAGES → {len(pages)}")
+
+        return pages
 
     #---------------clean_scraped_blocks-------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
@@ -1375,7 +2000,8 @@ class VendorImportJob(models.Model):
         return cleaned
     
 
-    #======apify url fetch/scrapp products=============== 
+    #======apify url fetch/scrapp products===============
+    
     def _run_apify_actor(self, url):
 
         token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
@@ -1385,58 +2011,66 @@ class VendorImportJob(models.Model):
 
         ACTOR_ID = "princ_adex~my-actor"
 
-        run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
-        _logger.warning(f"APIFY RUN URL → {run_url}")
+        # =====================================================
+        # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
+        # =====================================================
 
-        payload = {
-            "startUrls": [
-                {"url": url}
-            ]
-        }
+        if not getattr(self, "apify_run_id", False):
 
-        headers = {
-            "Content-Type": "application/json"
-        }
+            run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
 
-        # 🚀 START ACTOR
-        response = requests.post(run_url, json=payload, headers=headers, timeout=30)
+            payload = {
+                "startUrls": [{"url": url}]
+            }
 
-        if response.status_code != 201:
-            raise Exception(f"Apify run failed: {response.text}")
+            headers = {
+                "Content-Type": "application/json"
+            }
 
-        run_data = response.json()
-        run_id = run_data["data"]["id"]
-        dataset_id = run_data["data"]["defaultDatasetId"]
+            response = requests.post(run_url, json=payload, headers=headers, timeout=30)
 
-        _logger.warning(f"APIFY RUN ID → {run_id}")
-        _logger.warning(f"APIFY DATASET ID → {dataset_id}")
+            if response.status_code != 201:
+                raise Exception(f"Apify run failed: {response.text}")
 
-        # 🔁 WAIT FOR ACTOR TO FINISH
-        for _ in range(30):  # ~90 seconds max
-            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?token={token}"
+            run_data = response.json()
 
-            status_res = requests.get(status_url, timeout=20).json()
-            status = status_res["data"]["status"]
+            # ✅ SAVE FOR NEXT CRON
+            self.apify_run_id = run_data["data"]["id"]
+            self.apify_dataset_id = run_data["data"]["defaultDatasetId"]
 
-            _logger.warning(f"APIFY STATUS → {status}")
+            _logger.warning(f"APIFY STARTED → RUN ID {self.apify_run_id}")
 
-            if status == "SUCCEEDED":
-                break
+            # 🔥 IMPORTANT: STOP HERE (NON-BLOCKING)
+            return None
 
-            if status in ["FAILED", "ABORTED", "TIMED-OUT"]:
-                raise Exception(f"Apify run failed with status: {status}")
+        # =====================================================
+        # 🔥 STEP 2: CHECK STATUS
+        # =====================================================
 
-            time.sleep(3)
-        else:
-            raise Exception("Apify run timeout exceeded")
+        status_url = f"https://api.apify.com/v2/actor-runs/{self.apify_run_id}?token={token}"
 
-        # 📦 FETCH DATA WITH LIMIT
-        dataset_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+        status_res = requests.get(status_url, timeout=20).json()
+        status = status_res["data"]["status"]
+
+        _logger.warning(f"APIFY STATUS → {status}")
+
+        if status in ["RUNNING", "READY"]:
+            _logger.warning("APIFY STILL RUNNING → WAIT NEXT CRON")
+            return None
+
+        if status in ["FAILED", "ABORTED", "TIMED-OUT"]:
+            raise Exception(f"Apify run failed with status: {status}")
+
+        # =====================================================
+        # 🔥 STEP 3: FETCH DATA (ONLY WHEN DONE)
+        # =====================================================
+
+        dataset_url = f"https://api.apify.com/v2/datasets/{self.apify_dataset_id}/items"
 
         params = {
             "token": token,
             "limit": 1000,
-            "clean": "true"   # ✅ MUST be string
+            "clean": "true"
         }
 
         dataset_res = requests.get(dataset_url, params=params, timeout=30)
@@ -1448,8 +2082,28 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"APIFY ITEMS FETCHED → {len(data)}")
 
-        # ❗ SAFETY CHECK
         if not data:
             raise Exception("Apify returned empty dataset")
 
+        # 🔥 CLEAN UP (IMPORTANT)
+        self.apify_run_id = False
+        self.apify_dataset_id = False
+
         return data
+
+    #=======validation===================
+    def validate_ai_output(products):
+        for p in products:
+            if "variants" in p:
+                if not isinstance(p["variants"], list):
+                    p["variants"] = []
+
+                for v in p["variants"]:
+                    if "attributes" not in v:
+                        v["attributes"] = {"Variant": "Default"}
+
+        return products
+    
+    #=======keep cron alive================
+    def keep_alive(self):
+        _logger.warning("KEEP ALIVE PING")
