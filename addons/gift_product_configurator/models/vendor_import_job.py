@@ -27,7 +27,7 @@ class VendorImportJob(models.Model):
 
     #Vendor user role
     is_vendor_user = fields.Boolean(string="Vendor User")
-    partner_id = fields.Many2one("res.partner")
+    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
     name = fields.Char(default="Vendor Data Import")
 
