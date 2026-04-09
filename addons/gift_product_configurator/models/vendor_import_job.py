@@ -1939,32 +1939,51 @@ class VendorImportJob(models.Model):
 
     def run_pending_jobs(self):
 
-        jobs = self.search(
-            [('state', 'not in', ['done', 'failed'])],
-            order="priority asc, id asc",
+        # 🔥 STRICT STATE FILTER (ONLY ACTIVE STATES)
+        active_states = [
+            'draft', 'processing',
+            'excel_parsing', 'excel_ai', 'excel_creating',
+            'pdf_extracting', 'pdf_ai', 'pdf_creating',
+            'url_scraping', 'url_ai', 'url_creating'
+        ]
+
+        # 🔥 ALWAYS PICK LATEST JOB (VERY IMPORTANT)
+        job = self.search(
+            [('state', 'in', active_states)],
+            order="id desc",
             limit=1
         )
 
-        _logger.warning(f"CRON → Found {len(jobs)} jobs")
+        _logger.warning(f"CRON → Found {1 if job else 0} job")
 
-        for job in jobs:
+        if not job:
+            return
 
-            if job.lock:
-                _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
-                continue
+        _logger.warning(f"CRON → SELECTED JOB ID → {job.id}")
+        _logger.warning(
+            f"CRON → JOB INPUT → "
+            f"excel={bool(job.excel_file)} "
+            f"pdf={bool(job.pdf_file)} "
+            f"url={bool(job.data_url)}"
+        )
 
-            try:
-                _logger.warning(f"CRON → START JOB {job.id}")
-                job.lock = True
+        # 🔒 LOCK CHECK
+        if job.lock:
+            _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
+            return
 
-                job._process_step()
+        try:
+            _logger.warning(f"CRON → START JOB {job.id}")
+            job.lock = True
 
-            except Exception as e:
-                _logger.exception(f"PROCESS FAILED → {str(e)}")
-                job.state = 'failed'
+            job._process_step()
 
-            finally:
-                job.lock = False
+        except Exception as e:
+            _logger.exception(f"PROCESS FAILED → {str(e)}")
+            job.state = 'failed'
+
+        finally:
+            job.lock = False
    
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
