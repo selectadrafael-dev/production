@@ -116,7 +116,19 @@ class VendorImportJob(models.Model):
 
         # 🔥 GLOBAL SAFE GUARD
         if self.state == 'processing':
-            _logger.warning("STATE = PROCESSING → WAIT NEXT CRON")
+
+            _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
+
+            # 🔥 RESUME BASED ON INPUT TYPE
+            if self.excel_file:
+                self.state = 'excel_parsing'
+
+            elif self.pdf_file:
+                self.state = 'pdf_extracting'
+
+            elif self.data_url:
+                self.state = 'url_scraping'
+
             return
 
         # ================= URL =================
