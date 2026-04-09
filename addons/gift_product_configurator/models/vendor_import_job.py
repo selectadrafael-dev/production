@@ -24,10 +24,10 @@ class VendorImportJob(models.Model):
 
     _name = "vendor.import.job"
     _description = "Vendor Import Job"
-    _inherit = 'res.partner'
 
     #Vendor user role
     is_vendor_user = fields.Boolean(string="Vendor User")
+    partner_id = fields.Many2one("res.partner")
 
     name = fields.Char(default="Vendor Data Import")
 
