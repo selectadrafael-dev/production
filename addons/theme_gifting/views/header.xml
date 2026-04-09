@@ -104,9 +104,10 @@
                             Vendor Data
                           </button> -->
 
-                           <t t-set="user" t-value="request.env.user"/>
+                            <!-- <t t-set="user" t-value="request.env.user"/>
 
-                            <t t-if="not user._is_public() and (user.partner_id.is_vendor_user or user.has_group('base.group_system'))">
+                            <t t-if="not user._is_public() and 
+                                    (user.has_group('base.group_system') or user.partner_id.is_vendor_user)">
 
                                 <button type="button" 
                                         class="vendor-data-link"
@@ -115,7 +116,9 @@
                                     Vendor Data
                                 </button>
 
-                            </t>
+                            </t> -->
+
+                            <t t-esc="request.env.user.partner_id.is_vendor_user"/>
 
                         <a href="/web/session/logout"  t-translation="on">
                          Logout
