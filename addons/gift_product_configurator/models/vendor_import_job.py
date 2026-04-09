@@ -120,7 +120,6 @@ class VendorImportJob(models.Model):
 
             _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
 
-            # 🔥 PRIORITY ORDER (VERY IMPORTANT)
             if self.data_url:
                 self.state = 'url_scraping'
 
@@ -130,7 +129,7 @@ class VendorImportJob(models.Model):
             elif self.pdf_file:
                 self.state = 'pdf_extracting'
 
-            return
+    # 🔥 DO NOT RETURN → CONTINUE EXECUTION
 
         # ================= URL =================
         if self.data_url:
