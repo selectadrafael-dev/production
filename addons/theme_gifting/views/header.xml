@@ -104,19 +104,20 @@
                             Vendor Data
                           </button> -->
 
-                          <t t-if="request.env.user.id != request.env.ref('base.public_user').id 
-                                  and (request.env.user.partner_id.is_vendor_user 
-                                        or request.env.user.has_group('base.group_system'))">
+                            <t t-set="user" t-value="request.env.user"/>
 
-                              <button type="button" 
+                            <t t-if="user.id != request.env.ref('base.public_user').id 
+                                    and (user.partner_id.is_vendor_user 
+                                          or user.has_group('base.group_system'))">
+
+                               <button type="button"
                                       class="vendor-data-link"
                                       data-bs-toggle="modal"
                                       data-bs-target="#vendorDataModal">
-                                  Vendor Data
+                                Vendor Data
                               </button>
 
-                          </t>
-
+                            </t>
 
                         <a href="/web/session/logout"  t-translation="on">
                          Logout
