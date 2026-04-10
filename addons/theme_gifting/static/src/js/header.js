@@ -91,7 +91,7 @@
   ========================= */
 
   function getCatMenu() {
-    return document.querySelector('[data-cat-menu]');
+    return document.querySelector('[data-cat-menu="1"]');
   }
 
   function getRightPanel(menu) {
@@ -126,9 +126,7 @@
     const items = menu.querySelectorAll('.mega-left-item');
     const right = getRightPanel(menu);
 
-    if (right) {
-      right.classList.add('active');
-    }
+    if (right) right.classList.add('active');
 
     panels.forEach(p => {
       const active = p.dataset.panelId === id;
@@ -142,7 +140,7 @@
   }
 
   /* =========================
-     CATEGORY MENU (MAIN FIX)
+     CATEGORY MENU CLICK
   ========================= */
 
   document.addEventListener('click', function (e) {
@@ -150,14 +148,14 @@
     const trigger = e.target.closest('[data-cat-toggle]');
     const menu = getCatMenu();
 
-    // OPEN / CLOSE MENU
+    // CLICK BUTTON
     if (trigger) {
       e.preventDefault();
 
       console.log('🟢 Category button clicked');
 
       if (!menu) {
-        console.warn('❌ Menu not found [data-cat-menu]');
+        console.warn('❌ Menu not found');
         return;
       }
 
@@ -175,9 +173,9 @@
       return;
     }
 
-    // CLICK OUTSIDE → CLOSE
+    // CLICK OUTSIDE
     if (menu && !menu.hasAttribute('hidden')) {
-      if (!e.target.closest('[data-cat-menu]') &&
+      if (!e.target.closest('[data-cat-menu="1"]') &&
           !e.target.closest('[data-cat-toggle]')) {
 
         console.log('🟥 Click outside → closing menu');
