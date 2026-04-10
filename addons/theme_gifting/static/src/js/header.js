@@ -108,7 +108,8 @@ let justOpenedMega = false;
     }
 
     panels.forEach(p => {
-      const active = p.dataset.panelId === id;
+      // const active = p.dataset.panelId === id;
+      const active = String(p.dataset.panelId) === String(id);
 
       p.style.display = active ? 'block' : 'none';
       p.classList.toggle('active', active);
@@ -125,61 +126,80 @@ let justOpenedMega = false;
 
   document.addEventListener('click', function (e) {
 
-    const trigger = e.target.closest('[data-cat-toggle="1"]');
-    const menu = getCatMenu();
+  const trigger = e.target.closest('[data-cat-toggle="1"]');
+  const menu = getCatMenu();
 
-    // CLICK BUTTON
-    if (trigger) {
-      e.preventDefault();
+  // CLICK BUTTON
+  if (trigger) {
+    e.preventDefault();
 
-      console.log('🟢 Category button clicked');
+    console.log('🟢 Category button clicked');
 
-      if (!menu) {
-        console.warn('❌ Menu not found');
-        return;
-      }
-
-      const isOpen = menu.classList.contains('is-open');
-
-      if (!isOpen) {
-          console.log('📂 Opening Mega Menu');
-
-          menu.classList.add('is-open');
-          menu.removeAttribute('hidden');
-
-          // 🔥 block initial hover trigger
-          justOpenedMega = true;
-
-          // 🔥 ensure right panel is hidden on open
-          const right = getRightPanel(menu);
-          if (right) right.classList.remove('active');
-
-        } else {
-          console.log('📁 Closing Mega Menu');
-
-          menu.classList.remove('is-open');
-          menu.setAttribute('hidden', 'hidden');
-
-          resetMegaMenu(menu);
-        }
-
-        return;
+    if (!menu) {
+      console.warn('❌ Menu not found');
+      return;
     }
 
-    // CLICK OUTSIDE
-    if (menu && menu.classList.contains('is-open')) {
-      if (!e.target.closest('[data-cat-menu="1"]') &&
-          !e.target.closest('[data-cat-toggle="1"]')) {
+    const isOpen = menu.classList.contains('is-open');
 
-        console.log('🟥 Click outside → closing menu');
+    if (!isOpen) {
+      console.log('📂 Opening Mega Menu');
 
-        menu.classList.remove('is-open');
-        menu.setAttribute('hidden', 'hidden');
-        resetMegaMenu(menu);
-      }
+      menu.classList.add('is-open');
+      menu.removeAttribute('hidden');
+
+      // 🔥 block first hover trigger
+      justOpenedMega = true;
+
+      // 🔥 FULL HARD RESET (CRITICAL FIX)
+      const panels = menu.querySelectorAll('.mega-panel');
+      const items = menu.querySelectorAll('.mega-left-item');
+      const right = getRightPanel(menu);
+
+      // hide all panels
+      panels.forEach(p => {
+        p.style.display = 'none';
+        p.classList.remove('active');
+      });
+
+      // remove active from all categories
+      items.forEach(i => i.classList.remove('active'));
+
+      // hide right panel completely
+      if (right) right.classList.remove('active');
+
+      // 🔍 DEBUG (you can remove later)
+      console.log('🧼 Reset complete → panels visible:',
+        [...panels].filter(p => p.style.display === 'block').length
+      );
+
+    } else {
+      console.log('📁 Closing Mega Menu');
+
+      menu.classList.remove('is-open');
+      menu.setAttribute('hidden', 'hidden');
+
+      resetMegaMenu(menu);
     }
 
-  });
+    return;
+  }
+
+  // CLICK OUTSIDE
+  if (menu && menu.classList.contains('is-open')) {
+    if (!e.target.closest('[data-cat-menu="1"]') &&
+        !e.target.closest('[data-cat-toggle="1"]')) {
+
+      console.log('🟥 Click outside → closing menu');
+
+      menu.classList.remove('is-open');
+      menu.setAttribute('hidden', 'hidden');
+
+      resetMegaMenu(menu);
+    }
+  }
+
+});
 
   /* =========================
      DESKTOP HOVER
