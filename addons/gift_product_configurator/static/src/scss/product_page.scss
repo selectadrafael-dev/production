@@ -1,0 +1,641 @@
+/* =====================================
+Hide default Odoo product layout safely
+===================================== */
+#product_detail_main{
+    display:flex;
+    gap:30px;
+    margin-top: 30px;
+}
+
+/* LEFT */
+
+#gift-product-left{
+    flex:1;
+}
+
+/* MIDDLE (WIDER) */
+
+#gift-product-middle{
+    flex:1.5;
+}
+
+#gift-product-middle #product_details, 
+#gift-product-left .o_wsale_product_images{
+    width:100% !important;
+    flex:0 0 100% !important;
+    max-width:100% !important;
+}
+
+#gift-product-middle .css_quantity{
+   display: none!important;
+}
+
+#gift-product-middle #add_to_cart_wrap{
+   display: none!important;
+}
+#gift-product-middle .o_wsale_cta_wrapper{
+  display: block !important;
+}
+
+/* RIGHT */
+#gift-product-right{
+    flex:1;
+}
+
+.gift-product-column{
+    min-width:0;
+}
+
+.o_wsale_product_images{
+    position:sticky;
+    top:60px;
+}
+
+#gift-product-left {
+    align-self: flex-start;
+}
+
+#gift-product-left .o_wsale_product_images {
+    position: sticky;
+    top: 60px;
+}
+#product_detail_main,
+#gift-product-left {
+    overflow: visible;
+}
+
+#actual_price .mb3{
+    margin-bottom: 0!important;
+}
+
+@media(max-width:991px){
+
+    #product_detail_main{
+        flex-direction:column;
+    }
+
+    #gift-product-left,
+    #gift-product-middle,
+    #gift-product-right{
+        width:100%;
+    }
+
+    .o_wsale_product_images{
+        position:relative;
+        top:auto;
+    }
+ }
+/* =========================================
+MAIN LAYOUT — 3 COLUMN CONFIGURATOR
+========================================= */
+
+.gift-product-layout {
+display: grid;
+grid-template-columns: 1.2fr 1.4fr 0.9fr;
+gap: 48px;
+align-items: start;
+margin-top: 32px;
+}
+
+/* =========================================
+LEFT — PRODUCT GALLERY
+========================================= */
+
+.gift-gallery {
+position: sticky;
+top: 110px;
+}
+
+.product-image-wrapper {
+position: relative;
+}
+
+.main-product-image {
+width: 100%;
+border-radius: 12px;
+}
+
+/* BADGES */
+
+.flag-badge {
+position: absolute;
+top: 12px;
+left: 12px;
+font-size: 22px;
+}
+
+.offer-badge {
+position: absolute;
+top: 12px;
+left: 56px;
+background: #ff2e2e;
+color: white;
+font-size: 12px;
+padding: 6px 10px;
+border-radius: 6px;
+font-weight: 700;
+}
+
+/* IMAGE NAV ARROWS */
+
+.nav-arrow {
+position: absolute;
+top: 50%;
+transform: translateY(-50%);
+background: rgba(255,255,255,0.95);
+border: none;
+font-size: 22px;
+width: 42px;
+height: 42px;
+border-radius: 50%;
+cursor: pointer;
+box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.nav-arrow.left { left: -16px; }
+.nav-arrow.right { right: -16px; }
+
+/* =========================================
+CENTER — CONFIGURATOR
+========================================= */
+
+.gift-configurator {
+max-width: 520px;
+}
+
+/* TITLE */
+
+.gift-configurator h1 {
+font-size: 28px;
+font-weight: 800;
+margin-bottom: 6px;
+}
+
+/* PRODUCT CODE */
+
+.product-code {
+color: #7a7f8c;
+font-size: 14px;
+margin-bottom: 20px;
+}
+
+/* PROMO BANNER */
+
+.promo-banner {
+background: linear-gradient(90deg, #ffb300, #ff7a00);
+color: white;
+padding: 10px 16px;
+border-radius: 10px;
+font-weight: 700;
+margin-bottom: 18px;
+text-align: center;
+}
+
+/* =========================================
+CONFIGURATION BLOCKS
+========================================= */
+
+.config-block {
+border-top: 1px solid #e5e7ee;
+padding: 18px 0;
+}
+
+.config-header {
+font-weight: 600;
+display: flex;
+justify-content: space-between;
+cursor: pointer;
+}
+
+.config-body {
+margin-top: 14px;
+}
+
+/* =========================================
+VARIANT OPTIONS
+========================================= */
+
+.variant-options {
+display: flex;
+gap: 10px;
+flex-wrap: wrap;
+}
+
+.variant-option {
+border: 1px solid #d6dae6;
+padding: 8px 14px;
+border-radius: 6px;
+background: white;
+cursor: pointer;
+transition: .2s;
+}
+
+.variant-option:hover {
+border-color: #1a73e8;
+}
+
+.variant-option.active {
+background: #1a73e8;
+color: white;
+}
+
+/* =========================================
+QUANTITY TIERS
+========================================= */
+
+#qty_tiers {
+display: flex;
+gap: 12px;
+margin-top: 12px;
+flex-wrap: wrap;
+}
+
+.tier-card {
+border: 1px solid #d6dae6;
+border-radius: 10px;
+padding: 12px 18px;
+text-align: center;
+min-width: 90px;
+background: white;
+cursor: pointer;
+transition: .2s;
+}
+
+.tier-card:hover {
+border-color: #1a73e8;
+}
+
+.tier-card strong {
+display: block;
+font-size: 15px;
+}
+
+.tier-card span {
+font-size: 13px;
+color: #6b7280;
+}
+
+.tier-card.active {
+border: 2px solid #1a73e8;
+background: #eef4ff;
+}
+
+/* =========================================
+CUSTOM QUANTITY INPUT
+========================================= */
+
+.custom-qty {
+display: flex;
+align-items: center;
+border: 1px solid #d6dae6;
+border-radius: 10px;
+overflow: hidden;
+margin-top: 16px;
+}
+
+.custom-qty button {
+width: 46px;
+height: 46px;
+border: none;
+background: white;
+font-size: 18px;
+cursor: pointer;
+}
+
+/*.custom-qty{
+  display: flex;
+}
+@media (max-width: 768px) {
+   .custom-qty{
+        display: block;
+    }
+}*/
+.custom-qty input {
+width: 100%;
+text-align: center;
+border: none;
+font-size: 16px;
+}
+
+.qty_wrapper span{
+ display: block;
+}
+.qty_wrapper a{
+ color: black;
+}
+
+/* =========================================
+RIGHT — QUOTE PANEL
+========================================= */
+
+.gift-quote-panel {
+position: sticky;
+top: 110px;
+background: #f4f6fb;
+border-radius: 14px;
+padding: 26px;
+box-shadow: 0 6px 22px rgba(0,0,0,0.06);
+}
+
+/* PRICE */
+
+.price-display {
+margin-bottom: 20px;
+}
+
+.price {
+font-size: 28px;
+font-weight: 800;
+}
+
+.per-unit {
+color: #6b7280;
+font-size: 13px;
+}
+
+/* BUTTONS */
+
+.btn-quote {
+width: 100%;
+background: #1f2b4a;
+color: white;
+padding: 14px;
+border-radius: 999px;
+border: none;
+font-weight: 700;
+margin-bottom: 12px;
+cursor: pointer;
+}
+
+.btn-ideas {
+width: 100%;
+background: #f2b63f;
+padding: 14px;
+border-radius: 999px;
+border: none;
+font-weight: 700;
+margin-bottom: 14px;
+cursor: pointer;
+}
+
+.btn-sample {
+width: 100%;
+background: white;
+border: 1px solid #d6dae6;
+padding: 12px;
+border-radius: 999px;
+cursor: pointer;
+}
+
+/* =========================================
+Hide original Odoo product page (Odoo 18)
+========================================= */
+
+/* Ensure custom layout displays */
+.gift-product-layout {
+display: grid !important;
+}
+/* =========================================
+Premium dropdown styling
+========================================= */
+
+.print-method-dropdown {
+width: 100%;
+padding: 14px 16px;
+border-radius: 10px;
+border: 1px solid #d6dae6;
+background: #fff;
+font-size: 15px;
+font-weight: 500;
+appearance: none;
+cursor: pointer;
+
+background-image: url("data:image/svg+xml;utf8,<svg fill='%236b7280' height='20' viewBox='0 0 24 24' width='20' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+background-repeat: no-repeat;
+background-position: right 14px center;
+background-size: 18px;
+
+}
+
+/* ===== TOP BANNER ===== */
+
+.gift-top-banner {
+background: linear-gradient(90deg,#ff8a00,#ffb300);
+text-align: center;
+padding: 14px;
+border-radius: 10px;
+margin-bottom: 20px;
+}
+
+.banner-link {
+color: white;
+font-weight: 700;
+text-decoration: none;
+display: block;
+}
+
+.banner-link span {
+display: block;
+font-size: 13px;
+font-weight: 400;
+}
+
+/* ===== GRID LAYOUT ===== */
+
+.gift-product-layout {
+display: grid;
+grid-template-columns: 1.2fr 1.4fr 0.9fr;
+gap: 40px;
+margin-top: 30px;
+}
+
+/* ===== CONFIG BLOCKS ===== */
+
+.config-block {
+border-top: 1px solid #e5e7ee;
+padding: 18px 0;
+}
+
+.form-select {
+width: 100%;
+padding: 10px;
+border-radius: 8px;
+border: 1px solid #d6dae6;
+}
+
+/* ===== TIER CARDS ===== */
+
+#qty_tiers {
+display: flex;
+gap: 10px;
+flex-wrap: wrap;
+}
+
+.qty_tiers_card {
+border: 1px solid #d6dae6;
+padding: 12px;
+border-radius: 10px;
+cursor: pointer;
+text-align: center;
+min-width: 80px;
+background: white;
+}
+
+.tier-card.popular {
+border: 2px solid #f2b63f;
+}
+
+.tier-card.active {
+border: 2px solid #1a73e8;
+background: #eef4ff;
+}
+
+/* ===== QUANTITY INPUT ===== */
+
+.custom-qty {
+display: flex;
+margin-top: 12px;
+border: 1px solid #d6dae6;
+border-radius: 10px;
+overflow: hidden;
+}
+
+.custom-qty button {
+width: 44px;
+border: none;
+background: white;
+}
+
+.custom-qty input {
+width: 100%;
+text-align: center;
+border: none;
+}
+
+/* ===== RIGHT PANEL ===== */
+
+.gift-quote-panel {
+position: sticky;
+top: 110px;
+background: #f4f6fb;
+border-radius: 14px;
+padding: 24px;
+}
+
+/* ===== DRAWER ===== */
+.quote-drawer {
+position: fixed;
+inset: 0;
+z-index: 9999;
+pointer-events: none;
+}
+
+/* ===== MOBILE ===== */
+
+@media (max-width: 992px) {
+.gift-product-layout {
+    grid-template-columns: 1fr;
+}
+
+.gift-gallery,
+.gift-quote-panel {
+    position: static;
+}
+
+ @media (max-width: 991px) {
+    #gift-product-left .o_wsale_product_images
+    {
+    top: 0!important;
+    }
+ }
+}
+
+.variant-swatch input,
+.variant-btn input {
+  display: none;
+}
+
+.variant-swatch .color-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 2px solid #ddd;
+  cursor: pointer;
+}
+
+.variant-btn span {
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-block;
+}
+
+/* Selected styles */
+.variant-radio:checked + span,
+.variant-radio:checked + .color-circle {
+  border: 2px solid #2b6cb0;
+}
+
+/*brand selection toogle*/
+.branding-hidden {
+    display: none !important;
+}
+
+/*divider*/
+.qty_divider{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:14px;
+    color:#777;
+    margin:20px 0;
+    position:relative;
+}
+
+.qty_divider::before,
+.qty_divider::after{
+    content:"";
+    flex:1;
+    border-bottom:1px solid #ddd;
+    margin:0 10px;
+}
+
+/*variant badge*/
+.variant_attribute .radio_input_value .badge, .variant_attribute select .badge, .variant_attribute label .badge, .js_attribute_value .badge
+{
+   display: none!important;
+}
+
+.variant_attribute .form-check input{
+    width: 30px!important;
+    height: 30px!important;
+}
+
+.variant_attribute .radio_input_value.form-check-label{
+   min-height: 30px!important;
+   padding-left: 8px!important;
+}
+
+.col-form-label .form-check{
+    padding-left: 0!important;
+}
+
+/*modern product styling new*/
+#product_detail {
+    background: linear-gradient(180deg,#f6f8fb 0%,#ffffff 100%);
+    padding: 50px 0;
+}
+/* PRODUCT IMAGE SHOWCASE */
+.o_wsale_product_images {
+    background:#fff;
+    border-radius:14px;
+    padding:40px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.06);
+}
+#product_details hr{
+    border:none;
+    border-top:1px solid #eee;
+    margin:25px 0;
+}

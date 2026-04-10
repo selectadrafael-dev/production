@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data>
+
+    <template id="section_popular_categories"
+              name="Most Popular Categories Section">
+
+      <!--⭐ SAFE: GET CATEGORY BY NAME -->
+      <t t-set="cat"
+         t-value="request.env['product.public.category'].search(
+             [('name','=','Most Popular')], limit=1)"/>
+
+      <!--⭐ SAFE PRODUCT QUERY -->
+      <t t-set="products"
+         t-value="request.env['product.template'].search([
+             ('website_published','=',True),
+             ('sale_ok','=',True),
+             ('public_categ_ids','in',[cat.id])
+         ], order='id desc')"/>
+
+      <section class="most-popular-products bg-light py-5">
+
+        <div class="container">
+
+          <!-- TITLE -->
+          <div class="text-center mb-5">
+            <h2 class="fw-bold" t-esc="cat.name or 'Most Popular'"/>
+            <p class="text-muted">
+              Discover our best-selling products
+            </p>
+          </div>
+
+          <!-- EMPTY STATE -->
+          <t t-if="not products">
+            <div class="text-center text-muted py-5">
+              No products found in this category.
+            </div>
+          </t>
+
+          <!-- CAROUSEL -->
+          <t t-if="products">
+
+            <div id="popularProductsCarousel"
+                    class="carousel slide"
+                    data-bs-ride="carousel"
+                    data-bs-interval="7000"
+                    data-bs-pause="hover"
+                    data-bs-wrap="true">
+
+              <div class="carousel-inner">
+
+                <!-- ⭐ CHUNK PRODUCTS INTO GROUPS OF 4 -->
+                <t t-set="chunk_size" t-value="4"/>
+                <t t-set="total" t-value="len(products)"/>
+
+                <t t-foreach="range(0, total, chunk_size)"
+                   t-as="i">
+
+                  <div t-attf-class="carousel-item #{'active' if i == 0 else ''}">
+
+                    <div class="row g-4">
+
+                      <t t-foreach="products[i:i+chunk_size]"
+                         t-as="product">
+
+                        <div class="col-lg-3 col-md-6 col-6">
+
+                          <t t-call="theme_gifting.product_card">
+                            <t t-set="product" t-value="product"/>
+                          </t>
+
+                        </div>
+
+                      </t>
+
+                    </div>
+
+                  </div>
+
+                </t>
+
+              </div>
+
+              <!-- PREV -->
+              <button class="carousel-control-prev"
+                      type="button"
+                      data-bs-target="#popularProductsCarousel"
+                      data-bs-slide="prev">
+
+                <span class="carousel-control-prev-icon bg-dark rounded-circle p-3"/>
+
+              </button>
+
+              <!-- NEXT -->
+              <button class="carousel-control-next"
+                      type="button"
+                      data-bs-target="#popularProductsCarousel"
+                      data-bs-slide="next">
+
+                <span class="carousel-control-next-icon bg-dark rounded-circle p-3"/>
+
+              </button>
+
+            </div>
+
+          </t>
+
+        </div>
+
+      </section>
+
+    </template>
+
+  </data>
+</odoo>

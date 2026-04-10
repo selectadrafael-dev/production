@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+  <!-- =====================================================
+       HERO SECTION (Reusable Snippet-Style Section)
+       ===================================================== -->
+  <template id="gifting_hero" name="Gifting Hero Slider">
+
+    <!-- IMPORTANT: oe_structure makes section editable -->
+    <section class="gifting-hero carousel slide oe_structure gifting-home"
+             data-bs-ride="carousel"
+             data-snippet="gifting_hero">
+
+             <!--div class="carousel-inner"-->
+              <div class="carousel-inner">
+                   <!-- SLIDE 1 — Your Figma Design -->
+                    <div class="carousel-item active gifting-container carousel-item-active">
+
+                        <div class="container hero-content">
+
+                          <div class="gifting-hero-inner">
+
+                            <!-- LEFT: TEXT -->
+                            <div class="gifting-hero-text"
+                                t-translation="on"
+                                t-options='{"no_edit": true}'>
+
+                              <h1>Branded Solutions That Break Through.</h1>
+
+                              <p>
+                                Elevate your brand with unique experiences that excite
+                                and foster a deeper connection with your employees
+                                and customers.
+                              </p>
+
+                              <a href="/shop" class="btn btn-primary hero-btn">
+                                Explore
+                              </a>
+
+                            </div>
+
+                          </div>
+
+                          <!-- RIGHT: IMAGE -->
+                          <div class="gifting-hero-image">
+                            <img src="/theme_gifting/static/src/img/hero-1.png"
+                                alt="Hero"/>
+                          </div>
+
+                        </div>
+                      </div>
+                   
+                   <!-- SLIDE 2 — Your Figma Design -->
+                  <div class="carousel-item carousel-item-wrapper">
+                    <div class="carousel-item-support">
+                     <img src="/theme_gifting/static/src/img/banners/banner_1a.png"
+                                alt="Hero"/>
+                    </div>
+                  </div>
+                  
+                  <!-- SLIDE 3 — Your Figma Design -->
+                  <div class="carousel-item carousel-item-wrapper">
+                    <div class="carousel-item-support">
+                      <img src="/theme_gifting/static/src/img/banners/banner_2a.png"
+                                alt="Hero"/>
+                    </div>
+                  </div>
+
+              </div>
+             <!--div class="carousel-inner"-->
+
+     
+
+    </section>
+
+  </template>
+
+
+  <!-- =====================================================
+       HOMEPAGE EXTENSION (SAFE & EDITABLE)
+       ===================================================== -->
+  <template id="homepage" inherit_id="website.homepage">
+
+    <!-- DO NOT REPLACE wrap — insert INSIDE -->
+    <xpath expr="//div[@id='wrap']" position="inside">
+
+      <!-- Your hero section -->
+      <t t-call="theme_gifting.gifting_hero"/>
+
+      <!--⭐ companies logos -->
+      <t t-call="theme_gifting.section_company_logos"/>
+
+      <!--⭐ categpry products -->
+      <t t-call="theme_gifting.section_main_category"/>
+     
+      <!--⭐ section_cta_banner -->
+      <!--t t-call="theme_gifting.section_cta_banner"/-->
+      
+      <!--⭐ new_arrivals -->
+      <t t-call="theme_gifting.section_new_arrivals"/>
+
+       <!--⭐ section_cta_banner -->
+      <t t-call="theme_gifting.section_cta_banner"/>
+      
+       <!--⭐ promotion -->
+      <t t-call="theme_gifting.section_promotions"/>
+
+       <!--⭐ section_cta_banner -->
+      <t t-call="theme_gifting.section_cta_banner"/>
+
+      <!-- ⭐ PROMOTIONAL PRODUCTS -->
+      <t t-call="theme_gifting.section_promotional_products"/>
+
+       <!--⭐ section_cta_banner -->
+      <t t-call="theme_gifting.section_cta_banner"/>
+
+      <!-- ⭐ faq -->
+     <t t-call="theme_gifting.section_faq"/>
+
+    <!-- ⭐ newsletter -->
+    <t t-call="theme_gifting.section_newsletter"/>
+
+    <!--=================================================
+              EMPTY EDITABLE AREA FOR FUTURE SECTIONS
+              (Products, promos, etc.)
+        ================================================= -->
+      <section class="oe_structure"/>
+
+    </xpath>
+  </template>
+</odoo>
