@@ -334,22 +334,32 @@
 }
 
 /* ================= RIGHT PANEL ================= */
+/* ================= RIGHT PANEL ================= */
 
 .mega-right {
   flex: 1;
   padding: 20px 30px;
   overflow-y: auto;
+
   opacity: 0;
   transform: translateX(10px);
-  transition: all 0.2s ease;
+  visibility: hidden;
+  pointer-events: none;
 
-  display: none; /* hidden initially */
+  transition: all 0.25s ease;
 }
 
+/* active state */
 .mega-right.active {
-  display: flex; /* FIX: use flex instead of block */
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+
+  display: flex;
   flex-direction: column;
 }
+
 
 /* grid */
 .mega-panel-grid {

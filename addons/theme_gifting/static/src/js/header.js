@@ -140,25 +140,28 @@
       const isOpen = menu.classList.contains('is-open');
 
       if (!isOpen) {
-        console.log('📂 Opening Mega Menu');
+          console.log('📂 Opening Mega Menu');
 
-        menu.classList.add('is-open');
-        menu.removeAttribute('hidden');
+          menu.classList.add('is-open');
+          menu.removeAttribute('hidden');
 
-        // 🔥 ensure right panel is hidden on open
-        const right = getRightPanel(menu);
-        if (right) right.classList.remove('active');
+            const right = getRightPanel(menu);
+            if (right) {
+              right.classList.remove('active');
+              right.style.opacity = '0';   // force visual reset
+              right.style.transform = 'translateX(10px)'; // reset animation state
+            }
 
-      } else {
-        console.log('📁 Closing Mega Menu');
+        } else {
+          console.log('📁 Closing Mega Menu');
 
-        menu.classList.remove('is-open');
-        menu.setAttribute('hidden', 'hidden');
+          menu.classList.remove('is-open');
+          menu.setAttribute('hidden', 'hidden');
 
-        resetMegaMenu(menu);
-      }
+          resetMegaMenu(menu);
+        }
 
-      return;
+        return;
     }
 
     // CLICK OUTSIDE
