@@ -27,7 +27,7 @@
             
 
             <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
-            <!-- <div class="gifting-search">
+            <div class="gifting-search">
                 <form action="/shop"
                       method="get"
                       class="o_wsale_products_search_form">
@@ -40,13 +40,13 @@
                   <button type="submit">🔍</button>
 
                 </form>
-              </div> -->
+              </div>
 
-             <div class="gifting-search">
+             <!-- <div class="gifting-search">
                 <t t-call="website_sale.search">
                     <t t-set="placeholder">Search gifts...</t>
                 </t>
-            </div>
+            </div> -->
 
               <!-- ACTION ICONS -->
               <div class="gifting-icons">
