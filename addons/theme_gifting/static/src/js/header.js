@@ -67,17 +67,7 @@
 
     });
 
-    //category btn logic
-    document.addEventListener('click', function (e) {
-
-      const btn = e.target.closest('.mobile-cat-toggle');
-      if (!btn) return;
-
-      const mega = btn.nextElementSibling;
-      mega?.classList.toggle('open');
-
-    });
-
+    
     //close btn
     document.addEventListener('click', function (e) {
 
@@ -89,5 +79,48 @@
         }
 
       });
+
+      //category btn logic
+    // document.addEventListener('click', function (e) {
+
+    //   const btn = e.target.closest('.mobile-cat-toggle');
+    //   if (!btn) return;
+
+    //   const mega = btn.nextElementSibling;
+    //   mega?.classList.toggle('open');
+
+    // });
+
+    /* =========================
+   MEGA MENU HOVER SYSTEM
+========================= */
+
+document.addEventListener('DOMContentLoaded', function () {
+
+  const menu = document.querySelector('[data-cat-menu]');
+  if (!menu) return;
+
+  const items = menu.querySelectorAll('.mega-left-item');
+  const panels = menu.querySelectorAll('.mega-panel');
+
+ function showPanel(id) {
+  panels.forEach(p => {
+    const active = p.dataset.panelId === id;
+    p.style.display = active ? 'block' : 'none';
+    p.classList.toggle('active', active);
+  });
+
+  items.forEach(i => {
+    i.classList.toggle('active', i.dataset.catId === id);
+  });
+}
+
+  items.forEach(item => {
+    item.addEventListener('mouseenter', function () {
+      showPanel(this.dataset.catId);
+    });
+  });
+
+});
 
 })();

@@ -42,37 +42,9 @@
                 </form>
               </div>
 
-             <!-- <div class="gifting-search">
-                <t t-call="website_sale.search">
-                    <t t-set="placeholder">Search gifts...</t>
-                </t>
-            </div> -->
-
               <!-- ACTION ICONS -->
               <div class="gifting-icons">
-                  <!--recommended language switcher-->
-                  <!--div class="lang-switcher">
-
-                      <button id="langBtn" class="lang-btn">
-                        <t t-esc="request.env.lang.split('_')[0].upper()"/> ▼
-                      </button>
-
-                      <div id="langMenu" class="lang-menu">
-
-                        <t t-foreach="request.env['res.lang'].search([('active','=',True)])" t-as="lang">
-
-                          <a t-att-href="'/website/lang/%s' % lang.code"
-                            class="lang-item">
-
-                            <t t-esc="lang.name"/>
-
-                          </a>
-
-                        </t>
-
-                      </div>
-                    </div-->
-
+                 
                 <t t-call="website.language_selector"/>
 
                 <!-- Wishlist -->
@@ -151,45 +123,23 @@
                 ☰ All Products
               </button>
 
-              <div class="cat-mega">
+              <div class="cat-mega" data-cat-menu="1" hidden="hidden">
 
-                <!-- Get root categories -->
                 <t t-set="categories"
                   t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
 
-                  <!--t t-set="categories"
-                    t-value="request.env['product.public.category']
-                              .with_context(prefetch_fields=False)
-                              .sudo()
-                              .search([('parent_id','=',False)], order='sequence')"/-->
+                <div class="mega-wrapper">
 
-                <t t-if="categories">
+                  <!-- LEFT SIDEBAR -->
+                  <div class="mega-left">
 
-                  <div class="cat-columns">
+                    <t t-foreach="categories" t-as="cat" t-key="cat.id">
 
-                    <t t-foreach="categories" t-as="cat">
+                      <div class="mega-left-item"
+                          t-att-data-cat-id="cat.id">
 
-                      <div class="cat-col">
-
-                        <!-- Parent category -->
-                        <a t-att-href="'/shop/category/%s' % cat.id"
-                          class="cat-parent">
-                          <t t-esc="cat.name"/>
-                        </a>
-
-                        <!-- Subcategories -->
-                        <t t-if="cat.child_id">
-
-                          <t t-foreach="cat.child_id" t-as="sub">
-
-                            <a t-att-href="'/shop/category/%s' % sub.id"
-                              class="cat-sub">
-                              <t t-esc="sub.name"/>
-                            </a>
-
-                          </t>
-
-                        </t>
+                        <span t-esc="cat.name"/>
+                        <span class="arrow">›</span>
 
                       </div>
 
@@ -197,12 +147,41 @@
 
                   </div>
 
-                </t>
+                  <!-- RIGHT PANEL -->
+                  <div class="mega-right">
+
+                    <t t-foreach="categories" t-as="cat" t-key="cat.id">
+
+                      <div class="mega-panel"
+                          t-att-data-panel-id="cat.id"
+                          style="display:none;">
+
+                        <div class="mega-panel-grid">
+
+                          <t t-if="cat.child_id">
+                            <t t-foreach="cat.child_id" t-as="sub">
+
+                              <a t-att-href="'/shop/category/%s' % sub.id"
+                                class="mega-sub">
+                                <t t-esc="sub.name"/>
+                              </a>
+
+                            </t>
+                          </t>
+
+                        </div>
+
+                      </div>
+
+                    </t>
+
+                  </div>
+
+                </div>
 
               </div>
 
             </div>
-
 
               
             <div class="gifting-links" t-translation="on">
