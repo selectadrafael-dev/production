@@ -303,6 +303,8 @@
 
   display: flex;
   flex-direction: column;
+   max-height: 75vh;       /* match container */
+  overflow-y: auto;       /* enable scroll */
 }
 
 .mega-left-item {
@@ -337,6 +339,9 @@
   flex: 1;
   padding: 20px 30px;
   overflow-y: auto;
+  opacity: 0;
+  transform: translateX(10px);
+  transition: all 0.2s ease;
 
   display: none; /* hidden initially */
 }
@@ -367,16 +372,23 @@
   transform: translateX(3px);
 }
 
-.mega-right {
-  opacity: 0;
-  transform: translateX(10px);
-  transition: all 0.2s ease;
-}
-
 .mega-right.active {
   display: flex;
   opacity: 1;
   transform: translateX(0);
+}
+
+.mega-left::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mega-left::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 4px;
+}
+
+.mega-left::-webkit-scrollbar-thumb:hover {
+  background: #999;
 }
 
 /* ================= MOBILE TOGGLE BUTTON ================= */

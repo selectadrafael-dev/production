@@ -100,8 +100,9 @@
     const right = getRightPanel(menu);
 
     // DESKTOP ONLY → show right panel
-    if (!isMobile() && right) {
-      right.classList.add('active');
+   
+    if (!isMobile()) {
+      if (right) right.classList.add('active');
     }
 
     panels.forEach(p => {
@@ -143,6 +144,10 @@
 
         menu.classList.add('is-open');
         menu.removeAttribute('hidden');
+
+        // 🔥 ensure right panel is hidden on open
+        const right = getRightPanel(menu);
+        if (right) right.classList.remove('active');
 
       } else {
         console.log('📁 Closing Mega Menu');
