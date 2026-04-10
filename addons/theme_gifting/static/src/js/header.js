@@ -59,6 +59,8 @@
      HELPERS
   ========================= */
 
+let justOpenedMega = false;
+
   function getCatMenu() {
     return document.querySelector('[data-cat-menu="1"]');
   }
@@ -145,6 +147,9 @@
           menu.classList.add('is-open');
           menu.removeAttribute('hidden');
 
+          // 🔥 block initial hover trigger
+          justOpenedMega = true;
+
           // 🔥 ensure right panel is hidden on open
           const right = getRightPanel(menu);
           if (right) right.classList.remove('active');
@@ -182,16 +187,22 @@
 
   document.addEventListener('mouseover', function (e) {
 
-    if (isMobile()) return;
+  if (isMobile()) return;
 
-    const item = e.target.closest('.mega-left-item');
-    const menu = getCatMenu();
+  const item = e.target.closest('.mega-left-item');
+  const menu = getCatMenu();
 
-    if (!item || !menu || !menu.classList.contains('is-open')) return;
+  if (!item || !menu || !menu.classList.contains('is-open')) return;
 
-    showPanel(menu, item.dataset.catId);
+  // 🔥 BLOCK first accidental hover
+  if (justOpenedMega) {
+    justOpenedMega = false;
+    return;
+  }
 
-  });
+  showPanel(menu, item.dataset.catId);
+
+});
 
   /* =========================
      MOBILE CATEGORY CLICK
