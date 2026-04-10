@@ -145,7 +145,7 @@
 
   document.addEventListener('click', function (e) {
 
-    const trigger = e.target.closest('[data-cat-toggle]');
+    const trigger = e.target.closest('[data-cat-toggle="1"]');
     const menu = getCatMenu();
 
     // CLICK BUTTON
@@ -176,7 +176,7 @@
     // CLICK OUTSIDE
     if (menu && !menu.hasAttribute('hidden')) {
       if (!e.target.closest('[data-cat-menu="1"]') &&
-          !e.target.closest('[data-cat-toggle]')) {
+          !e.target.closest('[data-cat-toggle="1"]')) {
 
         console.log('🟥 Click outside → closing menu');
 

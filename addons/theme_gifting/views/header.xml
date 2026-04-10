@@ -119,7 +119,8 @@
 
             <div class="gifting-categories" t-translation="on">
 
-              <button class="cat-btn mobile-cat-toggle">
+              <!-- <button class="cat-btn mobile-cat-toggle"> -->
+              <button class="cat-btn mobile-cat-toggle" data-cat-toggle="1">
                 ☰ All Products
               </button>
 
