@@ -2,39 +2,29 @@
 
     <template id="portal_vendor_button" inherit_id="portal.portal_my_home">
 
-        <!-- Insert inside portal cards -->
         <xpath expr="//div[contains(@class, 'o_portal_docs')]" position="inside">
 
             <t t-if="request.env.user.partner_id.is_vendor_user or request.env.user.has_group('base.group_system')">
 
-                <div class="col-lg-4 col-md-6 mb-3">
-                    <div class="card h-100 shadow-sm">
+                <a href="#"
+                   class="o_portal_doc d-flex align-items-center justify-content-start"
+                   data-bs-toggle="modal"
+                   data-bs-target="#vendorDataModal">
 
-                        <div class="card-body d-flex align-items-center">
-
-                            <div class="me-3">
-                                <i class="fa fa-upload fa-2x text-primary"/>
-                            </div>
-
-                            <div>
-                                <h6 class="mb-1">Vendor Data</h6>
-                                <p class="text-muted mb-2">
-                                    Upload product catalog or data
-                                </p>
-
-                                <button type="button"
-                                        class="btn btn-primary btn-sm vendor-data-link"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#vendorDataModal">
-                                    Upload Data
-                                </button>
-
-                            </div>
-
-                        </div>
-
+                    <!-- ICON -->
+                    <div class="o_portal_doc_icon me-3">
+                        <i class="fa fa-upload"/>
                     </div>
-                </div>
+
+                    <!-- TEXT -->
+                    <div class="o_portal_doc_text">
+                        <h5 class="mb-1">Vendor Data</h5>
+                        <p class="mb-0 text-muted">
+                            Upload product catalog or data
+                        </p>
+                    </div>
+
+                </a>
 
             </t>
 

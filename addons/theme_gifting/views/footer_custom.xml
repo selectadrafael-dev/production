@@ -17,9 +17,9 @@
             <div class="row">
 
               <!-- BRAND -->
-              <div class="col-lg-4 col-md-12 mb-4">
+              <div class="col-lg-3 col-md-12 mb-4">
 
-                <img src="/theme_gifting/static/src/img/logo.png"
+                <img src="/theme_gifting/static/src/img/logo_main.jpeg"
                      class="footer-logo"/>
 
                 <p class="footer-tagline">
@@ -29,7 +29,7 @@
               </div>
 
               <!-- CUSTOMER SERVICE -->
-              <div class="col-lg-2 col-md-4 col-6">
+              <div class="col-lg-2 col-md-3 col-6">
 
                 <h6>Müştəri xidməti</h6>
 
@@ -42,7 +42,7 @@
               </div>
 
               <!-- INFORMATION -->
-              <div class="col-lg-2 col-md-4 col-6">
+              <div class="col-lg-2 col-md-3 col-6">
 
                 <h6>Məlumat</h6>
 
@@ -53,9 +53,23 @@
                 </ul>
 
               </div>
+             
+              <!-- INFORMATION -->
+              <div class="col-lg-2 col-md-3 col-6">
+
+                <h6>More Info</h6>
+
+                <ul>
+                  <li><a href="#">Shop (Categories)</a></li>
+                  <li><a href="#">Customer Service</a></li>
+                  <li><a href="#">Our Company</a></li>
+                  <li><a href="#">Contact</a></li>
+                </ul>
+
+              </div>
 
               <!-- CONTACT -->
-              <div class="col-lg-4 col-md-4 col-12">
+              <div class="col-lg-3 col-md-3 col-12">
 
                 <h6>Əlaqə</h6>
 
@@ -91,8 +105,7 @@
           <div class="container d-flex flex-wrap align-items-center justify-content-between">
 
             <div class="footer-left">
-              Şərtlər və qaydalar<br/>
-              © Selectad 2024. All right reserved
+              © Selectad 2026. All right reserved
             </div>
 
             <div class="footer-right d-flex align-items-center gap-3">
