@@ -5,7 +5,7 @@
         <xpath expr="//div[contains(@class, 'o_portal_docs')]" position="inside">
 
             <t t-if="request.env.user.partner_id.is_vendor_user or request.env.user.has_group('base.group_system')">
-
+            <div class="vendor-tool-card">
                 <a href="#"
                    class="o_portal_doc d-flex align-items-center justify-content-start"
                    data-bs-toggle="modal"
@@ -25,7 +25,7 @@
                     </div>
 
                 </a>
-
+            </div>
             </t>
 
         </xpath>
