@@ -42,12 +42,10 @@
                 </form>
               </div> -->
 
-              <div class="gifting-search o_wsale_products_searchbar">
-
-                <t t-call="website_sale.products_searchbar">
+             <div class="gifting-search">
+                <t t-call="website_sale.search">
                     <t t-set="placeholder">Search gifts...</t>
                 </t>
-
             </div>
 
               <!-- ACTION ICONS -->
