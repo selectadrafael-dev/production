@@ -343,6 +343,14 @@
   display: none !important;
 }
 
+.mega-right {
+  display: none;
+}
+
+.mega-right.active {
+  display: block;
+}
+
 /*close mobile*/
 .mobile-close {
   display: none;
