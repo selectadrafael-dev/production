@@ -145,12 +145,9 @@
           menu.classList.add('is-open');
           menu.removeAttribute('hidden');
 
-            const right = getRightPanel(menu);
-            if (right) {
-              right.classList.remove('active');
-              right.style.opacity = '0';   // force visual reset
-              right.style.transform = 'translateX(10px)'; // reset animation state
-            }
+          // 🔥 ensure right panel is hidden on open
+          const right = getRightPanel(menu);
+          if (right) right.classList.remove('active');
 
         } else {
           console.log('📁 Closing Mega Menu');
