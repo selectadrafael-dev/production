@@ -322,28 +322,16 @@
 
 /* ================= RIGHT PANEL ================= */
 .mega-right {
-  display: none; /* 🔥 FULLY remove from layout */
+  display: none !important;  /* 🔥 force hidden always */
 
   flex: 1;
   padding: 20px 30px;
   overflow-y: auto;
-
-  opacity: 0;
-  transform: translateX(10px);
-  visibility: hidden;
-  pointer-events: none;
-
-  transition: all 0.25s ease;
 }
 
-/* active state */
+/* ONLY show when active */
 .mega-right.active {
-  opacity: 1;
-  transform: translateX(0);
-  visibility: visible;
-  pointer-events: auto;
-
-  display: flex;
+  display: flex !important;
   flex-direction: column;
 }
 
