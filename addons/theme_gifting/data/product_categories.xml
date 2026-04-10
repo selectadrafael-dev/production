@@ -29,5 +29,70 @@
             model="product.public.category">
       <field name="name">Promotions</field>
     </record>
+
+    <record id="shop_industry"
+            model="product.public.category">
+      <field name="name">Shop By Industry</field>
+    </record>
+
+    <record id="More"
+            model="product.public.category">
+      <field name="name">More</field>
+    </record>
+
+    <record id="eco_friendly"
+            model="product.public.category">
+      <field name="name">Eco-Friendly</field>
+    </record>
+
+    <record id="trade_shows"
+            model="product.public.category">
+      <field name="name">Trade Shows</field>
+    </record>
+    
+    <record id="bespoke_products"
+            model="product.public.category">
+      <field name="name">Bespoke Products</field>
+    </record>
+
+    <record id="usb_tech"
+            model="product.public.category">
+      <field name="name">USB &amp; Tech</field>
+    </record>
+
+    <record id="outdoor"
+            model="product.public.category">
+      <field name="name">Outdoor</field>
+    </record>
+
+    <record id="keyrings"
+            model="product.public.category">
+      <field name="name">Keyrings</field>
+    </record>
+
+    <record id="clothing"
+            model="product.public.category">
+      <field name="name">Clothing</field>
+    </record>
+
+    <record id="writing"
+            model="product.public.category">
+      <field name="name">Writing</field>
+    </record>
+
+    <record id="Office"
+            model="product.public.category">
+      <field name="name">office</field>
+    </record>
+   
+    <record id="bags"
+            model="product.public.category">
+      <field name="name">Bags</field>
+    </record>
+
+    <record id="drinkware"
+            model="product.public.category">
+      <field name="name">Drinkware</field>
+    </record>
     
 </odoo>
