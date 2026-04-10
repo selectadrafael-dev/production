@@ -1,37 +1,6 @@
 (function () {
   'use strict';
 
-      /* =========================
-        CATEGORY MENU
-      ========================= */
-
-      function getCatMenu() {
-        return document.querySelector('[data-cat-menu]');
-      }
-
-      document.addEventListener('click', function (e) {
-
-        const trigger = e.target.closest('[data-cat-toggle]');
-        const menu = getCatMenu();
-
-        if (trigger) {
-
-          e.preventDefault();
-
-          if (!menu) return;
-
-          menu.hidden = !menu.hidden;
-          return;
-        }
-
-        if (menu && !menu.hidden) {
-          if (!e.target.closest('[data-cat-menu]')) {
-            menu.hidden = true;
-          }
-        }
-
-      });
-
       //mobile nav
       document.addEventListener('click', function (e) {
 
@@ -98,6 +67,10 @@
     return menu?.querySelector('.mega-right');
   }
 
+  function isMobile() {
+    return window.innerWidth <= 992;
+  }
+
   function resetMegaMenu(menu) {
     if (!menu) return;
 
@@ -120,16 +93,20 @@
   function showPanel(menu, id) {
     if (!menu) return;
 
-    console.log('👉 Hover category:', id);
+    console.log('👉 Show category:', id);
 
     const panels = menu.querySelectorAll('.mega-panel');
     const items = menu.querySelectorAll('.mega-left-item');
     const right = getRightPanel(menu);
 
-    if (right) right.classList.add('active');
+    // DESKTOP ONLY → show right panel
+    if (!isMobile() && right) {
+      right.classList.add('active');
+    }
 
     panels.forEach(p => {
       const active = p.dataset.panelId === id;
+
       p.style.display = active ? 'block' : 'none';
       p.classList.toggle('active', active);
     });
@@ -159,14 +136,20 @@
         return;
       }
 
-      const isHidden = menu.hasAttribute('hidden');
+      const isOpen = menu.classList.contains('is-open');
 
-      if (isHidden) {
+      if (!isOpen) {
         console.log('📂 Opening Mega Menu');
+
+        menu.classList.add('is-open');
         menu.removeAttribute('hidden');
+
       } else {
         console.log('📁 Closing Mega Menu');
+
+        menu.classList.remove('is-open');
         menu.setAttribute('hidden', 'hidden');
+
         resetMegaMenu(menu);
       }
 
@@ -174,12 +157,13 @@
     }
 
     // CLICK OUTSIDE
-    if (menu && !menu.hasAttribute('hidden')) {
+    if (menu && menu.classList.contains('is-open')) {
       if (!e.target.closest('[data-cat-menu="1"]') &&
           !e.target.closest('[data-cat-toggle="1"]')) {
 
         console.log('🟥 Click outside → closing menu');
 
+        menu.classList.remove('is-open');
         menu.setAttribute('hidden', 'hidden');
         resetMegaMenu(menu);
       }
@@ -188,15 +172,38 @@
   });
 
   /* =========================
-     HOVER SYSTEM
+     DESKTOP HOVER
   ========================= */
 
   document.addEventListener('mouseover', function (e) {
 
+    if (isMobile()) return;
+
     const item = e.target.closest('.mega-left-item');
     const menu = getCatMenu();
 
-    if (!item || !menu || menu.hasAttribute('hidden')) return;
+    if (!item || !menu || !menu.classList.contains('is-open')) return;
+
+    showPanel(menu, item.dataset.catId);
+
+  });
+
+  /* =========================
+     MOBILE CATEGORY CLICK
+  ========================= */
+
+  document.addEventListener('click', function (e) {
+
+    if (!isMobile()) return;
+
+    const item = e.target.closest('.mega-left-item');
+    const menu = getCatMenu();
+
+    if (!item || !menu || !menu.classList.contains('is-open')) return;
+
+    e.preventDefault();
+
+    console.log('📱 Mobile category clicked:', item.dataset.catId);
 
     showPanel(menu, item.dataset.catId);
 

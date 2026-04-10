@@ -251,6 +251,21 @@
 }
 
 /* ================= MEGA MENU (NEW STRUCTURE) ================= */
+/* ================= CATEGORY MEGA ================= */
+
+.gifting-categories {
+  position: relative;
+  margin-right: 24px;
+}
+
+.cat-btn {
+  background: none;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ================= MEGA MENU (NEW STRUCTURE) ================= */
 
 .cat-mega {
   position: absolute;
@@ -265,6 +280,12 @@
 
   z-index: 9999;
   overflow: hidden;
+
+  display: none; /* controlled by JS */
+}
+
+.cat-mega.is-open {
+  display: block;
 }
 
 /* wrapper */
@@ -316,6 +337,13 @@
   flex: 1;
   padding: 20px 30px;
   overflow-y: auto;
+
+  display: none; /* hidden initially */
+}
+
+.mega-right.active {
+  display: flex; /* FIX: use flex instead of block */
+  flex-direction: column;
 }
 
 /* grid */
@@ -339,21 +367,16 @@
   transform: translateX(3px);
 }
 
-.cat-mega[hidden] {
-  display: none !important;
-}
-
 .mega-right {
-  display: none;
+  opacity: 0;
+  transform: translateX(10px);
+  transition: all 0.2s ease;
 }
 
 .mega-right.active {
-  display: block;
-}
-
-/*close mobile*/
-.mobile-close {
-  display: none;
+  display: flex;
+  opacity: 1;
+  transform: translateX(0);
 }
 
 /* ================= MOBILE TOGGLE BUTTON ================= */
@@ -451,8 +474,11 @@
     gap: 14px;
   }
 
-  /* Mega becomes normal block */
- .cat-mega {
+ /*mega mobile*/
+ /* ================= MOBILE MEGA MENU ================= */
+
+/* Mega becomes normal block */
+.cat-mega {
   position: static;
   width: 100%;
   box-shadow: none;
@@ -465,31 +491,53 @@
   flex-direction: column;
 }
 
-/* left becomes accordion*/
+/* LEFT becomes full width */
 .mega-left {
   width: 100%;
   background: transparent;
   border: none;
 }
 
-/* panels */
-.mega-panel {
-  display: none;
+/* category items (clickable) */
+.mega-left-item {
+  padding: 14px 10px;
+  border-bottom: 1px solid #eee;
 }
 
-/* active panel */
+/* active category */
+.mega-left-item.active {
+  background: #f5f5f5;
+}
+
+/* RIGHT panel behaves like accordion content */
+.mega-right {
+  display: block !important;   /* override desktop logic */
+  padding: 0;
+}
+
+/* each panel hidden by default */
+.mega-panel {
+  display: none;
+  padding: 10px 0 15px 15px;
+  background: #fafafa;
+}
+
+/* active panel shows under category */
 .mega-panel.active {
   display: block;
 }
 
-/* spacing */
-.mega-right {
-  padding: 10px 0;
+/* grid becomes vertical list */
+.mega-panel-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* single column */
-.mega-panel-grid {
-  grid-template-columns: 1fr;
+/* sub links */
+.mega-sub {
+  font-size: 14px;
+  padding: 6px 0;
 }
 }
 
