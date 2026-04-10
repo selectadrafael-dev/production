@@ -236,21 +236,8 @@
   height: 10px;
 }
 
-/* ================= CATEGORY MEGA ================= */
 
-.gifting-categories {
-  position: relative;
-  margin-right: 24px;
-}
 
-.cat-btn {
-  background: none;
-  border: none;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-/* ================= MEGA MENU (NEW STRUCTURE) ================= */
 /* ================= CATEGORY MEGA ================= */
 
 .gifting-categories {
@@ -335,6 +322,8 @@
 
 /* ================= RIGHT PANEL ================= */
 .mega-right {
+  display: none; /* 🔥 FULLY remove from layout */
+
   flex: 1;
   padding: 20px 30px;
   overflow-y: auto;
@@ -359,6 +348,7 @@
 }
 
 
+
 /* grid */
 .mega-panel-grid {
   display: grid;
@@ -378,12 +368,6 @@
 .mega-sub:hover {
   color: #14a66a;
   transform: translateX(3px);
-}
-
-.mega-right.active {
-  display: flex;
-  opacity: 1;
-  transform: translateX(0);
 }
 
 .mega-left::-webkit-scrollbar {
