@@ -246,4 +246,16 @@
 
   });
 
+  document.addEventListener('click', function (e) {
+  const dropdown = e.target.closest('.account-dropdown');
+
+  document.querySelectorAll('.account-dropdown').forEach(d => {
+    if (d !== dropdown) d.classList.remove('open');
+  });
+
+  if (dropdown) {
+    dropdown.classList.toggle('open');
+  }
+});
+
 })();
