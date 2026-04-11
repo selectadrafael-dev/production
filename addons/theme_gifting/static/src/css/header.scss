@@ -162,6 +162,29 @@
   padding: 20px 30px;
 }
 
+.mega-panel-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px 30px;
+}
+
+.mega-sub {
+  display: block !important;
+  text-decoration: none;
+  color: #333;
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 4px 0;
+}
+
+.mega-panel {
+  width: 100%;
+}
+
+.mega-sub {
+  word-break: break-word;
+}
+
 /* =========================================================
    FINAL RESPONSIVE FIX (CLEAN + STABLE)
    ========================================================= */
