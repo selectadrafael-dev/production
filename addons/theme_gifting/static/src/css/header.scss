@@ -216,9 +216,11 @@
 
 }
 
-/* ================= MOBILE (≤767px) ================= */
 
-@media (max-width: 767px) {
+/* ================= MOBILE (768px) ================= */
+@media (max-width: 768px) {
+
+  /* ===== FORCE TRUE MOBILE STRUCTURE ===== */
 
   .gifting-nav-top {
     display: flex;
@@ -226,6 +228,7 @@
     gap: 10px;
   }
 
+  /* ===== ROW 1 ===== */
   .gifting-logo {
     flex: 1;
   }
@@ -234,51 +237,34 @@
     display: block;
   }
 
-  /* FIX choking issue */
+  /* ===== ROW 2 (SEARCH FULL WIDTH) ===== */
+  .gifting-search {
+    width: 100%;
+    order: 2;
+  }
+
+  .gifting-search input {
+    height: 42px;
+  }
+
+  /* ===== ROW 3 (ICONS CLEAN GRID) ===== */
   .gifting-icons {
     width: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); /* 🔥 KEY FIX */
+    gap: 8px;
+    order: 3;
   }
 
   .gifting-icons > * {
-    flex: 1;
-    min-width: 80px;
     text-align: center;
+    font-size: 14px;
   }
 
-  .gifting-search {
-    width: 100%;
-  }
+}
 
-  .gifting-nav-bottom {
-    position: fixed;
-    top: 0;
-    right: -100%;
-    width: 85%;
-    height: 100vh;
-    background: #fff;
-    padding: 70px 20px;
-    transition: right 0.3s ease;
-    flex-direction: column;
+@media (max-width: 576px) {
+  .gifting-icons {
+    display: none;
   }
-
-  .gifting-nav-bottom.open {
-    right: 0;
-  }
-
-  .mobile-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,.4);
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .mobile-overlay.active {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
 }
