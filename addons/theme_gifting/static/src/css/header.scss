@@ -295,35 +295,32 @@
     grid-area: search;
     width: 100%;
 
-    display: flex;
-    justify-content: center; /* center it */
-    margin-top: 12px;
-    margin-bottom: 10px;
+    display: block; /* 🔥 important reset */
+    margin-top: 14px;
+    margin-bottom: 12px;
   }
 
   .gifting-search form {
+    display: flex;
     width: 100%;
-    max-width: 700px; /* 🔥 key: not too wide */
-    
+    max-width: 720px; /* 🔥 controls width */
+    margin: 0 auto;   /* 🔥 CENTERING MAGIC */
+
     background: #fff;
     border-radius: 10px;
     border: 1px solid #e5e5e5;
 
-    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
   }
 
   .gifting-search input {
+    flex: 1;
     padding: 14px 16px;
     font-size: 14px;
   }
 
   .gifting-search button {
     padding: 0 16px;
-  }
-
-  .gifting-search form:focus-within {
-    border-color: #14a66a;
-    box-shadow: 0 0 0 3px rgba(20,166,106,0.1);
   }
 
 }
