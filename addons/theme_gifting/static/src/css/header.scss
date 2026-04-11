@@ -140,6 +140,7 @@
   width: 260px;
   background: #f7f7f7;
   overflow-y: auto;
+  height: 700px;
 }
 
 .mega-left-item {
@@ -154,6 +155,7 @@
 
 .mega-right {
   width: 720px;
+   height: 700px;
   display: none;
 }
 
@@ -246,7 +248,22 @@
 
   /* 🔥 HIDE DESKTOP NAV LINKS COMPLETELY */
   .gifting-nav-bottom {
-    display: none !important;
+    position: fixed;
+    top: 0;
+    right: -100%;   /* hidden off-screen */
+    width: 85%;
+    height: 100vh;
+    background: #fff;
+    padding: 20px;
+    transition: right 0.3s ease;
+    z-index: 9999;
+
+    display: flex;           /* ✅ MUST be visible */
+    flex-direction: column;
+  }
+
+  .gifting-nav-bottom.open {
+    right: 0; /* slide in */
   }
 
   /* ===== HEADER STRUCTURE ===== */
