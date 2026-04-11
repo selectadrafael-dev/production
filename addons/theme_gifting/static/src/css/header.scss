@@ -51,6 +51,7 @@
   border: 1px solid #ddd;
   border-radius: 8px;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
 .gifting-search input {
@@ -353,6 +354,31 @@
 
   .gifting-search {
   backdrop-filter: blur(6px);
+
+
+  /* ================= FINAL POLISH — HEADER RHYTHM ================= */
+  /* tighten menu spacing */
+  .gifting-nav-bottom {
+    padding-bottom: 6px;
+    border-bottom: 1px solid #f2f2f2;
+  }
+
+  /* search spacing refinement */
+  .gifting-search {
+    padding: 8px 0 14px;
+  }
+
+  /* align search perfectly with container */
+  .gifting-search form {
+    width: 92%;
+    max-width: 780px; /* 🔥 slightly reduced for balance */
+  }
+
+  /* 🔥 connect search with next section */
+  .gifting-navbar + * {
+    margin-top: 0; /* remove gap jump */
+  }
+
 }
 
 }
