@@ -1,5 +1,5 @@
 /* =========================================================
-   GIFTING NAVBAR — FINAL PRODUCTION CSS (CLEAN)
+   GIFTING NAVBAR — FINAL PRODUCTION CSS (FIGMA ACCURATE)
    ========================================================= */
 
 /* ================= BASE ================= */
@@ -26,6 +26,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: nowrap;
 }
 
 /* Logo */
@@ -39,8 +40,14 @@
 }
 
 /* Search */
+.gifting-search {
+  flex: 1;
+  max-width: 600px;
+}
+
 .gifting-search form {
   display: flex;
+  width: 100%;
   border: 1px solid #ddd;
   border-radius: 8px;
   overflow: hidden;
@@ -137,20 +144,6 @@
   display: flex;
 }
 
-.custom-acount-user-menu a,
-.custom-acount-user-menu button {
-  display: block;
-  padding: 10px 16px;
-  font-size: 14px;
-  color: #333;
-  text-decoration: none;
-}
-
-.custom-acount-user-menu a:hover,
-.custom-acount-user-menu button:hover {
-  background: #f5f5f5;
-}
-
 /* ================= MEGA MENU ================= */
 
 .gifting-categories {
@@ -186,13 +179,11 @@
   display: block;
 }
 
-/* wrapper */
 .mega-wrapper {
   display: inline-flex;
   align-items: flex-start;
 }
 
-/* left */
 .mega-left {
   width: 260px;
   background: #f7f7f7;
@@ -217,7 +208,6 @@
   font-weight: 600;
 }
 
-/* right */
 .mega-right {
   display: none;
   min-width: 600px;
@@ -231,7 +221,6 @@
   padding: 20px 30px;
 }
 
-/* grid */
 .mega-panel-grid {
   display: grid !important;
   grid-template-columns: repeat(3, 1fr);
@@ -249,22 +238,7 @@
   transform: translateX(3px);
 }
 
-/* ================= DESKTOP ================= */
-
-@media (min-width: 993px) {
-
-  .mobile-toggle {
-    display: none !important;
-  }
-
-  .gifting-search {
-    flex: 1;
-    max-width: 600px;
-  }
-
-}
-
-/* ================= TABLET ================= */
+/* ================= TABLET (≤1200px) ================= */
 
 @media (max-width: 1200px) {
 
@@ -272,11 +246,11 @@
     flex-wrap: wrap;
   }
 
-  .gifting-search {
-    width: 100%;
-    order: 3;
-    margin-top: 10px;
-  }
+  /* ROW ORDER */
+  .gifting-logo { order: 1; }
+  .gifting-icons { order: 2; margin-left: auto; }
+  .gifting-nav-bottom { order: 3; width: 100%; }
+  .gifting-search { order: 4; width: 100%; margin-top: 10px; }
 
 }
 
@@ -284,17 +258,11 @@
 
 @media (max-width: 768px) {
 
-  .gifting-nav-top {
-    display: flex;
-    justify-content: space-between;
-  }
-
   .gifting-logo img {
     max-height: 36px;
   }
 
   .gifting-icons {
-    display: flex !important;
     gap: 10px;
   }
 
@@ -302,12 +270,12 @@
     display: none !important;
   }
 
-  /* horizontal nav */
+  /* SCROLL MENU */
   .gifting-nav-bottom {
-    display: flex !important;
     overflow-x: auto;
     white-space: nowrap;
     gap: 16px;
+    position: relative;
   }
 
   .gifting-nav-bottom::-webkit-scrollbar {
@@ -315,7 +283,6 @@
   }
 
   .gifting-links {
-    display: flex;
     gap: 16px;
   }
 
@@ -324,23 +291,35 @@
     white-space: nowrap;
   }
 
-  /* search */
-  .gifting-search {
-    width: 100%;
-    margin-top: 8px;
+  /* SCROLL INDICATOR */
+  .gifting-nav-bottom::after {
+    content: "›";
+    position: absolute;
+    right: 5px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #999;
+    font-size: 18px;
   }
 
+  /* SEARCH */
   .gifting-search input {
     height: 40px;
   }
 
-  /* language */
+  /* LANGUAGE */
+  .o_wlang_selector {
+    display: flex !important;
+    align-items: center;
+  }
+
   .o_wlang_selector span {
     display: none;
   }
 
   .o_wlang_selector::before {
     content: "🌐";
+    font-size: 16px;
   }
 
 }
