@@ -1,6 +1,5 @@
 /* =========================================================
-   GIFTING NAVBAR — CLEAN PRODUCTION CSS
-   Works with your existing markup
+   GIFTING NAVBAR — FINAL CLEAN PRODUCTION CSS
    ========================================================= */
 
 /* ================= BASE ================= */
@@ -20,13 +19,11 @@
   padding: 0 20px;
 }
 
-/* ================= TOP ROW ================= */
+/* ================= TOP ================= */
 
-/* Logo */
 .gifting-logo img {
   height: 42px;
 }
-
 
 .gifting-search form {
   display: flex;
@@ -49,14 +46,12 @@
   cursor: pointer;
 }
 
-
 .gifting-icons .icon {
   font-size: 20px;
-  text-decoration: none;
   color: #333;
 }
 
-/* ================= SECOND ROW ================= */
+/* ================= NAV ================= */
 
 .gifting-nav-bottom {
   display: flex;
@@ -69,156 +64,44 @@
   margin-right: 20px;
   text-decoration: none;
   color: #333;
-  transition: 0.25s ease-in-out;
+  transition: 0.25s ease;
 }
 
 .gifting-links a:hover {
   color: #14a66a!important;
   font-weight: 700;
-  /*text-decoration: underline;*/
   border-bottom: 2px solid black;
-  padding-bottom: 3px;
 }
 
-/* ================= ACCOUNT DROPDOWN ================= */
+/* ================= ACCOUNT ================= */
 
 .account-dropdown {
   position: relative;
-  cursor: pointer;
+  display: flex;
+  align-items: center;
 }
 
 .account-dropdown .dropdown-menu {
   display: none;
   position: absolute;
   right: 0;
-  top: 36px;
-  background: #fff;
-  border: 1px solid #eee;
-  min-width: 180px;
-  box-shadow: 0 6px 20px rgba(0,0,0,.08);
-}
-
-.account-dropdown:hover .dropdown-menu {
-  display: block;
-}
-
-/* Button styled as a link */
-.vendor-data-link {
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-
-  text-decoration: underline;
-}
-
-/* Hover state */
-.vendor-data-link:hover {
-  text-decoration: underline;
-  opacity: 0.85;
-}
-
-/* Focus state for accessibility */
-.vendor-data-link:focus {
-  outline: none;
-  text-decoration: underline;
-}
-
-/* Remove default button styles on some browsers */
-.vendor-data-link::-moz-focus-inner {
-  border: 0;
-}
-
-.custom-acount-user-menu a, .custom-acount-user-menu button{
- display: block!important;
-}
-
-/*new update*/
-/* ===============================
-   ACCOUNT DROPDOWN FIX
-   =============================== */
-
-.account-dropdown {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-/* Trigger icon */
-.account-dropdown .icon {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-
-/* Dropdown panel */
-.account-dropdown .dropdown-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;                 /* remove hover gap */
+  top: 100%;
   margin-top: 6px;
-
-  display: none;
-  flex-direction: column;    /* vertical stacking */
-
+  flex-direction: column;
   background: #fff;
   border: 1px solid #eee;
   border-radius: 8px;
-
   min-width: 180px;
   padding: 8px 0;
-
   box-shadow: 0 10px 30px rgba(0,0,0,.1);
-
   z-index: 99999;
 }
 
-/* Keep menu open when hovering trigger OR menu */
-.account-dropdown:hover .dropdown-menu,
-.account-dropdown .dropdown-menu:hover {
+.account-dropdown:hover .dropdown-menu {
   display: flex;
 }
 
-/* Menu items */
-.custom-acount-user-menu a,
-.custom-acount-user-menu button {
-  display: block;
-  width: 100%;
-
-  text-align: left;
-  padding: 10px 16px;
-
-  background: none;
-  border: none;
-
-  font-size: 14px;
-  color: #333;
-
-  text-decoration: none;
-  cursor: pointer;
-}
-
-/* Hover effect */
-.custom-acount-user-menu a:hover,
-.custom-acount-user-menu button:hover {
-  background: #f5f5f5;
-}
-
-.account-dropdown::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  right: 0;
-  width: 100%;
-  height: 10px;
-}
-
-
-/* ================= CATEGORY MEGA ================= */
+/* ================= MEGA MENU ================= */
 
 .gifting-categories {
   position: relative;
@@ -232,74 +115,42 @@
   cursor: pointer;
 }
 
-/* ================= MEGA MENU (NEW STRUCTURE) ================= */
-
 .cat-mega {
   position: absolute;
   top: 100%;
   left: 0;
-  width: auto !important;
-  min-width: 260px; /* sidebar width */
+  min-width: 260px;
   max-height: 75vh;
-
   background: #fff;
   border-radius: 10px;
   box-shadow: 0 20px 50px rgba(0,0,0,.15);
-
   z-index: 9999;
-  overflow: hidden;
-
-  display: none; /* controlled by JS */
+  display: none;
 }
 
-/* wrapper */
+.cat-mega.is-open {
+  display: block;
+}
+
 .mega-wrapper {
-  display: inline-flex; /* 🔥 prevents stretching */
-  height: 100%;
-  align-items: flex-start; /* prevents stretch artifacts */
+  display: inline-flex;
 }
-
-/* ================= LEFT SIDEBAR ================= */
 
 .mega-left {
-  flex-shrink: 0;
   width: 260px;
   background: #f7f7f7;
-  border-right: 1px solid #eee;
-
-  display: flex;
-  flex-direction: column;
-   max-height: 75vh;       /* match container */
-  overflow-y: auto;       /* enable scroll */
+  overflow-y: auto;
 }
 
 .mega-left-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
   padding: 14px 18px;
-  font-size: 14px;
   cursor: pointer;
-
-  transition: all 0.2s ease;
-}
-
-.mega-left-item:hover {
-  background: #fff;
 }
 
 .mega-left-item.active {
   background: #fff;
   font-weight: 600;
 }
-
-.mega-left-item .arrow {
-  font-size: 16px;
-  color: #999;
-}
-
-/* ================= RIGHT PANEL ================= */
 
 .mega-right {
   width: 720px;
@@ -308,96 +159,17 @@
 
 .mega-right.active {
   display: flex;
-  flex-direction: column;
   padding: 20px 30px;
-  overflow-y: auto;
 }
 
-/* grid */
-.mega-panel-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 18px 30px;
-}
+/* ================= DESKTOP (≥992px) ================= */
 
-/* subcategory links */
-.mega-sub {
-  text-decoration: none;
-  color: #333;
-  font-size: 14px;
+@media (min-width: 992px) {
 
-  transition: all 0.2s ease;
-}
-
-.mega-sub:hover {
-  color: #14a66a;
-  transform: translateX(3px);
-}
-
-.mega-left::-webkit-scrollbar {
-  width: 6px;
-}
-
-.mega-left::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 4px;
-}
-
-.mega-left::-webkit-scrollbar-thumb:hover {
-  background: #999;
-}
-
-.cat-mega.is-open {
-  display: block;
-  width: auto !important;   /* 🔥 remove forced width */
-}
-
-.mega-left-item {
-  transition: background 0.2s ease, padding-left 0.2s ease;
-}
-
-.mega-left-item:hover {
-  padding-left: 22px;
-}
-
-.mega-right.active {
-  animation: slideInRight 0.2s ease;
-}
-
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* =========================================================
-   TABLET / SMALL DESKTOP (≤ 992px)
-   ========================================================= */
-
-@media (min-width: 769px) {
-  .mobile-toggle {
-    display: none !important;
-  }
-
-   .gifting-search input {
-      width: 100%;
-    }
-
-    .gifting-nav-top {
-    display: flex !important;
-    flex-wrap: nowrap !important;
+  .gifting-nav-top {
+    display: flex;
     align-items: center;
     justify-content: space-between;
-  }
-
-
-  .gifting-logo {
-    flex: 0 0 auto;
   }
 
   .gifting-search {
@@ -406,186 +178,107 @@
   }
 
   .gifting-icons {
-    flex: 0 0 auto;
     display: flex;
-    align-items: center;
     gap: 15px;
-    flex-wrap: nowrap !important;
   }
 
- 
-  .gifting-nav-bottom {
-    position: static;
-    display: flex;
-    align-items: center;
-    gap: 25px;
-    padding: 10px 0;
-    height: auto;
-    width: 100%;
-    background: transparent;
-  }
-
-   .gifting-links {
-    display: flex;
-    gap: 25px;
-  }
-
-   .gifting-icons > div {
-    display: flex;
-    align-items: center;
+  .mobile-toggle {
+    display: none;
   }
 
 }
 
-@media (max-width:768px) {
+/* ================= TABLET (768–991px) ================= */
+
+@media (max-width: 991px) and (min-width: 768px) {
 
   .gifting-nav-top {
     display: flex;
-     flex-wrap: wrap;
     align-items: center;
-     gap: 10px;
-   }
+    gap: 12px;
+  }
 
-  /* Row 1 */
-   .gifting-logo {
-     flex: 1;
-   }
+  .gifting-search {
+    flex: 1;
+    max-width: 400px;
+  }
+
+  .gifting-icons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+
+  .gifting-links a {
+    font-size: 13px;
+    margin-right: 10px;
+  }
+
+}
+
+/* ================= MOBILE (≤767px) ================= */
+
+@media (max-width: 767px) {
+
+  .gifting-nav-top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .gifting-logo {
+    flex: 1;
+  }
 
   .mobile-toggle {
     display: block;
   }
 
-  /* Icons row */
-   .gifting-icons {
-     width: 100%;
-    justify-content: space-between;
-     order: 2;
-    gap: 12px;
-   }
-
-  /* Search row */
-   .gifting-search {
-    width: 100%;
-   order: 3;
-  }
-
-
-.gifting-nav-bottom {
-  position: fixed;
-  top: 0;
-  right: -100%;
-
-  width: 85%;
-  height: 100vh;
-
-  background: #fff;
-  padding: 70px 20px 20px;
-
-  z-index: 100000;
-
-  transition: right 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
-  overflow-y: auto;
-
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.gifting-nav-bottom.open {
-  right: 0;
-}
-
-.mobile-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-
-  background: rgba(0,0,0,0.4);
-  z-index: 99998;
-
-  opacity: 0;
-  pointer-events: none;
-
-  transition: opacity 0.3s ease;
-}
-
-.mobile-overlay.active {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-
-
-  /* Links vertical */
-  .gifting-links {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
- /*mega mobile*/
- /* ================= MOBILE MEGA MENU ================= */
-
-/* Mega becomes normal block */
-/* MOBILE MEGA MENU CLEAN */
-
-.gifting-nav-bottom .cat-mega {
-    position: static;
-  width: 100%;
-  box-shadow: none;
-  border-radius: 0;
-  }
-
-/* stack */
-.mega-wrapper {
-  flex-direction: column;
-}
-
-/* categories */
-.mega-left-item {
-  padding: 14px 12px;
-  font-weight: 500;
-}
-
-/* panels */
-.mega-panel {
-  padding: 10px 0 10px 15px;
-  background: #fafafa;
-}
-
-/* spacing */
-.mega-sub {
-  padding: 6px 0;
-}
-
-.gifting-icons > div {
-  display: flex;
-  align-items: center;
-}
+  /* FIX choking issue */
   .gifting-icons {
+    width: 100%;
+    display: flex;
     flex-wrap: wrap;
-  }
-    .mega-left,
-  .mega-right {
-    will-change: transform;
+    gap: 10px;
   }
 
-
-/* =========================================================
-   MOBILE (≤ 768px)
-   ========================================================= */
-
-  /* ===== CLEAN 3-ROW MOBILE HEADER ===== */
-
-  .gifting-logo img {
-    max-height: 36px;
+  .gifting-icons > * {
+    flex: 1;
+    min-width: 80px;
+    text-align: center;
   }
 
-  /* Row 2 — Icons left, hamburger right */
-
-  .gifting-search input {
-    height: 40px;
+  .gifting-search {
+    width: 100%;
   }
+
+  .gifting-nav-bottom {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 85%;
+    height: 100vh;
+    background: #fff;
+    padding: 70px 20px;
+    transition: right 0.3s ease;
+    flex-direction: column;
+  }
+
+  .gifting-nav-bottom.open {
+    right: 0;
+  }
+
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.4);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .mobile-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
 }
