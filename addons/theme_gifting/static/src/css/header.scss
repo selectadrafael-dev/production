@@ -398,3 +398,35 @@
 
 }
 
+@media (max-width: 520px) {
+
+  /* container alignment */
+  .gifting-nav-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* logo stays fixed */
+  .gifting-logo {
+    flex: 0 0 auto;
+  }
+
+  /* 🔥 SCROLLABLE ICON AREA */
+  .gifting-icons {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    overflow-x: auto;
+    white-space: nowrap;
+
+    scrollbar-width: none; /* Firefox */
+  }
+
+  .gifting-icons::-webkit-scrollbar {
+    display: none; /* Chrome */
+  }
+
+}
