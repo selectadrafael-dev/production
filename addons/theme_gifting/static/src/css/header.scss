@@ -379,36 +379,91 @@
    TABLET / SMALL DESKTOP (≤ 992px)
    ========================================================= */
 
+@media (min-width: 993px) {
+  .mobile-toggle {
+    display: none !important;
+  }
+
+   .gifting-search input {
+      width: 100%;
+    }
+
+  .gifting-nav-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .gifting-logo {
+    flex: 0 0 auto;
+  }
+
+  .gifting-search {
+    flex: 1;
+    max-width: 600px;
+  }
+
+  .gifting-icons {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+
+  .gifting-nav-bottom {
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: 25px;
+    padding: 10px 0;
+    height: auto;
+    width: 100%;
+    background: transparent;
+  }
+
+   .gifting-links {
+    display: flex;
+    gap: 25px;
+  }
+
+   .gifting-icons > div {
+    display: flex;
+    align-items: center;
+  }
+
+}
+
 @media (max-width: 992px) {
 
   .gifting-nav-top {
     display: flex;
-    flex-wrap: wrap;
+     flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-  }
+     gap: 10px;
+   }
 
   /* Row 1 */
-  .gifting-logo {
-    flex: 1;
-  }
+   .gifting-logo {
+     flex: 1;
+   }
 
   .mobile-toggle {
     display: block;
   }
 
   /* Icons row */
-  .gifting-icons {
-    width: 100%;
+   .gifting-icons {
+     width: 100%;
     justify-content: space-between;
-    order: 2;
+     order: 2;
     gap: 12px;
-  }
+   }
 
   /* Search row */
-  .gifting-search {
+   .gifting-search {
     width: 100%;
-    order: 3;
+   order: 3;
   }
 
 
