@@ -379,7 +379,7 @@
    TABLET / SMALL DESKTOP (≤ 992px)
    ========================================================= */
 
-@media (min-width: 993px) {
+@media (min-width: 769px) {
   .mobile-toggle {
     display: none !important;
   }
@@ -571,13 +571,11 @@
   .mega-right {
     will-change: transform;
   }
-}
+
 
 /* =========================================================
    MOBILE (≤ 768px)
    ========================================================= */
-
-@media (max-width: 768px) {
 
   /* ===== CLEAN 3-ROW MOBILE HEADER ===== */
 
