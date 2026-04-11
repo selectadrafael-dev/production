@@ -21,9 +21,9 @@
                    alt="Logo"/>
             </a>
 
-            <button class="mobile-toggle" aria-label="Menu">
+            <!-- <button class="mobile-toggle" aria-label="Menu">
               ☰
-            </button>
+            </button> -->
             
 
             <!-- CENTER SEARCH (REAL ODOO SEARCH) -->
@@ -205,7 +205,7 @@
 
           </div>
 
-          
+
 
         </div>
 
