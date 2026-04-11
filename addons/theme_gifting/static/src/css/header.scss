@@ -398,53 +398,53 @@
 
 }
 
-@media (max-width: 520px) {
+// @media (max-width: 520px) {
 
-  /* ================= LOGO ================= */
-  .gifting-logo {
-    flex: 0 0 auto;
-  }
+//   /* ================= LOGO ================= */
+//   .gifting-logo {
+//     flex: 0 0 auto;
+//   }
 
-  /* ================= SCROLL WRAPPER (MAIN FIX) ================= */
-  .gifting-icons-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+//   /* ================= SCROLL WRAPPER (MAIN FIX) ================= */
+//   .gifting-icons-wrapper {
+//     display: flex;
+//     align-items: center;
+//     gap: 12px;
 
-    overflow-x: auto;
-    white-space: nowrap;
+//     overflow-x: auto;
+//     white-space: nowrap;
 
-    scrollbar-width: none; /* Firefox */
-  }
+//     scrollbar-width: none; /* Firefox */
+//   }
 
-  .gifting-icons-wrapper::-webkit-scrollbar {
-    display: none; /* Chrome */
-  }
+//   .gifting-icons-wrapper::-webkit-scrollbar {
+//     display: none; /* Chrome */
+//   }
 
-  /* ================= PREVENT SHRINK ================= */
-  .gifting-icons-wrapper > * {
-    flex: 0 0 auto;
-  }
+//   /* ================= PREVENT SHRINK ================= */
+//   .gifting-icons-wrapper > * {
+//     flex: 0 0 auto;
+//   }
 
-  /* ================= INNER ICONS ================= */
-  .gifting-icons {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+//   /* ================= INNER ICONS ================= */
+//   .gifting-icons {
+//     display: flex;
+//     align-items: center;
+//     gap: 10px;
+//   }
 
-  /* ================= LANGUAGE FIX ================= */
-  .js_language_selector {
-    display: inline-flex;
-    align-items: center;
-    white-space: nowrap;
-  }
+//   /* ================= LANGUAGE FIX ================= */
+//   .js_language_selector {
+//     display: inline-flex;
+//     align-items: center;
+//     white-space: nowrap;
+//   }
 
-  /* ================= SEARCH (PROTECTED) ================= */
-  .gifting-search {
-    width: 100%;
-    display: block;
-    order: 99;
-  }
+//   /* ================= SEARCH (PROTECTED) ================= */
+//   .gifting-search {
+//     width: 100%;
+//     display: block;
+//     order: 99;
+//   }
 
-}
+// }
