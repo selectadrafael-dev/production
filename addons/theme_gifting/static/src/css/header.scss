@@ -258,7 +258,9 @@
   position: absolute;
   top: 100%;
   left: 0;
-  width: 1000px;
+  width: auto !important;
+  min-width: 260px; /* sidebar width */
+  // width: 1000px;
   max-height: 75vh;
 
   background: #fff;
@@ -277,7 +279,8 @@
 
 /* wrapper */
 .mega-wrapper {
-  display: flex;
+  // display: flex;
+  display: inline-flex; /* 🔥 prevents stretching */
   height: 100%;
   align-items: flex-start; /* prevents stretch artifacts */
 }
@@ -285,6 +288,7 @@
 /* ================= LEFT SIDEBAR ================= */
 
 .mega-left {
+  flex-shrink: 0;
   width: 260px;
   background: #f7f7f7;
   border-right: 1px solid #eee;
@@ -323,6 +327,7 @@
 
 /* ================= RIGHT PANEL ================= */
 .mega-right {
+  width: 520px;
   display: none;   /* 🔥 fully removed from layout */
 }
 
@@ -370,6 +375,9 @@
   background: #999;
 }
 
+.cat-mega.is-open {
+  width: auto !important;   /* 🔥 remove forced width */
+}
 /* ================= MOBILE TOGGLE BUTTON ================= */
 
 .mobile-toggle {
