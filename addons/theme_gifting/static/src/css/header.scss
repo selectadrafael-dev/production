@@ -279,6 +279,7 @@
 .mega-wrapper {
   display: flex;
   height: 100%;
+  align-items: flex-start; /* prevents stretch artifacts */
 }
 
 /* ================= LEFT SIDEBAR ================= */
@@ -322,17 +323,16 @@
 
 /* ================= RIGHT PANEL ================= */
 .mega-right {
-  display: none !important;  /* 🔥 force hidden always */
-
-  flex: 1;
-  padding: 20px 30px;
-  overflow-y: auto;
+  display: none;   /* 🔥 fully removed from layout */
 }
 
-/* ONLY show when active */
+/* only when active */
 .mega-right.active {
-  display: flex !important;
+  display: flex;
+  flex: 1;
   flex-direction: column;
+  padding: 20px 30px;
+  overflow-y: auto;
 }
 
 

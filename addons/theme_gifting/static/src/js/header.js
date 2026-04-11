@@ -213,29 +213,29 @@ let allowHover = false;
      DESKTOP HOVER
   ========================= */
 function initMegaHover(menu) {
-  // const left = menu?.querySelector('.mega-left');
+  const left = menu?.querySelector('.mega-left');
 
-  // if (!left) {
-  //   console.warn('❌ .mega-left not found');
-  //   return;
-  // }
+  if (!left) {
+    console.warn('❌ .mega-left not found');
+    return;
+  }
 
-  // console.log('✅ Mega hover initialized');
+  console.log('✅ Mega hover initialized');
 
-  // left.addEventListener('mouseenter', function () {
-  //   console.log('🟡 Entered left panel (no action yet)');
-  // });
+  left.addEventListener('mouseenter', function () {
+    console.log('🟡 Entered left panel (no action yet)');
+  });
 
-  // left.addEventListener('mouseover', function (e) {
-  //   if (isMobile()) return;
+  left.addEventListener('mouseover', function (e) {
+    if (isMobile()) return;
 
-  //   const item = e.target.closest('.mega-left-item');
-  //   if (!item) return;
+    const item = e.target.closest('.mega-left-item');
+    if (!item) return;
 
-  //   console.log('👉 Hover category (controlled):', item.dataset.catId);
+    console.log('👉 Hover category (controlled):', item.dataset.catId);
 
-  //   showPanel(menu, item.dataset.catId);
-  // });
+    showPanel(menu, item.dataset.catId);
+  });
 }
 
   /* =========================
