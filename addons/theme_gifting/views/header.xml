@@ -40,83 +40,77 @@
                   <button type="submit">🔍</button>
 
                 </form>
-          </div>
-
-          <!-- ACTION ICONS -->
-          <div class="gifting-icons-wrapper">
-
-              <!-- language -->
-              <div class="js_language_selector">
-                  <t t-call="website.language_selector"/>
               </div>
 
-              <!-- icons -->
+              <!-- ACTION ICONS -->
               <div class="gifting-icons">
+                 
+                <t t-call="website.language_selector"/>
 
-                  <!-- Wishlist -->
-                  <t t-if="not request.env.user._is_public()">
-                      <a href="/shop/wishlist" class="icon">❤️</a>
+                <!-- Wishlist -->
+              <t t-if="not request.env.user._is_public()">
+                  <a href="/shop/wishlist" class="icon">❤️</a>
+              </t>
+
+                <!-- Cart -->
+                <a href="#" class="icon cart-icon js-open-quote">
+                  🛒 <span class="cart-count">0</span>
+                </a>
+
+
+                <!-- Account -->
+                <div class="gifting-account">
+                  <!-- Logged IN -->
+                  <t t-if="request.session.uid">
+
+                    <div class="account-dropdown">
+
+                      <span class="icon">👤 ▾</span>
+
+                      <div class="dropdown-menu custom-acount-user-menu">
+
+                        <a href="/my"  t-translation="on">
+                        
+                         My Account
+                        </a>
+                        <a href="/my/orders"  t-translation="on">
+                           Orders
+                        </a>
+              
+                            <t t-set="user" t-value="request.env.user"/>
+
+                            <t t-if="not user._is_public() and 
+                                    (user.has_group('base.group_system') or user.partner_id.is_vendor_user)">
+
+                                <button type="button" 
+                                        class="vendor-data-link"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#vendorDataModal">
+                                    Vendor Data
+                                </button>
+
+                            </t>
+
+                            <!-- <t t-esc="request.env.user.partner_id.is_vendor_user"/> -->
+
+                        <a href="/web/session/logout"  t-translation="on">
+                         Logout
+                        </a>
+                      </div>
+                    </div>
                   </t>
 
-                  <!-- Cart -->
-                  <a href="#" class="icon cart-icon js-open-quote">
-                      🛒 <span class="cart-count">0</span>
-                  </a>
+                  <!-- NOT logged in -->
+                  <t t-else="">
 
-                  <!-- Account -->
-                  <div class="gifting-account">
-                      <!-- Logged IN -->
-                      <t t-if="request.session.uid">
+                    <a href="/web/login" class="login-btn"  t-translation="on">
+                       Login
+                    </a>
 
-                        <div class="account-dropdown">
-
-                            <span class="icon">👤 ▾</span>
-
-                            <div class="dropdown-menu custom-acount-user-menu">
-
-                              <a href="/my"  t-translation="on">
-                              
-                              My Account
-                              </a>
-                              <a href="/my/orders"  t-translation="on">
-                                Orders
-                              </a>
-                    
-                                  <t t-set="user" t-value="request.env.user"/>
-
-                                  <t t-if="not user._is_public() and 
-                                          (user.has_group('base.group_system') or user.partner_id.is_vendor_user)">
-
-                                      <button type="button" 
-                                              class="vendor-data-link"
-                                              data-bs-toggle="modal"
-                                              data-bs-target="#vendorDataModal">
-                                          Vendor Data
-                                      </button>
-
-                                  </t>
-
-                                  <!-- <t t-esc="request.env.user.partner_id.is_vendor_user"/> -->
-
-                              <a href="/web/session/logout"  t-translation="on">
-                              Logout
-                              </a>
-                            </div>
-                        </div>
-                      </t>
-
-                      <!-- NOT logged in -->
-                      <t t-else="">
-
-                        <a href="/web/login" class="login-btn"  t-translation="on">
-                          Login
-                        </a>
-
-                      </t>
-                  </div>
-
+                  </t>
+                </div>
+                
               </div>
-
           </div>
 
           <!-- ===== SECOND ROW ===== -->
@@ -210,6 +204,8 @@
             </div>
 
           </div>
+
+
 
         </div>
 
