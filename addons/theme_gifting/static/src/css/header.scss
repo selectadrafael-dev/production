@@ -400,14 +400,13 @@
 
 @media (max-width: 520px) {
 
-  /* logo stays fixed */
+  /* ================= LOGO ================= */
   .gifting-logo {
     flex: 0 0 auto;
   }
 
-  /* 🔥 SCROLLABLE ICON AREA */
-  .gifting-icons {
-    flex: 1;
+  /* ================= SCROLL WRAPPER (MAIN FIX) ================= */
+  .gifting-icons-wrapper {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -418,33 +417,34 @@
     scrollbar-width: none; /* Firefox */
   }
 
-  .gifting-icons::-webkit-scrollbar {
+  .gifting-icons-wrapper::-webkit-scrollbar {
     display: none; /* Chrome */
   }
 
+  /* ================= PREVENT SHRINK ================= */
+  .gifting-icons-wrapper > * {
+    flex: 0 0 auto;
+  }
+
+  /* ================= INNER ICONS ================= */
   .gifting-icons {
     display: flex;
     align-items: center;
     gap: 10px;
+  }
 
-    overflow-x: auto;
+  /* ================= LANGUAGE FIX ================= */
+  .js_language_selector {
+    display: inline-flex;
+    align-items: center;
     white-space: nowrap;
-
-    scrollbar-width: none;
   }
 
-  .gifting-icons::-webkit-scrollbar {
-    display: none;
-  }
-
-  .gifting-icons > * {
-    flex: 0 0 auto;
-  }
-
+  /* ================= SEARCH (PROTECTED) ================= */
   .gifting-search {
     width: 100%;
-    display: block; /* 🔥 force block layout */
-    order: 99; /* 🔥 ensure it's last */
+    display: block;
+    order: 99;
   }
 
 }
