@@ -311,6 +311,42 @@ function initMegaHover(menu) {
 
   });
 
+  //close right panel on mouseout
+  /* =========================
+   CLOSE PANEL ON MOUSE LEAVE
+========================= */
+
+let leaveTimeout;
+
+document.addEventListener('mouseleave', function (e) {
+
+  const menu = getCatMenu();
+  if (!menu || !menu.classList.contains('is-open')) return;
+
+  if (!e.target.closest('[data-cat-menu="1"]')) return;
+
+  clearTimeout(leaveTimeout);
+
+  leaveTimeout = setTimeout(() => {
+    console.log('🟡 Delayed reset');
+
+    const panels = menu.querySelectorAll('.mega-panel');
+    const items = menu.querySelectorAll('.mega-left-item');
+    const right = getRightPanel(menu);
+
+    panels.forEach(p => {
+      p.style.display = 'none';
+      p.classList.remove('active');
+    });
+
+    items.forEach(i => i.classList.remove('active'));
+
+    if (right) right.classList.remove('active');
+
+  }, 150); // smooth UX
+
+}, true);
+
 /* =========================
    MEGA MENU HOVER SYSTEM
 ========================= */
