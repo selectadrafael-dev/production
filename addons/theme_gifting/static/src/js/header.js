@@ -1,10 +1,15 @@
 (function () {
   'use strict';
 
+        function safeClosest(target, selector) {
+        if (!target || target.nodeType !== 1) return null; // 1 = ELEMENT_NODE
+        return target.closest(selector);
+      }
+
       //mobile nav
       document.addEventListener('click', function (e) {
 
-        const toggle = e.target.closest('.mobile-toggle');
+        const toggle = safeClosest(e.target, '.mobile-toggle');
         if (toggle) {
           document
             .querySelector('.gifting-nav-links')
@@ -16,7 +21,7 @@
       //secondary menu
       document.addEventListener('click', function (e) {
 
-        const toggle = e.target.closest('.mobile-toggle');
+       const toggle = safeClosest(e.target, '.mobile-toggle');
         if (!toggle) return;
 
         const menu = document.querySelector('.gifting-nav-bottom');
@@ -26,8 +31,9 @@
 
       //CLOSE MENU WHEN LINK CLICKED
       document.addEventListener('click', function (e) {
+        const link = safeClosest(e.target, '.gifting-nav-bottom a');
 
-      const link = e.target.closest('.gifting-nav-bottom a');
+      // const link = e.target.closest('.gifting-nav-bottom a');
       if (!link) return;
 
       document
@@ -43,7 +49,8 @@
         const menu = document.querySelector('.gifting-nav-bottom');
 
         /* CLOSE ONLY */
-        if (e.target.closest('.mobile-close')) {
+        //if (e.target.closest('.mobile-close')) {
+        if (!safeClosest(e.target, '.mobile-close')){
           if (menu) menu.classList.remove('open');
         }
 
@@ -126,8 +133,9 @@ let allowHover = false;
   ========================= */
 
   document.addEventListener('click', function (e) {
+      const trigger = safeClosest(e.target, '[data-cat-toggle="1"]');
 
-  const trigger = e.target.closest('[data-cat-toggle="1"]');
+  //const trigger = e.target.closest('[data-cat-toggle="1"]');
   const menu = getCatMenu();
 
   // CLICK BUTTON
@@ -150,7 +158,6 @@ let allowHover = false;
       menu.removeAttribute('hidden');
 
       // 🔥 block first hover trigger
-      //justOpenedMega = true;
       allowHover = false;
 
       // allow hover only after real mouse movement
@@ -195,8 +202,9 @@ let allowHover = false;
 
   // CLICK OUTSIDE
   if (menu && menu.classList.contains('is-open')) {
-    if (!e.target.closest('[data-cat-menu="1"]') &&
-        !e.target.closest('[data-cat-toggle="1"]')) {
+      
+    if (!safeClosest(e.target, '[data-cat-menu="1"]') &&
+        !safeClosest(e.target, '[data-cat-toggle="1"]')) {
 
       console.log('🟥 Click outside → closing menu');
 
@@ -229,7 +237,8 @@ function initMegaHover(menu) {
   left.addEventListener('mouseover', function (e) {
     if (isMobile()) return;
 
-    const item = e.target.closest('.mega-left-item');
+    //const item = e.target.closest('.mega-left-item');
+     const item = safeClosest(e.target, '.mega-left-item');
     if (!item) return;
 
     console.log('👉 Hover category (controlled):', item.dataset.catId);
@@ -246,7 +255,8 @@ function initMegaHover(menu) {
 
     if (!isMobile()) return;
 
-    const item = e.target.closest('.mega-left-item');
+    //const item = e.target.closest('.mega-left-item');
+     const item = safeClosest(e.target, '.mega-left-item');
     const menu = getCatMenu();
 
     if (!item || !menu || !menu.classList.contains('is-open')) return;
@@ -265,7 +275,8 @@ function initMegaHover(menu) {
 
   document.addEventListener('click', function (e) {
 
-    const toggle = e.target.closest('.mobile-toggle');
+    //const toggle = e.target.closest('.mobile-toggle');
+     const toggle = safeClosest(e.target, '.mobile-toggle');
     if (toggle) {
       console.log('📱 Mobile toggle clicked');
 
@@ -278,7 +289,8 @@ function initMegaHover(menu) {
 
   document.addEventListener('click', function (e) {
 
-    const toggle = e.target.closest('.mobile-toggle');
+    //const toggle = e.target.closest('.mobile-toggle');
+     const toggle = safeClosest(e.target, '.mobile-toggle');
     if (!toggle) return;
 
     const menu = document.querySelector('.gifting-nav-bottom');
@@ -288,7 +300,8 @@ function initMegaHover(menu) {
 
   document.addEventListener('click', function (e) {
 
-    const link = e.target.closest('.gifting-nav-bottom a');
+    //const link = e.target.closest('.gifting-nav-bottom a');
+     const link = safeClosest(e.target, '.gifting-nav-bottom a');
     if (!link) return;
 
     console.log('🔗 Mobile link clicked → closing');
@@ -303,7 +316,8 @@ function initMegaHover(menu) {
 
     const menu = document.querySelector('.gifting-nav-bottom');
 
-    if (e.target.closest('.mobile-close')) {
+    //if (e.target.closest('.mobile-close')) {
+    if (safeClosest(e.target, '.mobile-close')) {
       console.log('❌ Mobile close clicked');
 
       if (menu) menu.classList.remove('open');
@@ -316,36 +330,19 @@ function initMegaHover(menu) {
    CLOSE PANEL ON MOUSE LEAVE
 ========================= */
 
-let leaveTimeout;
-
-document.addEventListener('mouseleave', function (e) {
+document.addEventListener('mouseout', function (e) {
 
   const menu = getCatMenu();
   if (!menu || !menu.classList.contains('is-open')) return;
 
-  if (!e.target.closest('[data-cat-menu="1"]')) return;
+  // if moving inside menu → ignore
+  if (menu.contains(e.relatedTarget)) return;
 
-  clearTimeout(leaveTimeout);
+  console.log('🟡 Mouse left entire mega menu');
 
-  leaveTimeout = setTimeout(() => {
-    console.log('🟡 Delayed reset');
+  resetMegaMenu(menu);
 
-    const panels = menu.querySelectorAll('.mega-panel');
-    const items = menu.querySelectorAll('.mega-left-item');
-    const right = getRightPanel(menu);
-
-    panels.forEach(p => {
-      p.style.display = 'none';
-      p.classList.remove('active');
-    });
-
-    items.forEach(i => i.classList.remove('active'));
-
-    if (right) right.classList.remove('active');
-
-  }, 150); // smooth UX
-
-}, true);
+});
 
 /* =========================
    MEGA MENU HOVER SYSTEM
