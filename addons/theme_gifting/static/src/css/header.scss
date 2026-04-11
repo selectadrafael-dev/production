@@ -239,7 +239,12 @@
   transform: translateX(3px);
 }
 
-/* ================= TABLET (≤1100px) ================= */
+
+.js_language_selector{
+  display: flex;
+  justify-content: end;
+}
+/* ================= TABLET (≤1100px) =================*/
 
 @media (max-width: 1200px) {
 
@@ -382,9 +387,9 @@
   }
 
   /* LANGUAGE */
-  .o_wlang_selector {
-    display: flex !important;
-    align-items: center;
+   .js_language_selector{
+    display: flex;
+    justify-content: end;
   }
 
   .o_wlang_selector span {
@@ -394,6 +399,20 @@
   .o_wlang_selector::before {
     content: "🌐";
     font-size: 16px;
+  }
+
+}
+
+@media (max-width: 520px) {
+
+  .gifting-icons .icon
+ {
+    font-size: 15px !important;
+ }
+
+  .js_language_selector{
+    display: flex;
+    justify-content: end;
   }
 
 }
