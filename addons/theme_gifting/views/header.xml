@@ -43,29 +43,28 @@
           </div>
 
           <!-- ACTION ICONS -->
-          <div class="gifting-icons gifting-icons-wrapper">
+          <div class="gifting-icons-wrapper">
 
-                 <!-- language -->
-                <div class="js_language_selector">
-                    <t t-call="website.language_selector"/>
-                </div>
+              <!-- language -->
+              <div class="js_language_selector">
+                  <t t-call="website.language_selector"/>
+              </div>
 
-                  <!-- icons -->
-                <div class="gifting-icons">
+              <!-- icons -->
+              <div class="gifting-icons">
 
-                        <!-- Wishlist -->
-                        <t t-if="not request.env.user._is_public()">
-                            <a href="/shop/wishlist" class="icon">❤️</a>
-                        </t>
+                  <!-- Wishlist -->
+                  <t t-if="not request.env.user._is_public()">
+                      <a href="/shop/wishlist" class="icon">❤️</a>
+                  </t>
 
-                        <!-- Cart -->
-                        <a href="#" class="icon cart-icon js-open-quote">
-                          🛒 <span class="cart-count">0</span>
-                        </a>
+                  <!-- Cart -->
+                  <a href="#" class="icon cart-icon js-open-quote">
+                      🛒 <span class="cart-count">0</span>
+                  </a>
 
-
-                    <!-- Account -->
-                    <div class="gifting-account">
+                  <!-- Account -->
+                  <div class="gifting-account">
                       <!-- Logged IN -->
                       <t t-if="request.session.uid">
 
@@ -114,9 +113,10 @@
                         </a>
 
                       </t>
-                    </div>
-                  
-                </div>
+                  </div>
+
+              </div>
+
           </div>
 
           <!-- ===== SECOND ROW ===== -->
@@ -210,8 +210,6 @@
             </div>
 
           </div>
-
-
 
         </div>
 
