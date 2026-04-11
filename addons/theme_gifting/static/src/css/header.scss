@@ -312,8 +312,9 @@
 
   .gifting-search input {
     flex: 1;
-    padding: 15px 18px;
-    font-size: 14px;
+  
+     font-size: 15px;
+    padding: 14px 16px;
   }
 
   .gifting-search button {
@@ -334,16 +335,16 @@
     display: inline-flex;
     align-items: center;
 
-    width: 94%;
+    width: 100%;
     max-width: 820px;
 
+    min-height: 48px; /* 🔥 stronger presence */
     background: #fff;
     border-radius: 10px;
-
     border: 1px solid #e6e6e6;
 
     /* 🔥 softer, cleaner shadow */
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.04); /* 🔥 softer */
   }
 
   .gifting-search {
@@ -353,19 +354,8 @@
   /* ================= FINAL POLISH — HEADER RHYTHM ================= */
   /* tighten menu spacing */
   .gifting-nav-bottom {
-    padding-bottom: 6px;
+    padding: 12px 0 18px; /* 🔥 better breathing space */
     border-bottom: 1px solid #f2f2f2;
-  }
-
-  /* search spacing refinement */
-  .gifting-search {
-    padding: 8px 0 14px;
-  }
-
-  /* align search perfectly with container */
-  .gifting-search form {
-    width: 92%;
-    max-width: 780px; /* 🔥 slightly reduced for balance */
   }
 
   /* 🔥 connect search with next section */
