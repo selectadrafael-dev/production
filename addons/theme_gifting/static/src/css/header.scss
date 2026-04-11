@@ -294,31 +294,35 @@
   .gifting-search {
     grid-area: search;
     width: 100%;
-    text-align: center; /* 🔥 FORCE CENTER CONTEXT */
-    margin-top: 14px;
-    margin-bottom: 12px;
+    text-align: center;
+
+    margin-top: 8px;   /* 🔥 tighter to menu */
+    margin-bottom: 16px;
   }
 
   .gifting-search form {
-    display: inline-flex; /* 🔥 KEY CHANGE */
-    width: 90%;           /* responsive width */
-    max-width: 720px;     /* controlled width */
+    display: inline-flex;
+    align-items: center;
+
+    width: 92%;
+    max-width: 820px; /* 🔥 stronger presence */
 
     background: #fff;
-    border-radius: 10px;
-    border: 1px solid #e5e5e5;
+    border-radius: 12px;
 
-    box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+    border: 1px solid #e2e2e2;
+
+    box-shadow: 0 6px 18px rgba(0,0,0,0.08); /* 🔥 better depth */
   }
 
   .gifting-search input {
     flex: 1;
-    padding: 14px 16px;
+    padding: 15px 18px;
     font-size: 14px;
   }
 
   .gifting-search button {
-    padding: 0 16px;
+    padding: 0 18px;
   }
 
 }
