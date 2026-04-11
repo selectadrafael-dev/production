@@ -388,12 +388,13 @@
       width: 100%;
     }
 
-  .gifting-nav-top {
-    display: flex;
+    .gifting-nav-top {
+    display: flex !important;
+    flex-wrap: nowrap !important;
     align-items: center;
     justify-content: space-between;
-    gap: 20px;
   }
+
 
   .gifting-logo {
     flex: 0 0 auto;
@@ -409,8 +410,10 @@
     display: flex;
     align-items: center;
     gap: 15px;
+    flex-wrap: nowrap !important;
   }
 
+ 
   .gifting-nav-bottom {
     position: static;
     display: flex;
