@@ -162,8 +162,11 @@
   padding: 20px 30px;
 }
 
-/* ================= DESKTOP (≥992px) ================= */
+/* =========================================================
+   FINAL RESPONSIVE FIX (CLEAN + STABLE)
+   ========================================================= */
 
+/* ================= DESKTOP ================= */
 @media (min-width: 992px) {
 
   .gifting-nav-top {
@@ -186,46 +189,48 @@
     display: none;
   }
 
+  .gifting-nav-bottom {
+    display: flex;
+  }
+
 }
 
-/* ================= TABLET (768–991px) ================= */
 
-@media (max-width: 991px) and (min-width: 768px) {
+/* ================= TABLET ================= */
+@media (max-width: 991px) and (min-width: 769px) {
 
   .gifting-nav-top {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
   }
 
   .gifting-search {
     flex: 1;
-    max-width: 400px;
+    max-width: 350px;
   }
 
   .gifting-icons {
     display: flex;
-    gap: 10px;
-    flex-wrap: nowrap;
-  }
-
-  .gifting-links a {
-    font-size: 13px;
-    margin-right: 10px;
+    gap: 8px;
   }
 
 }
 
 
-/* ================= MOBILE (768px) ================= */
+/* ================= MOBILE (REAL FIX) ================= */
 @media (max-width: 768px) {
 
-  /* ===== FORCE TRUE MOBILE STRUCTURE ===== */
+  /* 🔥 HIDE DESKTOP NAV LINKS COMPLETELY */
+  .gifting-nav-bottom {
+    display: none !important;
+  }
 
+  /* ===== HEADER STRUCTURE ===== */
   .gifting-nav-top {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 8px;
   }
 
   /* ===== ROW 1 ===== */
@@ -237,7 +242,12 @@
     display: block;
   }
 
-  /* ===== ROW 2 (SEARCH FULL WIDTH) ===== */
+  /* 🔥 REMOVE ICON CROWDING */
+  .gifting-icons {
+    display: none !important;
+  }
+
+  /* ===== ROW 2 ===== */
   .gifting-search {
     width: 100%;
     order: 2;
@@ -247,24 +257,14 @@
     height: 42px;
   }
 
-  /* ===== ROW 3 (ICONS CLEAN GRID) ===== */
-  .gifting-icons {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr); /* 🔥 KEY FIX */
-    gap: 8px;
-    order: 3;
-  }
-
-  .gifting-icons > * {
-    text-align: center;
-    font-size: 14px;
-  }
-
 }
 
-@media (max-width: 576px) {
-  .gifting-icons {
-    display: none;
+
+/* ================= OPTIONAL (ULTRA SMALL) ================= */
+@media (max-width: 480px) {
+
+  .gifting-logo img {
+    height: 34px;
   }
+
 }
