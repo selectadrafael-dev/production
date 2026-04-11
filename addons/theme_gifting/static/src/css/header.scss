@@ -280,10 +280,6 @@
     grid-area: menu;
   }
 
-  .gifting-search {
-    grid-area: search;
-    width: 100%;
-  }
 
   /* REMOVE FLEX INTERFERENCE */
   .gifting-nav-top {
@@ -292,28 +288,26 @@
 
   /* ================= SEARCH (BOTTOM ROW STYLE) ================= */
 
-  .gifting-search {
+ .gifting-search {
     grid-area: search;
     width: 100%;
-    text-align: center;
 
-    margin-top: 8px;   /* 🔥 tighter to menu */
-    margin-bottom: 16px;
+    padding: 10px 0 14px;
+    border-top: 1px solid #f1f1f1;
   }
 
   .gifting-search form {
-    display: inline-flex;
+    display: flex;
     align-items: center;
 
-    width: 92%;
-    max-width: 820px; /* 🔥 stronger presence */
+    width: 100%;       /* 🔥 full container width */
+    max-width: 100%;   /* 🔥 remove centering constraint */
 
     background: #fff;
-    border-radius: 12px;
+    border-radius: 10px;
+    border: 1px solid #e6e6e6;
 
-    border: 1px solid #e2e2e2;
-
-    box-shadow: 0 6px 18px rgba(0,0,0,0.08); /* 🔥 better depth */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
   }
 
   .gifting-search input {
