@@ -174,6 +174,7 @@ let allowHover = false;
 
       // hide right panel completely
       if (right) right.classList.remove('active');
+      initMegaHover(menu);
 
       // 🔍 DEBUG (you can remove later)
       console.log('🧼 Reset complete → panels visible:',
@@ -211,22 +212,31 @@ let allowHover = false;
   /* =========================
      DESKTOP HOVER
   ========================= */
+function initMegaHover(menu) {
+  // const left = menu?.querySelector('.mega-left');
 
-document.addEventListener('mouseover', function (e) {
+  // if (!left) {
+  //   console.warn('❌ .mega-left not found');
+  //   return;
+  // }
 
-  if (isMobile()) return;
+  // console.log('✅ Mega hover initialized');
 
-  const item = e.target.closest('.mega-left-item');
-  const menu = getCatMenu();
+  // left.addEventListener('mouseenter', function () {
+  //   console.log('🟡 Entered left panel (no action yet)');
+  // });
 
-  if (!item || !menu || !menu.classList.contains('is-open')) return;
+  // left.addEventListener('mouseover', function (e) {
+  //   if (isMobile()) return;
 
-  // 🔥 prevent instant auto-trigger
-  if (!allowHover) return;
+  //   const item = e.target.closest('.mega-left-item');
+  //   if (!item) return;
 
-  showPanel(menu, item.dataset.catId);
+  //   console.log('👉 Hover category (controlled):', item.dataset.catId);
 
-});
+  //   showPanel(menu, item.dataset.catId);
+  // });
+}
 
   /* =========================
      MOBILE CATEGORY CLICK
