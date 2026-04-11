@@ -239,21 +239,11 @@
   transform: translateX(3px);
 }
 
-/* ================= TABLET (≤1200px) ================= */
+/* ================= TABLET (≤1100px) ================= */
 
 @media (max-width: 1100px) {
 
-  .gifting-nav-top {
-    flex-wrap: wrap;
-  }
-
-  /* ROW ORDER */
-  .gifting-logo { order: 1; }
-  .gifting-icons { order: 2; margin-left: auto; }
-  .gifting-nav-bottom { order: 3; width: 100%; }
-  .gifting-search { order: 4; width: 100%; margin-top: 10px; }
-
-  /* ================= GRID LAYOUT FIX ================= */
+  /* ================= GRID SYSTEM ================= */
 
   .gifting-container {
     display: grid;
@@ -265,7 +255,12 @@
     gap: 10px;
   }
 
-  /* MAP ELEMENTS */
+  /* REMOVE FLEX INTERFERENCE */
+  .gifting-nav-top {
+    display: contents; /* 🔥 critical */
+  }
+
+  /* ================= GRID MAPPING ================= */
 
   .gifting-logo {
     grid-area: logo;
@@ -278,42 +273,39 @@
 
   .gifting-nav-bottom {
     grid-area: menu;
+    padding: 12px 0 10px;
+    border-bottom: 1px solid #f2f2f2;
   }
 
-
-  /* REMOVE FLEX INTERFERENCE */
-  .gifting-nav-top {
-    display: contents; /* 🔥 critical */
-  }
-
-  /* ================= SEARCH (BOTTOM ROW STYLE) =================*/
-
- .gifting-search {
+  .gifting-search {
     grid-area: search;
     width: 100%;
-
-    padding: 10px 0 14px;
+    padding: 12px 0 16px;
     border-top: 1px solid #f1f1f1;
+    text-align: center;
   }
 
+  /* ================= SEARCH ================= */
+
   .gifting-search form {
-    display: flex;
+    display: inline-flex;
     align-items: center;
 
-    width: 100%;       /* 🔥 full container width */
-    max-width: 100%;   /* 🔥 remove centering constraint */
+    width: 100%;
+    max-width: 760px;
+
+    min-height: 48px;
 
     background: #fff;
     border-radius: 10px;
     border: 1px solid #e6e6e6;
 
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.04);
   }
 
   .gifting-search input {
     flex: 1;
-  
-     font-size: 15px;
+    font-size: 15px;
     padding: 14px 16px;
   }
 
@@ -321,49 +313,18 @@
     padding: 0 18px;
   }
 
- .gifting-search {
-    grid-area: search;
+  /* ================= INTERACTION ================= */
 
-    padding: 10px 0; /* 🔥 reduce heaviness */
-    background: transparent; /* 🔥 REMOVE grey box */
-    border-top: 1px solid #f1f1f1;
-
-    text-align: center;
+  .gifting-search form:focus-within {
+    border-color: #14a66a;
+    box-shadow: 0 0 0 2px rgba(20,166,106,0.1);
   }
 
-  .gifting-search form {
-    display: inline-flex;
-    align-items: center;
+  /* ================= LAYOUT POLISH ================= */
 
-    width: 100%;
-    max-width: 820px;
-
-    min-height: 48px; /* 🔥 stronger presence */
-    background: #fff;
-    border-radius: 10px;
-    border: 1px solid #e6e6e6;
-
-    /* 🔥 softer, cleaner shadow */
-    box-shadow: 0 3px 10px rgba(0,0,0,0.04); /* 🔥 softer */
-  }
-
-  .gifting-search {
-  backdrop-filter: blur(6px);
-
-
-  /* ================= FINAL POLISH — HEADER RHYTHM ================= */
-  /* tighten menu spacing */
-  .gifting-nav-bottom {
-    padding: 12px 0 18px; /* 🔥 better breathing space */
-    border-bottom: 1px solid #f2f2f2;
-  }
-
-  /* 🔥 connect search with next section */
   .gifting-navbar + * {
-    margin-top: 0; /* remove gap jump */
+    margin-top: 0;
   }
-
-}
 
 }
 
