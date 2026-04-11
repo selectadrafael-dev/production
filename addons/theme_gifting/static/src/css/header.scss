@@ -294,17 +294,15 @@
   .gifting-search {
     grid-area: search;
     width: 100%;
-
-    display: block; /* 🔥 important reset */
+    text-align: center; /* 🔥 FORCE CENTER CONTEXT */
     margin-top: 14px;
     margin-bottom: 12px;
   }
 
   .gifting-search form {
-    display: flex;
-    width: 100%;
-    max-width: 720px; /* 🔥 controls width */
-    margin: 0 auto;   /* 🔥 CENTERING MAGIC */
+    display: inline-flex; /* 🔥 KEY CHANGE */
+    width: 90%;           /* responsive width */
+    max-width: 720px;     /* controlled width */
 
     background: #fff;
     border-radius: 10px;
