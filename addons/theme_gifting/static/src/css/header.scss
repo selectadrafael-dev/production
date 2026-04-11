@@ -400,13 +400,6 @@
 
 @media (max-width: 520px) {
 
-  /* container alignment */
-  .gifting-nav-top {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
   /* logo stays fixed */
   .gifting-logo {
     flex: 0 0 auto;
@@ -427,6 +420,31 @@
 
   .gifting-icons::-webkit-scrollbar {
     display: none; /* Chrome */
+  }
+
+  .gifting-icons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    overflow-x: auto;
+    white-space: nowrap;
+
+    scrollbar-width: none;
+  }
+
+  .gifting-icons::-webkit-scrollbar {
+    display: none;
+  }
+
+  .gifting-icons > * {
+    flex: 0 0 auto;
+  }
+
+  .gifting-search {
+    width: 100%;
+    display: block; /* 🔥 force block layout */
+    order: 99; /* 🔥 ensure it's last */
   }
 
 }
