@@ -387,9 +387,9 @@
   }
 
   /* LANGUAGE */
-  .o_wlang_selector {
-    display: flex !important;
-    align-items: center;
+   .js_language_selector{
+    display: flex;
+    justify-content: end;
   }
 
   .o_wlang_selector span {
@@ -406,50 +406,50 @@
 @media (max-width: 520px) {
 
   /* ================= LOGO ================= */
-  .gifting-logo {
-    flex: 0 0 auto;
-  }
-
-  /* ================= SCROLL WRAPPER (MAIN FIX) ================= */
-  // .gifting-icons-wrapper {
-  //   display: flex;
-  //   align-items: center;
-  //   gap: 12px;
-
-  //   overflow-x: auto;
-  //   white-space: nowrap;
-
-  //   scrollbar-width: none; /* Firefox */
+  // .gifting-logo {
+  //   flex: 0 0 auto;
   // }
 
-  .gifting-icons-wrapper::-webkit-scrollbar {
-    display: none; /* Chrome */
-  }
+  // /* ================= SCROLL WRAPPER (MAIN FIX) ================= */
+  // // .gifting-icons-wrapper {
+  // //   display: flex;
+  // //   align-items: center;
+  // //   gap: 12px;
 
-  /* ================= PREVENT SHRINK ================= */
-  .gifting-icons-wrapper > * {
-    flex: 0 0 auto;
-  }
+  // //   overflow-x: auto;
+  // //   white-space: nowrap;
 
-  /* ================= INNER ICONS ================= */
-  .gifting-icons {
+  // //   scrollbar-width: none; /* Firefox */
+  // // }
+
+  // .gifting-icons-wrapper::-webkit-scrollbar {
+  //   display: none; /* Chrome */
+  // }
+
+  // /* ================= PREVENT SHRINK ================= */
+  // .gifting-icons-wrapper > * {
+  //   flex: 0 0 auto;
+  // }
+
+  // /* ================= INNER ICONS ================= */
+  // .gifting-icons {
+  //   display: flex;
+  //   align-items: center;
+  //   gap: 10px;
+  // }
+
+  // /* ================= LANGUAGE FIX ================= */
+
+  // /* ================= SEARCH (PROTECTED) ================= */
+  // .gifting-search {
+  //   width: 100%;
+  //   display: block;
+  //   order: 99;
+  // }
+
+  .js_language_selector{
     display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  /* ================= LANGUAGE FIX ================= */
-  .js_language_selector {
-    display: inline-flex;
-    align-items: center;
-    white-space: nowrap;
-  }
-
-  /* ================= SEARCH (PROTECTED) ================= */
-  .gifting-search {
-    width: 100%;
-    display: block;
-    order: 99;
+    justify-content: end;
   }
 
 }
