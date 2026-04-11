@@ -60,6 +60,7 @@
   ========================= */
 
 let justOpenedMega = false;
+let allowHover = false;
 
   function getCatMenu() {
     return document.querySelector('[data-cat-menu="1"]');
@@ -149,7 +150,13 @@ let justOpenedMega = false;
       menu.removeAttribute('hidden');
 
       // 🔥 block first hover trigger
-      justOpenedMega = true;
+      //justOpenedMega = true;
+      allowHover = false;
+
+      // allow hover only after real mouse movement
+      setTimeout(() => {
+        allowHover = true;
+      }, 150);
 
       // 🔥 FULL HARD RESET (CRITICAL FIX)
       const panels = menu.querySelectorAll('.mega-panel');
@@ -205,7 +212,7 @@ let justOpenedMega = false;
      DESKTOP HOVER
   ========================= */
 
-  document.addEventListener('mouseover', function (e) {
+document.addEventListener('mouseover', function (e) {
 
   if (isMobile()) return;
 
@@ -214,11 +221,8 @@ let justOpenedMega = false;
 
   if (!item || !menu || !menu.classList.contains('is-open')) return;
 
-  // 🔥 BLOCK first accidental hover
-  if (justOpenedMega) {
-    justOpenedMega = false;
-    return;
-  }
+  // 🔥 prevent instant auto-trigger
+  if (!allowHover) return;
 
   showPanel(menu, item.dataset.catId);
 
