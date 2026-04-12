@@ -366,19 +366,35 @@
     -webkit-overflow-scrolling: touch;
 }
 
+
+.mobile-drawer-top {
+  position: sticky;   /* 🔥 stays visible */
+  top: 0;
+  z-index: 10;
+
+  display: flex;
+  justify-content: flex-end;
+
+  height: 56px;
+  padding: 0 16px;
+
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+}
+
 /* panels */
 .mobile-panel {
   position: absolute;
-  overflow-y: auto;
-  width: 100%;
-  height: 100%;
-  top: 0;
+  top: 56px; /* 🔥 push below header */
   left: 100%;
+  width: 100%;
+  height: calc(100% - 56px);
 
   transition: 0.3s ease;
   background: #fff;
+  overflow-y: auto;
 }
-
 
 /* active panel */
 .mobile-panel.active {
@@ -464,6 +480,11 @@
     font-size: 20px;
     cursor: pointer;
     color: #333;
+  }
+
+  .drawer-close {
+    font-size: 22px;
+    font-weight: 600;
   }
 }
 
