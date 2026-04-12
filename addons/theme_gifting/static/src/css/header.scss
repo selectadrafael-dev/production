@@ -438,6 +438,16 @@
   .mobile-cat-drawer {
     display: block;
   }
+
+   .mobile-cat-drawer {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  /* 🔥 THIS IS MISSING */
+  .mobile-cat-drawer.active {
+    transform: translateX(0);
+  }
 }
 
 @media (min-width: 769px) {
