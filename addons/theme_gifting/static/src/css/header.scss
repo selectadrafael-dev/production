@@ -454,13 +454,11 @@
     display: none !important; /* disable desktop mega */
   }
 
-  .mobile-cat-drawer {
-    display: block;
-  }
 
    .mobile-cat-drawer {
     transform: translateX(-100%);
     transition: transform 0.3s ease;
+     display: block;
   }
 
   /* 🔥 THIS IS MISSING */
@@ -507,10 +505,7 @@
 }
 
 @media (max-width: 1200px) {
-
-  /* ================= GRID SYSTEM ================= */
-
-  .gifting-container {
+   .gifting-container {
     display: grid;
     grid-template-columns: 1fr auto;
     grid-template-areas:
@@ -520,13 +515,13 @@
     gap: 10px;
   }
 
-  /* REMOVE FLEX INTERFERENCE */
-.gifting-nav-top {
-  display: flex;
-  flex-wrap: wrap;
-}
+  /* ================= GRID SYSTEM ================= */
 
-  /* ================= GRID MAPPING ================= */
+
+ 
+  .gifting-nav-top {
+    display: contents;
+  }
 
   .gifting-logo {
     grid-area: logo;
@@ -537,19 +532,28 @@
     justify-self: end;
   }
 
-  .gifting-nav-bottom {
-    grid-area: menu;
-    padding: 12px 0 10px;
-    border-bottom: 1px solid #f2f2f2;
-  }
-
   .gifting-search {
     grid-area: search;
     width: 100%;
-    padding: 12px 0 16px;
+    margin-top: 8px;
+     padding: 12px 0 16px;
     border-top: 1px solid #f1f1f1;
-    text-align: center;
   }
+
+  /* KEEP THIS */
+  .gifting-nav-bottom {
+  grid-area: menu; /* ✅ THIS IS THE MISSING PIECE */
+  padding: 12px 0 10px;
+  border-bottom: 1px solid #f2f2f2;
+}
+
+  
+  /* REMOVE FLEX INTERFERENCE */
+
+
+  /* ================= GRID MAPPING ================= */
+
+
 
   /* ================= SEARCH ================= */
 
@@ -613,13 +617,13 @@
     display: none !important;
   }
 
-  /* SCROLL MENU */
+  /* SCROLL MENU 
   .gifting-nav-bottom {
     overflow-x: auto;
     white-space: nowrap;
     gap: 16px;
     position: relative;
-  }
+   }*/
 
   .gifting-nav-bottom::-webkit-scrollbar {
     display: none;
@@ -649,13 +653,6 @@
   .gifting-search input {
     height: 40px;
   }
-
-  /* LANGUAGE */
-   .js_language_selector{
-    display: flex;
-    justify-content: end;
-  }
-
   .o_wlang_selector span {
     display: none;
   }
@@ -673,10 +670,4 @@
  {
     font-size: 15px !important;
  }
-
-  .js_language_selector{
-    display: flex;
-    justify-content: end;
-  }
-
 }
