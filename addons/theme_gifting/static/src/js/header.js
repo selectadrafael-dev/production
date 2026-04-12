@@ -258,4 +258,51 @@
   }
 });
 
+//mobile category js
+document.addEventListener('click', function(e){
+
+  const drawer = document.querySelector('.mobile-cat-drawer');
+  const toggle = e.target.closest('[data-cat-toggle="1"]');
+
+  /* OPEN DRAWER (MOBILE ONLY) */
+  if (toggle && window.innerWidth < 768) {
+    e.preventDefault();
+    drawer?.classList.add('active');
+    drawer?.removeAttribute('hidden');
+    return;
+  }
+
+  /* CLOSE ON OUTSIDE CLICK */
+  if (drawer && !e.target.closest('.mobile-cat-drawer') && !toggle) {
+    drawer.classList.remove('active');
+    drawer.setAttribute('hidden', 'hidden');
+  }
+
+  /* NAVIGATION */
+  const item = e.target.closest('.mobile-item');
+  if (item) {
+    const target = item.dataset.target;
+    const next = document.querySelector(`[data-panel="${target}"]`);
+
+    if (next) {
+      document.querySelectorAll('.mobile-panel')
+        .forEach(p => p.classList.remove('active'));
+
+      next.classList.add('active');
+    }
+  }
+
+  /* BACK */
+  const back = e.target.closest('.mobile-back');
+  if (back) {
+    document.querySelectorAll('.mobile-panel')
+      .forEach(p => p.classList.remove('active'));
+
+    document.querySelector('[data-level="1"]')
+      ?.classList.add('active');
+  }
+
+});
+
+
 })();
