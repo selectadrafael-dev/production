@@ -67,6 +67,31 @@
   animation: heroFade 0.8s ease forwards;
 }
 
+.carousel-item {
+  display: none;
+}
+
+.carousel-item.active {
+  display: block;
+}
+.hero-bg-slide {
+  position: relative;
+  z-index: 1;
+}
+.gifting-hero-inner {
+  position: relative;
+  z-index: 2;
+}
+.gifting-hero-image {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.gifting-hero-image img {
+  max-width: 100%;
+  height: auto;
+}
 @keyframes heroFade {
   from {
     opacity: 0;
