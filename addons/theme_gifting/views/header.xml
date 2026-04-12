@@ -160,6 +160,10 @@
 
               <!--mobile category logic-->
                   <div class="mobile-cat-drawer" hidden="hidden">
+                   <!-- 🔥close btn -->
+                  <div class="mobile-drawer-top">
+                    <span class="drawer-close">✕</span>
+                  </div>
 
                     <!-- LEVEL 1 -->
                     <div class="mobile-panel active" data-level="1">

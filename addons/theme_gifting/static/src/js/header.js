@@ -304,5 +304,11 @@ document.addEventListener('click', function(e){
 
 });
 
+//mobile drawer closing
+/* CLOSE BUTTON */
+const closeBtn = e.target.closest('.drawer-close');
+if (closeBtn) {
+  document.querySelector('.mobile-cat-drawer')?.classList.remove('active');
+}
 
 })();
