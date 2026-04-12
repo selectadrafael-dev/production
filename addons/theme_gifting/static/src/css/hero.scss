@@ -1,70 +1,145 @@
+/*working hero section*/
+/* ================= HERO BASE ================= */
+
 .gifting-hero {
-    background: #f5f5f5;
-    /*padding: 80px 0;*/
+  background: #f6f6f6;
 }
 
-.hero-text h1 {
-    font-size: 48px;
-    font-weight: 700;
-    color: #222;
-    margin-bottom: 20px;
+/* ================= SLIDE 1 ================= */
+
+.gifting-hero-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 520px;
+  gap: 40px;
 }
 
-.hero-text p {
-    font-size: 18px;
-    color: #666;
-    margin-bottom: 30px;
+.gifting-hero-text {
+  max-width: 500px;
+}
+
+.gifting-hero-text h1 {
+  font-size: 48px;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.gifting-hero-text p {
+  font-size: 18px;
+  color: #666;
+  margin-bottom: 25px;
 }
 
 .hero-btn {
-    padding: 14px 28px;
-    font-weight: 600;
-    border-radius: 8px;
+  padding: 14px 26px;
+  border-radius: 8px;
 }
 
-.hero-images img {
-    max-height: 420px;
-    object-fit: contain;
+/* IMAGE */
+.gifting-hero-image img {
+  max-height: 500px;
+  width: auto;
 }
-.carousel-item-wrapper img{
-  width: 100%;
-//   height: auto;
+
+/* ================= BG SLIDES ================= */
+  .hero-bg-one{
+    background-image:url('/theme_gifting/static/src/img/banners/banner_1a.png');
+   }
+
+.hero-bg-two{
+     background-image:url('/theme_gifting/static/src/img/banners/banner_2a.png');
+}
+
+.hero-bg-slide {
   height: 520px;
+  background-size: cover;
+  background-repeat: no-repeat;
+ background-position: center center;
+/*background-position: center top; /* 🔥 shift focus */
+  display: flex;
+   position: relative;
+  align-items: center;
+}
+
+
+@media (max-width: 992px) {
+  .hero-bg-slide {
+    background-size: cover; /* keep cover */
+    background-position: center; /* 🔥 IMPORTANT */
+  }
+}
+
+@media (max-width: 768px) {
+
+  .gifting-hero-text {
+    position: relative;
+    z-index: 2;
+
+    padding: 20px 16px;
+    max-width: 100%;
+  }
+
+  /* optional overlay for readability */
+  .hero-bg-slide::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.35); /* 🔥 overlay */
+    z-index: 1;
+  }
+
+   .hero-bg-one{
+    background-image:url('/theme_gifting/static/src/img/banners/banner_1a_mobile.png');
+   }
+
+    .hero-bg-two{
+        background-image:url('/theme_gifting/static/src/img/banners/banner_2a_mobile.png');
+    }
+}
+
+/* MOBILE */
+
+.hero-overlay-text h2 {
+  font-size: 36px;
+  font-weight: 700;
+}
+
+/* ================= ANIMATION ================= */
+
+.carousel-item.active .gifting-hero-text {
+  animation: heroFade 0.8s ease forwards;
+}
+
+.carousel-item {
+  display: none;
+}
+
+.carousel-item.active {
   display: block;
 }
-
-
-.gifting-hero {
-    position: relative;
-    background: #f6f6f6;
-    overflow: hidden;
+.hero-bg-slide {
+  position: relative;
+  z-index: 1;
 }
-
 .gifting-hero-inner {
-    display: flex;
-    align-items: center;
-    min-height: 520px;
+  position: relative;
+  z-index: 2;
+}
+.gifting-hero-image {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
 }
 
-/*TEXT SIDE*/
-
-.gifting-hero-text {
-    max-width: 490px;
-    z-index: 2;
-    opacity: 0;
-    transform: translateY(30px);
+.gifting-hero-image img {
+  max-width: 100%;
+  height: auto;
 }
-
-/* Animate ONLY when slide becomes active */
-.carousel-item.active .gifting-hero-text {
-  animation: heroFade 0.9s ease forwards;
-}
-
-/* Fade animation */
 @keyframes heroFade {
   from {
     opacity: 0;
-    transform: translateY(40px);
+    transform: translateY(30px);
   }
   to {
     opacity: 1;
@@ -72,51 +147,41 @@
   }
 }
 
-/*IMAGE SIDE*/
+/* ================= MOBILE ================= */
 
-.gifting-hero-image {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    height: 100%;
+@media (max-width: 768px) {
+
+  .gifting-hero-inner {
+    flex-direction: column;
+    text-align: center;
+    padding: 30px 0;
+  }
+
+  .gifting-hero-text h1 {
+    font-size: 28px;
+  }
+
+  .gifting-hero-text p {
+    font-size: 14px;
+  }
+
+  .gifting-hero-image img {
+    max-height: 300px;
+  }
+
+  .hero-bg-slide {
+    height: 300px;
+  }
+
+   .gifting-hero,
+  .carousel-item {
+    min-height: 420px; /* 🔥 FIX HEIGHT */
+  }
+
 }
 
-.gifting-hero-image img {
-    height: 100%;
-    object-fit: contain;
-}
-@media(max-width: 992px) {
-   .gifting-hero-image {
-        position: relative;
-    }
+@media (max-width: 520px) {
     .gifting-hero-inner {
-        display: block;
-       align-items: center;
-        min-height: auto;
-        margin-bottom: 50px;
-    }
-
-    @media(max-width: 768px) {
-        .carousel-item{
-            min-height: auto!important;
-        }
-        .gifting-hero-image img {
-            height: 100%;
-            object-fit: contain;
-            width: 95%;
-            margin: 0 auto;
-        }
-        .carousel-item-wrapper img{
-            height: 350px;
-        }
-
-        .carousel-item-active {
-            padding: 50px 0;
-        }
-         @media(max-width: 520px) {
-            .carousel-item-wrapper img{
-                height: 150px;
-            }
-         }
-    }
+    text-align: left;
+  }
 }

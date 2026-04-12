@@ -117,12 +117,37 @@
                         <div class="mega-panel-grid">
 
                           <t t-if="cat.child_id">
-                            <t t-foreach="cat.child_id" t-as="sub">
-                              <a t-att-href="'/shop/category/%s' % sub.id" class="mega-sub">
-                                <t t-esc="sub.name"/>
-                              </a>
+
+                              <t t-foreach="cat.child_id" t-as="sub">
+
+                                <!-- SUBCATEGORY TITLE -->
+                                <div class="mega-subcategory">
+
+                                  <div class="mega-sub-title">
+                                    <t t-esc="sub.name"/>
+                                  </div>
+
+                                  <!-- SUB-SUB -->
+                                  <div class="mega-sub-list">
+
+                                    <t t-if="sub.child_id">
+                                      <t t-foreach="sub.child_id" t-as="child">
+
+                                        <a t-att-href="'/shop/category/%s' % child.id"
+                                          class="mega-sub">
+                                          <t t-esc="child.name"/>
+                                        </a>
+
+                                      </t>
+                                    </t>
+
+                                  </div>
+
+                                </div>
+
+                              </t>
+
                             </t>
-                          </t>
 
                         </div>
                       </div>
@@ -132,6 +157,74 @@
                 </div> <!-- ✅ CLOSED mega-wrapper -->
 
               </div>
+
+              <!--mobile category logic-->
+                  <div class="mobile-cat-drawer">
+                   <!-- 🔥close btn -->
+                  <div class="mobile-drawer-top">
+                    <button class="drawer-close" type="button">×</button>
+                  </div>
+
+                    <!-- LEVEL 1 -->
+                    <div class="mobile-panel active" data-level="1">
+
+                      <t t-foreach="categories" t-as="cat">
+                        <div class="mobile-item"
+                            t-att-data-target="'cat-' + str(cat.id)">
+                          <span t-esc="cat.name"/>
+                          <span class="arrow">›</span>
+                        </div>
+                      </t>
+
+                    </div>
+
+                    <!-- LEVEL 2 -->
+                    <t t-foreach="categories" t-as="cat">
+                      <div class="mobile-panel"
+                          t-att-data-panel="'cat-' + str(cat.id)">
+
+                        <div class="mobile-header">
+                          <span class="mobile-back">← Back</span>
+                          <span class="mobile-title" t-esc="cat.name"/>
+                        </div>
+
+                        <t t-foreach="cat.child_id" t-as="sub">
+                          <div class="mobile-item"
+                              t-att-data-target="'sub-' + str(sub.id)">
+                            <span t-esc="sub.name"/>
+                            <span class="arrow">›</span>
+                          </div>
+                        </t>
+
+                      </div>
+                    </t>
+
+                    <!-- LEVEL 3 -->
+                    <t t-foreach="categories" t-as="cat">
+                      <t t-foreach="cat.child_id" t-as="sub">
+
+                        <div class="mobile-panel"
+                            t-att-data-panel="'sub-' + str(sub.id)">
+
+                          <div class="mobile-header">
+                            <span class="mobile-back">← Back</span>
+                            <span class="mobile-title" t-esc="sub.name"/>
+                          </div>
+
+                          <t t-foreach="sub.child_id" t-as="child">
+                            <a t-att-href="'/shop/category/%s' % child.id"
+                              class="mobile-link">
+                              <t t-esc="child.name"/>
+                            </a>
+                          </t>
+
+                        </div>
+
+                      </t>
+                    </t>
+
+                  </div>
+              <!--mobile category logic-->
 
             </div>
 
