@@ -159,10 +159,10 @@
               </div>
 
               <!--mobile category logic-->
-                  <div class="mobile-cat-drawer" hidden="hidden">
+                  <div class="mobile-cat-drawer">
                    <!-- 🔥close btn -->
                   <div class="mobile-drawer-top">
-                    <span class="drawer-close">✕</span>
+                    <button class="drawer-close" type="button">×</button>
                   </div>
 
                     <!-- LEVEL 1 -->

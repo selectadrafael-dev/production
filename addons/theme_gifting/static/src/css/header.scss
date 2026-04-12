@@ -521,9 +521,10 @@
   }
 
   /* REMOVE FLEX INTERFERENCE */
-  .gifting-nav-top {
-    display: contents; /* 🔥 critical */
-  }
+.gifting-nav-top {
+  display: flex;
+  flex-wrap: wrap;
+}
 
   /* ================= GRID MAPPING ================= */
 
@@ -591,6 +592,9 @@
     margin-top: 0;
   }
 
+  .gifting-categories:hover .cat-mega {
+    display: none !important;
+  }
 }
 
 /* ================= MOBILE (FIGMA) ================= */

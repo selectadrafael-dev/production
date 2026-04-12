@@ -259,16 +259,19 @@
 });
 
 //mobile category js
+//mobile category js
 document.addEventListener('click', function(e){
 
   const drawer = document.querySelector('.mobile-cat-drawer');
   const toggle = e.target.closest('[data-cat-toggle="1"]');
 
   /* OPEN DRAWER (MOBILE ONLY) */
-  if (toggle && window.innerWidth < 768) {
+  if (toggle && window.innerWidth <= 768) {
     e.preventDefault();
     drawer?.classList.add('active');
     drawer?.removeAttribute('hidden');
+    document.body.style.overflow = 'hidden'; // ✅ ADD THIS
+    
     return;
   }
 
@@ -276,6 +279,8 @@ document.addEventListener('click', function(e){
   if (drawer && !e.target.closest('.mobile-cat-drawer') && !toggle) {
     drawer.classList.remove('active');
     drawer.setAttribute('hidden', 'hidden');
+
+    document.body.style.overflow = '';
   }
 
   /* NAVIGATION */
@@ -304,11 +309,14 @@ document.addEventListener('click', function(e){
 
 });
 
+
 //mobile drawer closing
-/* CLOSE BUTTON */
-const closeBtn = e.target.closest('.drawer-close');
-if (closeBtn) {
-  document.querySelector('.mobile-cat-drawer')?.classList.remove('active');
-}
+// CLOSE DRAWER
+document.addEventListener('click', function (e) {
+  if (e.target.closest('.drawer-close')) {
+    const drawer = document.querySelector('.mobile-cat-drawer');
+    if (drawer) drawer.classList.remove('active');
+  }
+});
 
 })();
