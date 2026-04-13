@@ -319,4 +319,18 @@ document.addEventListener('click', function (e) {
   }
 });
 
+//========================contact us=======================
+document.addEventListener("click", function (e) {
+  const trigger = e.target.closest(".contact-trigger");
+  const dropdown = document.querySelector(".contact-dropdown");
+
+  if (!dropdown) return;
+
+  if (trigger) {
+    dropdown.classList.toggle("active");
+  } else {
+    dropdown.classList.remove("active");
+  }
+});
+
 })();
