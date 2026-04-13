@@ -35,6 +35,40 @@
               </div>
 
               <div class="gifting-icons">
+                   <div class="gifting-contact">
+                      <div class="contact-dropdown">
+
+                        <!-- Trigger -->
+                        <span class="contact-trigger">
+                          <i class="fa fa-headphones"></i>
+                           <span class="contact-text">Help &amp; Contact</span>
+                          <i class="fa fa-chevron-down"></i>
+                        </span>
+
+                        <!-- Dropdown -->
+                        <div class="contact-menu">
+
+                          <a href="/contactus" class="contact-item">
+                            Contact
+                          </a>
+
+                          <a href="#" class="contact-item">
+                            <i class="fa fa-comments"></i>
+                            Chat with us
+                          </a>
+
+                          <div class="contact-item contact-phone">
+                            <i class="fa fa-phone"></i>
+                            <div>
+                              <strong>0116 366 0052</strong>
+                              <small>Mon - Friday 9:00 - 17:30</small>
+                            </div>
+                          </div>
+
+                        </div>
+
+                      </div>
+                   </div>
 
                 <!-- <t t-if="not request.env.user._is_public()"> -->
                 <t t-if="request.session.uid and request.env.user.has_group('base.group_portal')">
