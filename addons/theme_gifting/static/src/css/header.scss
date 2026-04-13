@@ -114,37 +114,6 @@
   padding-bottom: 3px;
 }
 
-/* ================= ACCOUNT ================= */
-
-.account-dropdown {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.account-dropdown .dropdown-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 6px;
-
-  display: none;
-  flex-direction: column;
-
-  background: #fff;
-  border: 1px solid #eee;
-  border-radius: 8px;
-  min-width: 180px;
-  padding: 8px 0;
-
-  box-shadow: 0 10px 30px rgba(0,0,0,.1);
-  z-index: 99999;
-}
-
-.account-dropdown:hover .dropdown-menu,
-.account-dropdown .dropdown-menu:hover {
-  display: flex;
-}
 
 /* ================= MEGA MENU ================= */
 
@@ -253,10 +222,11 @@
   cursor: pointer;
 }
 
+
 /* dropdown container */
 .account-dropdown .dropdown-menu {
   position: absolute;
-  top: 110%;
+  top: 100%;
   right: 0;
 
   min-width: 200px;
@@ -268,15 +238,34 @@
 
   box-shadow: 0 10px 30px rgba(0,0,0,0.12);
 
-  display: none;
+  /* 🔥 NEW LOGIC */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+
+  transition: all 0.2s ease;
+
+  display: flex;            /* ✅ ALWAYS FLEX NOW */
   flex-direction: column;
+
   z-index: 9999;
 }
 
-/* show on hover (desktop) */
-.account-dropdown:hover .dropdown-menu {
+/* ================= ACCOUNT ================= */
+
+.account-dropdown {
+  position: relative;
   display: flex;
+  align-items: center;
 }
+
+.account-dropdown:hover .dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+
 
 /* ================= ITEMS ================= */
 
@@ -316,6 +305,15 @@
   display: flex;
 }
 
+
+.account-dropdown::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 100%;
+  height: 10px;
+}
 /*======sub category==============================*/
 /* subcategory block */
 .mega-subcategory {
