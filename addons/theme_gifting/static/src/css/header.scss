@@ -69,6 +69,7 @@
   cursor: pointer;
 }
 
+
 /* Icons */
 .gifting-icons {
   flex: 0 0 auto;
@@ -94,7 +95,13 @@
 
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+   position: relative; /* 🔥 REQUIRED */
+   max-width: 100%;
+  overflow-x: auto;
 }
+
+/*new update*/
+/*new update*/
 
 .gifting-links {
   display: flex;
@@ -151,6 +158,8 @@
 }
 
 .mega-wrapper {
+   display: flex; /* 🔥 replace inline-flex */
+  max-width: 100%;
   display: inline-flex;
   align-items: flex-start;
 }

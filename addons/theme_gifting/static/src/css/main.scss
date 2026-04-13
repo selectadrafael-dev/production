@@ -1,6 +1,9 @@
 /*=========================================
    GREEN CTA BANNER SECTION
 =========================================*/
+html, body {
+  overflow-x: hidden;
+}
 
 .cta-banner-section {
   background-color: #14a66a; /* Green tone from screenshot */
