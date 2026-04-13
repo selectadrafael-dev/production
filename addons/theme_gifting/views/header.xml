@@ -36,7 +36,8 @@
 
               <div class="gifting-icons">
 
-                <t t-if="not request.env.user._is_public()">
+                <!-- <t t-if="not request.env.user._is_public()"> -->
+                <t t-if="request.session.uid and request.env.user.has_group('base.group_portal')">
                   <a href="/shop/wishlist" class="icon">❤️</a>
                 </t>
 
