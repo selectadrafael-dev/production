@@ -13,12 +13,12 @@
 
             <!-- Title -->
             <h2 class="fw-bold mb-2">
-              Yenilikləri izlə
+              Frequently Asked Questions
             </h2>
 
             <!-- Subtitle -->
             <p class="text-muted mb-4">
-              Xəbərlərə yazılaraq əlavə endirimlərdən yararlanın.
+             Subscribe to the newsletter to enjoy additional discounts.
             </p>
 
             <!-- Form -->
@@ -28,15 +28,14 @@
 
                 <input type="email"
                        class="form-control newsletter-input"
-                       placeholder="E-poçt adresini daxil edin"
+                       placeholder="Enter your email address"
                        required="required"/>
-
               </div>
 
               <button type="submit"
                       class="btn newsletter-btn w-100">
 
-                İzləməyə başla
+               Start Following
 
               </button>
 

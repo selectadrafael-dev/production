@@ -11,7 +11,7 @@
 
           <!-- Title -->
           <h2 class="text-center fw-bold mb-5">
-            Tez-tez verilən suallar
+           Frequently Asked Questions
           </h2>
 
           <!-- Bootstrap Accordion -->
@@ -28,7 +28,7 @@
                         data-bs-target="#faq1"
                         aria-expanded="true">
 
-                  Sellectad kimdir?
+                 Who is Sellectad?
                 </button>
               </h2>
 
@@ -37,9 +37,11 @@
                    data-bs-parent="#faqAccordion">
 
                 <div class="accordion-body">
-                  Lorem ipsum dolor sit amet consectetur.
-                  Tellus gravida congue aliquet mattis
-                  consectetur varius egestas.
+                 <p>Sellectad is a modern gifting platform designed to help businesses and individuals create meaningful, memorable gifting experiences at scale. By combining a carefully curated selection of high-quality products with a seamless digital experience, Sellectad enables users to send personalized gifts across different regions with ease. Whether it’s for employee recognition, client appreciation, or special occasions, the platform simplifies the entire gifting process—from selection to delivery.</p>
+
+                 <p>
+                  At its core, Sellectad focuses on strengthening relationships through thoughtful gifting. It offers flexible solutions tailored to corporate needs, including bulk ordering, branding options, and global fulfillment. With a strong emphasis on quality, convenience, and customization, Sellectad empowers organizations to connect more deeply with their teams and customers, turning everyday moments into lasting impressions.
+                 </p>
                 </div>
 
               </div>
@@ -54,7 +56,7 @@
                         data-bs-toggle="collapse"
                         data-bs-target="#faq2">
 
-                  Promosyon məhsulları nədir?
+                 What are Promotional Products?
                 </button>
               </h2>
 
@@ -63,8 +65,13 @@
                    data-bs-parent="#faqAccordion">
 
                 <div class="accordion-body">
-                  Promotional products are branded items
-                  used for marketing and advertising.
+                  <p>
+                      Promotional products are branded items that businesses use to promote their brand, products, or services. These items—such as pens, notebooks, mugs, bags, and tech accessories—are customized with a company’s logo or message and distributed to customers, employees, or event attendees. They serve as a tangible way to increase brand visibility and keep a business top-of-mind long after the initial interaction.  
+                  </p>
+
+                  <p>
+                        Beyond simple giveaways, promotional products are powerful marketing tools that help build brand recognition and customer loyalty. When chosen thoughtfully, they create positive associations with a brand and can influence purchasing decisions over time. Companies often use them during events, campaigns, onboarding programs, or corporate gifting initiatives to leave a lasting impression and strengthen relationships.
+                  </p>
                 </div>
 
               </div>
@@ -79,7 +86,7 @@
                         data-bs-toggle="collapse"
                         data-bs-target="#faq3">
 
-                  Promosyon məhsulları niyə işləyir?
+                 Why Do Promotional Products Work?
                 </button>
               </h2>
 
@@ -88,8 +95,13 @@
                    data-bs-parent="#faqAccordion">
 
                 <div class="accordion-body">
-                  They increase brand visibility and customer
-                  engagement through practical usage.
+                    <p>
+                          Promotional products work because they create a lasting, tangible connection between a brand and its audience. Unlike digital ads that can be skipped or forgotten, physical items stay with the user and are often used repeatedly in daily life. Each time the item is used—whether it’s a pen, mug, or bag—it reinforces brand visibility and keeps the company top-of-mind in a natural, non-intrusive way.
+                    </p>
+
+                    <p>
+                        They also tap into the psychology of reciprocity. When people receive a useful or thoughtful item, they tend to develop a positive perception of the brand and feel more inclined to engage with it. This builds trust, strengthens relationships, and can influence future purchasing decisions. As a result, promotional products are not just giveaways—they are strategic tools for long-term brand recognition and customer loyalty.
+                    </p>
                 </div>
 
               </div>
@@ -104,7 +116,7 @@
                         data-bs-toggle="collapse"
                         data-bs-target="#faq4">
 
-                  Hansı promosyon məhsulları ən effektivdir?
+                 Which Promotional Products Are Most Effective?
                 </button>
               </h2>
 
@@ -113,8 +125,13 @@
                    data-bs-parent="#faqAccordion">
 
                 <div class="accordion-body">
-                  Everyday-use items like pens, mugs,
-                  and bags tend to be most effective.
+                    <p>
+                          The most effective promotional products are those that are practical, high-quality, and used frequently in everyday life. Items like notebooks, pens, reusable water bottles, tote bags, and tech accessories (such as power banks or USB drives) tend to deliver the best results because they provide ongoing value to the user. When a product is useful and well-made, people keep it longer—giving your brand repeated exposure over time.
+                    </p>
+
+                    <p>
+                          Effectiveness also depends on how well the product matches your audience and purpose. For example, corporate clients may appreciate premium items like branded notebooks or executive gifts, while event attendees may prefer lightweight, functional giveaways. The key is to choose products that align with your brand image and meet the needs of your target audience. A thoughtful, relevant promotional item not only increases visibility but also strengthens brand perception and engagement.
+                    </p>
                 </div>
 
               </div>
@@ -130,7 +147,7 @@
                         data-bs-toggle="collapse"
                         data-bs-target="#faq5">
 
-                  Promo məhsulu necə seçə bilərəm?
+                How Can I Choose the Right Promotional Product?
                 </button>
               </h2>
 
@@ -139,8 +156,14 @@
                    data-bs-parent="#faqAccordion">
 
                 <div class="accordion-body">
-                  Choose based on your audience,
-                  budget, and marketing goals.
+                      <p> 
+                              Choosing the right promotional product starts with understanding your target audience and the purpose of your campaign. Think about who will receive the item—clients, employees, or event attendees—and what would be genuinely useful or meaningful to them. A product that fits into their daily routine, such as a notebook, water bottle, or tech accessory, is more likely to be used regularly and keep your brand visible over time.
+                      </p>
+
+
+                      <p>
+                              It’s also important to align the product with your brand identity and budget. High-quality items reflect positively on your business, while poorly made products can have the opposite effect. Consider factors like durability, design, and branding space to ensure your logo or message is presented clearly and attractively. By selecting a product that balances practicality, quality, and relevance, you create a lasting impression and maximize the impact of your promotional efforts.
+                      </p>
                 </div>
 
               </div>
