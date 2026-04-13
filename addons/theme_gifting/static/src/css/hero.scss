@@ -44,6 +44,7 @@
 
 /* ================= BG SLIDES ================= */
 
+
 .hero-bg-slide {
   height: 520px;
     background-size: cover;
@@ -54,6 +55,7 @@
    position: relative;
   align-items: center;
 }
+
 
 @media (max-width: 992px) {
   .hero-bg-slide {
@@ -70,8 +72,6 @@
 
     padding: 20px 16px;
     max-width: 100%;
-
-    color: #fff; /* ensure visibility */
   }
 
   /* optional overlay for readability */
@@ -86,10 +86,6 @@
 }
 
 /* MOBILE */
-
-.hero-overlay-text {
-  color: #fff;
-}
 
 .hero-overlay-text h2 {
   font-size: 36px;

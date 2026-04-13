@@ -38,7 +38,7 @@
       </div>
 
       <!-- ✅ SLIDE 2 (FULL WIDTH BG) -->
-      <div class="carousel-item hero-bg-slide"
+      <div class="carousel-item hero-bg-slide hero-bg-one"
            style="background-image:url('/theme_gifting/static/src/img/banners/banner_1a.png');">
 
         <div class="gifting-container">
@@ -50,7 +50,7 @@
       </div>
 
       <!-- ✅ SLIDE 3 -->
-      <div class="carousel-item hero-bg-slide"
+      <div class="carousel-item hero-bg-slide hero-bg-two"
            style="background-image:url('/theme_gifting/static/src/img/banners/banner_3a.png');">
 
         <div class="gifting-container">
