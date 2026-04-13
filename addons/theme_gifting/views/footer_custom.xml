@@ -23,7 +23,7 @@
                      class="footer-logo"/>
 
                 <p class="footer-tagline">
-                  #1 Reklam Bazarı ↗
+                  Advertising Market ↗
                 </p>
 
               </div>
@@ -31,12 +31,18 @@
               <!-- CUSTOMER SERVICE -->
               <div class="col-lg-2 col-md-3 col-6">
 
-                <h6>Müştəri xidməti</h6>
+                <h6>Customer Service</h6>
 
                 <ul>
-                  <li><a href="#">Hesabım</a></li>
-                  <li><a href="#">Səbət</a></li>
-                  <li><a href="#">Favorilər</a></li>
+                  <li><a href="#">
+                  My Account
+                  </a></li>
+                  <li><a href="#">
+                    Cart
+                  </a></li>
+                  <li><a href="#">
+                  Favorilər
+                  </a></li>
                 </ul>
 
               </div>
@@ -44,12 +50,20 @@
               <!-- INFORMATION -->
               <div class="col-lg-2 col-md-3 col-6">
 
-                <h6>Məlumat</h6>
+                <h6>
+               Information
+                </h6>
 
                 <ul>
-                  <li><a href="#">Məxfilik Siyasəti</a></li>
-                  <li><a href="#">İstifadə Şərtləri</a></li>
-                  <li><a href="#">Tez-tez verilən suallar</a></li>
+                  <li><a href="#">
+                 Privacy Policy
+                  </a></li>
+                  <li><a href="#">
+                 Terms of Use
+                  </a></li>
+                  <li><a href="#">
+                 Frequently Asked Questions
+                  </a></li>
                 </ul>
 
               </div>
@@ -76,6 +90,9 @@
                 <p class="footer-contact">
                   Mayakovski 19, Baku,<br/>
                   Azərbaycan, AZ1054
+
+
+                  
                 </p>
 
                 <p>
