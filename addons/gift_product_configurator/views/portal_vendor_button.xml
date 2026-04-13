@@ -5,9 +5,9 @@
         <xpath expr="//div[contains(@class, 'o_portal_docs')]" position="inside">
 
             <t t-if="request.env.user.partner_id.is_vendor_user or request.env.user.has_group('base.group_system')">
-            <div class="vendor-tool-card">
+            <div class="vendor-tool-card custom-portal-card">
                 <a href="#"
-                   class="o_portal_doc d-flex align-items-center justify-content-start"
+                   class="o_portal_doc d-flex align-items-center justify-content-start vendor-data-modal-tab"
                    data-bs-toggle="modal"
                    data-bs-target="#vendorDataModal">
 
@@ -21,6 +21,28 @@
                         <h5 class="mb-1">Vendor Data</h5>
                         <p class="mb-0 text-muted">
                             Upload product catalog or data
+                        </p>
+                    </div>
+
+                </a>
+
+                 <!-- <a href="#"
+                   class="o_portal_doc d-flex align-items-center justify-content-start vendor-data-Status"
+                   data-bs-toggle="modal"
+                   data-bs-target="#vendorDataStatus"> -->
+                 <a href="#"
+                   class="o_portal_doc d-flex align-items-center justify-content-start vendor-data-status">
+
+                    <!-- ICON -->
+                    <div class="o_portal_doc_icon me-3">
+                        <i class="fa fa-upload"/>
+                    </div>
+
+                    <!-- TEXT -->
+                    <div class="o_portal_doc_text">
+                        <h5 class="mb-1">Upload Progress</h5>
+                        <p class="mb-0 text-muted">
+                            Status
                         </p>
                     </div>
 

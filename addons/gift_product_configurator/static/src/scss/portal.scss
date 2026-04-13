@@ -1,0 +1,18 @@
+/*vendor button*/
+.vendor-tool-card{
+  margin-top: 40px;
+}
+.custom-portal-card{
+    display: flex;
+    justify-content: space-between;
+}
+.custom-portal-card a{
+    width: 49.5%;
+    padding: 2rem 1rem;
+    background: #f8f9fa;
+}
+
+#portal_client_category, #portal_common_category
+{
+    display: none!important;
+}
