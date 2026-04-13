@@ -38,12 +38,11 @@
       </div>
 
       <!-- ✅ SLIDE 2 (FULL WIDTH BG) -->
-      <div class="carousel-item hero-bg-slide hero-bg-one"
-           style="background-image:url('/theme_gifting/static/src/img/banners/banner_1a.png');">
+      <div class="carousel-item hero-bg-slide hero-bg-one">
 
         <div class="gifting-container">
           <div class="hero-overlay-text">
-            <h2>Global Gifting Made Easy</h2>
+            <!-- <h2>Global Gifting Made Easy</h2> -->
           </div>
         </div>
 
@@ -55,7 +54,7 @@
 
         <div class="gifting-container">
           <div class="hero-overlay-text">
-            <h2>Effortless Business Solutions</h2>
+            <!-- <h2>Effortless Business Solutions</h2> -->
           </div>
         </div>
 
