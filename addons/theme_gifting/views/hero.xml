@@ -49,8 +49,7 @@
       </div>
 
       <!-- ✅ SLIDE 3 -->
-      <div class="carousel-item hero-bg-slide hero-bg-two"
-           style="background-image:url('/theme_gifting/static/src/img/banners/banner_3a.png');">
+      <div class="carousel-item hero-bg-slide hero-bg-two">
 
         <div class="gifting-container">
           <div class="hero-overlay-text">
