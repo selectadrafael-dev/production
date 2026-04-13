@@ -15,7 +15,7 @@
         'views/layout.xml',
         #'views/theme.xml',
         "views/header.xml",
-        "views/hero.xml",
+        "views/home.xml",
         'views/product_card.xml',
         'views/section_cta_banner.xml',
         'views/section_main_category.xml',
