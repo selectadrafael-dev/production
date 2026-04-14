@@ -17,10 +17,10 @@
       <script src="/gift_product_configurator/static/src/js/vendor_tool.js"/>
 
        <!-- AOS JS -->
-      <script src="https://unpkg.com/aos@2.3.4/dist/aos.js"></script>
+      <!-- <script src="https://unpkg.com/aos@2.3.4/dist/aos.js"></script> -->
       
       <!-- Init Script -->
-      <script>
+      <!-- <script>
         document.addEventListener("DOMContentLoaded", function () {
           if (window.AOS) {
             AOS.init({
@@ -32,7 +32,7 @@
             });
           }
         });
-      </script>
+      </script> -->
 
     </xpath>
   </template>
