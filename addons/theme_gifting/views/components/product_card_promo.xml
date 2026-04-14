@@ -12,7 +12,8 @@
            class="promo-card-link">
 
           <!-- IMAGE (FIXED RATIO) -->
-          <div class="promo-card" data-aos="fade-up">
+          <div class="promo-card">
+          <!-- <div class="promo-card" data-aos="fade-up"> -->
             <img t-att-src="'/web/image/product.template/%s/image_512' % product.id"
                  t-att-alt="product.name"/>
           </div>
