@@ -3,8 +3,7 @@
     <xpath expr="//body" position="inside">
 
     <!-- AOS CSS -->
-      <link rel="stylesheet"
-            href="https://unpkg.com/aos@2.3.4/dist/aos.css"/>
+      <!-- <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css"/> -->
 
      <!--Drawer CSS -->
       <script src="/gift_product_configurator/static/src/js/quote_cart.js"/>
