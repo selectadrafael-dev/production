@@ -4,7 +4,7 @@
 
     <!-- AOS CSS -->
       <link rel="stylesheet" href="https://unpkg.com/aos@2.3.4/dist/aos.css"/>
-      <link rel="stylesheet" href="/gift_product_configurator/static/src/scss/aos_extend.scss"/>
+      <link rel="stylesheet" href="/gift_product_configurator/static/src/scss/aos_extend.css"/>
 
      <!--Drawer CSS -->
       <script src="/gift_product_configurator/static/src/js/quote_cart.js"/>
@@ -21,15 +21,21 @@
       
       <!-- Init Script -->
       <script>
-        document.addEventListener("DOMContentLoaded", function () {
+    
+        window.addEventListener("load", function () {
           if (window.AOS) {
             AOS.init({
               duration: 900,
-              easing: 'ease-out-cubic',
-              once: false,
-              mirror: true,
+              easing: "ease-out-cubic",
+              once: true,
+              mirror: false,
               offset: 120
             });
+
+            /* 🔥 FORCE REFRESH */
+            setTimeout(function () {
+              AOS.refreshHard();
+            }, 300);
           }
         });
       </script>
