@@ -36,6 +36,7 @@
         "gift_product_configurator/static/src/scss/variants.scss",
         "gift_product_configurator/static/src/scss/larger_quantity.scss",
         "gift_product_configurator/static/src/scss/vendor_tool.scss",
+        "gift_product_configurator/static/src/scss/aos_extend.scss",
         "gift_product_configurator/static/src/scss/portal.scss",
         "gift_product_configurator/static/src/js/configurator.js",
     ],
