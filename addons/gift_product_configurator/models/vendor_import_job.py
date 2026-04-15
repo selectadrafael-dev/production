@@ -311,35 +311,40 @@ class VendorImportJob(models.Model):
 
             for idx, row in enumerate(sheet.iter_rows()):
 
-                global_index += 1
-
-                # ⏭️ Skip already processed rows
-                if global_index <= start_index:
-                    continue
-
-                # 🛑 Stop when batch full
+                # 🛑 STOP if batch full
                 if current_count >= BATCH_SIZE:
                     _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
                     break
 
+                # 🔍 Extract row text FIRST
                 row_text_parts = []
-                row_images = []
-
                 for cell in row:
                     val = str(cell.value or "").strip()
                     if val:
                         row_text_parts.append(val)
 
+                # 🚫 Skip empty rows
                 if not row_text_parts:
                     continue
 
+                # 🚫 Skip header
                 if idx == 0:
                     continue
 
+                # 🔥 ONLY count VALID rows
+                global_index += 1
+
+                # ⏭️ Resume logic
+                if global_index <= start_index:
+                    continue
+
+                # ================= FORMAT TEXT =================
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
                 """
+
+                row_images = []
 
                 # ================= IMAGE (EMBEDDED) =================
                 for cell in row:
@@ -399,12 +404,10 @@ class VendorImportJob(models.Model):
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
         # ================= COMPLETION DETECTION =================
-      
         has_more_rows = False
 
         for sheet in wb.worksheets:
-            total_rows = sheet.max_row
-            if self.last_processed_product_index < total_rows:
+            if new_index < sheet.max_row:
                 has_more_rows = True
                 break
 
@@ -1566,7 +1569,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
     #==========create pdf and excel product======================
-    
+
     def create_products_pdf_excel(self):
 
         import json
@@ -1586,7 +1589,7 @@ class VendorImportJob(models.Model):
             _logger.error("INVALID JSON → STOP")
             return
 
-        _logger.warning("CREATING PRODUCTS (PDF + EXCEL FINAL MODE)")
+        _logger.warning("CREATING PRODUCTS (INCREMENTAL MODE)")
 
         created_count = 0
 
@@ -1611,7 +1614,13 @@ class VendorImportJob(models.Model):
         if not parent_category:
             parent_category = category_obj.create({'name': "All Products"})
 
-        for page_data in pages:
+        # 🔥 PROCESS ONLY NEWLY PARSED PAGES
+        start_index = self.last_processed_product_index or 0
+        end_index = len(pages)
+
+        _logger.warning(f"PROCESS RANGE → {start_index} to {end_index}")
+
+        for page_data in pages[start_index:end_index]:
 
             page_no = page_data.get("page")
 
@@ -1623,7 +1632,7 @@ class VendorImportJob(models.Model):
             if not products:
                 continue
 
-            #================= EXCEL FLOW ===========================
+            # ================= EXCEL FLOW =================
             if self.excel_file:
 
                 grouped_products = {}
@@ -1639,8 +1648,6 @@ class VendorImportJob(models.Model):
                         group_id = raw_name.upper()
 
                     grouped_products.setdefault(group_id, []).append(p)
-
-                _logger.warning(f"[EXCEL] GROUPS → {len(grouped_products)}")
 
                 for group_id, group_items in grouped_products.items():
 
@@ -1667,10 +1674,12 @@ class VendorImportJob(models.Model):
                             'parent_id': parent_category.id
                         })
 
+                    # 🔥 CRITICAL: SEARCH FIRST (DO NOT DUPLICATE)
                     product = product_obj.search([
                         ('default_code', '=', group_id)
                     ], limit=1)
 
+                    # ================= CREATE OR UPDATE =================
                     if not product:
                         vals = {
                             'name': name,
@@ -1687,7 +1696,12 @@ class VendorImportJob(models.Model):
 
                         product = product_obj.create(vals)
                         created_count += 1
+                        _logger.warning(f"[EXCEL] CREATED PRODUCT → {group_id}")
 
+                    else:
+                        _logger.warning(f"[EXCEL] FOUND EXISTING → {group_id}")
+
+                    # ================= VARIANTS =================
                     for idx, item in enumerate(group_items):
 
                         attr_value = f"Variant {idx+1}"
@@ -1727,144 +1741,27 @@ class VendorImportJob(models.Model):
                             if value.id not in line.value_ids.ids:
                                 line.value_ids = [(4, value.id)]
 
-                        # ✅ EXCEL VARIANT IMAGE FIX
+                        # 🔥 UPDATE VARIANT IMAGE SAFELY
+                        variant_record = self.env['product.product'].search([
+                            ('product_tmpl_id', '=', product.id),
+                            ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
+                        ], limit=1)
 
-                            variant_record = self.env['product.product'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
-                            ], limit=1)
+                        if variant_record:
+                            variant_image = item.get("image")
+                            if variant_image:
+                                variant_record.image_1920 = variant_image
 
-                            if variant_record:
-                                variant_image = item.get("image")
+            # ================= COMMIT PER BATCH =================
+            if created_count % 10 == 0:
+                self.env.cr.commit()
 
-                                if variant_image:
-                                    variant_record.image_1920 = variant_image
-                                    _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id} | {value.name}")
-                                else:
-                                    _logger.warning(f"[EXCEL] NO IMAGE FOR VARIANT → {group_id} | {value.name}")
+        self.env.cr.commit()
 
-                continue  # 🔥 protect PDF
+        # 🔥 UPDATE PROGRESS POINTER
+        self.last_processed_product_index = end_index
 
-            # ================= PDF FLOW =================
-            images = page_data.get("images", [])
-            _logger.warning(f"[PDF] IMAGES FOUND → {len(images)}")
-
-            for product_data in products:
-
-                try:
-                    name = (product_data.get("name") or "").strip()
-                    description = product_data.get("description", "")
-                    raw_category = (product_data.get("category") or "").lower()
-                    variants = product_data.get("variants", [])
-
-                    variant_group = product_data.get("variant_group") or name
-                    variant_group = str(variant_group).strip().upper()
-
-                    mapped_category = "General"
-                    for key, val in CATEGORY_MAPPING.items():
-                        if key in raw_category:
-                            mapped_category = val
-                            break
-
-                    category = category_obj.search([
-                        ('name', '=', mapped_category),
-                        ('parent_id', '=', parent_category.id)
-                    ], limit=1)
-
-                    if not category:
-                        category = category_obj.create({
-                            'name': mapped_category,
-                            'parent_id': parent_category.id
-                        })
-
-                    product = product_obj.search([
-                        ('default_code', '=', variant_group)
-                    ], limit=1)
-
-                    if not product:
-                        vals = {
-                            'name': name,
-                            'default_code': variant_group,
-                            'description_sale': description,
-                            'categ_id': category.id,
-                            'sale_ok': True,
-                            'website_published': False,
-                        }
-
-                        if images:
-                            vals['image_1920'] = images[0]
-                            _logger.warning("PRODUCT IMAGE SET")
-
-                        product = product_obj.create(vals)
-                        created_count += 1
-
-                    if not variants:
-                        variants = [{"attributes": {"Variant": name}}]
-
-                    for idx, variant in enumerate(variants):
-
-                        attributes = variant.get("attributes", {})
-
-                        for attr_name, attr_value in attributes.items():
-
-                            if not attr_value:
-                                continue
-
-                            attribute = self.env['product.attribute'].search([
-                                ('name', '=', attr_name)
-                            ], limit=1)
-
-                            if not attribute:
-                                attribute = self.env['product.attribute'].create({
-                                    'name': attr_name
-                                })
-
-                            value = self.env['product.attribute.value'].search([
-                                ('name', '=', attr_value),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
-
-                            if not value:
-                                value = self.env['product.attribute.value'].create({
-                                    'name': attr_value,
-                                    'attribute_id': attribute.id
-                                })
-
-                            line = self.env['product.template.attribute.line'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
-
-                            if not line:
-                                self.env['product.template.attribute.line'].create({
-                                    'product_tmpl_id': product.id,
-                                    'attribute_id': attribute.id,
-                                    'value_ids': [(6, 0, [value.id])]
-                                })
-                            else:
-                                if value.id not in line.value_ids.ids:
-                                    line.value_ids = [(4, value.id)]
-
-                        if images and idx < len(images):
-                            variant_record = self.env['product.product'].search([
-                                ('product_tmpl_id', '=', product.id)
-                            ], limit=1)
-
-                            if variant_record:
-                                variant_record.image_1920 = images[idx]
-                                _logger.warning(f"VARIANT IMAGE SET → {idx}")
-
-                    if created_count % 10 == 0:
-                        self.env.cr.commit()
-
-                except Exception as e:
-                    _logger.error(f"PRODUCT FAILED → {str(e)}")
-                    self.env.cr.rollback()
-                    continue
-
-            self.env.cr.commit()
-
-        _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
+        _logger.warning(f"TOTAL PRODUCTS CREATED (THIS RUN): {created_count}")
 
     #-----URL API FLOW-------------------------------------------
 
