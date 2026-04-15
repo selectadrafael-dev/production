@@ -63,6 +63,7 @@ class VendorImportJob(models.Model):
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
+    is_excel_parsed = fields.Boolean(default=False)
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -191,14 +192,16 @@ class VendorImportJob(models.Model):
                 return
 
             if self.state == 'excel_parsing':
+
                 self.parse_excel()
 
-                # 🔥 STAY HERE UNTIL FULLY PARSED
-                if self.state == 'processing':
-                    return
+                # 🔥 ONLY MOVE WHEN FULLY PARSED
+                if self.is_excel_parsed:
+                    _logger.warning("EXCEL → MOVE TO AI ✅")
+                    self.state = 'excel_ai'
+                else:
+                    _logger.warning("EXCEL → CONTINUE NEXT BATCH")
 
-                # Only move when parsing is complete
-                self.state = 'excel_ai'
                 return
 
             if self.state == 'excel_ai':
@@ -278,7 +281,6 @@ class VendorImportJob(models.Model):
         self.extracted_text = json.dumps(structured_data)
 
         _logger.warning(f"APIFY DONE → {len(structured_data)} ITEMS")
-      
 
 
     #------excel processing methof---------------
@@ -309,12 +311,13 @@ class VendorImportJob(models.Model):
 
             for idx, row in enumerate(sheet.iter_rows()):
 
-                # 🔥 GLOBAL INDEX TRACKING
                 global_index += 1
 
+                # ⏭️ Skip already processed rows
                 if global_index <= start_index:
                     continue
 
+                # 🛑 Stop when batch full
                 if current_count >= BATCH_SIZE:
                     _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
                     break
@@ -338,7 +341,7 @@ class VendorImportJob(models.Model):
                 {" | ".join(row_text_parts)}
                 """
 
-                # IMAGE (EMBEDDED)
+                # ================= IMAGE (EMBEDDED) =================
                 for cell in row:
                     try:
                         if image_loader.image_in(cell.coordinate):
@@ -351,7 +354,7 @@ class VendorImportJob(models.Model):
                     except:
                         continue
 
-                # IMAGE (URL)
+                # ================= IMAGE (URL) =================
                 if not row_images:
                     for cell in row:
                         val = str(cell.value or "").strip()
@@ -377,7 +380,7 @@ class VendorImportJob(models.Model):
             if current_count >= BATCH_SIZE:
                 break
 
-        # 🔥 STORE
+        # ================= STORE =================
         existing = []
         if self.extracted_text:
             try:
@@ -388,15 +391,19 @@ class VendorImportJob(models.Model):
         combined = existing + pages
         self.extracted_text = json.dumps(combined)
 
-        # 🔥 SAVE PROGRESS
-        self.last_processed_product_index = start_index + current_count
+        # ================= SAVE PROGRESS =================
+        new_index = start_index + current_count
+        self.last_processed_product_index = new_index
 
+        _logger.warning(f"EXCEL NEW INDEX → {new_index}")
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
-        # 🔥 STATE CONTROL
+        # ================= COMPLETION DETECTION =================
         if current_count < BATCH_SIZE:
-            _logger.warning("EXCEL FULLY PROCESSED ✅")
+            _logger.warning("EXCEL → PARSING COMPLETED ✅")
+            self.is_excel_parsed = True
         else:
+            _logger.warning("EXCEL → MORE DATA REMAIN → NEXT CRON")
             self.state = "processing"
 
     # ---------------- PDF ----------------
