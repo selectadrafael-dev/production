@@ -184,9 +184,9 @@ class VendorImportJob(models.Model):
 
 
         # ================= EXCEL =================
+     
         elif self.excel_file:
             _logger.warning("FLOW = EXCEL CONFIRMED")
-           
             if self.state in ['draft']:
                 self.state = 'excel_parsing'
                 return
@@ -195,19 +195,21 @@ class VendorImportJob(models.Model):
 
                 self.parse_excel()
 
-                # 🔥 ONLY MOVE WHEN FULLY PARSED
+                # 🔥 IMPORTANT: CHECK COMPLETION
                 if self.is_excel_parsed:
-                    _logger.warning("EXCEL → MOVE TO AI ✅")
+                    _logger.warning("EXCEL → MOVE TO AI")
                     self.state = 'excel_ai'
                 else:
-                    _logger.warning("EXCEL → CONTINUE NEXT BATCH")
+                    self.state = 'processing'
 
                 return
 
             if self.state == 'excel_ai':
+
+                _logger.warning("STEP → SEND TO AI (EXCEL)")
                 self.send_to_openai_pdf_excel()
 
-                # 🔥 WAIT until AI is fully done
+                # 🔥 WAIT FOR AI TO FINISH
                 if self.state == 'processing':
                     return
 
@@ -215,9 +217,10 @@ class VendorImportJob(models.Model):
                 return
 
             if self.state == 'excel_creating':
+
+                _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
                 self.create_products_pdf_excel()
 
-                # 🔥 For now assume done (we'll optimize later)
                 self.state = 'done'
                 return
 
