@@ -399,7 +399,16 @@ class VendorImportJob(models.Model):
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
         # ================= COMPLETION DETECTION =================
-        if current_count < BATCH_SIZE:
+      
+        has_more_rows = False
+
+        for sheet in wb.worksheets:
+            total_rows = sheet.max_row
+            if self.last_processed_product_index < total_rows:
+                has_more_rows = True
+                break
+
+        if not has_more_rows:
             _logger.warning("EXCEL → PARSING COMPLETED ✅")
             self.is_excel_parsed = True
         else:
