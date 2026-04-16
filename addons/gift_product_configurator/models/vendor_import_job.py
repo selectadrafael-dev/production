@@ -184,62 +184,53 @@ class VendorImportJob(models.Model):
 
 
         # ================= EXCEL =================
-     
         elif self.excel_file:
             _logger.warning("FLOW = EXCEL CONFIRMED")
 
             # ================= PARSING =================
-            if self.state in ['draft', 'processing', 'excel_parsing']:
+            if self.state in ['draft', 'excel_parsing']:
 
                 self.state = 'excel_parsing'
                 self.parse_excel()
 
-                # 🔥 IF NOT FINISHED → WAIT NEXT CRON
+                _logger.warning(f"[DEBUG] is_excel_parsed → {self.is_excel_parsed}")
+                _logger.warning(f"[DEBUG] index → {self.last_processed_product_index}")
+
                 if not self.is_excel_parsed:
-                    _logger.warning("EXCEL → PARSING CONTINUES NEXT CRON")
+                    _logger.warning("EXCEL → WAIT NEXT CRON")
                     return
 
-                # 🔥 FORCE MOVE TO AI (CRITICAL FIX FROM OLD SYSTEM)
-                _logger.warning("EXCEL → PARSING DONE → FORCE AI")
+                _logger.warning("EXCEL → PARSING DONE → MOVE TO AI")
                 self.state = 'excel_ai'
-
 
             # ================= AI =================
             if self.state == 'excel_ai':
 
                 _logger.warning("STEP → SEND TO AI (EXCEL)")
-                 # 🔥 DEBUG BEFORE AI
-                _logger.warning(f"[DEBUG] ENTERING AI STAGE")
+
                 _logger.warning(f"[DEBUG] extracted_text size → {len(self.extracted_text or '')}")
-                _logger.warning(f"[DEBUG] is_excel_parsed → {self.is_excel_parsed}")
-                _logger.warning(f"[DEBUG] last_processed_product_index → {self.last_processed_product_index}")
-               
+
                 self.send_to_openai_pdf_excel()
 
-                 # 🔥 DEBUG AFTER AI
                 _logger.warning(f"[DEBUG] AI RESPONSE SIZE → {len(self.ai_response or '')}")
 
-
-                # 🔥 CRITICAL RESTORE FROM OLD SYSTEM
                 if not self.ai_response:
-                    _logger.warning("AI NOT READY → WAIT NEXT CRON")
+                    _logger.warning("AI NOT READY → WAIT")
                     return
 
-                _logger.warning("EXCEL → AI COMPLETE → MOVE TO CREATE")
+                _logger.warning("AI DONE → MOVE TO CREATE")
                 self.state = 'excel_creating'
 
-
             # ================= CREATE =================
-
             if self.state == 'excel_creating':
 
                 _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
 
-                # 🔥 DEBUG BEFORE CREATE
-                _logger.warning("[DEBUG] ENTERING CREATE STAGE")
                 _logger.warning(f"[DEBUG] AI RESPONSE LENGTH → {len(self.ai_response or '')}")
 
                 self.create_products_pdf_excel()
+
+                _logger.warning("CREATE DONE → JOB COMPLETE")
 
                 self.state = 'done'
                 return
@@ -275,6 +266,7 @@ class VendorImportJob(models.Model):
                 self.create_products_pdf_excel()
                 self.state = 'done'
                 return
+
 
     #------------parse url----------------------------
     def parse_url(self):
@@ -578,7 +570,6 @@ class VendorImportJob(models.Model):
             return
 
         # ================= 🔥 CRITICAL FIX =================
-
         if self.current_page < total_pages:
 
             _logger.warning(f"JOB NOT FINISHED → NEXT START PAGE {self.current_page + 1}")
