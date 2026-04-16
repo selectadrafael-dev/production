@@ -299,6 +299,7 @@ class VendorImportJob(models.Model):
 
 
     #------excel processing methof---------------
+
     def parse_excel(self):
 
         _logger.warning("EXCEL → START PARSING (BATCH MODE)")
@@ -318,6 +319,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
 
+        # ================= PARSING =================
         for sheet in wb.worksheets:
 
             _logger.warning(f"PROCESSING SHEET → {sheet.title}")
@@ -329,20 +331,25 @@ class VendorImportJob(models.Model):
                     _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
                     break
 
+                # 🔍 Extract row text
                 row_text_parts = []
                 for cell in row:
                     val = str(cell.value or "").strip()
                     if val:
                         row_text_parts.append(val)
 
+                # 🚫 skip empty
                 if not row_text_parts:
                     continue
 
+                # 🚫 skip header
                 if idx == 0:
                     continue
 
+                # ✅ count ONLY valid rows
                 global_index += 1
 
+                # resume logic
                 if global_index <= start_index:
                     continue
 
@@ -410,21 +417,33 @@ class VendorImportJob(models.Model):
         _logger.warning(f"EXCEL NEW INDEX → {new_index}")
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
-        # ================= COMPLETION DETECTION (FIXED) =================
+        # ================= COMPLETION DETECTION (REAL FIX) =================
 
         total_rows = 0
-        for sheet in wb.worksheets:
-            total_rows += max(sheet.max_row - 1, 0)
 
-        _logger.warning(f"[DEBUG] EXCEL TOTAL ROWS → {total_rows}")
-        _logger.warning(f"[DEBUG] EXCEL CURRENT INDEX → {new_index}")
+        for sheet in wb.worksheets:
+            for idx, row in enumerate(sheet.iter_rows()):
+
+                if idx == 0:
+                    continue
+
+                has_data = False
+                for cell in row:
+                    if str(cell.value or "").strip():
+                        has_data = True
+                        break
+
+                if has_data:
+                    total_rows += 1
+
+        _logger.warning(f"[DEBUG] REAL TOTAL ROWS → {total_rows}")
+        _logger.warning(f"[DEBUG] CURRENT INDEX → {new_index}")
 
         if new_index >= total_rows:
             _logger.warning("EXCEL → PARSING COMPLETED ✅")
             self.is_excel_parsed = True
         else:
             _logger.warning("EXCEL → MORE DATA REMAIN → NEXT CRON")
-            self.state = "processing"
 
     # ---------------- PDF ----------------
 
