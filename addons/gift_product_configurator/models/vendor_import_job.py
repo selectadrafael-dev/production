@@ -208,7 +208,17 @@ class VendorImportJob(models.Model):
             if self.state == 'excel_ai':
 
                 _logger.warning("STEP → SEND TO AI (EXCEL)")
+                 # 🔥 DEBUG BEFORE AI
+                _logger.warning(f"[DEBUG] ENTERING AI STAGE")
+                _logger.warning(f"[DEBUG] extracted_text size → {len(self.extracted_text or '')}")
+                _logger.warning(f"[DEBUG] is_excel_parsed → {self.is_excel_parsed}")
+                _logger.warning(f"[DEBUG] last_processed_product_index → {self.last_processed_product_index}")
+               
                 self.send_to_openai_pdf_excel()
+
+                 # 🔥 DEBUG AFTER AI
+                _logger.warning(f"[DEBUG] AI RESPONSE SIZE → {len(self.ai_response or '')}")
+
 
                 # 🔥 CRITICAL RESTORE FROM OLD SYSTEM
                 if not self.ai_response:
@@ -220,12 +230,17 @@ class VendorImportJob(models.Model):
 
 
             # ================= CREATE =================
+
             if self.state == 'excel_creating':
 
                 _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
+
+                # 🔥 DEBUG BEFORE CREATE
+                _logger.warning("[DEBUG] ENTERING CREATE STAGE")
+                _logger.warning(f"[DEBUG] AI RESPONSE LENGTH → {len(self.ai_response or '')}")
+
                 self.create_products_pdf_excel()
 
-                _logger.warning("EXCEL → CREATION COMPLETE ✅")
                 self.state = 'done'
                 return
 
@@ -292,7 +307,6 @@ class VendorImportJob(models.Model):
 
 
     #------excel processing methof---------------
-
     def parse_excel(self):
 
         _logger.warning("EXCEL → START PARSING (BATCH MODE)")
@@ -319,34 +333,27 @@ class VendorImportJob(models.Model):
 
             for idx, row in enumerate(sheet.iter_rows()):
 
-                # 🛑 STOP if batch full
                 if current_count >= BATCH_SIZE:
                     _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
                     break
 
-                # 🔍 Extract row text FIRST
                 row_text_parts = []
                 for cell in row:
                     val = str(cell.value or "").strip()
                     if val:
                         row_text_parts.append(val)
 
-                # 🚫 Skip empty rows
                 if not row_text_parts:
                     continue
 
-                # 🚫 Skip header
                 if idx == 0:
                     continue
 
-                # 🔥 ONLY count VALID rows
                 global_index += 1
 
-                # ⏭️ Resume logic
                 if global_index <= start_index:
                     continue
 
-                # ================= FORMAT TEXT =================
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
@@ -354,7 +361,7 @@ class VendorImportJob(models.Model):
 
                 row_images = []
 
-                # ================= IMAGE (EMBEDDED) =================
+                # IMAGE (EMBEDDED)
                 for cell in row:
                     try:
                         if image_loader.image_in(cell.coordinate):
@@ -367,7 +374,7 @@ class VendorImportJob(models.Model):
                     except:
                         continue
 
-                # ================= IMAGE (URL) =================
+                # IMAGE (URL)
                 if not row_images:
                     for cell in row:
                         val = str(cell.value or "").strip()
@@ -411,15 +418,16 @@ class VendorImportJob(models.Model):
         _logger.warning(f"EXCEL NEW INDEX → {new_index}")
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
-        # ================= COMPLETION DETECTION =================
-        has_more_rows = False
+        # ================= COMPLETION DETECTION (FIXED) =================
 
+        total_rows = 0
         for sheet in wb.worksheets:
-            if new_index < sheet.max_row:
-                has_more_rows = True
-                break
+            total_rows += max(sheet.max_row - 1, 0)
 
-        if not has_more_rows:
+        _logger.warning(f"[DEBUG] EXCEL TOTAL ROWS → {total_rows}")
+        _logger.warning(f"[DEBUG] EXCEL CURRENT INDEX → {new_index}")
+
+        if new_index >= total_rows:
             _logger.warning("EXCEL → PARSING COMPLETED ✅")
             self.is_excel_parsed = True
         else:
@@ -1582,6 +1590,12 @@ class VendorImportJob(models.Model):
 
         import json
         import re
+
+        _logger.warning("CREATE FUNCTION TRIGGERED ✅")
+
+        # 🔥 DEBUG INPUT DATA
+        _logger.warning(f"[DEBUG] RAW AI RESPONSE (first 500 chars) → {(self.ai_response or '')[:500]}")
+        _logger.warning(f"[DEBUG] RAW EXTRACTED TEXT SIZE → {len(self.extracted_text or '')}")
 
         if not self.ai_response or not self.extracted_text:
             _logger.warning("NO AI OR EXTRACTED DATA → STOP")
