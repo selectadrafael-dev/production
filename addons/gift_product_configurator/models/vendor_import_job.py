@@ -66,6 +66,7 @@ class VendorImportJob(models.Model):
     is_excel_parsed = fields.Boolean(default=False)
     ai_processed_index = fields.Integer(default=0)
     created_product_index = fields.Integer(default=0)
+    excel_created_index = fields.Integer(string="Excel Created Index", default=0)
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
