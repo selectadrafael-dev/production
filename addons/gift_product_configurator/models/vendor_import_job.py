@@ -187,40 +187,45 @@ class VendorImportJob(models.Model):
      
         elif self.excel_file:
             _logger.warning("FLOW = EXCEL CONFIRMED")
-            if self.state in ['draft']:
+
+            # ================= PARSING =================
+            if self.state in ['draft', 'processing', 'excel_parsing']:
+
                 self.state = 'excel_parsing'
-                return
-
-            if self.state == 'excel_parsing':
-
                 self.parse_excel()
 
-                # 🔥 IMPORTANT: CHECK COMPLETION
-                if self.is_excel_parsed:
-                    _logger.warning("EXCEL → MOVE TO AI")
-                    self.state = 'excel_ai'
-                else:
-                    self.state = 'processing'
+                # 🔥 IF NOT FINISHED → WAIT NEXT CRON
+                if not self.is_excel_parsed:
+                    _logger.warning("EXCEL → PARSING CONTINUES NEXT CRON")
+                    return
 
-                return
+                # 🔥 FORCE MOVE TO AI (CRITICAL FIX FROM OLD SYSTEM)
+                _logger.warning("EXCEL → PARSING DONE → FORCE AI")
+                self.state = 'excel_ai'
 
+
+            # ================= AI =================
             if self.state == 'excel_ai':
 
                 _logger.warning("STEP → SEND TO AI (EXCEL)")
                 self.send_to_openai_pdf_excel()
 
-                # 🔥 WAIT FOR AI TO FINISH
-                if self.state == 'processing':
+                # 🔥 CRITICAL RESTORE FROM OLD SYSTEM
+                if not self.ai_response:
+                    _logger.warning("AI NOT READY → WAIT NEXT CRON")
                     return
 
+                _logger.warning("EXCEL → AI COMPLETE → MOVE TO CREATE")
                 self.state = 'excel_creating'
-                return
 
+
+            # ================= CREATE =================
             if self.state == 'excel_creating':
 
                 _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
                 self.create_products_pdf_excel()
 
+                _logger.warning("EXCEL → CREATION COMPLETE ✅")
                 self.state = 'done'
                 return
 
