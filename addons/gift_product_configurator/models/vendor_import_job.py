@@ -64,6 +64,8 @@ class VendorImportJob(models.Model):
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
     is_excel_parsed = fields.Boolean(default=False)
+    ai_processed_index = fields.Integer(default=0)
+    created_product_index = fields.Integer(default=0)
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -1603,7 +1605,6 @@ class VendorImportJob(models.Model):
 
         _logger.warning("CREATE FUNCTION TRIGGERED ✅")
 
-        # 🔥 DEBUG INPUT DATA
         _logger.warning(f"[DEBUG] RAW AI RESPONSE (first 500 chars) → {(self.ai_response or '')[:500]}")
         _logger.warning(f"[DEBUG] RAW EXTRACTED TEXT SIZE → {len(self.extracted_text or '')}")
 
@@ -1646,11 +1647,22 @@ class VendorImportJob(models.Model):
         if not parent_category:
             parent_category = category_obj.create({'name': "All Products"})
 
-        # 🔥 PROCESS ONLY NEWLY PARSED PAGES
-        start_index = self.last_processed_product_index or 0
-        end_index = len(pages)
+        # ================= RANGE CONTROL (FIXED) =================
 
-        _logger.warning(f"PROCESS RANGE → {start_index} to {end_index}")
+        if self.excel_file:
+            start_index = self.excel_created_index or 0
+            end_index = min(start_index + 20, len(pages))
+
+            _logger.warning(f"[EXCEL CREATE RANGE] → {start_index} to {end_index}")
+
+        else:
+            # PDF FLOW (UNCHANGED)
+            start_index = self.last_processed_product_index or 0
+            end_index = len(pages)
+
+            _logger.warning(f"[PDF CREATE RANGE] → {start_index} to {end_index}")
+
+        # ================= MAIN LOOP =================
 
         for page_data in pages[start_index:end_index]:
 
@@ -1671,14 +1683,9 @@ class VendorImportJob(models.Model):
 
                 for p in products:
                     raw_name = (p.get("name") or "").strip()
-
                     match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
 
-                    if match:
-                        group_id = match.group(1).upper()
-                    else:
-                        group_id = raw_name.upper()
-
+                    group_id = match.group(1).upper() if match else raw_name.upper()
                     grouped_products.setdefault(group_id, []).append(p)
 
                 for group_id, group_items in grouped_products.items():
@@ -1706,12 +1713,10 @@ class VendorImportJob(models.Model):
                             'parent_id': parent_category.id
                         })
 
-                    # 🔥 CRITICAL: SEARCH FIRST (DO NOT DUPLICATE)
                     product = product_obj.search([
                         ('default_code', '=', group_id)
                     ], limit=1)
 
-                    # ================= CREATE OR UPDATE =================
                     if not product:
                         vals = {
                             'name': name,
@@ -1730,68 +1735,20 @@ class VendorImportJob(models.Model):
                         created_count += 1
                         _logger.warning(f"[EXCEL] CREATED PRODUCT → {group_id}")
 
-                    else:
-                        _logger.warning(f"[EXCEL] FOUND EXISTING → {group_id}")
-
-                    # ================= VARIANTS =================
-                    for idx, item in enumerate(group_items):
-
-                        attr_value = f"Variant {idx+1}"
-
-                        attribute = self.env['product.attribute'].search([
-                            ('name', '=', "Variant")
-                        ], limit=1)
-
-                        if not attribute:
-                            attribute = self.env['product.attribute'].create({
-                                'name': "Variant"
-                            })
-
-                        value = self.env['product.attribute.value'].search([
-                            ('name', '=', attr_value),
-                            ('attribute_id', '=', attribute.id)
-                        ], limit=1)
-
-                        if not value:
-                            value = self.env['product.attribute.value'].create({
-                                'name': attr_value,
-                                'attribute_id': attribute.id
-                            })
-
-                        line = self.env['product.template.attribute.line'].search([
-                            ('product_tmpl_id', '=', product.id),
-                            ('attribute_id', '=', attribute.id)
-                        ], limit=1)
-
-                        if not line:
-                            self.env['product.template.attribute.line'].create({
-                                'product_tmpl_id': product.id,
-                                'attribute_id': attribute.id,
-                                'value_ids': [(6, 0, [value.id])]
-                            })
-                        else:
-                            if value.id not in line.value_ids.ids:
-                                line.value_ids = [(4, value.id)]
-
-                        # 🔥 UPDATE VARIANT IMAGE SAFELY
-                        variant_record = self.env['product.product'].search([
-                            ('product_tmpl_id', '=', product.id),
-                            ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
-                        ], limit=1)
-
-                        if variant_record:
-                            variant_image = item.get("image")
-                            if variant_image:
-                                variant_record.image_1920 = variant_image
-
-            # ================= COMMIT PER BATCH =================
-            if created_count % 10 == 0:
+            # ================= COMMIT CONTROL =================
+            if created_count and created_count % 10 == 0:
                 self.env.cr.commit()
 
         self.env.cr.commit()
 
-        # 🔥 UPDATE PROGRESS POINTER
-        self.last_processed_product_index = end_index
+        # ================= UPDATE INDEX =================
+
+        if self.excel_file:
+            self.excel_created_index = end_index
+            _logger.warning(f"[EXCEL] UPDATED CREATED INDEX → {end_index}")
+        else:
+            self.last_processed_product_index = end_index
+            _logger.warning(f"[PDF] UPDATED INDEX → {end_index}")
 
         _logger.warning(f"TOTAL PRODUCTS CREATED (THIS RUN): {created_count}")
 
