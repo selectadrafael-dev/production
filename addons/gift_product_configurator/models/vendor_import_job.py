@@ -1861,18 +1861,35 @@ class VendorImportJob(models.Model):
             'url_scraping', 'url_ai', 'url_creating'
         ]
 
-        # 🔥 ALWAYS PICK LATEST JOB (VERY IMPORTANT)
-        job = self.search(
+        # 🔥 GET ALL ACTIVE JOBS (FOR CLEANUP)
+        jobs = self.search(
             [('state', 'in', active_states)],
-            order="id desc",
-            limit=1
+            order="id desc"
         )
 
-        _logger.warning(f"CRON → Found {1 if job else 0} job")
+        _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
 
-        if not job:
+        if not jobs:
             return
 
+        # ================= CLEAN OLD JOBS =================
+        if len(jobs) > 1:
+            latest_job = jobs[0]
+            old_jobs = jobs[1:]
+
+            _logger.warning(f"CRON → CLEANING {len(old_jobs)} OLD JOB(S)")
+            _logger.warning(f"CRON → KEEPING JOB ID → {latest_job.id}")
+
+            try:
+                old_jobs.unlink()
+            except Exception as e:
+                _logger.warning(f"CRON CLEAN FAILED → {str(e)}")
+
+            job = latest_job
+        else:
+            job = jobs[0]
+
+        # ================= SELECTED JOB =================
         _logger.warning(f"CRON → SELECTED JOB ID → {job.id}")
         _logger.warning(
             f"CRON → JOB INPUT → "
@@ -1898,7 +1915,7 @@ class VendorImportJob(models.Model):
 
         finally:
             job.lock = False
-   
+
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
       
