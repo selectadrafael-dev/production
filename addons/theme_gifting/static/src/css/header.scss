@@ -23,6 +23,15 @@
    overflow: visible;
 }
 
+.carousel,
+.carousel-inner,
+.carousel-item {
+  z-index: 1;
+}
+
+.carousel-item {
+  transform: none !important;
+}
 
 /* ================= TOP ROW ================= */
 
@@ -152,7 +161,7 @@
   border-radius: 10px;
   box-shadow: 0 20px 50px rgba(0,0,0,.15);
 
-  z-index: 999999999;
+  z-index: 9999999;
   overflow: visible;
   display: none;
 }
