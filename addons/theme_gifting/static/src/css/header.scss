@@ -30,7 +30,7 @@
 }
 
 .carousel-item {
-  transform: none !important;
+  /*transform: none !important;*/
 }
 
 /* ================= TOP ROW ================= */
@@ -110,6 +110,7 @@
   -webkit-overflow-scrolling: touch;
    position: relative; /* 🔥 REQUIRED */
    max-width: 100%;
+   z-index: 999999999!important;
   overflow-x: auto;
 }
 
