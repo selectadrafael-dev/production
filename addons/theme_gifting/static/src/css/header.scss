@@ -10,7 +10,8 @@
   width: 100%;
   position: sticky;
   top: 0;
-  z-index: 100000;
+   z-index: 9999999;   /* 🔥 VERY HIGH */
+  isolation: isolate; /* 🔥 KEY FIX */
   padding-top: 10px;
   overflow: visible !important;
 }
@@ -151,7 +152,7 @@
   border-radius: 10px;
   box-shadow: 0 20px 50px rgba(0,0,0,.15);
 
-  z-index: 999999;
+  z-index: 999999999;
   overflow: visible;
   display: none;
 }
