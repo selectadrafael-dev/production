@@ -37,8 +37,8 @@ class VendorImportJob(models.Model):
 
     _name = "vendor.import.job"
     _description = "Vendor Import Job"
-    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
+    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
     name = fields.Char(default="Vendor Data Import")
 
@@ -65,6 +65,10 @@ class VendorImportJob(models.Model):
     url_batch_index = fields.Integer(default=0)
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
+    lock = fields.Boolean(default=False)
+    is_excel_parsed = fields.Boolean(default=False)
+    excel_ai_index = fields.Integer(default=0)
+    upload_signature = fields.Char(string="Upload Signature")
 
     state = fields.Selection([
         ('draft', 'Draft'),
