@@ -83,45 +83,43 @@
   /* =========================
      MEGA MENU CORE
   ========================= */
+function resetMegaMenu(menu) {
+  if (!menu) return;
 
-  function resetMegaMenu(menu) {
-    if (!menu) return;
+  const panels = menu.querySelectorAll('.mega-panel');
+  const items = menu.querySelectorAll('.mega-left-item');
+  const right = getRightPanel(menu);
 
-    const panels = menu.querySelectorAll('.mega-panel');
-    const items = menu.querySelectorAll('.mega-left-item');
-    const right = getRightPanel(menu);
+  panels.forEach(p => {
+    p.classList.remove('active');
+  });
 
-    panels.forEach(p => {
-      p.style.display = 'none';
-      p.classList.remove('active');
-    });
+  items.forEach(i => i.classList.remove('active'));
 
-    items.forEach(i => i.classList.remove('active'));
+  if (right) right.classList.remove('active');
+}
 
-    if (right) right.classList.remove('active');
+
+function showPanel(menu, id) {
+  if (!menu) return;
+
+  const panels = menu.querySelectorAll('.mega-panel');
+  const items = menu.querySelectorAll('.mega-left-item');
+  const right = getRightPanel(menu);
+
+  if (!isMobile() && right) {
+    right.classList.add('active');
   }
 
-  function showPanel(menu, id) {
-    if (!menu) return;
+  panels.forEach(p => {
+    const active = String(p.dataset.panelId) === String(id);
+    p.classList.toggle('active', active);
+  });
 
-    const panels = menu.querySelectorAll('.mega-panel');
-    const items = menu.querySelectorAll('.mega-left-item');
-    const right = getRightPanel(menu);
-
-    if (!isMobile() && right) {
-      right.classList.add('active');
-    }
-
-    panels.forEach(p => {
-      const active = String(p.dataset.panelId) === String(id);
-      p.style.display = active ? 'block' : 'none';
-      p.classList.toggle('active', active);
-    });
-
-    items.forEach(i => {
-      i.classList.toggle('active', i.dataset.catId === id);
-    });
-  }
+  items.forEach(i => {
+    i.classList.toggle('active', i.dataset.catId === id);
+  });
+}
 
   /* =========================
      CATEGORY BUTTON
