@@ -12,13 +12,16 @@
   top: 0;
   z-index: 1000;
   padding-top: 10px;
+  overflow: visible !important;
 }
 
 .gifting-container {
   max-width: 1240px;
   margin: 0 auto;
   padding: 0 20px;
+   overflow: visible;
 }
+
 
 /* ================= TOP ROW ================= */
 
@@ -138,7 +141,7 @@
 
 .cat-mega {
   position: absolute;
-  top: 100%;
+ top: calc(100% + 8px); /* small spacing */
   left: 0;
 
   min-width: 260px;
@@ -148,7 +151,7 @@
   border-radius: 10px;
   box-shadow: 0 20px 50px rgba(0,0,0,.15);
 
-  z-index: 9999;
+  z-index: 99999;
   overflow: hidden;
   display: none;
 }
@@ -160,7 +163,6 @@
 .mega-wrapper {
    display: flex; /* 🔥 replace inline-flex */
   max-width: 100%;
-  display: inline-flex;
   align-items: flex-start;
 }
 
@@ -229,6 +231,15 @@
 .account-dropdown {
   position: relative;
   cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.account-dropdown:hover .dropdown-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 
@@ -257,24 +268,8 @@
   display: flex;            /* ✅ ALWAYS FLEX NOW */
   flex-direction: column;
 
-  z-index: 9999;
+  z-index: 10000;
 }
-
-/* ================= ACCOUNT ================= */
-
-.account-dropdown {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.account-dropdown:hover .dropdown-menu {
-  opacity: 1;
-  visibility: visible;
-  transform: translateY(0);
-}
-
-
 
 /* ================= ITEMS ================= */
 
@@ -309,11 +304,6 @@
   margin-top: 6px;
   padding-top: 12px;
 }
-
-.account-dropdown.open .dropdown-menu {
-  display: flex;
-}
-
 
 .account-dropdown::after {
   content: "";
@@ -374,7 +364,7 @@
 /* dropdown */
 .contact-menu {
   position: absolute;
-  top: 120%;
+  top: 100%;
   left: 0;
 
   width: 240px;
@@ -640,7 +630,6 @@
   grid-area: menu; /* ✅ THIS IS THE MISSING PIECE */
   padding: 12px 0 10px;
   border-bottom: 1px solid #f2f2f2;
-  overflow-x: auto
 }
 
 
@@ -730,6 +719,7 @@
     transform: translateY(-50%);
     color: #999;
     font-size: 18px;
+    pointer-events: none;
   }
 
   /* SEARCH */
