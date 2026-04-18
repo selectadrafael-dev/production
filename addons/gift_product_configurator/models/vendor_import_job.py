@@ -2128,25 +2128,13 @@ class VendorImportJob(models.Model):
         _logger.warning("KEEP ALIVE PING")
 
 
-    #Reset job crons
-    def action_reset_jobs_once(self):
+    #======Reset job crons=====================
+    def action_reset_jobs(self):
         """
-        ⚠️ ONE-TIME RESET TOOL
-        - Deletes all jobs
-        - Resets ID sequence
-        - Auto-disables after execution
+        Manual reset tool (can be used multiple times)
         """
 
-        param_key = "vendor_import.reset_done"
-        config = self.env['ir.config_parameter'].sudo()
-
-        already_done = config.get_param(param_key)
-
-        if already_done == "1":
-            _logger.warning("⚠️ RESET ALREADY EXECUTED → SKIPPING")
-            return
-
-        _logger.warning("⚠️ STARTING ONE-TIME JOB RESET")
+        _logger.warning("⚠️ MANUAL RESET TRIGGERED")
 
         # 🔥 DELETE ALL JOBS
         jobs = self.search([])
@@ -2157,7 +2145,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"Deleted {count} job(s)")
 
-        # 🔥 RESET SEQUENCE (PostgreSQL)
+        # 🔥 RESET SEQUENCE
         self.env.cr.execute("""
             SELECT setval(
                 pg_get_serial_sequence('vendor_import_job', 'id'),
@@ -2167,8 +2155,45 @@ class VendorImportJob(models.Model):
         """)
 
         _logger.warning("Sequence reset → next ID will start from 1")
+            """
+            ⚠️ ONE-TIME RESET TOOL
+            - Deletes all jobs
+            - Resets ID sequence
+            - Auto-disables after execution
+            """
 
-        # 🔒 MARK AS DONE (AUTO DISABLE)
-        config.set_param(param_key, "1")
+            param_key = "vendor_import.reset_done"
+            config = self.env['ir.config_parameter'].sudo()
 
-        _logger.warning("✅ RESET COMPLETED → WILL NOT RUN AGAIN")
+            already_done = config.get_param(param_key)
+
+            if already_done == "1":
+                _logger.warning("⚠️ RESET ALREADY EXECUTED → SKIPPING")
+                return
+
+            _logger.warning("⚠️ STARTING ONE-TIME JOB RESET")
+
+            # 🔥 DELETE ALL JOBS
+            jobs = self.search([])
+            count = len(jobs)
+
+            if jobs:
+                jobs.unlink()
+
+            _logger.warning(f"Deleted {count} job(s)")
+
+            # 🔥 RESET SEQUENCE (PostgreSQL)
+            self.env.cr.execute("""
+                SELECT setval(
+                    pg_get_serial_sequence('vendor_import_job', 'id'),
+                    1,
+                    false
+                );
+            """)
+
+            _logger.warning("Sequence reset → next ID will start from 1")
+
+            # 🔒 MARK AS DONE (AUTO DISABLE)
+            config.set_param(param_key, "1")
+
+            _logger.warning("✅ RESET COMPLETED → WILL NOT RUN AGAIN")

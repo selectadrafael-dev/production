@@ -42,6 +42,16 @@
         <field name="model">vendor.import.job</field>
         <field name="arch" type="xml">
             <form string="Vendor Import Job">
+
+                <!-- 🔥 HEADER (BUTTON GOES HERE) -->
+                <header>
+                    <button name="action_reset_jobs"
+                            type="object"
+                            string="Reset Import Jobs"
+                            class="btn-danger"
+                            confirm="This will delete ALL import jobs and reset ID. Continue?"/>
+                </header>
+
                 <sheet>
 
                     <group>
