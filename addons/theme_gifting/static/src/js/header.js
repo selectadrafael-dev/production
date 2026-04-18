@@ -125,39 +125,35 @@ function showPanel(menu, id) {
      CATEGORY BUTTON
   ========================= */
 
-  // let allowHover = false;
-
   document.addEventListener('click', function (e) {
 
-  const trigger = safeClosest(e.target, '[data-cat-toggle="1"]');
-  if (!trigger) return;
+const trigger = safeClosest(e.target, '[data-cat-toggle="1"]');
+if (!trigger) return;
 
-  /* ================= MOBILE FIRST (🔥 FIX) ================= */
+/* 🔥 MOBILE FIRST */
 if (window.innerWidth <= 768) {
-  const drawer = document.querySelector('.mobile-cat-drawer');
-
   e.preventDefault();
 
-  // 🔥 RESET PANELS (CRITICAL)
+  const drawer = document.querySelector('.mobile-cat-drawer');
+
+  // RESET PANELS
   document.querySelectorAll('.mobile-panel')
     .forEach(p => p.classList.remove('active'));
 
-  // 🔥 FORCE FIRST PANEL
-  const first = document.querySelector('[data-level="1"]');
-  if (first) first.classList.add('active');
+  document.querySelector('[data-level="1"]')
+    ?.classList.add('active');
 
-  // 🔥 OPEN DRAWER
   drawer?.classList.add('active');
-
   document.body.style.overflow = 'hidden';
 
-  return;
+  return; // 🔥 STOP DESKTOP LOGIC
 }
+
+/* DESKTOP CONTINUES BELOW */
 
   /* ================= DESKTOP LOGIC ================= */
 
-  // const menu = getCatMenu();
-  const menu = isMobile() ? null : getCatMenu();
+  const menu = getCatMenu();
   if (!menu) return;
 
   e.preventDefault();
@@ -188,8 +184,7 @@ if (window.innerWidth <= 768) {
 
   document.addEventListener('click', function (e) {
 
-    // const menu = getCatMenu();
-    const menu = isMobile() ? null : getCatMenu();
+    const menu = getCatMenu();
     if (!menu || !menu.classList.contains('is-open')) return;
 
     if (
@@ -228,19 +223,12 @@ function initMegaHover(menu) {
  
 
   /* =========================
-     MOBILE CATEGORY CLICK
-  ========================= */
-
- 
-
-  /* =========================
      RESET ON LEAVE (STABLE)
   ========================= */
 
   document.addEventListener('mouseout', function (e) {
 
-    // const menu = getCatMenu();
-    const menu = isMobile() ? null : getCatMenu();
+    const menu = getCatMenu();
     if (!menu || !menu.classList.contains('is-open')) return;
 
     if (menu.contains(e.relatedTarget)) return;
@@ -266,10 +254,24 @@ function initMegaHover(menu) {
 
 //mobile drawer closing
 // CLOSE DRAWER
+//mobile drawer closing
 document.addEventListener('click', function (e) {
   if (e.target.closest('.drawer-close')) {
     const drawer = document.querySelector('.mobile-cat-drawer');
-    if (drawer) drawer.classList.remove('active');
+
+    if (drawer) {
+      drawer.classList.remove('active');
+
+      // 🔥 RESET PANELS (ADD HERE)
+      document.querySelectorAll('.mobile-panel')
+        .forEach(p => p.classList.remove('active'));
+
+      document.querySelector('[data-level="1"]')
+        ?.classList.add('active');
+
+      // 🔥 RESTORE SCROLL (ADD HERE)
+      document.body.style.overflow = '';
+    }
   }
 });
 

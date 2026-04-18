@@ -127,76 +127,7 @@
               <button class="cat-btn mobile-cat-toggle" data-cat-toggle="1">
                 ☰ All Products
               </button>
-
-
-              <!--mobile category logic-->
-                  <div class="mobile-cat-drawer">
-                   <!-- 🔥close btn -->
-                  <div class="mobile-drawer-top">
-                    <button class="drawer-close" type="button">×</button>
-                  </div>
-
-                    <!-- LEVEL 1 -->
-                    <div class="mobile-panel active" data-level="1">
-
-                      <t t-foreach="categories" t-as="cat">
-                        <div class="mobile-item"
-                            t-att-data-target="'cat-' + str(cat.id)">
-                          <span t-esc="cat.name"/>
-                          <span class="arrow">›</span>
-                        </div>
-                      </t>
-
-                    </div>
-
-                    <!-- LEVEL 2 -->
-                    <t t-foreach="categories" t-as="cat">
-                      <div class="mobile-panel"
-                          t-att-data-panel="'cat-' + str(cat.id)">
-
-                        <div class="mobile-header">
-                          <span class="mobile-back">← Back</span>
-                          <span class="mobile-title" t-esc="cat.name"/>
-                        </div>
-
-                        <t t-foreach="cat.child_id" t-as="sub">
-                          <div class="mobile-item"
-                              t-att-data-target="'sub-' + str(sub.id)">
-                            <span t-esc="sub.name"/>
-                            <span class="arrow">›</span>
-                          </div>
-                        </t>
-
-                      </div>
-                    </t>
-
-                    <!-- LEVEL 3 -->
-                    <t t-foreach="categories" t-as="cat">
-                      <t t-foreach="cat.child_id" t-as="sub">
-
-                        <div class="mobile-panel"
-                            t-att-data-panel="'sub-' + str(sub.id)">
-
-                          <div class="mobile-header">
-                            <span class="mobile-back">← Back</span>
-                            <span class="mobile-title" t-esc="sub.name"/>
-                          </div>
-
-                          <t t-foreach="sub.child_id" t-as="child">
-                            <a t-att-href="'/shop/category/%s' % child.id"
-                              class="mobile-link">
-                              <t t-esc="child.name"/>
-                            </a>
-                          </t>
-
-                        </div>
-
-                      </t>
-                    </t>
-
-                  </div>
-              <!--mobile category logic-->
-
+             
             </div>
 
             <div class="gifting-links">
@@ -277,8 +208,75 @@
                   </div>
 
                 </div> <!-- ✅ CLOSED mega-wrapper -->
-
               </div>
+
+               <!--mobile category logic-->
+                  <div class="mobile-cat-drawer">
+                   <!-- 🔥close btn -->
+                    <div class="mobile-drawer-top">
+                      <button class="drawer-close" type="button">×</button>
+                    </div>
+
+                    <!-- LEVEL 1 -->
+                    <div class="mobile-panel active" data-level="1">
+
+                      <t t-foreach="categories" t-as="cat">
+                        <div class="mobile-item"
+                            t-att-data-target="'cat-' + str(cat.id)">
+                          <span t-esc="cat.name"/>
+                          <span class="arrow">›</span>
+                        </div>
+                      </t>
+
+                    </div>
+
+                    <!-- LEVEL 2 -->
+                    <t t-foreach="categories" t-as="cat">
+                      <div class="mobile-panel"
+                          t-att-data-panel="'cat-' + str(cat.id)">
+
+                        <div class="mobile-header">
+                          <span class="mobile-back">← Back</span>
+                          <span class="mobile-title" t-esc="cat.name"/>
+                        </div>
+
+                        <t t-foreach="cat.child_id" t-as="sub">
+                          <div class="mobile-item"
+                              t-att-data-target="'sub-' + str(sub.id)">
+                            <span t-esc="sub.name"/>
+                            <span class="arrow">›</span>
+                          </div>
+                        </t>
+
+                      </div>
+                    </t>
+
+                    <!-- LEVEL 3 -->
+                    <t t-foreach="categories" t-as="cat">
+                      <t t-foreach="cat.child_id" t-as="sub">
+
+                        <div class="mobile-panel"
+                            t-att-data-panel="'sub-' + str(sub.id)">
+
+                          <div class="mobile-header">
+                            <span class="mobile-back">← Back</span>
+                            <span class="mobile-title" t-esc="sub.name"/>
+                          </div>
+
+                          <t t-foreach="sub.child_id" t-as="child">
+                            <a t-att-href="'/shop/category/%s' % child.id"
+                              class="mobile-link">
+                              <t t-esc="child.name"/>
+                            </a>
+                          </t>
+
+                        </div>
+
+                      </t>
+                    </t>
+
+                  </div>
+              <!--mobile category logic-->
 
     </xpath>
 
