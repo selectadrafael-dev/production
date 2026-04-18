@@ -4,10 +4,10 @@
     <record id="action_vendor_import_job" model="ir.actions.act_window">
         <field name="name">Vendor Imports</field>
         <field name="res_model">vendor.import.job</field>
-        <field name="view_mode">tree,form</field>
+        <field name="view_mode">list,form</field>
     </record>
 
-    <!-- ROOT MENU (TOP LEVEL - ALWAYS VISIBLE) -->
+    <!-- ROOT MENU (TOP LEVEL - SAFE) -->
     <menuitem id="menu_vendor_root"
               name="Vendor Data"
               sequence="10"/>
@@ -19,16 +19,16 @@
               action="action_vendor_import_job"
               sequence="10"/>
 
-    <!-- TREE VIEW -->
-    <record id="view_vendor_import_job_tree" model="ir.ui.view">
-        <field name="name">vendor.import.job.tree</field>
+    <!-- LIST VIEW -->
+    <record id="view_vendor_import_job_list" model="ir.ui.view">
+        <field name="name">vendor.import.job.list</field>
         <field name="model">vendor.import.job</field>
         <field name="arch" type="xml">
-            <tree>
+            <list>
                 <field name="name"/>
                 <field name="state"/>
                 <field name="create_date"/>
-            </tree>
+            </list>
         </field>
     </record>
 
