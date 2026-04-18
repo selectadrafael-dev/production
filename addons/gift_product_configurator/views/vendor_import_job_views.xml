@@ -9,18 +9,31 @@
 
 
     <!-- MENU ROOT -->
-    <menuitem id="menu_vendor_root"
+    <!-- <menuitem id="menu_vendor_root"
               name="Vendor Data"
-              sequence="10"/>
+              sequence="10"/> -->
 
 
     <!-- MENU CHILD -->
-    <menuitem id="menu_vendor_imports"
+    <!-- <menuitem id="menu_vendor_imports"
               name="Imports"
               parent="menu_vendor_root"
               action="action_vendor_import_job"
-              sequence="10"/>
+              sequence="10"/> -->
 
+
+    <!-- MENU ROOT -->
+    <menuitem id="menu_vendor_root"
+            name="Vendor Data"
+            parent="base.menu_administration"
+            sequence="90"/>
+
+    <!-- MENU CHILD -->
+    <menuitem id="menu_vendor_imports"
+            name="Imports"
+            parent="menu_vendor_root"
+            action="action_vendor_import_job"
+            sequence="10"/>
 
     <!-- LIST VIEW -->
     <record id="view_vendor_import_job_list" model="ir.ui.view">
