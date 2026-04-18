@@ -296,33 +296,45 @@ document.addEventListener('click', function(e){
 
   const item = e.target.closest('.mobile-item');
 
-  if (item) {
+if (item) {
   const target = item.dataset.target;
   const next = document.querySelector(`[data-panel="${target}"]`);
 
   if (next) {
-    const panels = document.querySelectorAll('.mobile-panel');
+    document.querySelectorAll('.mobile-panel')
+      .forEach(p => p.classList.remove('active'));
 
-    panels.forEach(p => {
-      p.classList.remove('active', 'forward', 'backward');
-    });
-
-    next.classList.add('active', 'forward');
+    next.classList.add('active');
   }
 }
 
- 
-  const back = e.target.closest('.mobile-back');
 
-  if (back) {
-  const panels = document.querySelectorAll('.mobile-panel');
+const back = e.target.closest('.mobile-back');
 
-  panels.forEach(p => {
-    p.classList.remove('active', 'forward', 'backward');
-  });
+if (back) {
+  const current = e.target.closest('.mobile-panel');
+  if (!current) return;
 
-  document.querySelector('[data-level="1"]')
-    ?.classList.add('active', 'backward');
+  // 🔥 find previous panel (level 1 OR parent)
+  let prev;
+
+  if (current.dataset.level === "1") {
+    return; // already at root
+  }
+
+  // if level 2 or 3 → always go back to level 1 (your structure)
+  prev = document.querySelector('[data-level="1"]');
+
+  // 🔥 clean state
+  document.querySelectorAll('.mobile-panel')
+    .forEach(p => {
+      p.classList.remove('active', 'forward', 'backward');
+    });
+
+  // 🔥 show previous panel cleanly
+  if (prev) {
+    prev.classList.add('active');
+  }
 }
 
 });

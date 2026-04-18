@@ -516,10 +516,6 @@
   transform: translateX(0);
 }
 
-.mobile-panel.backward {
-  transform: translateX(-30%);
-  opacity: 0.6;
-}
 
 .mobile-item {
   transition: background 0.15s ease, transform 0.08s ease;
