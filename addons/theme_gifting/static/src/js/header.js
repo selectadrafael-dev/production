@@ -30,9 +30,9 @@
     return document.querySelector('.mobile-overlay');
   }
 
-  function isMobile() {
-    return window.innerWidth <= 992;
-  }
+ function isMobile() {
+  return window.innerWidth <= 768;
+}
 
   /* =========================
      MOBILE NAV (CLEAN SYSTEM)
@@ -125,7 +125,7 @@ function showPanel(menu, id) {
      CATEGORY BUTTON
   ========================= */
 
-  let allowHover = false;
+  // let allowHover = false;
 
   document.addEventListener('click', function (e) {
 
@@ -133,17 +133,24 @@ function showPanel(menu, id) {
   if (!trigger) return;
 
   /* ================= MOBILE FIRST (🔥 FIX) ================= */
-  if (window.innerWidth <= 768) {
-    const drawer = document.querySelector('.mobile-cat-drawer');
+ if (window.innerWidth <= 768) {
+  const drawer = document.querySelector('.mobile-cat-drawer');
 
-    e.preventDefault();
+  e.preventDefault();
 
-    drawer?.classList.add('active');
-    drawer?.removeAttribute('hidden');
-    document.body.style.overflow = 'hidden';
+  // 🔥 RESET TO LEVEL 1 (CRITICAL FIX)
+  document.querySelectorAll('.mobile-panel')
+    .forEach(p => p.classList.remove('active'));
 
-    return; // 🚨 STOP HERE (VERY IMPORTANT)
-  }
+  document.querySelector('[data-level="1"]')
+    ?.classList.add('active');
+
+  drawer?.classList.add('active');
+  drawer?.removeAttribute('hidden');
+  document.body.style.overflow = 'hidden';
+
+  return;
+}
 
   /* ================= DESKTOP LOGIC ================= */
 
@@ -199,41 +206,30 @@ function showPanel(menu, id) {
   /* =========================
      DESKTOP HOVER
   ========================= */
+function initMegaHover(menu) {
+  const left = menu?.querySelector('.mega-left');
+  if (!left) return;
 
-  function initMegaHover(menu) {
-    const left = menu?.querySelector('.mega-left');
-    if (!left) return;
+  // 🔥 remove old listeners (prevents stacking)
+  left.onmouseover = null;
 
-    left.addEventListener('mouseover', function (e) {
+  left.onmouseover = function (e) {
 
-      if (isMobile() || !allowHover) return;
+    if (isMobile()) return;
 
-      const item = safeClosest(e.target, '.mega-left-item');
-      if (!item) return;
+    const item = safeClosest(e.target, '.mega-left-item');
+    if (!item) return;
 
-      showPanel(menu, item.dataset.catId);
-    });
-  }
+    showPanel(menu, item.dataset.catId);
+  };
+}
+ 
 
   /* =========================
      MOBILE CATEGORY CLICK
   ========================= */
 
-  document.addEventListener('click', function (e) {
-
-    if (!isMobile()) return;
-
-    const item = safeClosest(e.target, '.mega-left-item');
-    // const menu = getCatMenu();
-    const menu = isMobile() ? null : getCatMenu();
-
-    if (!item || !menu || !menu.classList.contains('is-open')) return;
-
-    e.preventDefault();
-
-    showPanel(menu, item.dataset.catId);
-
-  });
+ 
 
   /* =========================
      RESET ON LEAVE (STABLE)
@@ -265,56 +261,6 @@ function showPanel(menu, id) {
   }
 });
 
-//mobile category js
-document.addEventListener('click', function(e){
-
-  const drawer = document.querySelector('.mobile-cat-drawer');
-  const toggle = e.target.closest('[data-cat-toggle="1"]');
-
-  /* OPEN DRAWER (MOBILE ONLY) */
-  if (toggle && window.innerWidth <= 768) {
-    e.preventDefault();
-    drawer?.classList.add('active');
-    drawer?.removeAttribute('hidden');
-    document.body.style.overflow = 'hidden'; // ✅ ADD THIS
-    
-    return;
-  }
-
-  /* CLOSE ON OUTSIDE CLICK */
-  if (drawer && !e.target.closest('.mobile-cat-drawer') && !toggle) {
-    drawer.classList.remove('active');
-    drawer.setAttribute('hidden', 'hidden');
-
-    document.body.style.overflow = '';
-  }
-
-  /* NAVIGATION */
-  const item = e.target.closest('.mobile-item');
-  if (item) {
-    const target = item.dataset.target;
-    const next = document.querySelector(`[data-panel="${target}"]`);
-
-    if (next) {
-      document.querySelectorAll('.mobile-panel')
-        .forEach(p => p.classList.remove('active'));
-
-      next.classList.add('active');
-    }
-  }
-
-  /* BACK */
-  const back = e.target.closest('.mobile-back');
-  if (back) {
-    document.querySelectorAll('.mobile-panel')
-      .forEach(p => p.classList.remove('active'));
-
-    document.querySelector('[data-level="1"]')
-      ?.classList.add('active');
-  }
-
-});
-
 
 //mobile drawer closing
 // CLOSE DRAWER
@@ -337,6 +283,37 @@ document.addEventListener("click", function (e) {
   } else {
     dropdown.classList.remove("active");
   }
+});
+
+//========mobile==========
+document.addEventListener('click', function(e){
+
+  if (!isMobile()) return;
+
+  const item = e.target.closest('.mobile-item');
+
+  if (item) {
+    const target = item.dataset.target;
+    const next = document.querySelector(`[data-panel="${target}"]`);
+
+    if (next) {
+      document.querySelectorAll('.mobile-panel')
+        .forEach(p => p.classList.remove('active'));
+
+      next.classList.add('active');
+    }
+  }
+
+  const back = e.target.closest('.mobile-back');
+
+  if (back) {
+    document.querySelectorAll('.mobile-panel')
+      .forEach(p => p.classList.remove('active'));
+
+    document.querySelector('[data-level="1"]')
+      ?.classList.add('active');
+  }
+
 });
 
 })();
