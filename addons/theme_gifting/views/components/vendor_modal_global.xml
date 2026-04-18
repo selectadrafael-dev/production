@@ -93,6 +93,12 @@
                       <button class="btn btn-primary px-4">
                         Submit Data
                       </button>
+
+                      <button name="action_reset_jobs_once"
+                          type="object"
+                          string="⚠️ Reset All Import Jobs"
+                          class="btn-danger"
+                          confirm="This will delete ALL import jobs and reset ID. Continue?"/>
                     </div>
 
                 </form>

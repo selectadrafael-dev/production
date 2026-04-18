@@ -1,7 +1,5 @@
 #old working backup copy
 
-#old working backup copy
-
 from odoo import models, fields
 import base64
 import logging
@@ -1892,90 +1890,35 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     #---------------- CRON ---------------
+
     def run_pending_jobs(self):
 
-        # 🔥 STRICT STATE FILTER (ONLY ACTIVE STATES)
-        active_states = [
-            'draft', 'processing',
-            'excel_parsing', 'excel_ai', 'excel_creating',
-            'pdf_extracting', 'pdf_ai', 'pdf_creating',
-            'url_scraping', 'url_ai', 'url_creating'
-        ]
-
-        # =====================================================
-        # 🔥 REMOVE DUPLICATE UPLOADS (SAFE)
-        # =====================================================
         jobs = self.search(
-            [('state', 'in', active_states)],
-            order="id desc"
-        )
-
-        _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
-
-        seen = {}
-        duplicates = self.env['vendor.import.job']
-
-        for j in jobs:
-
-            sig = j.upload_signature
-
-            # skip jobs without signature
-            if not sig:
-                continue
-
-            if sig not in seen:
-                seen[sig] = j
-            else:
-                # keep latest job only
-                if j.id > seen[sig].id:
-                    duplicates |= seen[sig]
-                    seen[sig] = j
-                else:
-                    duplicates |= j
-
-        if duplicates:
-            _logger.warning(f"CRON → REMOVING DUPLICATES → {len(duplicates)}")
-            duplicates.unlink()
-
-        # =====================================================
-        # 🔥 ALWAYS PICK LATEST JOB (VERY IMPORTANT)
-        # =====================================================
-        job = self.search(
-            [('state', 'in', active_states)],
-            order="id desc",
+            [('state', 'in', ['draft', 'processing'])],
+            order="priority asc, id asc",
             limit=1
         )
 
-        _logger.warning(f"CRON → Found {1 if job else 0} job")
+        _logger.warning(f"CRON → Found {len(jobs)} jobs")
 
-        if not job:
-            return
+        for job in jobs:
+            try:
+                _logger.warning(f"CRON → START JOB {job.id}")
+                _logger.warning(f"CRON → JOB {job.id} CURRENT STATE: {job.state}")
 
-        _logger.warning(f"CRON → SELECTED JOB ID → {job.id}")
-        _logger.warning(
-            f"CRON → JOB INPUT → "
-            f"excel={bool(job.excel_file)} "
-            f"pdf={bool(job.pdf_file)} "
-            f"url={bool(job.data_url)}"
-        )
+                job.state = 'processing'
 
-        # 🔒 LOCK CHECK
-        if job.lock:
-            _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
-            return
+                job.process_import()
 
-        try:
-            _logger.warning(f"CRON → START JOB {job.id}")
-            job.lock = True
+                _logger.warning(f"CRON → JOB {job.id} FINAL STATE: {job.state}")
 
-            job._process_step()
+                # ❌ DO NOT TOUCH STATE HERE
 
-        except Exception as e:
-            _logger.exception(f"PROCESS FAILED → {str(e)}")
-            job.state = 'failed'
+                _logger.warning(f"CRON → JOB {job.id} DONE")
 
-        finally:
-            job.lock = False
+            except Exception as e:
+                _logger.exception(f"PROCESS FAILED → {str(e)}")
+                job.state = 'failed'
 
 
    #=============flask setup/installation=================== 
