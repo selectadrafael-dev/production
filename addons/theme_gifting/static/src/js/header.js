@@ -143,8 +143,11 @@ function showPanel(menu, id) {
     if (!isOpen) {
       console.log('📂 Open Mega Menu');
 
+      // menu.classList.add('is-open');
+      // menu.removeAttribute('hidden');
+
       menu.classList.add('is-open');
-      menu.removeAttribute('hidden');
+      menu.style.display = 'block';
 
       allowHover = false;
 
@@ -158,8 +161,10 @@ function showPanel(menu, id) {
     } else {
       console.log('📁 Close Mega Menu');
 
+      // menu.classList.remove('is-open');
+      // menu.setAttribute('hidden', 'hidden');
       menu.classList.remove('is-open');
-      menu.setAttribute('hidden', 'hidden');
+      menu.style.display = 'none';  
 
       resetMegaMenu(menu);
     }
@@ -182,7 +187,8 @@ function showPanel(menu, id) {
       console.log('🟥 Outside click → close');
 
       menu.classList.remove('is-open');
-      menu.setAttribute('hidden', 'hidden');
+      // menu.setAttribute('hidden', 'hidden');
+      menu.style.display = 'none';  
 
       resetMegaMenu(menu);
     }
@@ -256,7 +262,6 @@ function showPanel(menu, id) {
   }
 });
 
-//mobile category js
 //mobile category js
 document.addEventListener('click', function(e){
 

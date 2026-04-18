@@ -128,70 +128,6 @@
                 ☰ All Products
               </button>
 
-              <div class="cat-mega" data-cat-menu="1" hidden="hidden">
-
-                <t t-set="categories"
-                   t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
-
-                <div class="mega-wrapper">
-
-                  <!-- LEFT -->
-                  <div class="mega-left">
-                    <t t-foreach="categories" t-as="cat" t-key="cat.id">
-                      <div class="mega-left-item" t-att-data-cat-id="cat.id">
-                        <span t-esc="cat.name"/>
-                        <span class="arrow">›</span>
-                      </div>
-                    </t>
-                  </div>
-
-                  <!-- RIGHT -->
-                  <div class="mega-right">
-                    <t t-foreach="categories" t-as="cat" t-key="cat.id">
-                      <div class="mega-panel" t-att-data-panel-id="cat.id" style="display:none;">
-                        <div class="mega-panel-grid">
-
-                          <t t-if="cat.child_id">
-
-                              <t t-foreach="cat.child_id" t-as="sub">
-
-                                <!-- SUBCATEGORY TITLE -->
-                                <div class="mega-subcategory">
-
-                                  <div class="mega-sub-title">
-                                    <t t-esc="sub.name"/>
-                                  </div>
-
-                                  <!-- SUB-SUB -->
-                                  <div class="mega-sub-list">
-
-                                    <t t-if="sub.child_id">
-                                      <t t-foreach="sub.child_id" t-as="child">
-
-                                        <a t-att-href="'/shop/category/%s' % child.id"
-                                          class="mega-sub">
-                                          <t t-esc="child.name"/>
-                                        </a>
-
-                                      </t>
-                                    </t>
-
-                                  </div>
-
-                                </div>
-
-                              </t>
-
-                            </t>
-
-                        </div>
-                      </div>
-                    </t>
-                  </div>
-
-                </div> <!-- ✅ CLOSED mega-wrapper -->
-
-              </div>
 
               <!--mobile category logic-->
                   <div class="mobile-cat-drawer">
@@ -276,8 +212,73 @@
         </div>
 
         <div class="mobile-overlay"></div>
-
       </nav>
+
+      <!---==========mega menu================-->
+        <div class="cat-mega-global" data-cat-menu="1" hidden="hidden">
+
+                <t t-set="categories"
+                   t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
+
+                <div class="mega-wrapper">
+
+                  <!-- LEFT -->
+                  <div class="mega-left">
+                    <t t-foreach="categories" t-as="cat" t-key="cat.id">
+                      <div class="mega-left-item" t-att-data-cat-id="cat.id">
+                        <span t-esc="cat.name"/>
+                        <span class="arrow">›</span>
+                      </div>
+                    </t>
+                  </div>
+
+                  <!-- RIGHT -->
+                  <div class="mega-right">
+                    <t t-foreach="categories" t-as="cat" t-key="cat.id">
+                      <div class="mega-panel" t-att-data-panel-id="cat.id">
+                        <div class="mega-panel-grid">
+
+                          <t t-if="cat.child_id">
+
+                              <t t-foreach="cat.child_id" t-as="sub">
+
+                                <!-- SUBCATEGORY TITLE -->
+                                <div class="mega-subcategory">
+
+                                  <div class="mega-sub-title">
+                                    <t t-esc="sub.name"/>
+                                  </div>
+
+                                  <!-- SUB-SUB -->
+                                  <div class="mega-sub-list">
+
+                                    <t t-if="sub.child_id">
+                                      <t t-foreach="sub.child_id" t-as="child">
+
+                                        <a t-att-href="'/shop/category/%s' % child.id"
+                                          class="mega-sub">
+                                          <t t-esc="child.name"/>
+                                        </a>
+
+                                      </t>
+                                    </t>
+
+                                  </div>
+
+                                </div>
+
+                              </t>
+
+                            </t>
+
+                        </div>
+                      </div>
+                    </t>
+                  </div>
+
+                </div> <!-- ✅ CLOSED mega-wrapper -->
+
+              </div>
 
     </xpath>
 
