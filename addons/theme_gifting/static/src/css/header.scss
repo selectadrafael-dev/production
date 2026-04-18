@@ -498,6 +498,17 @@
   background: #fff;
 }
 
+.mobile-panel[data-level="1"] {
+  left: 0;   /* 🔥 ALWAYS VISIBLE FIRST PANEL */
+}
+.mobile-panel {
+  z-index: 1;
+}
+
+.mobile-panel.active {
+  z-index: 2;  /* 🔥 ensure visible panel is above */
+}
+
 .mobile-cat-drawer {
   position: fixed;
   display: block;
@@ -565,6 +576,7 @@
     transform: translateX(-100%);
     transition: transform 0.3s ease;
      display: block;
+     height: 100vh;   /* 🔥 CHANGE FROM 100% */
   }
 
   /* 🔥 THIS IS MISSING */
