@@ -7,20 +7,19 @@
         <field name="view_mode">tree,form</field>
     </record>
 
-    <!-- MENU ROOT (ATTACHED TO SALES APP → VISIBLE) -->
+    <!-- ROOT MENU (TOP LEVEL - ALWAYS VISIBLE) -->
     <menuitem id="menu_vendor_root"
               name="Vendor Data"
-              parent="sales_team.menu_sale_root"
-              sequence="90"/>
+              sequence="10"/>
 
-    <!-- MENU CHILD -->
+    <!-- CHILD MENU -->
     <menuitem id="menu_vendor_imports"
               name="Imports"
               parent="menu_vendor_root"
               action="action_vendor_import_job"
               sequence="10"/>
 
-    <!-- LIST VIEW -->
+    <!-- TREE VIEW -->
     <record id="view_vendor_import_job_tree" model="ir.ui.view">
         <field name="name">vendor.import.job.tree</field>
         <field name="model">vendor.import.job</field>
@@ -40,7 +39,6 @@
         <field name="arch" type="xml">
             <form string="Vendor Import Job">
 
-                <!-- HEADER -->
                 <header>
                     <button name="action_reset_jobs"
                             type="object"
