@@ -133,20 +133,22 @@ function showPanel(menu, id) {
   if (!trigger) return;
 
   /* ================= MOBILE FIRST (🔥 FIX) ================= */
- if (window.innerWidth <= 768) {
+if (window.innerWidth <= 768) {
   const drawer = document.querySelector('.mobile-cat-drawer');
 
   e.preventDefault();
 
-  // 🔥 RESET TO LEVEL 1 (CRITICAL FIX)
+  // 🔥 RESET PANELS (CRITICAL)
   document.querySelectorAll('.mobile-panel')
     .forEach(p => p.classList.remove('active'));
 
-  document.querySelector('[data-level="1"]')
-    ?.classList.add('active');
+  // 🔥 FORCE FIRST PANEL
+  const first = document.querySelector('[data-level="1"]');
+  if (first) first.classList.add('active');
 
+  // 🔥 OPEN DRAWER
   drawer?.classList.add('active');
-  drawer?.removeAttribute('hidden');
+
   document.body.style.overflow = 'hidden';
 
   return;

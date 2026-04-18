@@ -491,16 +491,17 @@
 /* panels */
 .mobile-panel {
   position: absolute;
-  top: 56px; /* 🔥 push below header */
+  top: 56px;
   left: 100%;
   width: 100%;
-  height: calc(100% - 56px);
-
-  transition: 0.3s ease;
+  min-height: calc(100vh - 56px); /* 🔥 ADD THIS */
   background: #fff;
-  overflow-y: auto;
 }
 
+.mobile-cat-drawer {
+  position: fixed;
+  display: block;
+}
 /* active panel */
 .mobile-panel.active {
   left: 0;
