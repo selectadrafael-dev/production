@@ -489,34 +489,46 @@
 }
 
 /* panels */
+// .mobile-panel {
+//   position: absolute;
+//   top: 56px;
+//   left: 100%;
+//   width: 100%;
+//   min-height: calc(100vh - 56px); /* 🔥 ADD THIS */
+//   background: #fff;
+//    z-index: 1;
+// }
+
 .mobile-panel {
   position: absolute;
   top: 56px;
-  left: 100%;
   width: 100%;
-  min-height: calc(100vh - 56px); /* 🔥 ADD THIS */
-  background: #fff;
-}
+  height: calc(100vh - 56px);
 
-.mobile-panel[data-level="1"] {
-  left: 0;   /* 🔥 ALWAYS VISIBLE FIRST PANEL */
-}
-.mobile-panel {
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+
+  background: #fff;
   z-index: 1;
 }
 
 .mobile-panel.active {
-  z-index: 2;  /* 🔥 ensure visible panel is above */
+  transform: translateX(0);
+  z-index: 2;
 }
+
+/* 🔥 KEEP ROOT PANEL VISIBLE */
+.mobile-panel[data-level="1"] {
+  transform: translateX(0);
+   left: 0;   /* 🔥 ALWAYS VISIBLE FIRST PANEL */
+}
+
 
 .mobile-cat-drawer {
   position: fixed;
   display: block;
 }
-/* active panel */
-.mobile-panel.active {
-  left: 0;
-}
+
 
 /* header */
 .mobile-header {
@@ -572,12 +584,26 @@
   }
 
 
-   .mobile-cat-drawer {
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-     display: block;
-     height: 100vh;   /* 🔥 CHANGE FROM 100% */
-  }
+  .mobile-cat-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+
+  width: 80%;
+  height: 100vh;
+
+  background: #fff;
+
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+
+  overflow: hidden; /* 🔥 CHANGE from auto */
+  z-index: 999999;
+}
+
+.mobile-panel {
+  overflow-y: auto;
+}
 
   /* 🔥 THIS IS MISSING */
   .mobile-cat-drawer.active {
