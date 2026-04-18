@@ -143,11 +143,9 @@ function showPanel(menu, id) {
     if (!isOpen) {
       console.log('📂 Open Mega Menu');
 
-      // menu.classList.add('is-open');
-      // menu.removeAttribute('hidden');
-
+  
       menu.classList.add('is-open');
-      menu.style.display = 'block';
+      menu.removeAttribute('hidden');   // 🔥 ADD THIS
 
       allowHover = false;
 
@@ -161,10 +159,8 @@ function showPanel(menu, id) {
     } else {
       console.log('📁 Close Mega Menu');
 
-      // menu.classList.remove('is-open');
-      // menu.setAttribute('hidden', 'hidden');
       menu.classList.remove('is-open');
-      menu.style.display = 'none';  
+      menu.setAttribute('hidden', 'hidden'); // optional 
 
       resetMegaMenu(menu);
     }
