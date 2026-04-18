@@ -3,6 +3,7 @@ from odoo.http import request
 import base64
 import json
 import logging
+import hashlib   # ✅ NEW
 
 _logger = logging.getLogger(__name__)
 
@@ -23,9 +24,40 @@ class VendorDataController(http.Controller):
             excel = request.httprequest.files.get("excel_file")
             logo = request.httprequest.files.get("logo_file")
 
+            # =====================================================
+            # 🔥 GENERATE SIGNATURE (NEW)
+            # =====================================================
+            file_content = b''
+
+            if url:
+                file_content = url.encode()
+
+            elif excel:
+                file_content = excel.read()
+
+            elif pdf:
+                file_content = pdf.read()
+
+            else:
+                return request.make_response(
+                    json.dumps({"error": "No valid input provided"}),
+                    headers=[('Content-Type', 'application/json')]
+                )
+
+            signature = hashlib.md5(file_content).hexdigest()
+
+            # 🔥 RESET FILE POINTER (CRITICAL)
+            if excel:
+                excel.seek(0)
+            if pdf:
+                pdf.seek(0)
+
+            # =====================================================
             # 🔥 DETERMINE INPUT TYPE (STRICT)
+            # =====================================================
             job_vals = {
                 'extra_info': extra_info,
+                'upload_signature': signature,   # ✅ NEW
                 'state': 'draft'
             }
 
@@ -50,12 +82,6 @@ class VendorDataController(http.Controller):
                 job_vals['data_url'] = False
 
                 _logger.info("INPUT TYPE → PDF")
-
-            else:
-                return request.make_response(
-                    json.dumps({"error": "No valid input provided"}),
-                    headers=[('Content-Type', 'application/json')]
-                )
 
             # ---------------- CREATE JOB ----------------
             job = request.env['vendor.import.job'].sudo().create(job_vals)

@@ -30,9 +30,9 @@
     return document.querySelector('.mobile-overlay');
   }
 
-  function isMobile() {
-    return window.innerWidth <= 992;
-  }
+ function isMobile() {
+  return window.innerWidth <= 768;
+}
 
   /* =========================
      MOBILE NAV (CLEAN SYSTEM)
@@ -83,90 +83,100 @@
   /* =========================
      MEGA MENU CORE
   ========================= */
+function resetMegaMenu(menu) {
+  if (!menu) return;
 
-  function resetMegaMenu(menu) {
-    if (!menu) return;
+  const panels = menu.querySelectorAll('.mega-panel');
+  const items = menu.querySelectorAll('.mega-left-item');
+  const right = getRightPanel(menu);
 
-    const panels = menu.querySelectorAll('.mega-panel');
-    const items = menu.querySelectorAll('.mega-left-item');
-    const right = getRightPanel(menu);
+  panels.forEach(p => {
+    p.classList.remove('active');
+  });
 
-    panels.forEach(p => {
-      p.style.display = 'none';
-      p.classList.remove('active');
-    });
+  items.forEach(i => i.classList.remove('active'));
 
-    items.forEach(i => i.classList.remove('active'));
+  if (right) right.classList.remove('active');
+}
 
-    if (right) right.classList.remove('active');
+
+function showPanel(menu, id) {
+  if (!menu) return;
+
+  const panels = menu.querySelectorAll('.mega-panel');
+  const items = menu.querySelectorAll('.mega-left-item');
+  const right = getRightPanel(menu);
+
+  if (!isMobile() && right) {
+    right.classList.add('active');
   }
 
-  function showPanel(menu, id) {
-    if (!menu) return;
+  panels.forEach(p => {
+    const active = String(p.dataset.panelId) === String(id);
+    p.classList.toggle('active', active);
+  });
 
-    const panels = menu.querySelectorAll('.mega-panel');
-    const items = menu.querySelectorAll('.mega-left-item');
-    const right = getRightPanel(menu);
-
-    if (!isMobile() && right) {
-      right.classList.add('active');
-    }
-
-    panels.forEach(p => {
-      const active = String(p.dataset.panelId) === String(id);
-      p.style.display = active ? 'block' : 'none';
-      p.classList.toggle('active', active);
-    });
-
-    items.forEach(i => {
-      i.classList.toggle('active', i.dataset.catId === id);
-    });
-  }
+  items.forEach(i => {
+    i.classList.toggle('active', i.dataset.catId === id);
+  });
+}
 
   /* =========================
      CATEGORY BUTTON
   ========================= */
 
-  let allowHover = false;
-
   document.addEventListener('click', function (e) {
 
-    const trigger = safeClosest(e.target, '[data-cat-toggle="1"]');
-    const menu = getCatMenu();
+const trigger = safeClosest(e.target, '[data-cat-toggle="1"]');
+if (!trigger) return;
 
-    if (!trigger) return;
+/* 🔥 MOBILE FIRST */
+if (window.innerWidth <= 768) {
+  e.preventDefault();
 
-    e.preventDefault();
+  const drawer = document.querySelector('.mobile-cat-drawer');
 
-    if (!menu) return;
+  // RESET PANELS
+  document.querySelectorAll('.mobile-panel')
+    .forEach(p => p.classList.remove('active'));
 
-    const isOpen = menu.classList.contains('is-open');
+  document.querySelector('[data-level="1"]')
+    ?.classList.add('active');
 
-    if (!isOpen) {
-      console.log('📂 Open Mega Menu');
+  drawer?.classList.add('active');
+  document.body.style.overflow = 'hidden';
 
-      menu.classList.add('is-open');
-      menu.removeAttribute('hidden');
+  return; // 🔥 STOP DESKTOP LOGIC
+}
 
-      allowHover = false;
+/* DESKTOP CONTINUES BELOW */
 
-      setTimeout(() => {
-        allowHover = true;
-      }, 150);
+  /* ================= DESKTOP LOGIC ================= */
 
-      resetMegaMenu(menu);
-      initMegaHover(menu);
+  const menu = getCatMenu();
+  if (!menu) return;
 
-    } else {
-      console.log('📁 Close Mega Menu');
+  e.preventDefault();
 
-      menu.classList.remove('is-open');
-      menu.setAttribute('hidden', 'hidden');
+  const isOpen = menu.classList.contains('is-open');
 
-      resetMegaMenu(menu);
-    }
+  if (!isOpen) {
+    console.log('📂 Open Mega Menu');
 
-  });
+    menu.classList.add('is-open');
+
+    resetMegaMenu(menu);
+    initMegaHover(menu);
+
+  } else {
+    console.log('📁 Close Mega Menu');
+
+    menu.classList.remove('is-open');
+
+    resetMegaMenu(menu);
+  }
+
+});
 
   /* =========================
      CLICK OUTSIDE CLOSE
@@ -183,8 +193,7 @@
     ) {
       console.log('🟥 Outside click → close');
 
-      menu.classList.remove('is-open');
-      menu.setAttribute('hidden', 'hidden');
+     menu.classList.remove('is-open');
 
       resetMegaMenu(menu);
     }
@@ -194,40 +203,24 @@
   /* =========================
      DESKTOP HOVER
   ========================= */
+function initMegaHover(menu) {
+  const left = menu?.querySelector('.mega-left');
+  if (!left) return;
 
-  function initMegaHover(menu) {
-    const left = menu?.querySelector('.mega-left');
-    if (!left) return;
+  // 🔥 remove old listeners (prevents stacking)
+  left.onmouseover = null;
 
-    left.addEventListener('mouseover', function (e) {
+  left.onmouseover = function (e) {
 
-      if (isMobile() || !allowHover) return;
-
-      const item = safeClosest(e.target, '.mega-left-item');
-      if (!item) return;
-
-      showPanel(menu, item.dataset.catId);
-    });
-  }
-
-  /* =========================
-     MOBILE CATEGORY CLICK
-  ========================= */
-
-  document.addEventListener('click', function (e) {
-
-    if (!isMobile()) return;
+    if (isMobile()) return;
 
     const item = safeClosest(e.target, '.mega-left-item');
-    const menu = getCatMenu();
-
-    if (!item || !menu || !menu.classList.contains('is-open')) return;
-
-    e.preventDefault();
+    if (!item) return;
 
     showPanel(menu, item.dataset.catId);
-
-  });
+  };
+}
+ 
 
   /* =========================
      RESET ON LEAVE (STABLE)
@@ -258,64 +251,27 @@
   }
 });
 
-//mobile category js
-//mobile category js
-document.addEventListener('click', function(e){
-
-  const drawer = document.querySelector('.mobile-cat-drawer');
-  const toggle = e.target.closest('[data-cat-toggle="1"]');
-
-  /* OPEN DRAWER (MOBILE ONLY) */
-  if (toggle && window.innerWidth <= 768) {
-    e.preventDefault();
-    drawer?.classList.add('active');
-    drawer?.removeAttribute('hidden');
-    document.body.style.overflow = 'hidden'; // ✅ ADD THIS
-    
-    return;
-  }
-
-  /* CLOSE ON OUTSIDE CLICK */
-  if (drawer && !e.target.closest('.mobile-cat-drawer') && !toggle) {
-    drawer.classList.remove('active');
-    drawer.setAttribute('hidden', 'hidden');
-
-    document.body.style.overflow = '';
-  }
-
-  /* NAVIGATION */
-  const item = e.target.closest('.mobile-item');
-  if (item) {
-    const target = item.dataset.target;
-    const next = document.querySelector(`[data-panel="${target}"]`);
-
-    if (next) {
-      document.querySelectorAll('.mobile-panel')
-        .forEach(p => p.classList.remove('active'));
-
-      next.classList.add('active');
-    }
-  }
-
-  /* BACK */
-  const back = e.target.closest('.mobile-back');
-  if (back) {
-    document.querySelectorAll('.mobile-panel')
-      .forEach(p => p.classList.remove('active'));
-
-    document.querySelector('[data-level="1"]')
-      ?.classList.add('active');
-  }
-
-});
-
 
 //mobile drawer closing
 // CLOSE DRAWER
+//mobile drawer closing
 document.addEventListener('click', function (e) {
   if (e.target.closest('.drawer-close')) {
     const drawer = document.querySelector('.mobile-cat-drawer');
-    if (drawer) drawer.classList.remove('active');
+
+    if (drawer) {
+      drawer.classList.remove('active');
+
+      // 🔥 RESET PANELS (ADD HERE)
+      document.querySelectorAll('.mobile-panel')
+        .forEach(p => p.classList.remove('active'));
+
+      document.querySelector('[data-level="1"]')
+        ?.classList.add('active');
+
+      // 🔥 RESTORE SCROLL (ADD HERE)
+      document.body.style.overflow = '';
+    }
   }
 });
 
@@ -331,6 +287,56 @@ document.addEventListener("click", function (e) {
   } else {
     dropdown.classList.remove("active");
   }
+});
+
+//========mobile==========
+document.addEventListener('click', function(e){
+
+  if (!isMobile()) return;
+
+  const item = e.target.closest('.mobile-item');
+
+if (item) {
+  const target = item.dataset.target;
+  const next = document.querySelector(`[data-panel="${target}"]`);
+
+  if (next) {
+    document.querySelectorAll('.mobile-panel')
+      .forEach(p => p.classList.remove('active'));
+
+    next.classList.add('active');
+  }
+}
+
+
+const back = e.target.closest('.mobile-back');
+
+if (back) {
+  const current = e.target.closest('.mobile-panel');
+  if (!current) return;
+
+  // 🔥 find previous panel (level 1 OR parent)
+  let prev;
+
+  if (current.dataset.level === "1") {
+    return; // already at root
+  }
+
+  // if level 2 or 3 → always go back to level 1 (your structure)
+  prev = document.querySelector('[data-level="1"]');
+
+  // 🔥 clean state
+  document.querySelectorAll('.mobile-panel')
+    .forEach(p => {
+      p.classList.remove('active', 'forward', 'backward');
+    });
+
+  // 🔥 show previous panel cleanly
+  if (prev) {
+    prev.classList.add('active');
+  }
+}
+
 });
 
 })();

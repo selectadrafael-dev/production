@@ -1,3 +1,5 @@
+#old working backup copy
+
 from odoo import models, fields
 import base64
 import logging
@@ -35,8 +37,8 @@ class VendorImportJob(models.Model):
 
     _name = "vendor.import.job"
     _description = "Vendor Import Job"
-    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
+    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
     name = fields.Char(default="Vendor Data Import")
 
@@ -63,6 +65,10 @@ class VendorImportJob(models.Model):
     url_batch_index = fields.Integer(default=0)
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
+    lock = fields.Boolean(default=False)
+    is_excel_parsed = fields.Boolean(default=False)
+    excel_ai_index = fields.Integer(default=0)
+    upload_signature = fields.Char(string="Upload Signature")
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -1883,8 +1889,8 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
-    #---------------- CRON ----------------
-    
+    #---------------- CRON ---------------
+
     def run_pending_jobs(self):
 
         jobs = self.search(
@@ -1913,6 +1919,7 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.exception(f"PROCESS FAILED → {str(e)}")
                 job.state = 'failed'
+
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
@@ -2021,7 +2028,7 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -2119,3 +2126,39 @@ class VendorImportJob(models.Model):
     #=======keep cron alive================
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
+
+
+    #======Reset job crons=====================
+    def action_reset_jobs(self):
+        """
+        Manual reset tool:
+        - Deletes all vendor.import.job records
+        - Resets ID sequence so next record starts from 1
+        """
+
+        _logger.warning("⚠️ MANUAL RESET TRIGGERED")
+
+        # 🔥 DELETE ALL JOBS
+        jobs = self.search([])
+        count = len(jobs)
+
+        if jobs:
+            jobs.unlink()
+
+        _logger.warning(f"Deleted {count} job(s)")
+
+        # 🔥 RESET POSTGRES SEQUENCE (CRITICAL)
+        self.env.cr.execute("""
+            SELECT setval(
+                    pg_get_serial_sequence('vendor_import_job', 'id'),
+                    COALESCE((SELECT MAX(id) FROM vendor_import_job), 0) + 1,
+                    false
+                );
+        """)
+
+        _logger.warning("Sequence reset → next ID will start from 1")
+
+        # 🔥 OPTIONAL: force commit immediately
+        self.env.cr.commit()
+
+      

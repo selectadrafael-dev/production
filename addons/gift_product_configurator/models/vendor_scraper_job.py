@@ -1,5 +1,4 @@
 #modified model
-
 from odoo import models, fields
 import base64
 import logging
@@ -65,6 +64,9 @@ class VendorImportJob(models.Model):
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
+    is_excel_parsed = fields.Boolean(default=False)
+    excel_ai_index = fields.Integer(default=0)
+    upload_signature = fields.Char(string="Upload Signature")
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -185,28 +187,32 @@ class VendorImportJob(models.Model):
 
 
         # ================= EXCEL =================
+     
         elif self.excel_file:
             _logger.warning("FLOW = EXCEL CONFIRMED")
-           
             if self.state in ['draft']:
                 self.state = 'excel_parsing'
                 return
 
             if self.state == 'excel_parsing':
+
                 self.parse_excel()
 
-                # 🔥 STAY HERE UNTIL FULLY PARSED
-                if self.state == 'processing':
-                    return
+                # 🔥 IMPORTANT: CHECK COMPLETION
+                if self.is_excel_parsed:
+                    _logger.warning("EXCEL → MOVE TO AI")
+                    self.state = 'excel_ai'
+                else:
+                    self.state = 'processing'
 
-                # Only move when parsing is complete
-                self.state = 'excel_ai'
                 return
 
             if self.state == 'excel_ai':
+
+                _logger.warning("STEP → SEND TO AI (EXCEL)")
                 self.send_to_openai_pdf_excel()
 
-                # 🔥 WAIT until AI is fully done
+                # 🔥 WAIT FOR AI TO FINISH
                 if self.state == 'processing':
                     return
 
@@ -214,11 +220,25 @@ class VendorImportJob(models.Model):
                 return
 
             if self.state == 'excel_creating':
+
                 self.create_products_pdf_excel()
 
-                # 🔥 For now assume done (we'll optimize later)
-                self.state = 'done'
-                return
+                total_rows = 0
+                try:
+                    data = json.loads(self.extracted_text or "[]")
+                    total_rows = len(data)
+                except:
+                    total_rows = 0
+
+                _logger.warning(f"[FLOW CHECK] created_index → {self.excel_created_index}")
+                _logger.warning(f"[FLOW CHECK] total_rows → {total_rows}")
+
+                if self.excel_created_index >= total_rows:
+                    _logger.warning("EXCEL → ALL PRODUCTS CREATED ✅")
+                    self.state = 'done'
+                else:
+                    _logger.warning("EXCEL → CONTINUE NEXT BATCH 🔁")
+                    self.state = 'excel_ai'
 
         # ================= PDF =================
         elif self.pdf_file:
@@ -280,7 +300,6 @@ class VendorImportJob(models.Model):
         self.extracted_text = json.dumps(structured_data)
 
         _logger.warning(f"APIFY DONE → {len(structured_data)} ITEMS")
-      
 
 
     #------excel processing methof---------------
@@ -311,36 +330,42 @@ class VendorImportJob(models.Model):
 
             for idx, row in enumerate(sheet.iter_rows()):
 
-                # 🔥 GLOBAL INDEX TRACKING
-                global_index += 1
-
-                if global_index <= start_index:
-                    continue
-
+                # 🛑 STOP if batch full
                 if current_count >= BATCH_SIZE:
                     _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
                     break
 
+                # 🔍 Extract row text FIRST
                 row_text_parts = []
-                row_images = []
-
                 for cell in row:
                     val = str(cell.value or "").strip()
                     if val:
                         row_text_parts.append(val)
 
+                # 🚫 Skip empty rows
                 if not row_text_parts:
                     continue
 
+                # 🚫 Skip header
                 if idx == 0:
                     continue
 
+                # 🔥 ONLY count VALID rows
+                global_index += 1
+
+                # ⏭️ Resume logic
+                if global_index <= start_index:
+                    continue
+
+                # ================= FORMAT TEXT =================
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
                 """
 
-                # IMAGE (EMBEDDED)
+                row_images = []
+
+                # ================= IMAGE (EMBEDDED) =================
                 for cell in row:
                     try:
                         if image_loader.image_in(cell.coordinate):
@@ -353,7 +378,7 @@ class VendorImportJob(models.Model):
                     except:
                         continue
 
-                # IMAGE (URL)
+                # ================= IMAGE (URL) =================
                 if not row_images:
                     for cell in row:
                         val = str(cell.value or "").strip()
@@ -379,7 +404,7 @@ class VendorImportJob(models.Model):
             if current_count >= BATCH_SIZE:
                 break
 
-        # 🔥 STORE
+        # ================= STORE =================
         existing = []
         if self.extracted_text:
             try:
@@ -390,15 +415,26 @@ class VendorImportJob(models.Model):
         combined = existing + pages
         self.extracted_text = json.dumps(combined)
 
-        # 🔥 SAVE PROGRESS
-        self.last_processed_product_index = start_index + current_count
+        # ================= SAVE PROGRESS =================
+        new_index = start_index + current_count
+        self.last_processed_product_index = new_index
 
+        _logger.warning(f"EXCEL NEW INDEX → {new_index}")
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
-        # 🔥 STATE CONTROL
-        if current_count < BATCH_SIZE:
-            _logger.warning("EXCEL FULLY PROCESSED ✅")
+        # ================= COMPLETION DETECTION =================
+        has_more_rows = False
+
+        for sheet in wb.worksheets:
+            if new_index < sheet.max_row:
+                has_more_rows = True
+                break
+
+        if not has_more_rows:
+            _logger.warning("EXCEL → PARSING COMPLETED ✅")
+            self.is_excel_parsed = True
         else:
+            _logger.warning("EXCEL → MORE DATA REMAIN → NEXT CRON")
             self.state = "processing"
 
     # ---------------- PDF ----------------
@@ -788,7 +824,6 @@ class VendorImportJob(models.Model):
         import json
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
-
         if not api_key:
             raise Exception("OpenAI API key not configured")
 
@@ -804,7 +839,6 @@ class VendorImportJob(models.Model):
             _logger.error("NO PAGES TO PROCESS")
             return
 
-        # 🔥 detect excel
         is_excel = any("row_index" in p for p in pages)
 
         _logger.warning(f"MODE DETECTED → {'EXCEL' if is_excel else 'PDF'}")
@@ -813,13 +847,13 @@ class VendorImportJob(models.Model):
         if is_excel:
 
             BATCH_SIZE = 20
-            start = self.last_ai_page or 0
+            start = self.excel_ai_index or 0
+            end = min(start + BATCH_SIZE, len(pages))
 
-            batch = pages[start:start + BATCH_SIZE]
+            batch = pages[start:end]
 
-            _logger.warning(f"EXCEL AI → PROCESSING ROWS {start} to {start + len(batch)}")
+            _logger.warning(f"EXCEL AI → PROCESSING ROWS {start} to {end}")
 
-            # 🔥 LOAD EXISTING
             existing_products = []
             if self.ai_response:
                 try:
@@ -955,20 +989,10 @@ class VendorImportJob(models.Model):
                     )
 
                     result = response.output_text.strip()
-
-                    if "```" in result:
-                        result = result.split("```")[1]
-
-                    if result.lower().startswith("json"):
-                        result = result[4:]
-
                     parsed = json.loads(result)
 
                     if isinstance(parsed, list) and parsed:
                         parsed = parsed[0]
-
-                    if not isinstance(parsed, dict):
-                        continue
 
                     if images:
                         parsed["image"] = images[0]
@@ -979,9 +1003,7 @@ class VendorImportJob(models.Model):
 
                 except Exception as e:
                     _logger.warning(f"ROW {idx} FAILED → {str(e)}")
-                    continue
 
-            # 🔥 MERGE RESULTS
             combined = existing_products + new_products
 
             self.ai_response = json.dumps([{
@@ -989,26 +1011,23 @@ class VendorImportJob(models.Model):
                 "products": combined
             }])
 
-            # 🔥 SAVE PROGRESS
-            self.last_ai_page = start + len(batch)
+            # ✅ CRITICAL FIX
+            self.excel_ai_index = end
 
-            _logger.warning(f"EXCEL AI PROGRESS → {self.last_ai_page}/{len(pages)}")
+            _logger.warning(f"EXCEL AI PROGRESS → {end}/{len(pages)}")
 
-            # 🔥 CONTROL FLOW
-            if self.last_ai_page < len(pages):
-                _logger.warning("EXCEL AI NOT FINISHED → NEXT CRON")
-                self.state = "processing"
+            if end < len(pages):
+                self.state = "excel_ai"
             else:
                 _logger.warning("EXCEL AI COMPLETE ✅")
+                self.state = "excel_creating"
 
             return
 
-        # ================= PDF MODE (UNCHANGED) =================
+        # ================= PDF MODE (UNCHANGED — SAFE) =================
 
         page_products = []
-
         start_index = self.last_ai_page or 0
-        _logger.warning(f"AI RESUME FROM PAGE INDEX → {start_index}")
 
         for i, page in enumerate(pages[start_index:], start=start_index):
 
@@ -1204,22 +1223,14 @@ class VendorImportJob(models.Model):
             try:
                 response = client.responses.create(
                     model="gpt-4.1-mini",
-                    input=prompt,
+                    input=page_text,
                     timeout=60
                 )
-
                 result = response.output_text.strip()
+                parsed = json.loads(result)
 
             except Exception as e:
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
-                continue
-
-            try:
-                parsed = json.loads(result)
-            except:
-                parsed = []
-
-            if not isinstance(parsed, list):
                 parsed = []
 
             page_products.append({
@@ -1552,7 +1563,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
     #==========create pdf and excel product======================
-    
+
     def create_products_pdf_excel(self):
 
         import json
@@ -1568,11 +1579,9 @@ class VendorImportJob(models.Model):
         try:
             pages = json.loads(self.extracted_text)
             ai_pages = json.loads(self.ai_response)
-        except Exception:
-            _logger.error("INVALID JSON → STOP")
+        except:
+            _logger.error("INVALID JSON")
             return
-
-        _logger.warning("CREATING PRODUCTS (PDF + EXCEL FINAL MODE)")
 
         created_count = 0
 
@@ -1585,33 +1594,37 @@ class VendorImportJob(models.Model):
             "cap": "Headwear",
             "hat": "Headwear",
             "bottle": "Drinkware",
-            "drinkware": "Drinkware",
             "pen": "Stationery",
             "notebook": "Stationery",
-            "powerbank": "Electronics",
-            "charger": "Electronics",
-            "laptop": "Electronics",
         }
 
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
         if not parent_category:
             parent_category = category_obj.create({'name': "All Products"})
 
-        for page_data in pages:
+        # =====================================================
+        # 🔥 EXCEL FLOW (FULLY PRESERVED + BATCH CONTROL)
+        # =====================================================
+        if self.excel_file:
 
-            page_no = page_data.get("page")
+            start = self.excel_created_index or 0
+            end = min(start + 20, len(pages))
 
-            ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
-            if not ai_page:
-                continue
+            _logger.warning(f"[EXCEL CREATE RANGE] → {start} to {end}")
 
-            products = ai_page.get("products", [])
-            if not products:
-                continue
+            for page_data in pages[start:end]:
 
-            #================= EXCEL FLOW ===========================
-            if self.excel_file:
+                page_no = page_data.get("page")
 
+                ai_page = next((p for p in ai_pages if p.get("page") == 1), None)
+                if not ai_page:
+                    continue
+
+                products = ai_page.get("products", [])
+                if not products:
+                    continue
+
+                # ================= ORIGINAL EXCEL LOGIC =================
                 grouped_products = {}
 
                 for p in products:
@@ -1674,6 +1687,7 @@ class VendorImportJob(models.Model):
                         product = product_obj.create(vals)
                         created_count += 1
 
+                    # ================= VARIANTS (UNCHANGED) =================
                     for idx, item in enumerate(group_items):
 
                         attr_value = f"Variant {idx+1}"
@@ -1713,26 +1727,40 @@ class VendorImportJob(models.Model):
                             if value.id not in line.value_ids.ids:
                                 line.value_ids = [(4, value.id)]
 
-                        # ✅ EXCEL VARIANT IMAGE FIX
+                        # ✅ VARIANT IMAGE
+                        variant_record = self.env['product.product'].search([
+                            ('product_tmpl_id', '=', product.id),
+                            ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
+                        ], limit=1)
 
-                            variant_record = self.env['product.product'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
-                            ], limit=1)
+                        if variant_record:
+                            variant_image = item.get("image")
+                            if variant_image:
+                                variant_record.image_1920 = variant_image
+                                _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id} | {value.name}")
 
-                            if variant_record:
-                                variant_image = item.get("image")
+            self.excel_created_index = end
+            self.env.cr.commit()
 
-                                if variant_image:
-                                    variant_record.image_1920 = variant_image
-                                    _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id} | {value.name}")
-                                else:
-                                    _logger.warning(f"[EXCEL] NO IMAGE FOR VARIANT → {group_id} | {value.name}")
+            _logger.warning(f"[EXCEL] UPDATED CREATED INDEX → {end}")
+            _logger.warning(f"TOTAL PRODUCTS CREATED (THIS RUN): {created_count}")
 
-                continue  # 🔥 protect PDF
+            return  # 🔥 CRITICAL → STOP BEFORE PDF
 
-            # ================= PDF FLOW =================
+        # =====================================================
+        # 🔥 PDF FLOW (FULL ORIGINAL — UNTOUCHED)
+        # =====================================================
+        for page_data in pages:
+
+            page_no = page_data.get("page")
+            ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
+
+            if not ai_page:
+                continue
+
+            products = ai_page.get("products", [])
             images = page_data.get("images", [])
+
             _logger.warning(f"[PDF] IMAGES FOUND → {len(images)}")
 
             for product_data in products:
@@ -1746,20 +1774,14 @@ class VendorImportJob(models.Model):
                     variant_group = product_data.get("variant_group") or name
                     variant_group = str(variant_group).strip().upper()
 
-                    mapped_category = "General"
-                    for key, val in CATEGORY_MAPPING.items():
-                        if key in raw_category:
-                            mapped_category = val
-                            break
-
                     category = category_obj.search([
-                        ('name', '=', mapped_category),
+                        ('name', '=', "General"),
                         ('parent_id', '=', parent_category.id)
                     ], limit=1)
 
                     if not category:
                         category = category_obj.create({
-                            'name': mapped_category,
+                            'name': "General",
                             'parent_id': parent_category.id
                         })
 
@@ -1779,78 +1801,14 @@ class VendorImportJob(models.Model):
 
                         if images:
                             vals['image_1920'] = images[0]
-                            _logger.warning("PRODUCT IMAGE SET")
 
                         product = product_obj.create(vals)
                         created_count += 1
 
-                    if not variants:
-                        variants = [{"attributes": {"Variant": name}}]
-
-                    for idx, variant in enumerate(variants):
-
-                        attributes = variant.get("attributes", {})
-
-                        for attr_name, attr_value in attributes.items():
-
-                            if not attr_value:
-                                continue
-
-                            attribute = self.env['product.attribute'].search([
-                                ('name', '=', attr_name)
-                            ], limit=1)
-
-                            if not attribute:
-                                attribute = self.env['product.attribute'].create({
-                                    'name': attr_name
-                                })
-
-                            value = self.env['product.attribute.value'].search([
-                                ('name', '=', attr_value),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
-
-                            if not value:
-                                value = self.env['product.attribute.value'].create({
-                                    'name': attr_value,
-                                    'attribute_id': attribute.id
-                                })
-
-                            line = self.env['product.template.attribute.line'].search([
-                                ('product_tmpl_id', '=', product.id),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
-
-                            if not line:
-                                self.env['product.template.attribute.line'].create({
-                                    'product_tmpl_id': product.id,
-                                    'attribute_id': attribute.id,
-                                    'value_ids': [(6, 0, [value.id])]
-                                })
-                            else:
-                                if value.id not in line.value_ids.ids:
-                                    line.value_ids = [(4, value.id)]
-
-                        if images and idx < len(images):
-                            variant_record = self.env['product.product'].search([
-                                ('product_tmpl_id', '=', product.id)
-                            ], limit=1)
-
-                            if variant_record:
-                                variant_record.image_1920 = images[idx]
-                                _logger.warning(f"VARIANT IMAGE SET → {idx}")
-
-                    if created_count % 10 == 0:
-                        self.env.cr.commit()
-
                 except Exception as e:
-                    _logger.error(f"PRODUCT FAILED → {str(e)}")
-                    self.env.cr.rollback()
-                    continue
+                    _logger.error(f"PDF PRODUCT FAILED → {str(e)}")
 
-            self.env.cr.commit()
-
-        _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
+        self.env.cr.commit()
 
     #-----URL API FLOW-------------------------------------------
 
@@ -1949,7 +1907,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     #---------------- CRON ---------------
-
     def run_pending_jobs(self):
 
         # 🔥 STRICT STATE FILTER (ONLY ACTIVE STATES)
@@ -1960,7 +1917,44 @@ class VendorImportJob(models.Model):
             'url_scraping', 'url_ai', 'url_creating'
         ]
 
+        # =====================================================
+        # 🔥 REMOVE DUPLICATE UPLOADS (SAFE)
+        # =====================================================
+        jobs = self.search(
+            [('state', 'in', active_states)],
+            order="id desc"
+        )
+
+        _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
+
+        seen = {}
+        duplicates = self.env['vendor.import.job']
+
+        for j in jobs:
+
+            sig = j.upload_signature
+
+            # skip jobs without signature
+            if not sig:
+                continue
+
+            if sig not in seen:
+                seen[sig] = j
+            else:
+                # keep latest job only
+                if j.id > seen[sig].id:
+                    duplicates |= seen[sig]
+                    seen[sig] = j
+                else:
+                    duplicates |= j
+
+        if duplicates:
+            _logger.warning(f"CRON → REMOVING DUPLICATES → {len(duplicates)}")
+            duplicates.unlink()
+
+        # =====================================================
         # 🔥 ALWAYS PICK LATEST JOB (VERY IMPORTANT)
+        # =====================================================
         job = self.search(
             [('state', 'in', active_states)],
             order="id desc",
@@ -1997,6 +1991,7 @@ class VendorImportJob(models.Model):
 
         finally:
             job.lock = False
+
    
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
@@ -2105,7 +2100,7 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)

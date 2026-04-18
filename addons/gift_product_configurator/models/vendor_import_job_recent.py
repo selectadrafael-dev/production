@@ -1,4 +1,4 @@
-#old backup copy
+#old working backup copy
 
 from odoo import models, fields
 import base64
@@ -37,8 +37,8 @@ class VendorImportJob(models.Model):
 
     _name = "vendor.import.job"
     _description = "Vendor Import Job"
-    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
+    partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
     name = fields.Char(default="Vendor Data Import")
 
@@ -65,6 +65,10 @@ class VendorImportJob(models.Model):
     url_batch_index = fields.Integer(default=0)
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
+    lock = fields.Boolean(default=False)
+    is_excel_parsed = fields.Boolean(default=False)
+    excel_ai_index = fields.Integer(default=0)
+    upload_signature = fields.Char(string="Upload Signature")
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -1885,8 +1889,8 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
-    #---------------- CRON ----------------
-    
+    #---------------- CRON ---------------
+
     def run_pending_jobs(self):
 
         jobs = self.search(
@@ -1915,6 +1919,7 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.exception(f"PROCESS FAILED → {str(e)}")
                 job.state = 'failed'
+
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
@@ -2023,7 +2028,7 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -2034,7 +2039,8 @@ class VendorImportJob(models.Model):
             run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
 
             payload = {
-                "startUrls": [{"url": url}]
+                "startUrls": [{"url": run_url}]
+                #"startUrls": [{"url": url}]
             }
 
             headers = {

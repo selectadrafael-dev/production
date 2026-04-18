@@ -127,8 +127,26 @@
               <button class="cat-btn mobile-cat-toggle" data-cat-toggle="1">
                 ☰ All Products
               </button>
+             
+            </div>
 
-              <div class="cat-mega" data-cat-menu="1" hidden="hidden">
+            <div class="gifting-links">
+              <a href="#">New Arrivals</a>
+              <a href="#">Promotions</a>
+              <a href="#">Best Sellers</a>
+              <a href="#">Special Offers</a>
+              <a href="#">Eco friendly</a>
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="mobile-overlay"></div>
+      </nav>
+
+      <!---==========mega menu================-->
+        <div class="cat-mega-global" data-cat-menu="1">
 
                 <t t-set="categories"
                    t-value="request.env['product.public.category'].sudo().search([('parent_id','=',False)])"/>
@@ -148,7 +166,7 @@
                   <!-- RIGHT -->
                   <div class="mega-right">
                     <t t-foreach="categories" t-as="cat" t-key="cat.id">
-                      <div class="mega-panel" t-att-data-panel-id="cat.id" style="display:none;">
+                      <div class="mega-panel" t-att-data-panel-id="cat.id">
                         <div class="mega-panel-grid">
 
                           <t t-if="cat.child_id">
@@ -190,15 +208,14 @@
                   </div>
 
                 </div> <!-- ✅ CLOSED mega-wrapper -->
-
               </div>
 
-              <!--mobile category logic-->
+               <!--mobile category logic-->
                   <div class="mobile-cat-drawer">
                    <!-- 🔥close btn -->
-                  <div class="mobile-drawer-top">
-                    <button class="drawer-close" type="button">×</button>
-                  </div>
+                    <div class="mobile-drawer-top">
+                      <button class="drawer-close" type="button">×</button>
+                    </div>
 
                     <!-- LEVEL 1 -->
                     <div class="mobile-panel active" data-level="1">
@@ -260,24 +277,6 @@
 
                   </div>
               <!--mobile category logic-->
-
-            </div>
-
-            <div class="gifting-links">
-              <a href="#">New Arrivals</a>
-              <a href="#">Promotions</a>
-              <a href="#">Best Sellers</a>
-              <a href="#">Special Offers</a>
-              <a href="#">Eco friendly</a>
-            </div>
-
-          </div>
-
-        </div>
-
-        <div class="mobile-overlay"></div>
-
-      </nav>
 
     </xpath>
 
