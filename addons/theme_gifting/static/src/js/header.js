@@ -297,26 +297,33 @@ document.addEventListener('click', function(e){
   const item = e.target.closest('.mobile-item');
 
   if (item) {
-    const target = item.dataset.target;
-    const next = document.querySelector(`[data-panel="${target}"]`);
+  const target = item.dataset.target;
+  const next = document.querySelector(`[data-panel="${target}"]`);
 
-    if (next) {
-      document.querySelectorAll('.mobile-panel')
-        .forEach(p => p.classList.remove('active'));
+  if (next) {
+    const panels = document.querySelectorAll('.mobile-panel');
 
-      next.classList.add('active');
-    }
+    panels.forEach(p => {
+      p.classList.remove('active', 'forward', 'backward');
+    });
+
+    next.classList.add('active', 'forward');
   }
+}
 
+ 
   const back = e.target.closest('.mobile-back');
 
   if (back) {
-    document.querySelectorAll('.mobile-panel')
-      .forEach(p => p.classList.remove('active'));
+  const panels = document.querySelectorAll('.mobile-panel');
 
-    document.querySelector('[data-level="1"]')
-      ?.classList.add('active');
-  }
+  panels.forEach(p => {
+    p.classList.remove('active', 'forward', 'backward');
+  });
+
+  document.querySelector('[data-level="1"]')
+    ?.classList.add('active', 'backward');
+}
 
 });
 

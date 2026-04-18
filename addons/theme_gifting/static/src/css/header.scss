@@ -482,11 +482,21 @@
   height: calc(100vh - 56px);
 
   transform: translateX(100%);
-  transition: transform 0.3s ease;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 
   background: #fff;
   z-index: 1;
+  will-change: transform; /* 🔥 smooth GPU */
+  overflow-y: auto;
+   -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
+
+.mobile-panel.active {
+  transform: translateX(0);
+  z-index: 2;
+}
+
 
 .mobile-panel.active {
   transform: translateX(0);
@@ -498,6 +508,27 @@
   transform: translateX(0);
 }
 
+.mobile-panel.forward {
+  transform: translateX(100%);
+}
+
+.mobile-panel.forward.active {
+  transform: translateX(0);
+}
+
+.mobile-panel.backward {
+  transform: translateX(-30%);
+  opacity: 0.6;
+}
+
+.mobile-item {
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.mobile-item:active {
+  transform: scale(0.97);
+  background: #f3f3f3;
+}
 
 /* header */
 .mobile-header {
@@ -551,10 +582,6 @@
   .cat-mega-global {
     display: none !important; /* disable desktop mega */
   }
-
-.mobile-panel {
-  overflow-y: auto;
-}
 
   /* 🔥 THIS IS MISSING */
   .mobile-cat-drawer.active {
