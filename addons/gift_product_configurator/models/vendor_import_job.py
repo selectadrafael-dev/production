@@ -275,7 +275,7 @@ class VendorImportJob(models.Model):
                 self.state = 'done'
                 return True
 
-    #------------parse url----------------------------
+    #------------parse url------------------------------------
     def parse_url(self):
 
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
