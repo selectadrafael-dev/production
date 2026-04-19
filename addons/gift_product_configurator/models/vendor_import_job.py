@@ -131,7 +131,7 @@ class VendorImportJob(models.Model):
         # 🔥 FIX STUCK STATE
         if self.state == 'review':
             self.state = 'processing'
-            return
+            return True
 
         # 🔥 GLOBAL SAFE GUARD
 
@@ -155,15 +155,15 @@ class VendorImportJob(models.Model):
 
             if self.state in ['draft']:
                 self.state = 'url_scraping'
-                return
-
+                return True
+            
             if self.state == 'url_scraping':
                 self.parse_url()
 
                 if self.extracted_text:
                     self.state = 'url_ai'
 
-                return
+                return True
 
             if self.state == 'url_ai':
                 self.send_to_openai_url()
@@ -171,7 +171,7 @@ class VendorImportJob(models.Model):
                 if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
                     self.state = 'url_creating'
 
-                return
+                return True
 
             if self.state == 'url_creating':
                 self.create_products_url()
@@ -186,7 +186,7 @@ class VendorImportJob(models.Model):
                 else:
                     self.state = 'processing'
 
-                return
+                return True
 
 
         # ================= EXCEL =================
@@ -195,7 +195,7 @@ class VendorImportJob(models.Model):
             _logger.warning("FLOW = EXCEL CONFIRMED")
             if self.state in ['draft']:
                 self.state = 'excel_parsing'
-                return
+                return True
 
             if self.state == 'excel_parsing':
 
@@ -208,7 +208,7 @@ class VendorImportJob(models.Model):
                 else:
                     self.state = 'processing'
 
-                return
+                return True
 
             if self.state == 'excel_ai':
 
@@ -217,10 +217,10 @@ class VendorImportJob(models.Model):
 
                 # 🔥 WAIT FOR AI TO FINISH
                 if self.state == 'processing':
-                    return
+                    return True
 
                 self.state = 'excel_creating'
-                return
+                return True
 
             if self.state == 'excel_creating':
 
@@ -248,7 +248,7 @@ class VendorImportJob(models.Model):
 
             if self.state in ['draft']:
                 self.state = 'pdf_extracting'
-                return
+                return True
 
             if self.state == 'pdf_extracting':
                 self.extract_pdf()
@@ -258,7 +258,7 @@ class VendorImportJob(models.Model):
                 else:
                     self.state = 'processing'
 
-                return
+                return True
 
             if self.state == 'pdf_ai':
                 self.send_to_openai_pdf_excel()
@@ -268,12 +268,12 @@ class VendorImportJob(models.Model):
                 else:
                     self.state = 'processing'
 
-                return
+                return True
 
             if self.state == 'pdf_creating':
                 self.create_products_pdf_excel()
                 self.state = 'done'
-                return
+                return True
 
     #------------parse url----------------------------
     def parse_url(self):
@@ -1957,14 +1957,12 @@ class VendorImportJob(models.Model):
 
             sig = j.upload_signature
 
-            # skip jobs without signature
             if not sig:
                 continue
 
             if sig not in seen:
                 seen[sig] = j
             else:
-                # keep latest job only
                 if j.id > seen[sig].id:
                     duplicates |= seen[sig]
                     seen[sig] = j
@@ -1975,8 +1973,11 @@ class VendorImportJob(models.Model):
             _logger.warning(f"CRON → REMOVING DUPLICATES → {len(duplicates)}")
             duplicates.unlink()
 
+            # 🔥 CRITICAL: commit after deletion
+            self.env.cr.commit()
+
         # =====================================================
-        # 🔥 ALWAYS PICK LATEST JOB (VERY IMPORTANT)
+        # 🔥 ALWAYS PICK LATEST JOB
         # =====================================================
         job = self.search(
             [('state', 'in', active_states)],
@@ -2005,17 +2006,24 @@ class VendorImportJob(models.Model):
         try:
             _logger.warning(f"CRON → START JOB {job.id}")
             job.lock = True
+            self.env.cr.commit()  # 🔥 ensure lock is saved immediately
 
             job._process_step()
+
+            # 🔥🔥🔥 MOST IMPORTANT FIX
+            self.env.cr.commit()
+            _logger.warning("CRON → STEP COMMITTED ✅")
 
         except Exception as e:
             _logger.exception(f"PROCESS FAILED → {str(e)}")
             job.state = 'failed'
+            self.env.cr.commit()
 
         finally:
             job.lock = False
+            self.env.cr.commit()
+            _logger.warning("CRON → JOB UNLOCKED & COMMITTED 🔓")
 
-   
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
       
