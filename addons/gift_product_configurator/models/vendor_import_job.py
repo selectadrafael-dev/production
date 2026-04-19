@@ -69,6 +69,7 @@ class VendorImportJob(models.Model):
     is_excel_parsed = fields.Boolean(default=False)
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
+    vendor_id = fields.Many2one('res.partner', string="Vendor (Internal)")
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -1654,12 +1655,25 @@ class VendorImportJob(models.Model):
             "notebook": "Stationery",
         }
 
+        # 🔥 GET VENDOR
+        vendor_id = self.partner_id.id if self.partner_id else False
+
+        # 🔥 CACHE CATEGORY
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
         if not parent_category:
             parent_category = category_obj.create({'name': "All Products"})
 
+        category_cache = {}
+
+        # 🔥 CACHE ATTRIBUTE
+        attribute = self.env['product.attribute'].search([('name', '=', "Variant")], limit=1)
+        if not attribute:
+            attribute = self.env['product.attribute'].create({'name': "Variant"})
+
+        value_cache = {}
+
         # =====================================================
-        # 🔥 EXCEL FLOW (FULLY PRESERVED + BATCH CONTROL)
+        # 🔥 EXCEL FLOW
         # =====================================================
         if self.excel_file:
 
@@ -1672,7 +1686,7 @@ class VendorImportJob(models.Model):
 
                 page_no = page_data.get("page")
 
-                ai_page = next((p for p in ai_pages if p.get("page") == 1), None)
+                ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
                 if not ai_page:
                     continue
 
@@ -1680,22 +1694,13 @@ class VendorImportJob(models.Model):
                 if not products:
                     continue
 
-                # ================= ORIGINAL EXCEL LOGIC =================
                 grouped_products = {}
 
                 for p in products:
                     raw_name = (p.get("name") or "").strip()
-
                     match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
-
-                    if match:
-                        group_id = match.group(1).upper()
-                    else:
-                        group_id = raw_name.upper()
-
+                    group_id = match.group(1).upper() if match else raw_name.upper()
                     grouped_products.setdefault(group_id, []).append(p)
-
-                _logger.warning(f"[EXCEL] GROUPS → {len(grouped_products)}")
 
                 for group_id, group_items in grouped_products.items():
 
@@ -1711,20 +1716,29 @@ class VendorImportJob(models.Model):
                             mapped_category = val
                             break
 
-                    category = category_obj.search([
-                        ('name', '=', mapped_category),
-                        ('parent_id', '=', parent_category.id)
-                    ], limit=1)
+                    # CATEGORY CACHE
+                    if mapped_category not in category_cache:
+                        category = category_obj.search([
+                            ('name', '=', mapped_category),
+                            ('parent_id', '=', parent_category.id)
+                        ], limit=1)
 
-                    if not category:
-                        category = category_obj.create({
-                            'name': mapped_category,
-                            'parent_id': parent_category.id
-                        })
+                        if not category:
+                            category = category_obj.create({
+                                'name': mapped_category,
+                                'parent_id': parent_category.id
+                            })
 
-                    product = product_obj.search([
-                        ('default_code', '=', group_id)
-                    ], limit=1)
+                        category_cache[mapped_category] = category
+
+                    category = category_cache[mapped_category]
+
+                    # 🔥 FIXED SEARCH (WITH VENDOR)
+                    domain = [('default_code', '=', group_id)]
+                    if vendor_id:
+                        domain.append(('vendor_id', '=', vendor_id))
+
+                    product = product_obj.search(domain, limit=1)
 
                     if not product:
                         vals = {
@@ -1734,6 +1748,7 @@ class VendorImportJob(models.Model):
                             'categ_id': category.id,
                             'sale_ok': True,
                             'website_published': False,
+                            'vendor_id': vendor_id,  # 🔥 KEY FIX
                         }
 
                         image = main_product.get("image")
@@ -1743,30 +1758,26 @@ class VendorImportJob(models.Model):
                         product = product_obj.create(vals)
                         created_count += 1
 
-                    # ================= VARIANTS (UNCHANGED) =================
+                    # ================= VARIANTS =================
                     for idx, item in enumerate(group_items):
 
                         attr_value = f"Variant {idx+1}"
 
-                        attribute = self.env['product.attribute'].search([
-                            ('name', '=', "Variant")
-                        ], limit=1)
+                        if attr_value not in value_cache:
+                            value = self.env['product.attribute.value'].search([
+                                ('name', '=', attr_value),
+                                ('attribute_id', '=', attribute.id)
+                            ], limit=1)
 
-                        if not attribute:
-                            attribute = self.env['product.attribute'].create({
-                                'name': "Variant"
-                            })
+                            if not value:
+                                value = self.env['product.attribute.value'].create({
+                                    'name': attr_value,
+                                    'attribute_id': attribute.id
+                                })
 
-                        value = self.env['product.attribute.value'].search([
-                            ('name', '=', attr_value),
-                            ('attribute_id', '=', attribute.id)
-                        ], limit=1)
+                            value_cache[attr_value] = value
 
-                        if not value:
-                            value = self.env['product.attribute.value'].create({
-                                'name': attr_value,
-                                'attribute_id': attribute.id
-                            })
+                        value = value_cache[attr_value]
 
                         line = self.env['product.template.attribute.line'].search([
                             ('product_tmpl_id', '=', product.id),
@@ -1783,7 +1794,6 @@ class VendorImportJob(models.Model):
                             if value.id not in line.value_ids.ids:
                                 line.value_ids = [(4, value.id)]
 
-                        # ✅ VARIANT IMAGE
                         variant_record = self.env['product.product'].search([
                             ('product_tmpl_id', '=', product.id),
                             ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
@@ -1793,7 +1803,6 @@ class VendorImportJob(models.Model):
                             variant_image = item.get("image")
                             if variant_image:
                                 variant_record.image_1920 = variant_image
-                                _logger.warning(f"[EXCEL] VARIANT IMAGE SET → {group_id} | {value.name}")
 
             self.excel_created_index = end
             self.env.cr.commit()
@@ -1801,10 +1810,10 @@ class VendorImportJob(models.Model):
             _logger.warning(f"[EXCEL] UPDATED CREATED INDEX → {end}")
             _logger.warning(f"TOTAL PRODUCTS CREATED (THIS RUN): {created_count}")
 
-            return  # 🔥 CRITICAL → STOP BEFORE PDF
+            return
 
         # =====================================================
-        # 🔥 PDF FLOW (FULL ORIGINAL — UNTOUCHED)
+        # 🔥 PDF FLOW (ALSO FIXED)
         # =====================================================
         for page_data in pages:
 
@@ -1817,35 +1826,30 @@ class VendorImportJob(models.Model):
             products = ai_page.get("products", [])
             images = page_data.get("images", [])
 
-            _logger.warning(f"[PDF] IMAGES FOUND → {len(images)}")
-
             for product_data in products:
-
                 try:
                     name = (product_data.get("name") or "").strip()
                     description = product_data.get("description", "")
-                    raw_category = (product_data.get("category") or "").lower()
-                    variants = product_data.get("variants", [])
+                    variant_group = str(product_data.get("variant_group") or name).strip().upper()
 
-                    variant_group = product_data.get("variant_group") or name
-                    variant_group = str(variant_group).strip().upper()
+                    domain = [('default_code', '=', variant_group)]
+                    if vendor_id:
+                        domain.append(('vendor_id', '=', vendor_id))
 
-                    category = category_obj.search([
-                        ('name', '=', "General"),
-                        ('parent_id', '=', parent_category.id)
-                    ], limit=1)
-
-                    if not category:
-                        category = category_obj.create({
-                            'name': "General",
-                            'parent_id': parent_category.id
-                        })
-
-                    product = product_obj.search([
-                        ('default_code', '=', variant_group)
-                    ], limit=1)
+                    product = product_obj.search(domain, limit=1)
 
                     if not product:
+                        category = category_obj.search([
+                            ('name', '=', "General"),
+                            ('parent_id', '=', parent_category.id)
+                        ], limit=1)
+
+                        if not category:
+                            category = category_obj.create({
+                                'name': "General",
+                                'parent_id': parent_category.id
+                            })
+
                         vals = {
                             'name': name,
                             'default_code': variant_group,
@@ -1853,6 +1857,7 @@ class VendorImportJob(models.Model):
                             'categ_id': category.id,
                             'sale_ok': True,
                             'website_published': False,
+                            'vendor_id': vendor_id,  # 🔥 KEY FIX
                         }
 
                         if images:
@@ -1865,7 +1870,6 @@ class VendorImportJob(models.Model):
                     _logger.error(f"PDF PRODUCT FAILED → {str(e)}")
 
         self.env.cr.commit()
-
 
     #-----URL API FLOW-------------------------------------------
 

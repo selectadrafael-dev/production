@@ -16,6 +16,13 @@ class VendorDataController(http.Controller):
         try:
             _logger.warning("🚀 CONTROLLER HIT")
 
+            # 🔥 GET CURRENT USER → VENDOR
+            user = request.env.user
+            partner_id = user.partner_id.id if user else False
+
+            if not partner_id:
+                raise Exception("Vendor not identified")
+
             url = post.get("data_url")
             extra_info = post.get("extra_info")
 
@@ -24,7 +31,7 @@ class VendorDataController(http.Controller):
             logo = request.httprequest.files.get("logo_file")
 
             # =====================================================
-            # 🔥 SAFE FILE READ (READ ONLY ONCE)
+            # 🔥 SAFE FILE READ
             # =====================================================
             file_content = b''
             excel_base64 = False
@@ -35,18 +42,14 @@ class VendorDataController(http.Controller):
 
             elif excel:
                 file_content = excel.read()
-
                 if not file_content:
                     raise Exception("Excel file is empty")
-
                 excel_base64 = base64.b64encode(file_content)
 
             elif pdf:
                 file_content = pdf.read()
-
                 if not file_content:
                     raise Exception("PDF file is empty")
-
                 pdf_base64 = base64.b64encode(file_content)
 
             else:
@@ -61,16 +64,17 @@ class VendorDataController(http.Controller):
             signature = hashlib.md5(file_content).hexdigest()
 
             # =====================================================
-            # 🔥 JOB VALUES
+            # 🔥 JOB VALUES (FIXED)
             # =====================================================
             job_vals = {
                 'extra_info': extra_info,
                 'upload_signature': signature,
-                'state': 'draft'
+                'state': 'draft',
+                'partner_id': partner_id,   # 🔥 CRITICAL FIX
             }
 
             # =====================================================
-            # 🔥 INPUT TYPE HANDLING
+            # 🔥 INPUT TYPE
             # =====================================================
             if url:
                 job_vals['data_url'] = url
@@ -98,7 +102,7 @@ class VendorDataController(http.Controller):
             if not job:
                 raise Exception("JOB CREATION FAILED")
 
-            _logger.warning(f"✅ JOB CREATED → ID {job.id}")
+            _logger.warning(f"✅ JOB CREATED → ID {job.id} (Vendor {partner_id})")
 
             # =====================================================
             # 🔥 OPTIONAL LOGO
@@ -107,7 +111,7 @@ class VendorDataController(http.Controller):
                 job.logo_file = base64.b64encode(logo.read())
 
             # =====================================================
-            # 🔥 COMMIT (VERY IMPORTANT)
+            # 🔥 COMMIT
             # =====================================================
             request.env.cr.commit()
 
