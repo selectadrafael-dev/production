@@ -122,7 +122,7 @@ class VendorImportJob(models.Model):
             self.state = "failed"
 
 
-    #============Procsing Jobs===================================================
+    #============Processing Jobs===================================================
 
     def _process_step(self):
 
@@ -131,10 +131,12 @@ class VendorImportJob(models.Model):
         # 🔥 FIX STUCK STATE
         if self.state == 'review':
             self.state = 'processing'
+            self.env.cr.commit()
             return True
 
-        # 🔥 GLOBAL SAFE GUARD
-
+        # =====================================================
+        # 🔥 GLOBAL SAFE GUARD (ENTRY POINT)
+        # =====================================================
         if self.state == 'processing':
 
             _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
@@ -148,21 +150,26 @@ class VendorImportJob(models.Model):
             elif self.pdf_file:
                 self.state = 'pdf_extracting'
 
-    # 🔥 DO NOT RETURN → CONTINUE EXECUTION
+            self.env.cr.commit()
+            return True
 
         # ================= URL =================
         if self.data_url:
 
-            if self.state in ['draft']:
+            if self.state == 'draft':
                 self.state = 'url_scraping'
+                self.env.cr.commit()
                 return True
-            
+
             if self.state == 'url_scraping':
                 self.parse_url()
 
                 if self.extracted_text:
                     self.state = 'url_ai'
+                else:
+                    self.state = 'processing'
 
+                self.env.cr.commit()
                 return True
 
             if self.state == 'url_ai':
@@ -170,7 +177,10 @@ class VendorImportJob(models.Model):
 
                 if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
                     self.state = 'url_creating'
+                else:
+                    self.state = 'processing'
 
+                self.env.cr.commit()
                 return True
 
             if self.state == 'url_creating':
@@ -186,28 +196,30 @@ class VendorImportJob(models.Model):
                 else:
                     self.state = 'processing'
 
+                self.env.cr.commit()
                 return True
 
-
         # ================= EXCEL =================
-     
         elif self.excel_file:
+
             _logger.warning("FLOW = EXCEL CONFIRMED")
-            if self.state in ['draft']:
+
+            if self.state == 'draft':
                 self.state = 'excel_parsing'
+                self.env.cr.commit()
                 return True
 
             if self.state == 'excel_parsing':
 
                 self.parse_excel()
 
-                # 🔥 IMPORTANT: CHECK COMPLETION
                 if self.is_excel_parsed:
                     _logger.warning("EXCEL → MOVE TO AI")
                     self.state = 'excel_ai'
                 else:
                     self.state = 'processing'
 
+                self.env.cr.commit()
                 return True
 
             if self.state == 'excel_ai':
@@ -215,11 +227,13 @@ class VendorImportJob(models.Model):
                 _logger.warning("STEP → SEND TO AI (EXCEL)")
                 self.send_to_openai_pdf_excel()
 
-                # 🔥 WAIT FOR AI TO FINISH
+                # 🔥 If AI not finished, stay in processing loop
                 if self.state == 'processing':
+                    self.env.cr.commit()
                     return True
 
                 self.state = 'excel_creating'
+                self.env.cr.commit()
                 return True
 
             if self.state == 'excel_creating':
@@ -243,11 +257,15 @@ class VendorImportJob(models.Model):
                     _logger.warning("EXCEL → CONTINUE NEXT BATCH 🔁")
                     self.state = 'excel_ai'
 
+                self.env.cr.commit()
+                return True
+
         # ================= PDF =================
         elif self.pdf_file:
 
-            if self.state in ['draft']:
+            if self.state == 'draft':
                 self.state = 'pdf_extracting'
+                self.env.cr.commit()
                 return True
 
             if self.state == 'pdf_extracting':
@@ -258,6 +276,7 @@ class VendorImportJob(models.Model):
                 else:
                     self.state = 'processing'
 
+                self.env.cr.commit()
                 return True
 
             if self.state == 'pdf_ai':
@@ -268,11 +287,14 @@ class VendorImportJob(models.Model):
                 else:
                     self.state = 'processing'
 
+                self.env.cr.commit()
                 return True
 
             if self.state == 'pdf_creating':
                 self.create_products_pdf_excel()
                 self.state = 'done'
+
+                self.env.cr.commit()
                 return True
 
     #------------parse url------------------------------------
