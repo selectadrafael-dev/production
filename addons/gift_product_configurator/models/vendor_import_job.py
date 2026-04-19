@@ -2009,6 +2009,11 @@ class VendorImportJob(models.Model):
             order="id desc"
         )
 
+        # 🔥 CRITICAL: REFRESH FROM DB
+        if job:
+            job.invalidate_cache()
+            job = job.sudo().browse(job.id)
+
         _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
 
         seen = {}
