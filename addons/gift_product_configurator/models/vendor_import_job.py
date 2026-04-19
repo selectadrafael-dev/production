@@ -138,7 +138,7 @@ class VendorImportJob(models.Model):
         # =====================================================
         for _ in range(5):  # allow multiple steps per cron
 
-            # ================= ENTRY =================
+            # ================= ENTRY ====================
             if self.state == 'processing':
 
                 _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
