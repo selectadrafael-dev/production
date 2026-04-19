@@ -132,170 +132,184 @@ class VendorImportJob(models.Model):
         if self.state == 'review':
             self.state = 'processing'
             self.env.cr.commit()
-            return True
 
         # =====================================================
-        # 🔥 GLOBAL SAFE GUARD (ENTRY POINT)
+        # 🔥 LOOP EXECUTION (KEY FIX 🚀)
         # =====================================================
-        if self.state == 'processing':
+        for _ in range(5):  # allow multiple steps per cron
 
-            _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
+            # ================= ENTRY =================
+            if self.state == 'processing':
 
+                _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
+
+                if self.data_url:
+                    self.state = 'url_scraping'
+
+                elif self.excel_file and not self.pdf_file:
+                    self.state = 'excel_parsing'
+
+                elif self.pdf_file:
+                    self.state = 'pdf_extracting'
+
+                self.env.cr.commit()
+                continue
+
+            # ================= URL =================
             if self.data_url:
-                self.state = 'url_scraping'
 
-            elif self.excel_file and not self.pdf_file:
-                self.state = 'excel_parsing'
-
-            elif self.pdf_file:
-                self.state = 'pdf_extracting'
-
-            self.env.cr.commit()
-            return True
-
-        # ================= URL =================
-        if self.data_url:
-
-            if self.state == 'draft':
-                self.state = 'url_scraping'
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'url_scraping':
-                self.parse_url()
-
-                if self.extracted_text:
-                    self.state = 'url_ai'
-                else:
-                    self.state = 'processing'
-
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'url_ai':
-                self.send_to_openai_url()
-
-                if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
-                    self.state = 'url_creating'
-                else:
-                    self.state = 'processing'
-
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'url_creating':
-                self.create_products_url()
-
-                try:
-                    total = len(json.loads(self.ai_response or "[]"))
-                except:
-                    total = 0
-
-                if self.last_processed_product_index >= total:
-                    self.state = 'done'
-                else:
-                    self.state = 'processing'
-
-                self.env.cr.commit()
-                return True
-
-        # ================= EXCEL =================
-        elif self.excel_file:
-
-            _logger.warning("FLOW = EXCEL CONFIRMED")
-
-            if self.state == 'draft':
-                self.state = 'excel_parsing'
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'excel_parsing':
-
-                self.parse_excel()
-
-                if self.is_excel_parsed:
-                    _logger.warning("EXCEL → MOVE TO AI")
-                    self.state = 'excel_ai'
-                else:
-                    self.state = 'processing'
-
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'excel_ai':
-
-                _logger.warning("STEP → SEND TO AI (EXCEL)")
-                self.send_to_openai_pdf_excel()
-
-                # 🔥 If AI not finished, stay in processing loop
-                if self.state == 'processing':
+                if self.state == 'draft':
+                    self.state = 'url_scraping'
                     self.env.cr.commit()
-                    return True
+                    continue
 
-                self.state = 'excel_creating'
-                self.env.cr.commit()
-                return True
+                if self.state == 'url_scraping':
+                    self.parse_url()
 
-            if self.state == 'excel_creating':
+                    if self.extracted_text:
+                        self.state = 'url_ai'
+                    else:
+                        self.state = 'processing'
 
-                self.create_products_pdf_excel()
+                    self.env.cr.commit()
+                    continue
 
-                total_rows = 0
-                try:
-                    data = json.loads(self.extracted_text or "[]")
-                    total_rows = len(data)
-                except:
+                if self.state == 'url_ai':
+                    self.send_to_openai_url()
+
+                    if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
+                        self.state = 'url_creating'
+                    else:
+                        self.state = 'processing'
+
+                    self.env.cr.commit()
+                    continue
+
+                if self.state == 'url_creating':
+                    self.create_products_url()
+
+                    try:
+                        total = len(json.loads(self.ai_response or "[]"))
+                    except:
+                        total = 0
+
+                    if self.last_processed_product_index >= total:
+                        self.state = 'done'
+                    else:
+                        self.state = 'processing'
+
+                    self.env.cr.commit()
+                    continue
+
+            # ================= EXCEL =================
+            elif self.excel_file:
+
+                _logger.warning("FLOW = EXCEL CONFIRMED")
+
+                if self.state == 'draft':
+                    self.state = 'excel_parsing'
+                    self.env.cr.commit()
+                    continue
+
+                if self.state == 'excel_parsing':
+
+                    self.parse_excel()
+
+                    if self.is_excel_parsed:
+                        _logger.warning("EXCEL → MOVE TO AI")
+                        self.state = 'excel_ai'
+                    else:
+                        self.state = 'processing'
+
+                    self.env.cr.commit()
+                    continue
+
+                if self.state == 'excel_ai':
+
+                    _logger.warning("STEP → SEND TO AI (EXCEL)")
+
+                    try:
+                        self.send_to_openai_pdf_excel()
+                    except Exception as e:
+                        _logger.error(f"AI ERROR → {str(e)}")
+                        self.state = 'processing'
+                        self.env.cr.commit()
+                        continue
+
+                    if self.state == 'processing':
+                        self.env.cr.commit()
+                        continue
+
+                    self.state = 'excel_creating'
+                    self.env.cr.commit()
+                    continue
+
+                if self.state == 'excel_creating':
+
+                    self.create_products_pdf_excel()
+
                     total_rows = 0
+                    try:
+                        data = json.loads(self.extracted_text or "[]")
+                        total_rows = len(data)
+                    except:
+                        total_rows = 0
 
-                _logger.warning(f"[FLOW CHECK] created_index → {self.excel_created_index}")
-                _logger.warning(f"[FLOW CHECK] total_rows → {total_rows}")
+                    _logger.warning(f"[FLOW CHECK] created_index → {self.excel_created_index}")
+                    _logger.warning(f"[FLOW CHECK] total_rows → {total_rows}")
 
-                if self.excel_created_index >= total_rows:
-                    _logger.warning("EXCEL → ALL PRODUCTS CREATED ✅")
+                    if self.excel_created_index >= total_rows:
+                        _logger.warning("EXCEL → ALL PRODUCTS CREATED ✅")
+                        self.state = 'done'
+                    else:
+                        _logger.warning("EXCEL → CONTINUE NEXT BATCH 🔁")
+                        self.state = 'excel_ai'
+
+                    self.env.cr.commit()
+                    continue
+
+            # ================= PDF =================
+            elif self.pdf_file:
+
+                if self.state == 'draft':
+                    self.state = 'pdf_extracting'
+                    self.env.cr.commit()
+                    continue
+
+                if self.state == 'pdf_extracting':
+                    self.extract_pdf()
+
+                    if self.current_page >= self.total_pages:
+                        self.state = 'pdf_ai'
+                    else:
+                        self.state = 'processing'
+
+                    self.env.cr.commit()
+                    continue
+
+                if self.state == 'pdf_ai':
+                    self.send_to_openai_pdf_excel()
+
+                    if self.last_ai_page >= self.total_pages:
+                        self.state = 'pdf_creating'
+                    else:
+                        self.state = 'processing'
+
+                    self.env.cr.commit()
+                    continue
+
+                if self.state == 'pdf_creating':
+                    self.create_products_pdf_excel()
                     self.state = 'done'
-                else:
-                    _logger.warning("EXCEL → CONTINUE NEXT BATCH 🔁")
-                    self.state = 'excel_ai'
+                    self.env.cr.commit()
+                    continue
 
-                self.env.cr.commit()
-                return True
+            # 🔥 EXIT IF DONE
+            if self.state == 'done':
+                _logger.warning(f"JOB {self.id} COMPLETED ✅")
+                break
 
-        # ================= PDF =================
-        elif self.pdf_file:
-
-            if self.state == 'draft':
-                self.state = 'pdf_extracting'
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'pdf_extracting':
-                self.extract_pdf()
-
-                if self.current_page >= self.total_pages:
-                    self.state = 'pdf_ai'
-                else:
-                    self.state = 'processing'
-
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'pdf_ai':
-                self.send_to_openai_pdf_excel()
-
-                if self.last_ai_page >= self.total_pages:
-                    self.state = 'pdf_creating'
-                else:
-                    self.state = 'processing'
-
-                self.env.cr.commit()
-                return True
-
-            if self.state == 'pdf_creating':
-                self.create_products_pdf_excel()
-                self.state = 'done'
-
-                self.env.cr.commit()
-                return True
+        return True
 
     #------------parse url------------------------------------
     def parse_url(self):
