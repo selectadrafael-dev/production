@@ -240,17 +240,18 @@ class VendorImportJob(models.Model):
                 return True
 
             # -------- PARSE --------
+    
             if self.state == 'excel_parsing':
 
                 self.parse_excel()
 
-                if self.is_excel_parsed:
-                    _logger.warning("EXCEL → MOVE TO AI")
+                # 🔥 NEW LOGIC: allow partial progress to AI
+                if self.extracted_text:
+                    _logger.warning("EXCEL → DATA AVAILABLE → MOVE TO AI")
                     self.state = 'excel_ai'
                 else:
                     self.state = 'processing'
 
-                self.env.cr.commit()
                 return True
 
             # -------- AI (ISOLATED) --------
