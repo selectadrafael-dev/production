@@ -2010,9 +2010,9 @@ class VendorImportJob(models.Model):
         )
 
         # 🔥 CRITICAL: REFRESH FROM DB
-        if job:
-            job.invalidate_cache()
-            job = job.sudo().browse(job.id)
+        if jobs:
+            jobs.invalidate_cache()
+            jobs = jobs.sudo().browse(jobs.id)
 
         _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
 
