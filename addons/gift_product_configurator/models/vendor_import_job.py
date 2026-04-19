@@ -245,6 +245,7 @@ class VendorImportJob(models.Model):
                 return True
 
             # -------- AI (ISOLATED) --------
+
             if self.state == 'excel_ai':
 
                 _logger.warning("STEP → SEND TO AI (EXCEL)")
@@ -257,7 +258,16 @@ class VendorImportJob(models.Model):
                     self.env.cr.commit()
                     return True
 
-                # 🔥 STOP HERE (CRITICAL FIX)
+                # 🔥 IMPORTANT: MOVE FORWARD
+                if self.state == 'processing':
+                    # AI still batching
+                    self.env.cr.commit()
+                    return True
+
+                # 🔥 AI FINISHED → GO CREATE
+                _logger.warning("AI DONE → MOVE TO CREATE")
+                self.state = 'excel_creating'
+
                 self.env.cr.commit()
                 return True
 
@@ -331,6 +341,7 @@ class VendorImportJob(models.Model):
             return True
 
         return True
+
 
     #------------parse url------------------------------------
     def parse_url(self):
@@ -1991,12 +2002,13 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     #---------------- CRON ---------------
-  
+
     def run_pending_jobs(self):
 
+        import time
         from odoo import fields
 
-        # 🔥 STRICT STATE FILTER
+        # 🔥 ACTIVE STATES
         active_states = [
             'draft', 'processing',
             'excel_parsing', 'excel_ai', 'excel_creating',
@@ -2005,7 +2017,7 @@ class VendorImportJob(models.Model):
         ]
 
         # =====================================================
-        # 🔥 REMOVE DUPLICATE UPLOADS (SAFE)
+        # 🔥 REMOVE DUPLICATES (SAFE)
         # =====================================================
         jobs = self.search(
             [('state', 'in', active_states)],
@@ -2018,7 +2030,6 @@ class VendorImportJob(models.Model):
         duplicates = self.env['vendor.import.job']
 
         for j in jobs:
-
             sig = j.upload_signature
 
             if not sig:
@@ -2039,100 +2050,70 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
         # =====================================================
-        # 🔥 PICK LATEST JOB
+        # 🔥 LOOP EXECUTION (FINAL FIX)
         # =====================================================
-        job = self.search(
-            [('state', 'in', active_states)],
-            order="id desc",
-            limit=1
-        )
+        MAX_STEPS = 10          # 🔧 tune if needed
+        MAX_SECONDS = 20        # 🔧 safety timeout
 
-        _logger.warning(f"CRON → Found {1 if job else 0} job")
+        steps = 0
+        start_time = time.time()
 
-        if not job:
-            return
+        while steps < MAX_STEPS:
 
-        # 🔥🔥🔥 CRITICAL FIX — FORCE FRESH ENV + RECORD
-        self.env.invalidate_all()
-        job = self.env['vendor.import.job'].sudo().browse(job.id)
+            # 🔒 TIME GUARD
+            if time.time() - start_time > MAX_SECONDS:
+                _logger.warning("CRON → TIME LIMIT REACHED → STOP LOOP ⏱️")
+                break
 
-        _logger.warning(f"CRON → SELECTED JOB ID → {job.id}")
-        _logger.warning(
-            f"CRON → JOB INPUT → "
-            f"excel={bool(job.excel_file)} "
-            f"pdf={bool(job.pdf_file)} "
-            f"url={bool(job.data_url)}"
-        )
+            job = self.search(
+                [('state', 'in', active_states)],
+                order="id desc",
+                limit=1
+            )
 
-        # =====================================================
-        # 🔒 LOCK CHECK (AUTO RECOVERY)
-        # =====================================================
-        if job.lock:
+            if not job:
+                _logger.warning("CRON → NO MORE JOBS")
+                break
+
+            _logger.warning(f"CRON LOOP → STEP {steps+1} → JOB {job.id}")
+
+            # 🔒 LOCK CHECK
+            if job.lock:
+                try:
+                    delta = (fields.Datetime.now() - job.write_date).total_seconds()
+                except Exception:
+                    delta = 0
+
+                if delta > 65:
+                    _logger.warning(f"FORCE UNLOCK JOB {job.id}")
+                    job.lock = False
+                    self.env.cr.commit()
+                else:
+                    _logger.warning(f"JOB {job.id} LOCKED → STOP LOOP")
+                    break
 
             try:
-                delta = (fields.Datetime.now() - job.write_date).total_seconds()
-            except Exception:
-                delta = 0
-
-            if delta > 65:
-                _logger.warning(f"FORCE UNLOCK JOB {job.id} (stale lock)")
-                job.lock = False
+                job.lock = True
                 self.env.cr.commit()
-            else:
-                _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
-                return
 
-        try:
-            _logger.warning(f"CRON → START JOB {job.id}")
-
-            job.lock = True
-            self.env.cr.commit()
-
-            # 🔥🔥🔥 CRITICAL: REFRESH AGAIN BEFORE PROCESS
-            self.env.invalidate_all()
-            job = self.env['vendor.import.job'].sudo().browse(job.id)
-
-            job._process_step()
-
-            self.env.cr.commit()
-            _logger.warning("CRON → STEP COMMITTED ✅")
-
-        except Exception as e:
-            _logger.exception(f"PROCESS FAILED → {str(e)}")
-            job.state = 'failed'
-            self.env.cr.commit()
-
-        finally:
-            job.lock = False
-            self.env.cr.commit()
-            _logger.warning("CRON → JOB UNLOCKED & COMMITTED 🔓")
-        
-        # 🔥 FORCE CONTINUOUS PROCESSING (FINAL FIX)
-
-        remaining = self.search_count([
-            ('state', 'in', [
-                'draft', 'processing',
-                'excel_parsing', 'excel_ai', 'excel_creating',
-                'pdf_extracting', 'pdf_ai', 'pdf_creating',
-                'url_scraping', 'url_ai', 'url_creating'
-            ])
-        ])
-
-        if remaining:
-            _logger.warning("CRON → MORE WORK DETECTED → TRIGGER AGAIN 🔁")
-
-            try:
-                cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
-
-                cron.sudo().write({
-                    'nextcall': fields.Datetime.now()
-                })
+                job._process_step()
 
                 self.env.cr.commit()
+                _logger.warning("CRON → STEP COMMITTED ✅")
 
             except Exception as e:
-                _logger.warning(f"CRON RETRIGGER FAILED → {e}")
+                _logger.exception(f"PROCESS FAILED → {str(e)}")
+                job.state = 'failed'
+                self.env.cr.commit()
 
+            finally:
+                job.lock = False
+                self.env.cr.commit()
+                _logger.warning("CRON → JOB UNLOCKED 🔓")
+
+            steps += 1
+
+        _logger.warning("CRON → LOOP FINISHED ✅")
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):

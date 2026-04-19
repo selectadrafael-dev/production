@@ -1,7 +1,5 @@
 #old working backup copy
 
-#old working backup copy
-
 from odoo import models, fields
 import base64
 import logging
