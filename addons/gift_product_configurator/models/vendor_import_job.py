@@ -14,7 +14,6 @@ from urllib.parse import urljoin
 from openai import OpenAI
 import re
 import fitz
-
  
 
 _logger = logging.getLogger(__name__)
@@ -133,10 +132,20 @@ class VendorImportJob(models.Model):
             self.state = 'processing'
             self.env.cr.commit()
 
+        # 🔥 SAFE LOOP GUARD
+        previous_state = None
+
         # =====================================================
-        # 🔥 LOOP EXECUTION (KEY FIX 🚀)
+        # 🔥 LOOP EXECUTION (SAFE & CONTROLLED)
         # =====================================================
-        for _ in range(5):  # allow multiple steps per cron
+        for _ in range(2):
+
+            # 🛑 Prevent infinite loop
+            if self.state == previous_state:
+                _logger.warning("NO STATE CHANGE → BREAK LOOP")
+                break
+
+            previous_state = self.state
 
             # ================= ENTRY ====================
             if self.state == 'processing':
@@ -2035,9 +2044,27 @@ class VendorImportJob(models.Model):
         )
 
         # 🔒 LOCK CHECK
+        # if job.lock:
+        #     _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
+        #     return
+
+        # 🔒 LOCK CHECK (AUTO-RECOVERY FIX)
         if job.lock:
-            _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
-            return
+
+            # ⏱️ check how long job has been locked
+            try:
+                delta = (fields.Datetime.now() - job.write_date).total_seconds()
+            except Exception:
+                delta = 0
+
+            # 🔥 if lock older than 5 minutes → force unlock
+            if delta > 65:
+                _logger.warning(f"FORCE UNLOCK JOB {job.id} (stale lock)")
+                job.lock = False
+                self.env.cr.commit()
+            else:
+                _logger.warning(f"JOB {job.id} IS LOCKED → SKIP")
+                return
 
         try:
             _logger.warning(f"CRON → START JOB {job.id}")
