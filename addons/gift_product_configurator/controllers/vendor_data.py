@@ -70,7 +70,7 @@ class VendorDataController(http.Controller):
                 'extra_info': extra_info,
                 'upload_signature': signature,
                 'state': 'draft',
-                'partner_id': partner_id,   # 🔥 CRITICAL FIX
+                'partner_id': request.env.user.partner_id.id   # ✅ ADD THIS
             }
 
             # =====================================================

@@ -18,6 +18,15 @@ import fitz
 
 _logger = logging.getLogger(__name__)
 
+class ProductTemplate(models.Model):
+    _inherit = 'product.template'
+
+    vendor_id = fields.Many2one(
+        'res.partner',
+        string="Vendor"
+    )
+
+
 # ✅ Extend existing model
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -69,7 +78,7 @@ class VendorImportJob(models.Model):
     is_excel_parsed = fields.Boolean(default=False)
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
-    vendor_id = fields.Many2one('res.partner', string="Vendor (Internal)")
+    # vendor_id = fields.Many2one('res.partner', string="Vendor (Internal)")
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -373,7 +382,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"APIFY DONE → {len(structured_data)} ITEMS")
 
 
-    #------excel processing methof---------------
+    #------excel parsing method---------------
 
     def parse_excel(self):
 
@@ -386,29 +395,29 @@ class VendorImportJob(models.Model):
 
         pages = []
 
-        # 🔥 BATCH CONTROL
-        BATCH_SIZE = 20
+        # 🔥 SAFE BATCH CONTROL
+        BATCH_SIZE = 8
+        MAX_BUFFER = 150
+
         start_index = self.last_processed_product_index or 0
         current_count = 0
         global_index = 0  # counts ONLY valid rows
 
         _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
 
-        # ================= 🔥 REAL TOTAL ROWS (FIXED) =================
+        # ================= TOTAL ROWS =================
         total_rows = 0
 
         for sheet in wb.worksheets:
             for idx, row in enumerate(sheet.iter_rows()):
 
                 if idx == 0:
-                    continue  # skip header
+                    continue
 
-                # 🔍 SAME LOGIC AS PROCESSING
-                row_text_parts = []
-                for cell in row:
-                    val = str(cell.value or "").strip()
-                    if val:
-                        row_text_parts.append(val)
+                row_text_parts = [
+                    str(cell.value or "").strip()
+                    for cell in row if str(cell.value or "").strip()
+                ]
 
                 if not row_text_parts:
                     continue
@@ -418,6 +427,8 @@ class VendorImportJob(models.Model):
         _logger.warning(f"[DEBUG] REAL TOTAL ROWS → {total_rows}")
 
         # ================= MAIN LOOP =================
+        last_valid_index = start_index
+
         for sheet in wb.worksheets:
 
             _logger.warning(f"PROCESSING SHEET → {sheet.title}")
@@ -432,16 +443,14 @@ class VendorImportJob(models.Model):
                 if idx == 0:
                     continue
 
-                row_text_parts = []
-                for cell in row:
-                    val = str(cell.value or "").strip()
-                    if val:
-                        row_text_parts.append(val)
+                row_text_parts = [
+                    str(cell.value or "").strip()
+                    for cell in row if str(cell.value or "").strip()
+                ]
 
                 if not row_text_parts:
                     continue
 
-                # 🔥 COUNT ONLY VALID ROWS
                 global_index += 1
 
                 if global_index <= start_index:
@@ -451,6 +460,12 @@ class VendorImportJob(models.Model):
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
+
+                RULE:
+                - THIS IS EXACTLY ONE PRODUCT
+                - DO NOT SPLIT THIS ROW
+                - THIS ROW MAY BE A VARIANT OF ANOTHER ROW
+                - USE SIMILAR ID/SKU TO GROUP VARIANTS
                 """
 
                 row_images = []
@@ -490,8 +505,14 @@ class VendorImportJob(models.Model):
                 })
 
                 current_count += 1
+                last_valid_index = global_index  # 🔥 CRITICAL FIX
 
-            if current_count >= BATCH_SIZE:
+                # 🔥 MEMORY SAFETY
+                if len(pages) >= MAX_BUFFER:
+                    _logger.warning(f"EXCEL SAFETY BREAK → {len(pages)} rows buffered")
+                    break
+
+            if current_count >= BATCH_SIZE or len(pages) >= MAX_BUFFER:
                 break
 
         # ================= STORE =================
@@ -506,27 +527,29 @@ class VendorImportJob(models.Model):
         self.extracted_text = json.dumps(combined)
 
         # ================= SAVE PROGRESS =================
-        new_index = start_index + current_count
-        self.last_processed_product_index = new_index
+        self.last_processed_product_index = last_valid_index
 
         # ================= DEBUG =================
-        remaining = max(total_rows - new_index, 0)
-        progress = round((new_index / total_rows) * 100, 2) if total_rows else 0
+        remaining = max(total_rows - last_valid_index, 0)
+        progress = round((last_valid_index / total_rows) * 100, 2) if total_rows else 0
 
-        _logger.warning(f"[DEBUG] CURRENT INDEX → {new_index}")
+        _logger.warning(f"[DEBUG] CURRENT INDEX → {last_valid_index}")
         _logger.warning(f"[DEBUG] REMAINING ROWS → {remaining}")
         _logger.warning(f"[DEBUG] PROGRESS → {progress}%")
 
-        _logger.warning(f"EXCEL NEW INDEX → {new_index}")
+        _logger.warning(f"EXCEL NEW INDEX → {last_valid_index}")
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
         # ================= COMPLETION =================
-        if new_index >= total_rows:
+        if last_valid_index >= total_rows:
             _logger.warning("EXCEL → PARSING COMPLETED ✅")
             self.is_excel_parsed = True
         else:
             _logger.warning("EXCEL → MORE DATA REMAIN → NEXT CRON")
             self.state = "processing"
+
+        # 🔥 CLEANUP (IMPORTANT)
+        wb.close()
 
     # ---------------- PDF ----------------
 
@@ -538,7 +561,7 @@ class VendorImportJob(models.Model):
         MAX_RETRIES = 3
 
         # 🔥 BATCH CONFIG
-        BATCH_SIZE = 3
+        BATCH_SIZE = 1
     
         all_pages = []
 
@@ -738,7 +761,7 @@ class VendorImportJob(models.Model):
         cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
 
         # ================= BATCH =================
-        BLOCK_BATCH_SIZE = 20  # 🔥 SAFE for memory
+        BLOCK_BATCH_SIZE = 8  # 🔥 SAFE for memory
 
         batched_blocks = [
             cleaned_blocks[i:i + BLOCK_BATCH_SIZE]
@@ -937,7 +960,7 @@ class VendorImportJob(models.Model):
         # ================= EXCEL MODE (FIXED) =================
         if is_excel:
 
-            BATCH_SIZE = 20
+            BATCH_SIZE = 5
             start = self.excel_ai_index or 0
             end = min(start + BATCH_SIZE, len(pages))
 
@@ -1515,7 +1538,7 @@ class VendorImportJob(models.Model):
         created_count = 0
         skipped_count = 0
 
-        MAX_PRODUCTS_PER_RUN = 10
+        MAX_PRODUCTS_PER_RUN = 5
 
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
