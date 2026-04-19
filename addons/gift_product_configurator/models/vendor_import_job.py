@@ -56,6 +56,10 @@ class VendorImportJob(models.Model):
     last_ai_page = fields.Integer(string="Last AI Page", default=0)
     ai_response = fields.Text()
     priority = fields.Integer(default=10)
+    excel_created_index = fields.Integer(
+        string="Excel Created Index",
+        default=0
+    )
 
     apify_run_id = fields.Char()
     apify_dataset_id = fields.Char()
