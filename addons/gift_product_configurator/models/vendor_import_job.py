@@ -2106,6 +2106,33 @@ class VendorImportJob(models.Model):
             job.lock = False
             self.env.cr.commit()
             _logger.warning("CRON → JOB UNLOCKED & COMMITTED 🔓")
+        
+        # 🔥 FORCE CONTINUOUS PROCESSING (FINAL FIX)
+
+        remaining = self.search_count([
+            ('state', 'in', [
+                'draft', 'processing',
+                'excel_parsing', 'excel_ai', 'excel_creating',
+                'pdf_extracting', 'pdf_ai', 'pdf_creating',
+                'url_scraping', 'url_ai', 'url_creating'
+            ])
+        ])
+
+        if remaining:
+            _logger.warning("CRON → MORE WORK DETECTED → TRIGGER AGAIN 🔁")
+
+            try:
+                cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
+
+                cron.sudo().write({
+                    'nextcall': fields.Datetime.now()
+                })
+
+                self.env.cr.commit()
+
+            except Exception as e:
+                _logger.warning(f"CRON RETRIGGER FAILED → {e}")
+
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
