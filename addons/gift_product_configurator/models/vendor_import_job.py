@@ -1991,9 +1991,12 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     #---------------- CRON ---------------
+  
     def run_pending_jobs(self):
 
-        # 🔥 STRICT STATE FILTER (ONLY ACTIVE STATES)
+        from odoo import fields
+
+        # 🔥 STRICT STATE FILTER
         active_states = [
             'draft', 'processing',
             'excel_parsing', 'excel_ai', 'excel_creating',
@@ -2008,11 +2011,6 @@ class VendorImportJob(models.Model):
             [('state', 'in', active_states)],
             order="id desc"
         )
-
-        # 🔥 CRITICAL: REFRESH FROM DB
-        if jobs:
-            jobs.invalidate_cache()
-            jobs = jobs.sudo().browse(jobs.id)
 
         _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
 
@@ -2038,12 +2036,10 @@ class VendorImportJob(models.Model):
         if duplicates:
             _logger.warning(f"CRON → REMOVING DUPLICATES → {len(duplicates)}")
             duplicates.unlink()
-
-            # 🔥 CRITICAL: commit after deletion
             self.env.cr.commit()
 
         # =====================================================
-        # 🔥 ALWAYS PICK LATEST JOB
+        # 🔥 PICK LATEST JOB
         # =====================================================
         job = self.search(
             [('state', 'in', active_states)],
@@ -2056,6 +2052,10 @@ class VendorImportJob(models.Model):
         if not job:
             return
 
+        # 🔥🔥🔥 CRITICAL FIX — FORCE FRESH ENV + RECORD
+        self.env.invalidate_all()
+        job = self.env['vendor.import.job'].sudo().browse(job.id)
+
         _logger.warning(f"CRON → SELECTED JOB ID → {job.id}")
         _logger.warning(
             f"CRON → JOB INPUT → "
@@ -2064,17 +2064,16 @@ class VendorImportJob(models.Model):
             f"url={bool(job.data_url)}"
         )
 
-     
-        # 🔒 LOCK CHECK (AUTO-RECOVERY FIX)
+        # =====================================================
+        # 🔒 LOCK CHECK (AUTO RECOVERY)
+        # =====================================================
         if job.lock:
 
-            # ⏱️ check how long job has been locked
             try:
                 delta = (fields.Datetime.now() - job.write_date).total_seconds()
             except Exception:
                 delta = 0
 
-            # 🔥 if lock older than 5 minutes → force unlock
             if delta > 65:
                 _logger.warning(f"FORCE UNLOCK JOB {job.id} (stale lock)")
                 job.lock = False
@@ -2085,12 +2084,16 @@ class VendorImportJob(models.Model):
 
         try:
             _logger.warning(f"CRON → START JOB {job.id}")
+
             job.lock = True
-            self.env.cr.commit()  # 🔥 ensure lock is saved immediately
+            self.env.cr.commit()
+
+            # 🔥🔥🔥 CRITICAL: REFRESH AGAIN BEFORE PROCESS
+            self.env.invalidate_all()
+            job = self.env['vendor.import.job'].sudo().browse(job.id)
 
             job._process_step()
 
-            # 🔥🔥🔥 MOST IMPORTANT FIX
             self.env.cr.commit()
             _logger.warning("CRON → STEP COMMITTED ✅")
 
