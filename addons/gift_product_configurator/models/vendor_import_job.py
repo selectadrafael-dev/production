@@ -318,10 +318,16 @@ class VendorImportJob(models.Model):
         BATCH_SIZE = 20
         start_index = self.last_processed_product_index or 0
         current_count = 0
-        global_index = 0
+        global_index = 0  # counts ONLY valid rows across all sheets
 
         _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
 
+        # ================= TOTAL ROWS (CALCULATE ONCE) =================
+        total_rows = 0
+        for sheet in wb.worksheets:
+            total_rows += max(sheet.max_row - 1, 0)  # remove header
+
+        # ================= MAIN LOOP =================
         for sheet in wb.worksheets:
 
             _logger.warning(f"PROCESSING SHEET → {sheet.title}")
@@ -329,12 +335,16 @@ class VendorImportJob(models.Model):
 
             for idx, row in enumerate(sheet.iter_rows()):
 
-                # 🛑 STOP if batch full
+                # 🛑 STOP batch
                 if current_count >= BATCH_SIZE:
                     _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
                     break
 
-                # 🔍 Extract row text FIRST
+                # 🚫 Skip header
+                if idx == 0:
+                    continue
+
+                # 🔍 Extract row text
                 row_text_parts = []
                 for cell in row:
                     val = str(cell.value or "").strip()
@@ -345,18 +355,14 @@ class VendorImportJob(models.Model):
                 if not row_text_parts:
                     continue
 
-                # 🚫 Skip header
-                if idx == 0:
-                    continue
-
                 # 🔥 ONLY count VALID rows
                 global_index += 1
 
-                # ⏭️ Resume logic
+                # ⏭️ Resume
                 if global_index <= start_index:
                     continue
 
-                # ================= FORMAT TEXT =================
+                # ================= FORMAT =================
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
@@ -418,18 +424,20 @@ class VendorImportJob(models.Model):
         new_index = start_index + current_count
         self.last_processed_product_index = new_index
 
+        # ================= DEBUG =================
+        remaining = max(total_rows - new_index, 0)
+        progress = round((new_index / total_rows) * 100, 2) if total_rows else 0
+
+        _logger.warning(f"[DEBUG] TOTAL ROWS → {total_rows}")
+        _logger.warning(f"[DEBUG] CURRENT INDEX → {new_index}")
+        _logger.warning(f"[DEBUG] REMAINING ROWS → {remaining}")
+        _logger.warning(f"[DEBUG] PROGRESS → {progress}%")
+
         _logger.warning(f"EXCEL NEW INDEX → {new_index}")
         _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
 
-        # ================= COMPLETION DETECTION =================
-        has_more_rows = False
-
-        for sheet in wb.worksheets:
-            if new_index < sheet.max_row:
-                has_more_rows = True
-                break
-
-        if not has_more_rows:
+        # ================= COMPLETION =================
+        if new_index >= total_rows:
             _logger.warning("EXCEL → PARSING COMPLETED ✅")
             self.is_excel_parsed = True
         else:

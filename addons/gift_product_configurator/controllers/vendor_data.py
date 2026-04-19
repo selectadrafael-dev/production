@@ -3,7 +3,7 @@ from odoo.http import request
 import base64
 import json
 import logging
-import hashlib   # ✅ NEW
+import hashlib
 
 _logger = logging.getLogger(__name__)
 
@@ -14,8 +14,7 @@ class VendorDataController(http.Controller):
     def submit_vendor_data(self, **post):
 
         try:
-
-            _logger.info("Vendor upload request received")
+            _logger.warning("🚀 CONTROLLER HIT")
 
             url = post.get("data_url")
             extra_info = post.get("extra_info")
@@ -25,9 +24,11 @@ class VendorDataController(http.Controller):
             logo = request.httprequest.files.get("logo_file")
 
             # =====================================================
-            # 🔥 GENERATE SIGNATURE (NEW)
+            # 🔥 SAFE FILE READ (READ ONLY ONCE)
             # =====================================================
             file_content = b''
+            excel_base64 = False
+            pdf_base64 = False
 
             if url:
                 file_content = url.encode()
@@ -35,8 +36,18 @@ class VendorDataController(http.Controller):
             elif excel:
                 file_content = excel.read()
 
+                if not file_content:
+                    raise Exception("Excel file is empty")
+
+                excel_base64 = base64.b64encode(file_content)
+
             elif pdf:
                 file_content = pdf.read()
+
+                if not file_content:
+                    raise Exception("PDF file is empty")
+
+                pdf_base64 = base64.b64encode(file_content)
 
             else:
                 return request.make_response(
@@ -44,56 +55,63 @@ class VendorDataController(http.Controller):
                     headers=[('Content-Type', 'application/json')]
                 )
 
+            # =====================================================
+            # 🔥 SIGNATURE
+            # =====================================================
             signature = hashlib.md5(file_content).hexdigest()
 
-            # 🔥 RESET FILE POINTER (CRITICAL)
-            if excel:
-                excel.seek(0)
-            if pdf:
-                pdf.seek(0)
-
             # =====================================================
-            # 🔥 DETERMINE INPUT TYPE (STRICT)
+            # 🔥 JOB VALUES
             # =====================================================
             job_vals = {
                 'extra_info': extra_info,
-                'upload_signature': signature,   # ✅ NEW
+                'upload_signature': signature,
                 'state': 'draft'
             }
 
-            # ================= PRIORITY =================
+            # =====================================================
+            # 🔥 INPUT TYPE HANDLING
+            # =====================================================
             if url:
                 job_vals['data_url'] = url
                 job_vals['pdf_file'] = False
                 job_vals['excel_file'] = False
-
-                _logger.info("INPUT TYPE → URL")
+                _logger.warning("INPUT TYPE → URL")
 
             elif excel:
-                job_vals['excel_file'] = base64.b64encode(excel.read())
+                job_vals['excel_file'] = excel_base64
                 job_vals['pdf_file'] = False
                 job_vals['data_url'] = False
-
-                _logger.info("INPUT TYPE → EXCEL")
+                _logger.warning("INPUT TYPE → EXCEL")
 
             elif pdf:
-                job_vals['pdf_file'] = base64.b64encode(pdf.read())
+                job_vals['pdf_file'] = pdf_base64
                 job_vals['excel_file'] = False
                 job_vals['data_url'] = False
+                _logger.warning("INPUT TYPE → PDF")
 
-                _logger.info("INPUT TYPE → PDF")
-
-            # ---------------- CREATE JOB ----------------
+            # =====================================================
+            # 🔥 CREATE JOB
+            # =====================================================
             job = request.env['vendor.import.job'].sudo().create(job_vals)
 
-            # ---------------- OPTIONAL LOGO ----------------
+            if not job:
+                raise Exception("JOB CREATION FAILED")
+
+            _logger.warning(f"✅ JOB CREATED → ID {job.id}")
+
+            # =====================================================
+            # 🔥 OPTIONAL LOGO
+            # =====================================================
             if logo:
                 job.logo_file = base64.b64encode(logo.read())
 
-            # 🔥 COMMIT FOR CRON VISIBILITY
+            # =====================================================
+            # 🔥 COMMIT (VERY IMPORTANT)
+            # =====================================================
             request.env.cr.commit()
 
-            _logger.info(f"Job created: {job.id}")
+            _logger.warning("✅ CONTROLLER DONE")
 
             return request.make_response(
                 json.dumps({
@@ -105,11 +123,11 @@ class VendorDataController(http.Controller):
 
         except Exception as e:
 
-            _logger.exception("Vendor upload failed")
+            _logger.exception("❌ CONTROLLER FAILED")
 
             return request.make_response(
                 json.dumps({
-                    "error": "Upload failed due to server error"
+                    "error": str(e)
                 }),
                 headers=[('Content-Type', 'application/json')]
             )
