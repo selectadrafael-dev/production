@@ -135,18 +135,41 @@ class VendorImportJob(models.Model):
             return True
 
         # ================= ENTRY ====================
+
         if self.state == 'processing':
 
             _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
 
-            if self.data_url:
-                self.state = 'url_scraping'
+            # 🔥 EXCEL FLOW (SMART RESUME)
+            if self.excel_file and not self.pdf_file:
 
-            elif self.excel_file and not self.pdf_file:
-                self.state = 'excel_parsing'
+                if not self.is_excel_parsed:
+                    _logger.warning("RESUME → EXCEL PARSING")
+                    self.state = 'excel_parsing'
 
+                elif not self.ai_response:
+                    _logger.warning("RESUME → EXCEL AI")
+                    self.state = 'excel_ai'
+
+                else:
+                    _logger.warning("RESUME → EXCEL CREATING")
+                    self.state = 'excel_creating'
+
+            # 🔥 PDF FLOW
             elif self.pdf_file:
-                self.state = 'pdf_extracting'
+
+                if not self.extracted_text:
+                    self.state = 'pdf_extracting'
+
+                elif not self.ai_response:
+                    self.state = 'pdf_ai'
+
+                else:
+                    self.state = 'pdf_creating'
+
+            # 🔥 URL FLOW
+            elif self.data_url:
+                self.state = 'url_scraping'
 
             self.env.cr.commit()
             return True
