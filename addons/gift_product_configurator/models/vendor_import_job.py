@@ -318,14 +318,32 @@ class VendorImportJob(models.Model):
         BATCH_SIZE = 20
         start_index = self.last_processed_product_index or 0
         current_count = 0
-        global_index = 0  # counts ONLY valid rows across all sheets
+        global_index = 0  # counts ONLY valid rows
 
         _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
 
-        # ================= TOTAL ROWS (CALCULATE ONCE) =================
+        # ================= 🔥 REAL TOTAL ROWS (FIXED) =================
         total_rows = 0
+
         for sheet in wb.worksheets:
-            total_rows += max(sheet.max_row - 1, 0)  # remove header
+            for idx, row in enumerate(sheet.iter_rows()):
+
+                if idx == 0:
+                    continue  # skip header
+
+                # 🔍 SAME LOGIC AS PROCESSING
+                row_text_parts = []
+                for cell in row:
+                    val = str(cell.value or "").strip()
+                    if val:
+                        row_text_parts.append(val)
+
+                if not row_text_parts:
+                    continue
+
+                total_rows += 1
+
+        _logger.warning(f"[DEBUG] REAL TOTAL ROWS → {total_rows}")
 
         # ================= MAIN LOOP =================
         for sheet in wb.worksheets:
@@ -335,30 +353,25 @@ class VendorImportJob(models.Model):
 
             for idx, row in enumerate(sheet.iter_rows()):
 
-                # 🛑 STOP batch
                 if current_count >= BATCH_SIZE:
                     _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
                     break
 
-                # 🚫 Skip header
                 if idx == 0:
                     continue
 
-                # 🔍 Extract row text
                 row_text_parts = []
                 for cell in row:
                     val = str(cell.value or "").strip()
                     if val:
                         row_text_parts.append(val)
 
-                # 🚫 Skip empty rows
                 if not row_text_parts:
                     continue
 
-                # 🔥 ONLY count VALID rows
+                # 🔥 COUNT ONLY VALID ROWS
                 global_index += 1
 
-                # ⏭️ Resume
                 if global_index <= start_index:
                     continue
 
@@ -428,7 +441,6 @@ class VendorImportJob(models.Model):
         remaining = max(total_rows - new_index, 0)
         progress = round((new_index / total_rows) * 100, 2) if total_rows else 0
 
-        _logger.warning(f"[DEBUG] TOTAL ROWS → {total_rows}")
         _logger.warning(f"[DEBUG] CURRENT INDEX → {new_index}")
         _logger.warning(f"[DEBUG] REMAINING ROWS → {remaining}")
         _logger.warning(f"[DEBUG] PROGRESS → {progress}%")
