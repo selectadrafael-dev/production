@@ -1694,11 +1694,20 @@ class VendorImportJob(models.Model):
         try:
             pages = json.loads(self.extracted_text)
             ai_pages = json.loads(self.ai_response)
-        except Exception as e:
-            _logger.error(f"INVALID JSON → {str(e)}")
+        except Exception:
+            _logger.error("INVALID JSON → STOP")
             return
 
+        _logger.warning("CREATING PRODUCTS (FINAL SAFE MODE)")
+
         created_count = 0
+
+        # 🔥 BATCH CONTROL
+        BATCH_SIZE = 5
+        start = self.excel_created_index or 0
+        end = min(start + BATCH_SIZE, len(pages))
+
+        _logger.warning(f"[PROCESS RANGE] → {start} to {end}")
 
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
@@ -1709,65 +1718,69 @@ class VendorImportJob(models.Model):
             "cap": "Headwear",
             "hat": "Headwear",
             "bottle": "Drinkware",
+            "drinkware": "Drinkware",
             "pen": "Stationery",
             "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
         }
-
-        vendor_id = self.partner_id.id if self.partner_id else False
 
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
         if not parent_category:
             parent_category = category_obj.create({'name': "All Products"})
 
-        category_cache = {}
-
-        attribute = self.env['product.attribute'].search([('name', '=', "Variant")], limit=1)
-        if not attribute:
-            attribute = self.env['product.attribute'].create({'name': "Variant"})
-
-        value_cache = {}
+        vendor_id = self.partner_id.id if self.partner_id else False
 
         # =====================================================
-        # 🔥 EXCEL FLOW (FIXED FOR BATCHING)
+        # 🔥 LOOP THROUGH CURRENT BATCH ONLY
         # =====================================================
-        if self.excel_file:
+        for idx in range(start, end):
 
-            BATCH_SIZE = 5  # 🔥 reduced batch
+            page_data = pages[idx]
+            page_no = page_data.get("page")
 
-            start = self.excel_created_index or 0
-            end = min(start + BATCH_SIZE, len(pages))
+            # ================= AI MATCH (FIXED) =================
+            ai_page = None
 
-            _logger.warning(f"[EXCEL CREATE RANGE] → {start} to {end}")
+            # try exact match
+            for p in ai_pages:
+                if p.get("page") == page_no:
+                    ai_page = p
+                    break
 
-            for page_data in pages[start:end]:
+            # fallback to index
+            if not ai_page and idx < len(ai_pages):
+                _logger.warning(f"[FALLBACK] Using AI index for page {page_no}")
+                ai_page = ai_pages[idx]
 
-                page_no = page_data.get("page")
+            if not ai_page:
+                _logger.warning(f"[SKIP] No AI data → page {page_no}")
+                continue
 
-                ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
+            products = ai_page.get("products", [])
+            if not products:
+                _logger.warning(f"[SKIP] Empty AI products → page {page_no}")
+                continue
 
-                if not ai_page:
-                    _logger.warning(f"[SKIP] No AI page match → page {page_no}")
-                    continue
-
-                products = ai_page.get("products", [])
-
-                if not products:
-                    _logger.warning(f"[SKIP] No products in AI page → {page_no}")
-                    continue
+            # =====================================================
+            # 🔵 EXCEL FLOW
+            # =====================================================
+            if self.excel_file:
 
                 grouped_products = {}
 
                 for p in products:
                     raw_name = (p.get("name") or p.get("title") or "").strip()
-
                     if not raw_name:
-                        _logger.warning(f"[SKIP] Missing name → {p}")
                         continue
 
                     match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
-                    group_id = match.group(1).upper() if match else raw_name.upper()[:50]
+                    group_id = match.group(1).upper() if match else raw_name.upper()
 
                     grouped_products.setdefault(group_id, []).append(p)
+
+                _logger.warning(f"[EXCEL GROUPS] → {len(grouped_products)}")
 
                 for group_id, group_items in grouped_products.items():
 
@@ -1776,12 +1789,10 @@ class VendorImportJob(models.Model):
                     name = (
                         main_product.get("name")
                         or main_product.get("title")
-                        or main_product.get("product")
                         or ""
                     ).strip()
 
                     if not name:
-                        _logger.warning(f"[SKIP] Invalid main product → {main_product}")
                         continue
 
                     description = main_product.get("description", "")
@@ -1793,21 +1804,16 @@ class VendorImportJob(models.Model):
                             mapped_category = val
                             break
 
-                    if mapped_category not in category_cache:
-                        category = category_obj.search([
-                            ('name', '=', mapped_category),
-                            ('parent_id', '=', parent_category.id)
-                        ], limit=1)
+                    category = category_obj.search([
+                        ('name', '=', mapped_category),
+                        ('parent_id', '=', parent_category.id)
+                    ], limit=1)
 
-                        if not category:
-                            category = category_obj.create({
-                                'name': mapped_category,
-                                'parent_id': parent_category.id
-                            })
-
-                        category_cache[mapped_category] = category
-
-                    category = category_cache[mapped_category]
+                    if not category:
+                        category = category_obj.create({
+                            'name': mapped_category,
+                            'parent_id': parent_category.id
+                        })
 
                     domain = [('default_code', '=', group_id)]
                     if vendor_id:
@@ -1816,49 +1822,47 @@ class VendorImportJob(models.Model):
                     product = product_obj.search(domain, limit=1)
 
                     if not product:
-                        try:
-                            vals = {
-                                'name': name,
-                                'default_code': group_id,
-                                'description_sale': description,
-                                'categ_id': category.id,
-                                'sale_ok': True,
-                                'website_published': False,
-                                'vendor_id': vendor_id,
-                            }
+                        vals = {
+                            'name': name,
+                            'default_code': group_id,
+                            'description_sale': description,
+                            'categ_id': category.id,
+                            'sale_ok': True,
+                            'website_published': False,
+                            'vendor_id': vendor_id,
+                        }
 
-                            image = main_product.get("image")
-                            if image:
-                                vals['image_1920'] = image
+                        image = main_product.get("image")
+                        if image:
+                            vals['image_1920'] = image
 
-                            product = product_obj.create(vals)
-                            created_count += 1
+                        product = product_obj.create(vals)
+                        created_count += 1
 
-                            _logger.warning(f"[CREATE SUCCESS] → {name}")
+                        _logger.warning(f"[EXCEL CREATE] → {name}")
 
-                        except Exception as e:
-                            _logger.error(f"[CREATE ERROR] → {str(e)}")
+                    # ===== VARIANTS =====
+                    for v_idx, item in enumerate(group_items):
 
-                    # ================= VARIANTS =================
-                    for idx, item in enumerate(group_items):
+                        attr_value = f"Variant {v_idx+1}"
 
-                        attr_value = f"Variant {idx+1}"
+                        attribute = self.env['product.attribute'].search([
+                            ('name', '=', "Variant")
+                        ], limit=1)
 
-                        if attr_value not in value_cache:
-                            value = self.env['product.attribute.value'].search([
-                                ('name', '=', attr_value),
-                                ('attribute_id', '=', attribute.id)
-                            ], limit=1)
+                        if not attribute:
+                            attribute = self.env['product.attribute'].create({'name': "Variant"})
 
-                            if not value:
-                                value = self.env['product.attribute.value'].create({
-                                    'name': attr_value,
-                                    'attribute_id': attribute.id
-                                })
+                        value = self.env['product.attribute.value'].search([
+                            ('name', '=', attr_value),
+                            ('attribute_id', '=', attribute.id)
+                        ], limit=1)
 
-                            value_cache[attr_value] = value
-
-                        value = value_cache[attr_value]
+                        if not value:
+                            value = self.env['product.attribute.value'].create({
+                                'name': attr_value,
+                                'attribute_id': attribute.id
+                            })
 
                         line = self.env['product.template.attribute.line'].search([
                             ('product_tmpl_id', '=', product.id),
@@ -1875,29 +1879,15 @@ class VendorImportJob(models.Model):
                             if value.id not in line.value_ids.ids:
                                 line.value_ids = [(4, value.id)]
 
-            self.excel_created_index = end
-            self.env.cr.commit()
+                continue  # 🔥 VERY IMPORTANT (prevents PDF logic)
 
-            _logger.warning(f"[EXCEL] UPDATED CREATED INDEX → {end}")
-            _logger.warning(f"TOTAL PRODUCTS CREATED (THIS RUN): {created_count}")
-
-            return
-
-        # =====================================================
-        # 🔥 PDF FLOW (UNCHANGED BUT SAFE)
-        # =====================================================
-        for page_data in pages:
-
-            page_no = page_data.get("page")
-            ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
-
-            if not ai_page:
-                continue
-
-            products = ai_page.get("products", [])
+            # =====================================================
+            # 🔴 PDF FLOW (UNCHANGED BUT SAFE)
+            # =====================================================
             images = page_data.get("images", [])
 
             for product_data in products:
+
                 try:
                     name = (
                         product_data.get("name")
@@ -1909,7 +1899,27 @@ class VendorImportJob(models.Model):
                         continue
 
                     description = product_data.get("description", "")
-                    variant_group = str(product_data.get("variant_group") or name).upper()
+                    raw_category = (product_data.get("category") or "").lower()
+
+                    variant_group = product_data.get("variant_group") or name
+                    variant_group = str(variant_group).upper()
+
+                    mapped_category = "General"
+                    for key, val in CATEGORY_MAPPING.items():
+                        if key in raw_category:
+                            mapped_category = val
+                            break
+
+                    category = category_obj.search([
+                        ('name', '=', mapped_category),
+                        ('parent_id', '=', parent_category.id)
+                    ], limit=1)
+
+                    if not category:
+                        category = category_obj.create({
+                            'name': mapped_category,
+                            'parent_id': parent_category.id
+                        })
 
                     domain = [('default_code', '=', variant_group)]
                     if vendor_id:
@@ -1918,18 +1928,6 @@ class VendorImportJob(models.Model):
                     product = product_obj.search(domain, limit=1)
 
                     if not product:
-
-                        category = category_obj.search([
-                            ('name', '=', "General"),
-                            ('parent_id', '=', parent_category.id)
-                        ], limit=1)
-
-                        if not category:
-                            category = category_obj.create({
-                                'name': "General",
-                                'parent_id': parent_category.id
-                            })
-
                         vals = {
                             'name': name,
                             'default_code': variant_group,
@@ -1946,10 +1944,19 @@ class VendorImportJob(models.Model):
                         product = product_obj.create(vals)
                         created_count += 1
 
+                        _logger.warning(f"[PDF CREATE] → {name}")
+
                 except Exception as e:
                     _logger.error(f"PDF PRODUCT FAILED → {str(e)}")
 
+        # =====================================================
+        # 🔥 FINAL UPDATE
+        # =====================================================
+        self.excel_created_index = end
         self.env.cr.commit()
+
+        _logger.warning(f"[INDEX UPDATED] → {end}")
+        _logger.warning(f"TOTAL PRODUCTS CREATED → {created_count}")
 
     #-----URL API FLOW-------------------------------------------
 
@@ -2098,8 +2105,8 @@ class VendorImportJob(models.Model):
         # =====================================================
         # 🔥 LOOP EXECUTION (FINAL FIX)
         # =====================================================
-        MAX_STEPS = 10          # 🔧 tune if needed
-        MAX_SECONDS = 20        # 🔧 safety timeout
+        MAX_STEPS = 20          # 🔧 tune if needed
+        MAX_SECONDS = 50        # 🔧 safety timeout
 
         steps = 0
         start_time = time.time()
