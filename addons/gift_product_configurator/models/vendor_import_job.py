@@ -2060,7 +2060,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
-    #---------------- CRON ---------------
+    #=========---------------- CRON ---------------======================
 
     def run_pending_jobs(self):
 
