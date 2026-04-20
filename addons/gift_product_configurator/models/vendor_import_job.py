@@ -1944,14 +1944,19 @@ class VendorImportJob(models.Model):
                 page_data = ai_pages[idx]
 
                 products = page_data.get("products", [])
+                _logger.warning(f"[DEBUG] PAGE {idx} RAW → {str(page_data)[:500]}")
+                _logger.warning(f"[DEBUG] PRODUCTS COUNT → {len(products)}")
+
                 images = pages[idx].get("images", []) if idx < len(pages) else []
 
                 _logger.warning(f"[PDF] IMAGES FOUND → {len(images)}")
 
                 if not products:
+                    _logger.warning(f"[DEBUG] NO PRODUCTS ON PAGE {idx}")
                     continue
 
                 for product_data in products:
+                    _logger.warning(f"[DEBUG PRODUCT] → {product_data}")
 
                     try:
                         name = (product_data.get("name") or "").strip()
@@ -2053,7 +2058,12 @@ class VendorImportJob(models.Model):
                         continue
 
             # 🔥 FINAL FIX (DO NOT USE end AGAIN)
-            self.excel_created_index = new_index
+            # self.excel_created_index = new_index
+            if new_index == start:
+                _logger.warning("🚨 FORCE SKIP STUCK PAGE")
+                self.excel_created_index = start + 1
+            else:
+                self.excel_created_index = new_index
 
             _logger.warning(f"[PDF CREATE] PROGRESS → {new_index}/{total_pages}")
 
