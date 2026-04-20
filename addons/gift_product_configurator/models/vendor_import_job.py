@@ -1190,8 +1190,25 @@ class VendorImportJob(models.Model):
 
         BATCH_SIZE = 2  # 🔥 SAFE SIZE (adjust later if needed)
 
-        start_index = self.last_ai_page or 0
-        end_index = min(start_index + BATCH_SIZE, len(pages))
+        # start_index = self.last_ai_page or 0
+        # end_index = min(start_index + BATCH_SIZE, len(pages))
+        
+        start = self.last_ai_page or 0
+        total_pages = self.total_pages or 0
+
+        # 🔥 STOP if done
+        if start >= total_pages:
+            _logger.warning("✅ PDF AI COMPLETE")
+            return
+
+        end = min(start + BATCH_SIZE, total_pages)
+
+        # 🔥 CRITICAL FIX → prevent stuck loop
+        if end <= start:
+            _logger.warning(f"🚨 AI RANGE FIX → start={start}, end={end}")
+            end = start + 1
+
+        _logger.warning(f"PDF AI → PROCESSING PAGES {start} to {end}")
 
         _logger.warning(f"PDF AI → PROCESSING PAGES {start_index} to {end_index}")
 
@@ -1417,7 +1434,18 @@ class VendorImportJob(models.Model):
                 "products": parsed
             })
 
-            self.last_ai_page = i + 1
+            #self.last_ai_page = i + 1
+
+            # =====================================================
+            # 🔥 BLOCK RIGHT HERE (AFTER LOOP)
+            # =====================================================
+            if end <= start:
+                _logger.warning("🚨 FORCE AI INDEX MOVE")
+                self.last_ai_page = start + 1
+            else:
+                self.last_ai_page = end
+
+        _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{total_pages}")
 
         # 🔥 merge previous + new (CRITICAL)
         combined_pages = existing_pages + new_page_products
