@@ -1737,7 +1737,6 @@ class VendorImportJob(models.Model):
 
         created_count = 0
 
-        # 🔥 BATCH CONTROL
         BATCH_SIZE = 5
         start = self.excel_created_index or 0
         end = min(start + BATCH_SIZE, len(pages))
@@ -1767,34 +1766,22 @@ class VendorImportJob(models.Model):
 
         vendor_id = self.partner_id.id if self.partner_id else False
 
-        # =====================================================
-        # 🔥 EXCEL FIX: USE SINGLE AI PAGE (CRITICAL)
-        # =====================================================
         excel_ai_products = []
         if self.excel_file:
             if ai_pages:
                 excel_ai_products = ai_pages[0].get("products", [])
-                _logger.warning(f"[EXCEL AI PRODUCTS] → {len(excel_ai_products)}")
             else:
-                _logger.warning("NO AI DATA FOR EXCEL")
                 return
 
-        # =====================================================
-        # 🔥 LOOP THROUGH CURRENT BATCH ONLY
-        # =====================================================
         for idx in range(start, end):
 
             page_data = pages[idx]
 
-            # =====================================================
-            # 🔵 EXCEL FLOW (FIXED)
-            # =====================================================
+            # ================= EXCEL =================
             if self.excel_file:
 
                 products = excel_ai_products
-
                 if not products:
-                    _logger.warning("NO AI PRODUCTS → SKIP")
                     continue
 
                 grouped_products = {}
@@ -1804,20 +1791,24 @@ class VendorImportJob(models.Model):
                     if not raw_name:
                         continue
 
-                    match = re.search(r'(?:Product\s*)?([A-Z]*\d+)', raw_name, re.I)
-                    group_id = match.group(1).upper() if match else raw_name.upper()
+                    # 🔥 STRONG NORMALIZATION (FIX DUPLICATES)
+                    clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
+                    match = re.search(r'([A-Z]*\d{3,})', clean_name)
+
+                    group_id = match.group(1) if match else clean_name[:20]
 
                     grouped_products.setdefault(group_id, []).append(p)
-
-                _logger.warning(f"[EXCEL GROUPS] → {len(grouped_products)}")
 
                 for group_id, group_items in grouped_products.items():
 
                     main_product = group_items[0]
 
-                    name = (main_product.get("name") or main_product.get("title") or "").strip()
-                    if not name:
+                    raw_name = (main_product.get("name") or main_product.get("title") or "").strip()
+                    if not raw_name:
                         continue
+
+                    # 🔥 FORCE PREFIX
+                    name = f"Product {raw_name}"
 
                     description = main_product.get("description", "")
                     raw_category = (main_product.get("category") or "").lower()
@@ -1839,36 +1830,44 @@ class VendorImportJob(models.Model):
                             'parent_id': parent_category.id
                         })
 
+                    # 🔥 DUPLICATE CHECK (VENDOR + GLOBAL)
                     domain = [('default_code', '=', group_id)]
+
                     if vendor_id:
                         domain.append(('vendor_id', '=', vendor_id))
 
                     product = product_obj.search(domain, limit=1)
 
                     if not product:
-                        vals = {
-                            'name': name,
-                            'default_code': group_id,
-                            'description_sale': description,
-                            'categ_id': category.id,
-                            'sale_ok': True,
-                            'website_published': False,
-                            'vendor_id': vendor_id,
-                        }
+                        product = product_obj.search([('default_code', '=', group_id)], limit=1)
 
-                        image = main_product.get("image")
-                        if image:
-                            vals['image_1920'] = image
+                    # 🔥 SKIP IF EXISTS
+                    if product:
+                        _logger.warning(f"[SKIP EXISTING] → {group_id}")
+                        continue
 
-                        # product = product_obj.create(vals)
-                        product = product_obj.with_context(
-                            mail_create_nolog=True,
-                            mail_notify_force_send=False,
-                            tracking_disable=True
-                        ).create(vals)
-                        created_count += 1
+                    vals = {
+                        'name': name,
+                        'default_code': group_id,
+                        'description_sale': description,
+                        'categ_id': category.id,
+                        'sale_ok': True,
+                        'website_published': False,
+                        'vendor_id': vendor_id,
+                    }
 
-                        _logger.warning(f"[EXCEL CREATE] → {name}")
+                    image = main_product.get("image")
+                    if image:
+                        vals['image_1920'] = image
+
+                    product = product_obj.with_context(
+                        mail_create_nolog=True,
+                        mail_notify_force_send=False,
+                        tracking_disable=True
+                    ).create(vals)
+
+                    created_count += 1
+                    _logger.warning(f"[CREATE SUCCESS] → {name}")
 
                     # ===== VARIANTS =====
                     for v_idx, item in enumerate(group_items):
@@ -1908,11 +1907,9 @@ class VendorImportJob(models.Model):
                             if value.id not in line.value_ids.ids:
                                 line.value_ids = [(4, value.id)]
 
-                continue  # 🔥 DO NOT TOUCH PDF FLOW
+                continue
 
-            # =====================================================
-            # 🔴 PDF FLOW (UNCHANGED)
-            # =====================================================
+            # ================= PDF =================
             page_no = page_data.get("page")
 
             ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
@@ -1928,15 +1925,19 @@ class VendorImportJob(models.Model):
             for product_data in products:
 
                 try:
-                    name = (product_data.get("name") or product_data.get("title") or "").strip()
-                    if not name:
+                    raw_name = (product_data.get("name") or product_data.get("title") or "").strip()
+                    if not raw_name:
                         continue
+
+                    name = f"Product {raw_name}"
 
                     description = product_data.get("description", "")
                     raw_category = (product_data.get("category") or "").lower()
 
-                    variant_group = product_data.get("variant_group") or name
-                    variant_group = str(variant_group).upper()
+                    clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
+                    match = re.search(r'([A-Z]*\d{3,})', clean_name)
+
+                    variant_group = match.group(1) if match else clean_name[:20]
 
                     mapped_category = "General"
                     for key, val in CATEGORY_MAPPING.items():
@@ -1962,35 +1963,37 @@ class VendorImportJob(models.Model):
                     product = product_obj.search(domain, limit=1)
 
                     if not product:
-                        vals = {
-                            'name': name,
-                            'default_code': variant_group,
-                            'description_sale': description,
-                            'categ_id': category.id,
-                            'sale_ok': True,
-                            'website_published': False,
-                            'vendor_id': vendor_id,
-                        }
+                        product = product_obj.search([('default_code', '=', variant_group)], limit=1)
 
-                        if images:
-                            vals['image_1920'] = images[0]
+                    if product:
+                        _logger.warning(f"[SKIP EXISTING PDF] → {variant_group}")
+                        continue
 
-                        # product = product_obj.create(vals)
-                        product = product_obj.with_context(
-                            mail_create_nolog=True,
-                            mail_notify_force_send=False,
-                            tracking_disable=True
-                        ).create(vals)
-                        created_count += 1
+                    vals = {
+                        'name': name,
+                        'default_code': variant_group,
+                        'description_sale': description,
+                        'categ_id': category.id,
+                        'sale_ok': True,
+                        'website_published': False,
+                        'vendor_id': vendor_id,
+                    }
 
-                        _logger.warning(f"[PDF CREATE] → {name}")
+                    if images:
+                        vals['image_1920'] = images[0]
+
+                    product = product_obj.with_context(
+                        mail_create_nolog=True,
+                        mail_notify_force_send=False,
+                        tracking_disable=True
+                    ).create(vals)
+
+                    created_count += 1
+                    _logger.warning(f"[PDF CREATE] → {name}")
 
                 except Exception as e:
                     _logger.error(f"PDF PRODUCT FAILED → {str(e)}")
 
-        # =====================================================
-        # 🔥 FINAL UPDATE
-        # =====================================================
         self.excel_created_index = end
         self.env.cr.commit()
 
@@ -2176,7 +2179,7 @@ class VendorImportJob(models.Model):
                 except Exception:
                     delta = 0
 
-                if delta > 65:
+                if delta > 35:
                     _logger.warning(f"FORCE UNLOCK JOB {job.id}")
                     job.lock = False
                     self.env.cr.commit()
@@ -2206,6 +2209,14 @@ class VendorImportJob(models.Model):
             steps += 1
 
         _logger.warning("CRON → LOOP FINISHED ✅")
+
+        # 🔥 FORCE NEXT EXECUTION (SELF-TRIGGER)
+        self.env['ir.cron'].sudo().search([
+            ('id', '=', self.env.ref('gift_product_configurator.ir_cron_vendor_import').id)
+        ]).write({
+            'nextcall': fields.Datetime.now()
+        })
+        self.env.cr.commit()
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
