@@ -1188,11 +1188,8 @@ class VendorImportJob(models.Model):
 
         # ================= PDF MODE (BATCHED FIX) =================
 
-        BATCH_SIZE = 2  # 🔥 SAFE SIZE (adjust later if needed)
+        BATCH_SIZE = 2  # 🔥 SAFE SIZE
 
-        # start_index = self.last_ai_page or 0
-        # end_index = min(start_index + BATCH_SIZE, len(pages))
-        
         start = self.last_ai_page or 0
         total_pages = self.total_pages or 0
 
@@ -1203,14 +1200,12 @@ class VendorImportJob(models.Model):
 
         end = min(start + BATCH_SIZE, total_pages)
 
-        # 🔥 CRITICAL FIX → prevent stuck loop
+        # 🔥 SAFETY FIX
         if end <= start:
             _logger.warning(f"🚨 AI RANGE FIX → start={start}, end={end}")
             end = start + 1
 
         _logger.warning(f"PDF AI → PROCESSING PAGES {start} to {end}")
-
-        _logger.warning(f"PDF AI → PROCESSING PAGES {start_index} to {end_index}")
 
         # 🔥 Preserve previous AI data
         existing_pages = []
@@ -1222,7 +1217,12 @@ class VendorImportJob(models.Model):
 
         new_page_products = []
 
-        for i in range(start_index, end_index):
+        # ================= LOOP (FIXED) =================
+        for i in range(start, end):
+
+            if i >= len(pages):
+                _logger.warning(f"⏳ PAGE {i} NOT READY FROM EXTRACT")
+                break
 
             page = pages[i]
 
@@ -1434,29 +1434,24 @@ class VendorImportJob(models.Model):
                 "products": parsed
             })
 
-            #self.last_ai_page = i + 1
-
-            # =====================================================
-            # 🔥 BLOCK RIGHT HERE (AFTER LOOP)
-            # =====================================================
-            if end <= start:
-                _logger.warning("🚨 FORCE AI INDEX MOVE")
-                self.last_ai_page = start + 1
-            else:
-                self.last_ai_page = end
+        # =====================================================
+        # 🔥 CRITICAL FIX → MOVE INDEX UPDATE OUTSIDE LOOP
+        # =====================================================
+        if end <= start:
+            _logger.warning("🚨 FORCE AI INDEX MOVE")
+            self.last_ai_page = start + 1
+        else:
+            self.last_ai_page = end
 
         _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{total_pages}")
 
         # 🔥 merge previous + new (CRITICAL)
         combined_pages = existing_pages + new_page_products
-
         self.ai_response = json.dumps(combined_pages)
 
-        # _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{len(pages)}")
         _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{self.total_pages}")
 
-        # 🔥 STATE CONTROL (VERY IMPORTANT)
-        # if self.last_ai_page < len(pages):
+        # 🔥 STATE CONTROL
         if self.last_ai_page < self.total_pages:
             self.state = "pdf_ai"
         else:
