@@ -311,113 +311,105 @@ class VendorImportJob(models.Model):
 
             # =====================================================
             # 🔵 PDF FLOW (ONLY SECTION UPDATED FOR BATCHING)
-            # =====================================================
-            if self.pdf_file:
+      
+                if self.pdf_file:
 
-                if self.state == 'draft':
-                    self.state = 'pdf_extracting'
-                    self.env.cr.commit()
-                    continue
+                    if self.state == 'draft':
+                        self.state = 'pdf_extracting'
+                        self.env.cr.commit()
+                        continue
 
-                # 🔹 EXTRACT (BATCHED)
+                    # 🔥 EXTRACT (FIXED MISSING BLOCK)
+                    if self.state == 'pdf_extracting':
 
-                if self.state == 'pdf_creating':
+                        prev_page = self.current_page or 0
 
-                    prev_created = self.excel_created_index
+                        self.extract_pdf()
 
-                    self.create_products_pdf_excel()
+                        _logger.warning(f"[PDF EXTRACT] → {self.current_page}/{self.total_pages}")
 
-                    total = self.total_pages or 0  # 🔥 FIX (CRITICAL)
+                        if self.current_page < self.total_pages:
+                            if self.current_page > prev_page:
+                                self.state = 'processing'
+                            else:
+                                _logger.warning("PDF EXTRACT NO PROGRESS")
+                                self.state = 'processing'
+                        else:
+                            self.state = 'pdf_ai'
 
-                    _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total}")
+                        self.env.cr.commit()
+                        continue
 
-                    if self.excel_created_index < total:
-                        self.state = 'processing'
-                    else:
-                        _logger.warning("PDF CREATE COMPLETE ✅")
-                        self.state = 'done'
+                    # 🔹 AI
+                    if self.state == 'pdf_ai':
 
-                    self.env.cr.commit()
-                    continue
+                        prev_ai = self.last_ai_page or 0
 
-                # 🔹 AI (BATCHED)
-                if self.state == 'pdf_ai':
+                        self.send_to_openai_pdf_excel()
 
-                    prev_ai = self.last_ai_page
+                        _logger.warning(f"[PDF AI] → {self.last_ai_page}/{self.total_pages}")
 
-                    self.send_to_openai_pdf_excel()
-
-                    _logger.warning(f"[PDF AI] → {self.last_ai_page}/{self.total_pages}")
-
-                    if self.last_ai_page < self.total_pages:
-                        if self.last_ai_page > prev_ai:
+                        if self.last_ai_page < self.total_pages:
                             self.state = 'processing'
                         else:
-                            _logger.warning("PDF AI NO PROGRESS")
+                            self.state = 'pdf_creating'
+
+                        self.env.cr.commit()
+                        continue
+
+                    # 🔹 CREATE (SINGLE CORRECT VERSION)
+                    if self.state == 'pdf_creating':
+
+                        self.create_products_pdf_excel()
+
+                        total = self.total_pages or 0
+
+                        _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total}")
+
+                        if self.excel_created_index < total:
                             self.state = 'processing'
-                    else:
-                        self.state = 'pdf_creating'
+                        else:
+                            _logger.warning("PDF CREATE COMPLETE ✅")
+                            self.state = 'done'
 
-                    self.env.cr.commit()
-                    continue
+                        self.env.cr.commit()
+                        continue
 
-                # 🔹 CREATE (BATCHED)
+                # =====================================================
+                # 🔥 DONE
+                # =====================================================
+                if self.state == 'done':
+                    _logger.warning(f"JOB {self.id} COMPLETED ✅")
+                    return True
 
-                if self.state == 'pdf_creating':
+                # =====================================================
+                # 🔥 LOOP CONTROL (FIXED)
+                # =====================================================
+                elapsed = time.time() - start_time
 
-                    prev_created = self.excel_created_index
+                time.sleep(0.5)
 
-                    self.create_products_pdf_excel()
+                if elapsed > MAX_SECONDS:
+                    _logger.warning("TIME LIMIT REACHED → EXIT LOOP")
+                    break
 
-                    total_pages = 0
-                    try:
-                        total_pages = len(json.loads(self.ai_response or "[]"))
-                    except:
-                        total_pages = 0
+                if loops >= 50:
+                    _logger.warning("MAX LOOPS REACHED → EXIT")
+                    break
 
-                    _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total_pages}")
+                # 🔥 FIXED PROGRESS DETECTION (PDF + EXCEL)
+                if (
+                    self.state == prev_state and
+                    self.excel_created_index == prev_created and
+                    self.last_processed_product_index == prev_processed and
+                    (self.current_page or 0) == prev_page and
+                    (self.last_ai_page or 0) == prev_ai
+                ):
+                    _logger.warning("NO PROGRESS → EXIT LOOP")
+                    break
 
-                    # 🔥 CORRECT LOGIC
-                    if self.excel_created_index < total_pages:
-                        self.state = 'processing'
-                    else:
-                        _logger.warning("PDF CREATE COMPLETE ✅")
-                        self.state = 'done'
-                    
-                    self.env.cr.commit()
-                    continue
+            return True
 
-            # =====================================================
-            # 🔥 DONE
-            # =====================================================
-            if self.state == 'done':
-                _logger.warning(f"JOB {self.id} COMPLETED ✅")
-                return True
-
-            # =====================================================
-            # 🔥 LOOP CONTROL
-            # =====================================================
-            elapsed = time.time() - start_time
-
-            time.sleep(0.5)
-
-            if elapsed > MAX_SECONDS:
-                _logger.warning("TIME LIMIT REACHED → EXIT LOOP")
-                break
-
-            if loops >= 50:
-                _logger.warning("MAX LOOPS REACHED → EXIT")
-                break
-
-            if (
-                self.state == prev_state and
-                self.excel_created_index == prev_created and
-                self.last_processed_product_index == prev_processed
-            ):
-                _logger.warning("NO PROGRESS → EXIT LOOP")
-                break
-
-        return True
 
     #------------parse url------------------------------------
     def parse_url(self):
