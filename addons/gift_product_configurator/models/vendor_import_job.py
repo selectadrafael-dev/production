@@ -245,11 +245,12 @@ class VendorImportJob(models.Model):
 
                 self.parse_excel()
 
-                # 🔥 NEW LOGIC: allow partial progress to AI
-                if self.extracted_text:
-                    _logger.warning("EXCEL → DATA AVAILABLE → MOVE TO AI")
+                # 🔥 ONLY move to AI if we actually added NEW rows
+                if self.last_processed_product_index > (self.excel_ai_index or 0):
+                    _logger.warning("EXCEL → NEW DATA AVAILABLE → MOVE TO AI")
                     self.state = 'excel_ai'
                 else:
+                    _logger.warning("EXCEL → CONTINUE PARSING")
                     self.state = 'processing'
 
                 return True
@@ -282,32 +283,34 @@ class VendorImportJob(models.Model):
                 return True
 
             # -------- CREATE (ISOLATED) --------
-            if self.state == 'excel_creating':
 
-                _logger.warning("STEP → CREATE PRODUCTS (EXCEL)")
+            if self.state == 'excel_creating':
 
                 self.create_products_pdf_excel()
 
-                total_rows = 0
-                try:
-                    data = json.loads(self.extracted_text or "[]")
-                    total_rows = len(data)
-                except:
-                    total_rows = 0
+                total_rows = self.last_processed_product_index or 0
 
                 _logger.warning(f"[FLOW CHECK] created_index → {self.excel_created_index}")
                 _logger.warning(f"[FLOW CHECK] total_rows → {total_rows}")
 
                 if self.excel_created_index >= total_rows:
                     _logger.warning("EXCEL → ALL PRODUCTS CREATED ✅")
-                    self.state = 'done'
+
+                    if self.is_excel_parsed:
+                        self.state = 'done'
+                    else:
+                        _logger.warning("WAITING FOR MORE PARSED DATA → BACK TO PARSING")
+                        self.state = 'processing'
+
                 else:
-                    _logger.warning("EXCEL → NEXT BATCH → BACK TO AI 🔁")
+                    _logger.warning("EXCEL → CONTINUE NEXT BATCH 🔁")
                     self.state = 'excel_ai'
 
-                # 🔥 STOP HERE (CRITICAL FIX)
+                # 🔥🔥🔥 ADD THIS LINE (CRITICAL)
                 self.env.cr.commit()
+
                 return True
+
 
         # ================= PDF =================
         elif self.pdf_file:
