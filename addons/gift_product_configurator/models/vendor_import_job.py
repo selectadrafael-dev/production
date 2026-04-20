@@ -136,11 +136,11 @@ class VendorImportJob(models.Model):
     def _process_step(self):
 
         import time
+        import json
 
         start_time = time.time()
         MAX_SECONDS = 25
         MAX_LOOPS = 100
-        
 
         loops = 0
 
@@ -157,7 +157,7 @@ class VendorImportJob(models.Model):
             prev_ai = self.last_ai_page or 0
 
             # =====================================================
-            # 🔥 FIX STUCK STATE
+            # FIX STUCK STATE
             # =====================================================
             if self.state == 'review':
                 self.state = 'processing'
@@ -165,7 +165,7 @@ class VendorImportJob(models.Model):
                 continue
 
             # =====================================================
-            # 🔥 ENTRY
+            # ENTRY POINT
             # =====================================================
             if self.state == 'processing':
 
@@ -253,7 +253,7 @@ class VendorImportJob(models.Model):
             # =====================================================
             # 🔵 EXCEL FLOW (UNCHANGED)
             # =====================================================
-            if self.excel_file:
+            if self.excel_file and not self.pdf_file:
 
                 if self.state == 'draft':
                     self.state = 'excel_parsing'
@@ -313,106 +313,93 @@ class VendorImportJob(models.Model):
                     continue
 
             # =====================================================
-            # 🔵 PDF FLOW (ONLY SECTION UPDATED FOR BATCHING)
-      
-                if self.pdf_file:
+            # 🔵 PDF FLOW (FIXED STRUCTURE ONLY)
+            # =====================================================
+            if self.pdf_file:
 
-                    if self.state == 'draft':
-                        self.state = 'pdf_extracting'
-                        self.env.cr.commit()
-                        continue
+                if self.state == 'draft':
+                    self.state = 'pdf_extracting'
+                    self.env.cr.commit()
+                    continue
 
-                    # 🔥 EXTRACT (FIXED MISSING BLOCK)
-                    if self.state == 'pdf_extracting':
+                if self.state == 'pdf_extracting':
 
-                        prev_page = self.current_page or 0
+                    self.extract_pdf()
 
-                        self.extract_pdf()
+                    _logger.warning(f"[PDF EXTRACT] → {self.current_page}/{self.total_pages}")
 
-                        _logger.warning(f"[PDF EXTRACT] → {self.current_page}/{self.total_pages}")
+                    if self.current_page < self.total_pages:
+                        self.state = 'processing'
+                    else:
+                        self.state = 'pdf_ai'
 
-                        if self.current_page < self.total_pages:
-                            if self.current_page > prev_page:
-                                self.state = 'processing'
-                            else:
-                                _logger.warning("PDF EXTRACT NO PROGRESS")
-                                self.state = 'processing'
-                        else:
-                            self.state = 'pdf_ai'
+                    self.env.cr.commit()
+                    continue
 
-                        self.env.cr.commit()
-                        continue
+                if self.state == 'pdf_ai':
 
-                    # 🔹 AI
-                    if self.state == 'pdf_ai':
+                    self.send_to_openai_pdf_excel()
 
-                        prev_ai = self.last_ai_page or 0
+                    _logger.warning(f"[PDF AI] → {self.last_ai_page}/{self.total_pages}")
 
-                        self.send_to_openai_pdf_excel()
+                    if self.last_ai_page < self.total_pages:
+                        self.state = 'processing'
+                    else:
+                        self.state = 'pdf_creating'
 
-                        _logger.warning(f"[PDF AI] → {self.last_ai_page}/{self.total_pages}")
+                    self.env.cr.commit()
+                    continue
 
-                        if self.last_ai_page < self.total_pages:
-                            self.state = 'processing'
-                        else:
-                            self.state = 'pdf_creating'
+                if self.state == 'pdf_creating':
 
-                        self.env.cr.commit()
-                        continue
+                    self.create_products_pdf_excel()
 
-                    # 🔹 CREATE (SINGLE CORRECT VERSION)
-                    if self.state == 'pdf_creating':
+                    total = self.total_pages or 0
 
-                        self.create_products_pdf_excel()
+                    _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total}")
 
-                        total = self.total_pages or 0
+                    if self.excel_created_index < total:
+                        self.state = 'processing'
+                    else:
+                        _logger.warning("PDF CREATE COMPLETE ✅")
+                        self.state = 'done'
 
-                        _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total}")
+                    self.env.cr.commit()
+                    continue
 
-                        if self.excel_created_index < total:
-                            self.state = 'processing'
-                        else:
-                            _logger.warning("PDF CREATE COMPLETE ✅")
-                            self.state = 'done'
+            # =====================================================
+            # DONE
+            # =====================================================
+            if self.state == 'done':
+                _logger.warning(f"JOB {self.id} COMPLETED ✅")
+                return True
 
-                        self.env.cr.commit()
-                        continue
+            # =====================================================
+            # LOOP CONTROL (FIXED)
+            # =====================================================
+            elapsed = time.time() - start_time
 
-                # =====================================================
-                # 🔥 DONE
-                # =====================================================
-                if self.state == 'done':
-                    _logger.warning(f"JOB {self.id} COMPLETED ✅")
-                    return True
+            time.sleep(0.5)
 
-                # =====================================================
-                # 🔥 LOOP CONTROL (FIXED)
-                # =====================================================
-                elapsed = time.time() - start_time
+            if elapsed > MAX_SECONDS:
+                _logger.warning("TIME LIMIT REACHED → EXIT LOOP")
+                break
 
-                time.sleep(0.5)
+            if loops >= 50:
+                _logger.warning("MAX LOOPS REACHED → EXIT")
+                break
 
-                if elapsed > MAX_SECONDS:
-                    _logger.warning("TIME LIMIT REACHED → EXIT LOOP")
-                    break
+            if (
+                self.state == prev_state and
+                self.excel_created_index == prev_created and
+                self.last_processed_product_index == prev_processed and
+                (self.current_page or 0) == prev_page and
+                (self.last_ai_page or 0) == prev_ai
+            ):
+                _logger.warning("NO PROGRESS → EXIT LOOP")
+                break
 
-                if loops >= 50:
-                    _logger.warning("MAX LOOPS REACHED → EXIT")
-                    break
-
-                # 🔥 FIXED PROGRESS DETECTION (PDF + EXCEL)
-                if (
-                    self.state == prev_state and
-                    self.excel_created_index == prev_created and
-                    self.last_processed_product_index == prev_processed and
-                    (self.current_page or 0) == prev_page and
-                    (self.last_ai_page or 0) == prev_ai
-                ):
-                    _logger.warning("NO PROGRESS → EXIT LOOP")
-                    break
-
-            return True
-
+        return True
 
     #------------parse url------------------------------------
     def parse_url(self):
@@ -2266,16 +2253,28 @@ class VendorImportJob(models.Model):
                 job.lock = True
                 self.env.cr.commit()
 
+                # 🔥 TRACK PROGRESS FOR ALL FLOWS (EXCEL + PDF + URL)
                 prev_state = job.state
-                prev_index = job.excel_created_index
+                prev_excel = job.excel_created_index
+                prev_processed = job.last_processed_product_index
+                prev_page = job.current_page or 0
+                prev_ai = job.last_ai_page or 0
 
                 job._process_step()
 
                 self.env.cr.commit()
                 _logger.warning("CRON → STEP COMMITTED ✅")
 
-                # 🔥 NO PROGRESS GUARD
-                if job.state == prev_state and job.excel_created_index == prev_index:
+                # =====================================================
+                # 🔥 NO PROGRESS GUARD (FIXED FOR ALL FLOWS)
+                # =====================================================
+                if (
+                    job.state == prev_state and
+                    job.excel_created_index == prev_excel and
+                    job.last_processed_product_index == prev_processed and
+                    (job.current_page or 0) == prev_page and
+                    (job.last_ai_page or 0) == prev_ai
+                ):
                     _logger.warning("⚠️ NO PROGRESS DETECTED → STOP LOOP")
                     break
 
@@ -2297,12 +2296,12 @@ class VendorImportJob(models.Model):
         _logger.warning("CRON → LOOP FINISHED ✅")
 
         # =====================================================
-        # 🔥 CRITICAL FIX → FORCE NEXT RUN (PROPER WAY)
+        # 🔥 FORCE NEXT RUN (SAFE FUTURE SCHEDULE)
         # =====================================================
         try:
             cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
 
-            # ✅ MUST be in future (NOT now)
+            # must be future to avoid write conflict
             next_time = fields.Datetime.now() + timedelta(seconds=15)
 
             cron.sudo().write({
