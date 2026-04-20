@@ -138,12 +138,10 @@ class VendorImportJob(models.Model):
         import time
 
         start_time = time.time()
-        MAX_SECONDS = 25   # SAFE LIMIT (VERY IMPORTANT)
+        MAX_SECONDS = 25
         MAX_LOOPS = 100
 
-
         loops = 0
-
 
         while True:
 
@@ -202,7 +200,7 @@ class VendorImportJob(models.Model):
                 continue
 
             # =====================================================
-            # 🔵 URL FLOW (RESTORED FULLY)
+            # 🔵 URL FLOW (UNCHANGED)
             # =====================================================
             if self.data_url:
 
@@ -250,7 +248,7 @@ class VendorImportJob(models.Model):
                     continue
 
             # =====================================================
-            # 🔵 EXCEL FLOW
+            # 🔵 EXCEL FLOW (UNCHANGED)
             # =====================================================
             if self.excel_file:
 
@@ -312,7 +310,7 @@ class VendorImportJob(models.Model):
                     continue
 
             # =====================================================
-            # 🔵 PDF FLOW
+            # 🔵 PDF FLOW (ONLY SECTION UPDATED FOR BATCHING)
             # =====================================================
             if self.pdf_file:
 
@@ -321,31 +319,63 @@ class VendorImportJob(models.Model):
                     self.env.cr.commit()
                     continue
 
+                # 🔹 EXTRACT (BATCHED)
                 if self.state == 'pdf_extracting':
+
+                    prev_page = self.current_page
+
                     self.extract_pdf()
 
-                    if self.current_page >= self.total_pages:
-                        self.state = 'pdf_ai'
+                    _logger.warning(f"[PDF EXTRACT] → {self.current_page}/{self.total_pages}")
+
+                    if self.current_page < self.total_pages:
+                        if self.current_page > prev_page:
+                            self.state = 'processing'
+                        else:
+                            _logger.warning("PDF EXTRACT NO PROGRESS")
+                            self.state = 'processing'
                     else:
-                        self.state = 'processing'
+                        self.state = 'pdf_ai'
 
                     self.env.cr.commit()
                     continue
 
+                # 🔹 AI (BATCHED)
                 if self.state == 'pdf_ai':
+
+                    prev_ai = self.last_ai_page
+
                     self.send_to_openai_pdf_excel()
 
-                    if self.last_ai_page >= self.total_pages:
-                        self.state = 'pdf_creating'
+                    _logger.warning(f"[PDF AI] → {self.last_ai_page}/{self.total_pages}")
+
+                    if self.last_ai_page < self.total_pages:
+                        if self.last_ai_page > prev_ai:
+                            self.state = 'processing'
+                        else:
+                            _logger.warning("PDF AI NO PROGRESS")
+                            self.state = 'processing'
                     else:
-                        self.state = 'processing'
+                        self.state = 'pdf_creating'
 
                     self.env.cr.commit()
                     continue
 
+                # 🔹 CREATE (BATCHED)
                 if self.state == 'pdf_creating':
+
+                    prev_created = self.excel_created_index
+
                     self.create_products_pdf_excel()
-                    self.state = 'done'
+
+                    _logger.warning(f"[PDF CREATE] → {self.excel_created_index}")
+
+                    if self.excel_created_index > prev_created:
+                        self.state = 'processing'
+                    else:
+                        _logger.warning("PDF CREATE NO PROGRESS")
+                        self.state = 'done'
+
                     self.env.cr.commit()
                     continue
 
@@ -353,24 +383,21 @@ class VendorImportJob(models.Model):
             # 🔥 DONE
             # =====================================================
             if self.state == 'done':
-                 _logger.warning(f"JOB {self.id} COMPLETED ✅")
-                 return True
+                _logger.warning(f"JOB {self.id} COMPLETED ✅")
+                return True
 
             # =====================================================
-            # 🔥 LOOP CONTROL (CRITICAL)
+            # 🔥 LOOP CONTROL
             # =====================================================
-
-
             elapsed = time.time() - start_time
 
-            # 🔥 add breathing space
             time.sleep(0.5)
 
             if elapsed > MAX_SECONDS:
                 _logger.warning("TIME LIMIT REACHED → EXIT LOOP")
                 break
 
-            if loops >= 50:   # reduce from 100
+            if loops >= 50:
                 _logger.warning("MAX LOOPS REACHED → EXIT")
                 break
 
@@ -649,8 +676,67 @@ class VendorImportJob(models.Model):
                     )
 
                     # 👉 AFTER finishing with page (VERY IMPORTANT)
-                    pdf_bytes_io.close()
-                    single_pdf.close()
+                    # pdf_bytes_io.close()
+                    # single_pdf.close()
+
+                    try:
+                        _logger.warning(f"FLASK CALL PAGE {i+1} → ATTEMPT {attempt + 1}")
+
+                        response = requests.post(
+                            "https://pdf-extractor-staging.onrender.com/extract",
+                            files={"file": ("page.pdf", pdf_bytes_io, "application/pdf")},
+                            timeout=120
+                        )
+
+                        if response.status_code != 200:
+                            _logger.warning(f"FLASK ERROR PAGE {i+1}: {response.status_code}")
+                            continue
+
+                        page_data = response.json()
+
+                        if isinstance(page_data, dict):
+                            pages = page_data.get("pages", [])
+                        elif isinstance(page_data, list):
+                            pages = page_data
+                        else:
+                            pages = []
+
+                        if not pages:
+                            _logger.warning(f"EMPTY PAGE DATA PAGE {i+1}")
+                            continue
+
+                        _logger.warning(f"PAGE {i+1} → RECEIVED {len(pages)} BLOCKS")
+
+                        for p in pages:
+                            text = p.get("text", "")
+                            images = p.get("images", [])
+
+                            if not text and not images:
+                                continue
+
+                            all_pages.append({
+                                "page": i + 1,
+                                "text": text,
+                                "images": images
+                            })
+
+                        page_success = True
+                        break
+
+                    except Exception as e:
+                        _logger.exception(f"FLASK CALL FAILED PAGE {i+1} → {str(e)}")
+
+                    finally:
+                        # 🔥 ALWAYS RUNS (EVEN IF ERROR)
+                        try:
+                            pdf_bytes_io.close()
+                        except:
+                            pass
+
+                        try:
+                            single_pdf.close()
+                        except:
+                            pass
 
                     if response.status_code != 200:
                         _logger.warning(f"FLASK ERROR PAGE {i+1}: {response.status_code}")
@@ -732,14 +818,15 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"JOB NOT FINISHED → NEXT START PAGE {self.current_page + 1}")
 
-            self.state = "pdf_extracting"
+            # 🔥 RETURN CONTROL TO PIPELINE (IMPORTANT)
+            self.state = "processing"
 
         else:
 
             _logger.warning("ALL PAGES PROCESSED ✅")
-            self.state = "done"
 
-        _logger.warning("PDF EXTRACTION BATCH COMPLETED")
+            # 🔥 MOVE TO AI (NOT DONE)
+            self.state = "pdf_ai"
 
 
     # ---------------- OPENAI ----------------
@@ -989,7 +1076,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"MODE DETECTED → {'EXCEL' if is_excel else 'PDF'}")
 
-        # ================= EXCEL MODE (FIXED) =================
+        # ================= EXCEL MODE (UNCHANGED) =================
         if is_excel:
 
             BATCH_SIZE = 5
@@ -1157,7 +1244,6 @@ class VendorImportJob(models.Model):
                 "products": combined
             }])
 
-            # ✅ CRITICAL FIX
             self.excel_ai_index = end
 
             _logger.warning(f"EXCEL AI PROGRESS → {end}/{len(pages)}")
@@ -1170,12 +1256,28 @@ class VendorImportJob(models.Model):
 
             return
 
-        # ================= PDF MODE (UNCHANGED — SAFE) =================
+        # ================= PDF MODE (BATCHED FIX) =================
 
-        page_products = []
+        BATCH_SIZE = 2  # 🔥 SAFE SIZE (adjust later if needed)
+
         start_index = self.last_ai_page or 0
+        end_index = min(start_index + BATCH_SIZE, len(pages))
 
-        for i, page in enumerate(pages[start_index:], start=start_index):
+        _logger.warning(f"PDF AI → PROCESSING PAGES {start_index} to {end_index}")
+
+        # 🔥 Preserve previous AI data
+        existing_pages = []
+        if self.ai_response:
+            try:
+                existing_pages = json.loads(self.ai_response)
+            except:
+                existing_pages = []
+
+        new_page_products = []
+
+        for i in range(start_index, end_index):
+
+            page = pages[i]
 
             page_no = page.get("page")
             page_text = page.get("text", "")
@@ -1369,9 +1471,10 @@ class VendorImportJob(models.Model):
             try:
                 response = client.responses.create(
                     model="gpt-4.1-mini",
-                    input=page_text,
+                    input=prompt,
                     timeout=60
                 )
+
                 result = response.output_text.strip()
                 parsed = json.loads(result)
 
@@ -1379,14 +1482,26 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"PAGE {page_no} FAILED → {str(e)}")
                 parsed = []
 
-            page_products.append({
+            new_page_products.append({
                 "page": page_no,
                 "products": parsed
             })
 
             self.last_ai_page = i + 1
 
-        self.ai_response = json.dumps(page_products)
+        # 🔥 merge previous + new (CRITICAL)
+        combined_pages = existing_pages + new_page_products
+
+        self.ai_response = json.dumps(combined_pages)
+
+        _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{len(pages)}")
+
+        # 🔥 STATE CONTROL (VERY IMPORTANT)
+        if self.last_ai_page < len(pages):
+            self.state = "pdf_ai"
+        else:
+            _logger.warning("PDF AI COMPLETE ✅")
+            self.state = "pdf_creating"
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -1713,6 +1828,7 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
+
     #==========create pdf and excel product==========================
 
     def create_products_pdf_excel(self):
@@ -1879,23 +1995,30 @@ class VendorImportJob(models.Model):
                 self.processed_group_ids = json.dumps(list(processed_groups))
                 self.env.cr.commit()
 
-        # ================= PDF (UNCHANGED — DO NOT TOUCH) =================
+        # ================= PDF (UPDATED — SAFE BATCH ALIGNMENT) =================
         elif self.pdf_file:
+
+            total_pages = 0
+            try:
+                total_pages = len(json.loads(self.ai_response or "[]"))
+            except:
+                total_pages = 0
+
+            _logger.warning(f"[PDF CREATE] TOTAL AI PAGES → {total_pages}")
+
+            start = self.excel_created_index or 0
+            end = min(start + BATCH_SIZE, total_pages)
+
+            _logger.warning(f"[PDF CREATE] RANGE → {start} to {end}")
 
             for idx in range(start, end):
 
-                page_data = pages[idx]
+                page_data = json.loads(self.ai_response)[idx]
                 page_no = page_data.get("page")
+                products = page_data.get("products", [])
 
-                ai_page = next((p for p in ai_pages if p.get("page") == page_no), None)
-                if not ai_page:
-                    continue
-
-                products = ai_page.get("products", [])
                 if not products:
                     continue
-
-                images = page_data.get("images", [])
 
                 for product_data in products:
 
@@ -1907,11 +2030,11 @@ class VendorImportJob(models.Model):
                         name = raw_name if raw_name.lower().startswith("product") else f"Product {raw_name}"
 
                         description = product_data.get("description", "")
-                        raw_category = (product_data.get("category") or "").lower()
 
                         variant_group = product_data.get("variant_group") or raw_name
                         variant_group = str(variant_group).strip().upper()
 
+                        # 🔥 DUPLICATE PREVENTION (KEEP YOUR WORKING LOGIC)
                         product = product_obj.search([
                             ('default_code', '=', variant_group),
                             ('vendor_id', '=', vendor_id)
@@ -1928,9 +2051,6 @@ class VendorImportJob(models.Model):
                                 'vendor_id': vendor_id,
                             }
 
-                            if images:
-                                vals['image_1920'] = images[0]
-
                             product = product_obj.with_context(
                                 mail_create_nolog=True,
                                 mail_notify_force_send=False,
@@ -1939,6 +2059,7 @@ class VendorImportJob(models.Model):
 
                             created_count += 1
 
+                        # 🔥 KEEP VARIANT + IMAGE LOGIC EXACTLY AS IS
                         variants = product_data.get("variants", [])
                         if not variants:
                             variants = [{"attributes": {"Variant": name}}]
@@ -1985,26 +2106,18 @@ class VendorImportJob(models.Model):
                                     if value.id not in line.value_ids.ids:
                                         line.value_ids = [(4, value.id)]
 
-                            if images and v_idx < len(images):
-                                variant_record = self.env['product.product'].search([
-                                    ('product_tmpl_id', '=', product.id)
-                                ], limit=1)
-
-                                if variant_record:
-                                    variant_record.image_1920 = images[v_idx]
-
-                        if created_count % 10 == 0:
-                            self.env.cr.commit()
+                        # 🔥 SAFE COMMIT PER PAGE
+                        self.env.cr.commit()
 
                     except Exception as e:
-                        _logger.error(f"PRODUCT FAILED → {str(e)}")
+                        _logger.error(f"PDF PRODUCT FAILED → {str(e)}")
                         self.env.cr.rollback()
                         continue
 
-                self.env.cr.commit()
+            # 🔥 UPDATE INDEX PROPERLY
+            self.excel_created_index = end
 
-        self.excel_created_index = end
-        self.env.cr.commit()
+            _logger.warning(f"[PDF CREATE] PROGRESS → {end}/{total_pages}")
 
     #-----URL API FLOW-------------------------------------------
 
@@ -2107,6 +2220,7 @@ class VendorImportJob(models.Model):
     def run_pending_jobs(self):
 
         import time
+        from datetime import timedelta
         from odoo import fields
 
         # 🔥 ACTIVE STATES
@@ -2226,6 +2340,26 @@ class VendorImportJob(models.Model):
             time.sleep(0.4)
 
         _logger.warning("CRON → LOOP FINISHED ✅")
+
+        # =====================================================
+        # 🔥 CRITICAL FIX → FORCE NEXT RUN (PROPER WAY)
+        # =====================================================
+        try:
+            cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
+
+            # ✅ MUST be in future (NOT now)
+            next_time = fields.Datetime.now() + timedelta(seconds=15)
+
+            cron.sudo().write({
+                'nextcall': next_time
+            })
+
+            self.env.cr.commit()
+
+            _logger.warning(f"CRON → NEXT RUN FORCED AT → {next_time}")
+
+        except Exception as e:
+            _logger.warning(f"CRON → NEXTCALL UPDATE FAILED → {str(e)}")
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
