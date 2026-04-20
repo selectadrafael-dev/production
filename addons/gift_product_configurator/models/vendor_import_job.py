@@ -1432,10 +1432,12 @@ class VendorImportJob(models.Model):
 
         self.ai_response = json.dumps(combined_pages)
 
-        _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{len(pages)}")
+        # _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{len(pages)}")
+        _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{self.total_pages}")
 
         # 🔥 STATE CONTROL (VERY IMPORTANT)
-        if self.last_ai_page < len(pages):
+        # if self.last_ai_page < len(pages):
+        if self.last_ai_page < self.total_pages:
             self.state = "pdf_ai"
         else:
             _logger.warning("PDF AI COMPLETE ✅")
@@ -1933,14 +1935,11 @@ class VendorImportJob(models.Model):
                 self.processed_group_ids = json.dumps(list(processed_groups))
                 self.env.cr.commit()
 
-        # ================= PDF (UPDATED — SAFE BATCH ALIGNMENT) =================
+        # ================= PDF (FIXED — NO BREAKAGE) =================
+
         elif self.pdf_file:
 
-            total_pages = 0
-            try:
-                total_pages = len(json.loads(self.ai_response or "[]"))
-            except:
-                total_pages = 0
+            total_pages = self.total_pages or 0
 
             _logger.warning(f"[PDF CREATE] TOTAL AI PAGES → {total_pages}")
 
@@ -1951,9 +1950,11 @@ class VendorImportJob(models.Model):
 
             for idx in range(start, end):
 
-                page_data = json.loads(self.ai_response)[idx]
-                page_no = page_data.get("page")
+                page_data = ai_pages[idx]
                 products = page_data.get("products", [])
+                images = pages[idx].get("images", []) if idx < len(pages) else []
+
+                _logger.warning(f"[PDF] IMAGES FOUND → {len(images)}")
 
                 if not products:
                     continue
@@ -1961,18 +1962,17 @@ class VendorImportJob(models.Model):
                 for product_data in products:
 
                     try:
-                        raw_name = (product_data.get("name") or "").strip()
-                        if not raw_name:
+                        # 🔥 FIX: NO PREFIX
+                        name = (product_data.get("name") or "").strip()
+                        if not name:
                             continue
-
-                        name = raw_name if raw_name.lower().startswith("product") else f"Product {raw_name}"
 
                         description = product_data.get("description", "")
 
-                        variant_group = product_data.get("variant_group") or raw_name
+                        variant_group = product_data.get("variant_group") or name
                         variant_group = str(variant_group).strip().upper()
 
-                        # 🔥 DUPLICATE PREVENTION (KEEP YOUR WORKING LOGIC)
+                        # 🔥 DUPLICATE PREVENTION (UNCHANGED)
                         product = product_obj.search([
                             ('default_code', '=', variant_group),
                             ('vendor_id', '=', vendor_id)
@@ -1989,6 +1989,11 @@ class VendorImportJob(models.Model):
                                 'vendor_id': vendor_id,
                             }
 
+                            # 🔥 FIX: RESTORE PRODUCT IMAGE
+                            if images:
+                                vals['image_1920'] = images[0]
+                                _logger.warning("PRODUCT IMAGE SET")
+
                             product = product_obj.with_context(
                                 mail_create_nolog=True,
                                 mail_notify_force_send=False,
@@ -1997,7 +2002,7 @@ class VendorImportJob(models.Model):
 
                             created_count += 1
 
-                        # 🔥 KEEP VARIANT + IMAGE LOGIC EXACTLY AS IS
+                        # 🔥 KEEP ORIGINAL VARIANT LOGIC
                         variants = product_data.get("variants", [])
                         if not variants:
                             variants = [{"attributes": {"Variant": name}}]
@@ -2044,8 +2049,18 @@ class VendorImportJob(models.Model):
                                     if value.id not in line.value_ids.ids:
                                         line.value_ids = [(4, value.id)]
 
-                        # 🔥 SAFE COMMIT PER PAGE
-                        self.env.cr.commit()
+                            # 🔥 FIX: RESTORE VARIANT IMAGE
+                            if images and v_idx < len(images):
+                                variant_record = self.env['product.product'].search([
+                                    ('product_tmpl_id', '=', product.id)
+                                ], limit=1)
+
+                                if variant_record:
+                                    variant_record.image_1920 = images[v_idx]
+                                    _logger.warning(f"VARIANT IMAGE SET → {v_idx}")
+
+                        if created_count % 10 == 0:
+                            self.env.cr.commit()
 
                     except Exception as e:
                         _logger.error(f"PDF PRODUCT FAILED → {str(e)}")
@@ -2056,6 +2071,7 @@ class VendorImportJob(models.Model):
             self.excel_created_index = end
 
             _logger.warning(f"[PDF CREATE] PROGRESS → {end}/{total_pages}")
+        _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
 
     #-----URL API FLOW-------------------------------------------
 
