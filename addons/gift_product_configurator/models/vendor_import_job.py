@@ -1944,13 +1944,19 @@ class VendorImportJob(models.Model):
             _logger.warning(f"[PDF CREATE] TOTAL AI PAGES → {total_pages}")
 
             start = self.excel_created_index or 0
-            end = min(start + BATCH_SIZE, total_pages)
+            end = min(start + BATCH_SIZE, len(ai_pages))
 
             _logger.warning(f"[PDF CREATE] RANGE → {start} to {end}")
 
             for idx in range(start, end):
 
+                # page_data = ai_pages[idx]
+                if idx >= len(ai_pages):
+                    _logger.warning(f"SKIP IDX {idx} → AI DATA NOT READY YET")
+                    break
+
                 page_data = ai_pages[idx]
+                
                 products = page_data.get("products", [])
                 images = pages[idx].get("images", []) if idx < len(pages) else []
 
