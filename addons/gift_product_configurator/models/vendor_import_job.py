@@ -352,19 +352,24 @@ class VendorImportJob(models.Model):
             # 🔥 DONE
             # =====================================================
             if self.state == 'done':
-                _logger.warning(f"JOB {self.id} COMPLETED ✅")
-                return True
+                 _logger.warning(f"JOB {self.id} COMPLETED ✅")
+                 return True
 
             # =====================================================
             # 🔥 LOOP CONTROL (CRITICAL)
             # =====================================================
+
+
             elapsed = time.time() - start_time
+
+            # 🔥 add breathing space
+            time.sleep(0.5)
 
             if elapsed > MAX_SECONDS:
                 _logger.warning("TIME LIMIT REACHED → EXIT LOOP")
                 break
 
-            if loops >= MAX_LOOPS:
+            if loops >= 50:   # reduce from 100
                 _logger.warning("MAX LOOPS REACHED → EXIT")
                 break
 
@@ -1677,7 +1682,12 @@ class VendorImportJob(models.Model):
 
             # ================= CREATE =================
             try:
-                product_obj.create(vals)
+                # product_obj.create(vals)
+                product = product_obj.with_context(
+                    mail_create_nolog=True,
+                    mail_notify_force_send=False,
+                    tracking_disable=True
+                ).create(vals)
                 created_count += 1
 
             except Exception as e:
@@ -1850,7 +1860,12 @@ class VendorImportJob(models.Model):
                         if image:
                             vals['image_1920'] = image
 
-                        product = product_obj.create(vals)
+                        # product = product_obj.create(vals)
+                        product = product_obj.with_context(
+                            mail_create_nolog=True,
+                            mail_notify_force_send=False,
+                            tracking_disable=True
+                        ).create(vals)
                         created_count += 1
 
                         _logger.warning(f"[EXCEL CREATE] → {name}")
@@ -1960,7 +1975,12 @@ class VendorImportJob(models.Model):
                         if images:
                             vals['image_1920'] = images[0]
 
-                        product = product_obj.create(vals)
+                        # product = product_obj.create(vals)
+                        product = product_obj.with_context(
+                            mail_create_nolog=True,
+                            mail_notify_force_send=False,
+                            tracking_disable=True
+                        ).create(vals)
                         created_count += 1
 
                         _logger.warning(f"[PDF CREATE] → {name}")
