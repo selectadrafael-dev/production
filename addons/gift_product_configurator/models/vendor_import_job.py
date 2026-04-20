@@ -78,7 +78,7 @@ class VendorImportJob(models.Model):
     is_excel_parsed = fields.Boolean(default=False)
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
-    # vendor_id = fields.Many2one('res.partner', string="Vendor (Internal)")
+    processed_group_ids = fields.Text(default="[]")
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -1733,7 +1733,7 @@ class VendorImportJob(models.Model):
             _logger.error("INVALID JSON → STOP")
             return
 
-        _logger.warning("CREATING PRODUCTS (FINAL FIXED VERSION)")
+        _logger.warning("CREATING PRODUCTS (FINAL STABLE VERSION)")
 
         created_count = 0
 
@@ -1766,8 +1766,11 @@ class VendorImportJob(models.Model):
 
         vendor_id = self.partner_id.id if self.partner_id else False
 
-        # 🔥 CRITICAL: PROCESS GROUPS ONLY ONCE PER CALL
-        processed_groups = set()
+        # ✅ PERSISTED GROUP TRACKING
+        try:
+            processed_groups = set(json.loads(self.processed_group_ids or "[]"))
+        except Exception:
+            processed_groups = set()
 
         # ================= EXCEL =================
         if self.excel_file:
@@ -1786,17 +1789,20 @@ class VendorImportJob(models.Model):
                     continue
 
                 clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
+
                 match = re.search(r'([A-Z]*\d{3,})', clean_name)
-                group_id = match.group(1) if match else clean_name[:20]
+
+                group_id = (match.group(1) if match else clean_name[:20])
+                group_id = group_id.replace("PRODUCT", "")  # 🔥 CRITICAL FIX
 
                 grouped_products.setdefault(group_id, []).append(p)
 
             for group_id, group_items in grouped_products.items():
 
+                # ✅ SKIP IF ALREADY PROCESSED (PERSISTENT)
                 if group_id in processed_groups:
+                    _logger.warning(f"[SKIP GROUP] → {group_id}")
                     continue
-
-                processed_groups.add(group_id)
 
                 main_product = group_items[0]
 
@@ -1804,7 +1810,7 @@ class VendorImportJob(models.Model):
                 if not raw_name:
                     continue
 
-                # 🔥 FIX DOUBLE PREFIX
+                # ✅ FIX DOUBLE PREFIX
                 if raw_name.lower().startswith("product"):
                     name = raw_name
                 else:
@@ -1830,9 +1836,10 @@ class VendorImportJob(models.Model):
                         'parent_id': parent_category.id
                     })
 
-                # 🔥 STRICT DUPLICATE CONTROL
+                # ✅ STRICT VENDOR-BASED DUPLICATE CHECK
                 product = product_obj.search([
-                    ('default_code', '=', group_id)
+                    ('default_code', '=', group_id),
+                    ('vendor_id', '=', vendor_id)
                 ], limit=1)
 
                 if not product:
@@ -1861,7 +1868,7 @@ class VendorImportJob(models.Model):
                 else:
                     _logger.warning(f"[REUSE PRODUCT] → {group_id}")
 
-                # 🔥 VARIANTS ALWAYS ATTACH TO SAME PRODUCT
+                # ✅ VARIANTS (SAFE ADD)
                 for v_idx, item in enumerate(group_items):
 
                     attr_value = f"Variant {v_idx+1}"
@@ -1899,7 +1906,12 @@ class VendorImportJob(models.Model):
                         if value.id not in line.value_ids.ids:
                             line.value_ids = [(4, value.id)]
 
-        # ================= PDF (UNCHANGED LOGIC BUT FIXED DUPLICATE) =================
+                # ✅ MARK GROUP AS PROCESSED (CRITICAL)
+                processed_groups.add(group_id)
+                self.processed_group_ids = json.dumps(list(processed_groups))
+                self.env.cr.commit()
+
+        # ================= PDF =================
         elif self.pdf_file:
 
             for idx in range(start, end):
@@ -1911,14 +1923,24 @@ class VendorImportJob(models.Model):
                 if not ai_page:
                     continue
 
-                products = ai_page.get("products", [])
-                if not products:
-                    continue
-
-                for product_data in products:
+                for product_data in ai_page.get("products", []):
 
                     raw_name = (product_data.get("name") or "").strip()
                     if not raw_name:
+                        continue
+
+                    clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
+                    match = re.search(r'([A-Z]*\d{3,})', clean_name)
+
+                    group_id = (match.group(1) if match else clean_name[:20])
+                    group_id = group_id.replace("PRODUCT", "")
+
+                    product = product_obj.search([
+                        ('default_code', '=', group_id),
+                        ('vendor_id', '=', vendor_id)
+                    ], limit=1)
+
+                    if product:
                         continue
 
                     if raw_name.lower().startswith("product"):
@@ -1926,22 +1948,7 @@ class VendorImportJob(models.Model):
                     else:
                         name = f"Product {raw_name}"
 
-                    clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
-                    match = re.search(r'([A-Z]*\d{3,})', clean_name)
-                    group_id = match.group(1) if match else clean_name[:20]
-
-                    product = product_obj.search([
-                        ('default_code', '=', group_id)
-                    ], limit=1)
-
-                    if product:
-                        continue
-
-                    product_obj.with_context(
-                        mail_create_nolog=True,
-                        mail_notify_force_send=False,
-                        tracking_disable=True
-                    ).create({
+                    product_obj.create({
                         'name': name,
                         'default_code': group_id,
                         'sale_ok': True,
