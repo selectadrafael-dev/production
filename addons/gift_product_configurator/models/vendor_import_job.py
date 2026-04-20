@@ -315,42 +315,53 @@ class VendorImportJob(models.Model):
             # =====================================================
             # 🔵 PDF FLOW (FIXED STRUCTURE ONLY)
             # =====================================================
+          
             if self.pdf_file:
 
+                # ================= INIT =================
                 if self.state == 'draft':
                     self.state = 'pdf_extracting'
                     self.env.cr.commit()
                     continue
 
+                # ================= EXTRACTION =================
                 if self.state == 'pdf_extracting':
+
+                    _logger.warning("PDF → EXTRACTION STEP")
 
                     self.extract_pdf()
 
                     _logger.warning(f"[PDF EXTRACT] → {self.current_page}/{self.total_pages}")
 
-                    if self.current_page < self.total_pages:
-                        self.state = 'processing'
-                    else:
+                    # 🔥 STAY IN SAME STATE UNTIL FULLY DONE
+                    if self.current_page >= self.total_pages:
+                        _logger.warning("PDF EXTRACTION COMPLETE → MOVING TO AI")
                         self.state = 'pdf_ai'
 
                     self.env.cr.commit()
                     continue
 
+                # ================= AI =================
                 if self.state == 'pdf_ai':
+
+                    _logger.warning("PDF → AI STEP")
 
                     self.send_to_openai_pdf_excel()
 
                     _logger.warning(f"[PDF AI] → {self.last_ai_page}/{self.total_pages}")
 
-                    if self.last_ai_page < self.total_pages:
-                        self.state = 'processing'
-                    else:
+                    # 🔥 STAY IN AI UNTIL ALL PAGES PROCESSED
+                    if self.last_ai_page >= self.total_pages:
+                        _logger.warning("PDF AI COMPLETE → MOVING TO CREATE")
                         self.state = 'pdf_creating'
 
                     self.env.cr.commit()
                     continue
 
+                # ================= CREATE =================
                 if self.state == 'pdf_creating':
+
+                    _logger.warning("PDF → CREATE STEP")
 
                     self.create_products_pdf_excel()
 
@@ -358,9 +369,8 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total}")
 
-                    if self.excel_created_index < total:
-                        self.state = 'processing'
-                    else:
+                    # 🔥 CONTINUE UNTIL ALL CREATED
+                    if self.excel_created_index >= total:
                         _logger.warning("PDF CREATE COMPLETE ✅")
                         self.state = 'done'
 
