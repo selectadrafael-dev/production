@@ -1750,7 +1750,6 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
-
     #==========create pdf and excel product==========================
 
     def create_products_pdf_excel(self):
@@ -1803,7 +1802,6 @@ class VendorImportJob(models.Model):
 
         vendor_id = self.partner_id.id if self.partner_id else False
 
-        # 🔥 ADD THIS (PERSISTENT TRACKING)
         try:
             processed_groups = set(json.loads(self.processed_group_ids or "[]"))
         except Exception:
@@ -1917,8 +1915,9 @@ class VendorImportJob(models.Model):
                 self.processed_group_ids = json.dumps(list(processed_groups))
                 self.env.cr.commit()
 
-        # ================= PDF (FIXED — NO BREAKAGE) =================
 
+
+        # ================= PDF (FIXED INDEX BUG ONLY) =================
         elif self.pdf_file:
 
             total_pages = self.total_pages or 0
@@ -1930,12 +1929,17 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"[PDF CREATE] RANGE → {start} to {end}")
 
+            # 🔥 CRITICAL FIX
+            new_index = start
+
             for idx in range(start, end):
 
-                # page_data = ai_pages[idx]
                 if idx >= len(ai_pages):
                     _logger.warning(f"SKIP IDX {idx} → AI DATA NOT READY YET")
                     break
+
+                # 🔥 ALWAYS ADVANCE INDEX
+                new_index = idx + 1
 
                 page_data = ai_pages[idx]
 
@@ -1950,7 +1954,6 @@ class VendorImportJob(models.Model):
                 for product_data in products:
 
                     try:
-                        # 🔥 FIX: NO PREFIX
                         name = (product_data.get("name") or "").strip()
                         if not name:
                             continue
@@ -1960,7 +1963,6 @@ class VendorImportJob(models.Model):
                         variant_group = product_data.get("variant_group") or name
                         variant_group = str(variant_group).strip().upper()
 
-                        # 🔥 DUPLICATE PREVENTION (UNCHANGED)
                         product = product_obj.search([
                             ('default_code', '=', variant_group),
                             ('vendor_id', '=', vendor_id)
@@ -1977,10 +1979,8 @@ class VendorImportJob(models.Model):
                                 'vendor_id': vendor_id,
                             }
 
-                            # 🔥 FIX: RESTORE PRODUCT IMAGE
                             if images:
                                 vals['image_1920'] = images[0]
-                                _logger.warning("PRODUCT IMAGE SET")
 
                             product = product_obj.with_context(
                                 mail_create_nolog=True,
@@ -1990,7 +1990,6 @@ class VendorImportJob(models.Model):
 
                             created_count += 1
 
-                        # 🔥 KEEP ORIGINAL VARIANT LOGIC
                         variants = product_data.get("variants", [])
                         if not variants:
                             variants = [{"attributes": {"Variant": name}}]
@@ -2037,7 +2036,6 @@ class VendorImportJob(models.Model):
                                     if value.id not in line.value_ids.ids:
                                         line.value_ids = [(4, value.id)]
 
-                            # 🔥 FIX: RESTORE VARIANT IMAGE
                             if images and v_idx < len(images):
                                 variant_record = self.env['product.product'].search([
                                     ('product_tmpl_id', '=', product.id)
@@ -2045,7 +2043,6 @@ class VendorImportJob(models.Model):
 
                                 if variant_record:
                                     variant_record.image_1920 = images[v_idx]
-                                    _logger.warning(f"VARIANT IMAGE SET → {v_idx}")
 
                         if created_count % 10 == 0:
                             self.env.cr.commit()
@@ -2055,10 +2052,11 @@ class VendorImportJob(models.Model):
                         self.env.cr.rollback()
                         continue
 
-            # 🔥 UPDATE INDEX PROPERLY
-            self.excel_created_index = end
+            # 🔥 FINAL FIX (DO NOT USE end AGAIN)
+            self.excel_created_index = new_index
 
-            _logger.warning(f"[PDF CREATE] PROGRESS → {end}/{total_pages}")
+            _logger.warning(f"[PDF CREATE] PROGRESS → {new_index}/{total_pages}")
+
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
 
     #-----URL API FLOW-------------------------------------------
