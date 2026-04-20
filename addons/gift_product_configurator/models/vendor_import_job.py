@@ -362,20 +362,28 @@ class VendorImportJob(models.Model):
                     continue
 
                 # 🔹 CREATE (BATCHED)
+
                 if self.state == 'pdf_creating':
 
                     prev_created = self.excel_created_index
 
                     self.create_products_pdf_excel()
 
-                    _logger.warning(f"[PDF CREATE] → {self.excel_created_index}")
+                    total_pages = 0
+                    try:
+                        total_pages = len(json.loads(self.ai_response or "[]"))
+                    except:
+                        total_pages = 0
 
-                    if self.excel_created_index > prev_created:
+                    _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total_pages}")
+
+                    # 🔥 CORRECT LOGIC
+                    if self.excel_created_index < total_pages:
                         self.state = 'processing'
                     else:
-                        _logger.warning("PDF CREATE NO PROGRESS")
+                        _logger.warning("PDF CREATE COMPLETE ✅")
                         self.state = 'done'
-
+                    
                     self.env.cr.commit()
                     continue
 
