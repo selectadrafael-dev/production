@@ -1765,7 +1765,13 @@ class VendorImportJob(models.Model):
 
         vendor_id = self.partner_id.id if self.partner_id else False
 
-        # ================= EXCEL (UNCHANGED WORKING FLOW) =================
+        # 🔥 ADD THIS (PERSISTENT TRACKING)
+        try:
+            processed_groups = set(json.loads(self.processed_group_ids or "[]"))
+        except Exception:
+            processed_groups = set()
+
+        # ================= EXCEL =================
         if self.excel_file:
 
             excel_ai_products = ai_pages[0].get("products", []) if ai_pages else []
@@ -1785,6 +1791,11 @@ class VendorImportJob(models.Model):
                 grouped_products.setdefault(group_id, []).append(p)
 
             for group_id, group_items in grouped_products.items():
+
+                # 🔥 CRITICAL FIX (SKIP ALREADY PROCESSED)
+                if group_id in processed_groups:
+                    _logger.warning(f"[EXCEL SKIP] → {group_id}")
+                    continue
 
                 main_product = group_items[0]
                 raw_name = (main_product.get("name") or "").strip()
@@ -1854,7 +1865,7 @@ class VendorImportJob(models.Model):
                         if value.id not in line.value_ids.ids:
                             line.value_ids = [(4, value.id)]
 
-                    # 🔥 CORRECT VARIANT IMAGE (OLD WORKING LOGIC)
+                    # 🔥 KEEP YOUR WORKING VARIANT IMAGE LOGIC
                     variant_record = self.env['product.product'].search([
                         ('product_tmpl_id', '=', product.id),
                         ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
@@ -1863,7 +1874,12 @@ class VendorImportJob(models.Model):
                     if variant_record and item.get("image"):
                         variant_record.image_1920 = item.get("image")
 
-        # ================= PDF (FULLY RESTORED CORRECT LOGIC) =================
+                # 🔥 MARK AS PROCESSED (PERSISTENT)
+                processed_groups.add(group_id)
+                self.processed_group_ids = json.dumps(list(processed_groups))
+                self.env.cr.commit()
+
+        # ================= PDF (UNCHANGED — DO NOT TOUCH) =================
         elif self.pdf_file:
 
             for idx in range(start, end):
@@ -1896,7 +1912,6 @@ class VendorImportJob(models.Model):
                         variant_group = product_data.get("variant_group") or raw_name
                         variant_group = str(variant_group).strip().upper()
 
-                        # 🔥 DUPLICATE PREVENTION (VENDOR SAFE)
                         product = product_obj.search([
                             ('default_code', '=', variant_group),
                             ('vendor_id', '=', vendor_id)
@@ -1970,7 +1985,6 @@ class VendorImportJob(models.Model):
                                     if value.id not in line.value_ids.ids:
                                         line.value_ids = [(4, value.id)]
 
-                            # 🔥 CORRECT PDF VARIANT IMAGE MAPPING (RESTORED)
                             if images and v_idx < len(images):
                                 variant_record = self.env['product.product'].search([
                                     ('product_tmpl_id', '=', product.id)
@@ -2137,17 +2151,16 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
         # =====================================================
-        # 🔥 SAFE LOOP EXECUTION (ANTI-CRASH FIX)
+        # 🔥 SAFE LOOP EXECUTION (ANTI-CRASH)
         # =====================================================
-        MAX_STEPS = 8          # 🔥 REDUCED (was 20)
-        MAX_SECONDS = 25       # 🔥 REDUCED (was 50)
+        MAX_STEPS = 8
+        MAX_SECONDS = 25
 
         steps = 0
         start_time = time.time()
 
         while steps < MAX_STEPS:
 
-            # ⛔ HARD TIME GUARD (PREVENT WORKER KILL)
             elapsed = time.time() - start_time
             if elapsed > MAX_SECONDS:
                 _logger.warning("⛔ CRON TIME LIMIT → STOP LOOP SAFELY")
@@ -2192,7 +2205,7 @@ class VendorImportJob(models.Model):
                 self.env.cr.commit()
                 _logger.warning("CRON → STEP COMMITTED ✅")
 
-                # 🔥 NO PROGRESS GUARD (VERY IMPORTANT)
+                # 🔥 NO PROGRESS GUARD
                 if job.state == prev_state and job.excel_created_index == prev_index:
                     _logger.warning("⚠️ NO PROGRESS DETECTED → STOP LOOP")
                     break
@@ -2209,22 +2222,10 @@ class VendorImportJob(models.Model):
 
             steps += 1
 
-            # 🔥 BREATHING SPACE (PREVENT CPU SPIKE)
+            # 🔥 SMALL DELAY (CPU PROTECTION)
             time.sleep(0.4)
 
         _logger.warning("CRON → LOOP FINISHED ✅")
-
-        # =====================================================
-        # 🔥 FORCE NEXT EXECUTION (SAFE)
-        # =====================================================
-        try:
-            cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
-            cron.sudo().write({
-                'nextcall': fields.Datetime.now()
-            })
-            self.env.cr.commit()
-        except Exception as e:
-            _logger.warning(f"CRON RESCHEDULE FAILED → {str(e)}")
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
