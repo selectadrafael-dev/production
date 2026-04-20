@@ -320,22 +320,22 @@ class VendorImportJob(models.Model):
                     continue
 
                 # 🔹 EXTRACT (BATCHED)
-                if self.state == 'pdf_extracting':
 
-                    prev_page = self.current_page
+                if self.state == 'pdf_creating':
 
-                    self.extract_pdf()
+                    prev_created = self.excel_created_index
 
-                    _logger.warning(f"[PDF EXTRACT] → {self.current_page}/{self.total_pages}")
+                    self.create_products_pdf_excel()
 
-                    if self.current_page < self.total_pages:
-                        if self.current_page > prev_page:
-                            self.state = 'processing'
-                        else:
-                            _logger.warning("PDF EXTRACT NO PROGRESS")
-                            self.state = 'processing'
+                    total = self.total_pages or 0  # 🔥 FIX (CRITICAL)
+
+                    _logger.warning(f"[PDF CREATE CHECK] → {self.excel_created_index}/{total}")
+
+                    if self.excel_created_index < total:
+                        self.state = 'processing'
                     else:
-                        self.state = 'pdf_ai'
+                        _logger.warning("PDF CREATE COMPLETE ✅")
+                        self.state = 'done'
 
                     self.env.cr.commit()
                     continue
@@ -1956,7 +1956,7 @@ class VendorImportJob(models.Model):
                     break
 
                 page_data = ai_pages[idx]
-                
+
                 products = page_data.get("products", [])
                 images = pages[idx].get("images", []) if idx < len(pages) else []
 
