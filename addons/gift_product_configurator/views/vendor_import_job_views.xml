@@ -73,19 +73,18 @@
     </record>
 
     <!-- 🔥 CRON (ADD THIS BELOW YOUR VIEWS) -->
-    <record id="ir_cron_vendor_import" model="ir.cron">
-        <field name="name">Vendor Import Processor</field>
-        <field name="model_id" ref="model_vendor_import_job"/>
-        <field name="state">code</field>
-        <field name="code">model.run_pending_jobs()</field>
+   <record id="ir_cron_vendor_import" model="ir.cron">
+    <field name="name">Vendor Import Processor</field>
+    <field name="model_id" ref="model_vendor_import_job"/>
+    <field name="state">code</field>
+    <field name="code">model.run_pending_jobs()</field>
 
-        <field name="interval_number">1</field>
-        <field name="interval_type">minutes</field>
+    <field name="interval_number">1</field>
+    <field name="interval_type">minutes</field>
 
-        <!-- 🔥 VERY IMPORTANT -->
-        <field name="numbercall">-1</field>
-        <field name="doall">True</field>
-        <field name="active">True</field>
-    </record>
+    <!-- ✅ KEEP THIS -->
+    <field name="doall">True</field>
+    <field name="active">True</field>
+</record>
 
 </odoo>
