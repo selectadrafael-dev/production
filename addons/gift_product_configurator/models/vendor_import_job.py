@@ -140,6 +140,7 @@ class VendorImportJob(models.Model):
         start_time = time.time()
         MAX_SECONDS = 25
         MAX_LOOPS = 100
+        
 
         loops = 0
 
@@ -152,6 +153,8 @@ class VendorImportJob(models.Model):
             prev_state = self.state
             prev_created = self.excel_created_index
             prev_processed = self.last_processed_product_index
+            prev_page = self.current_page or 0
+            prev_ai = self.last_ai_page or 0
 
             # =====================================================
             # 🔥 FIX STUCK STATE
