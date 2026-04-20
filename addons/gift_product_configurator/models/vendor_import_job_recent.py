@@ -1492,7 +1492,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
 
-    #==========create pdf and excel product======================
+    #==========old create pdf and excel product======================
     
     def create_products_pdf_excel(self):
 

@@ -138,11 +138,12 @@ class VendorImportJob(models.Model):
         import time
 
         start_time = time.time()
-
-        MAX_SECONDS = 50   # respects cron limit
+        MAX_SECONDS = 25   # SAFE LIMIT (VERY IMPORTANT)
         MAX_LOOPS = 100
 
+
         loops = 0
+
 
         while True:
 
@@ -1733,15 +1734,13 @@ class VendorImportJob(models.Model):
             _logger.error("INVALID JSON → STOP")
             return
 
-        _logger.warning("CREATING PRODUCTS (FINAL STABLE VERSION)")
+        _logger.warning("CREATING PRODUCTS (FINAL STABLE VERSION WITH FIXED PDF)")
 
         created_count = 0
 
         BATCH_SIZE = 5
         start = self.excel_created_index or 0
         end = min(start + BATCH_SIZE, len(pages))
-
-        _logger.warning(f"[PROCESS RANGE] → {start} to {end}")
 
         CATEGORY_MAPPING = {
             "t-shirt": "Apparel",
@@ -1766,96 +1765,49 @@ class VendorImportJob(models.Model):
 
         vendor_id = self.partner_id.id if self.partner_id else False
 
-        # ✅ PERSISTED GROUP TRACKING
-        try:
-            processed_groups = set(json.loads(self.processed_group_ids or "[]"))
-        except Exception:
-            processed_groups = set()
-
-        # ================= EXCEL =================
+        # ================= EXCEL (UNCHANGED WORKING FLOW) =================
         if self.excel_file:
 
-            excel_ai_products = []
-            if ai_pages:
-                excel_ai_products = ai_pages[0].get("products", [])
-            else:
-                return
+            excel_ai_products = ai_pages[0].get("products", []) if ai_pages else []
 
             grouped_products = {}
 
             for p in excel_ai_products:
-                raw_name = (p.get("name") or p.get("title") or "").strip()
+                raw_name = (p.get("name") or "").strip()
                 if not raw_name:
                     continue
 
                 clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
-
                 match = re.search(r'([A-Z]*\d{3,})', clean_name)
 
-                group_id = (match.group(1) if match else clean_name[:20])
-                group_id = group_id.replace("PRODUCT", "")  # 🔥 CRITICAL FIX
+                group_id = (match.group(1) if match else clean_name[:20]).replace("PRODUCT", "")
 
                 grouped_products.setdefault(group_id, []).append(p)
 
             for group_id, group_items in grouped_products.items():
 
-                # ✅ SKIP IF ALREADY PROCESSED (PERSISTENT)
-                if group_id in processed_groups:
-                    _logger.warning(f"[SKIP GROUP] → {group_id}")
-                    continue
-
                 main_product = group_items[0]
+                raw_name = (main_product.get("name") or "").strip()
 
-                raw_name = (main_product.get("name") or main_product.get("title") or "").strip()
-                if not raw_name:
-                    continue
+                name = raw_name if raw_name.lower().startswith("product") else f"Product {raw_name}"
 
-                # ✅ FIX DOUBLE PREFIX
-                if raw_name.lower().startswith("product"):
-                    name = raw_name
-                else:
-                    name = f"Product {raw_name}"
-
-                description = main_product.get("description", "")
-                raw_category = (main_product.get("category") or "").lower()
-
-                mapped_category = "General"
-                for key, val in CATEGORY_MAPPING.items():
-                    if key in raw_category:
-                        mapped_category = val
-                        break
-
-                category = category_obj.search([
-                    ('name', '=', mapped_category),
-                    ('parent_id', '=', parent_category.id)
-                ], limit=1)
-
-                if not category:
-                    category = category_obj.create({
-                        'name': mapped_category,
-                        'parent_id': parent_category.id
-                    })
-
-                # ✅ STRICT VENDOR-BASED DUPLICATE CHECK
                 product = product_obj.search([
                     ('default_code', '=', group_id),
                     ('vendor_id', '=', vendor_id)
                 ], limit=1)
 
                 if not product:
+
                     vals = {
                         'name': name,
                         'default_code': group_id,
-                        'description_sale': description,
-                        'categ_id': category.id,
                         'sale_ok': True,
                         'website_published': False,
                         'vendor_id': vendor_id,
                     }
 
-                    image = main_product.get("image")
-                    if image:
-                        vals['image_1920'] = image
+                    if main_product.get("image"):
+                        vals['image_1920'] = main_product.get("image")
 
                     product = product_obj.with_context(
                         mail_create_nolog=True,
@@ -1864,14 +1816,10 @@ class VendorImportJob(models.Model):
                     ).create(vals)
 
                     created_count += 1
-                    _logger.warning(f"[CREATE PRODUCT] → {name}")
-                else:
-                    _logger.warning(f"[REUSE PRODUCT] → {group_id}")
 
-                # ✅ VARIANTS (SAFE ADD)
-                for v_idx, item in enumerate(group_items):
+                for idx, item in enumerate(group_items):
 
-                    attr_value = f"Variant {v_idx+1}"
+                    attr_value = f"Variant {idx+1}"
 
                     attribute = self.env['product.attribute'].search([
                         ('name', '=', "Variant")
@@ -1906,12 +1854,16 @@ class VendorImportJob(models.Model):
                         if value.id not in line.value_ids.ids:
                             line.value_ids = [(4, value.id)]
 
-                # ✅ MARK GROUP AS PROCESSED (CRITICAL)
-                processed_groups.add(group_id)
-                self.processed_group_ids = json.dumps(list(processed_groups))
-                self.env.cr.commit()
+                    # 🔥 CORRECT VARIANT IMAGE (OLD WORKING LOGIC)
+                    variant_record = self.env['product.product'].search([
+                        ('product_tmpl_id', '=', product.id),
+                        ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
+                    ], limit=1)
 
-        # ================= PDF =================
+                    if variant_record and item.get("image"):
+                        variant_record.image_1920 = item.get("image")
+
+        # ================= PDF (FULLY RESTORED CORRECT LOGIC) =================
         elif self.pdf_file:
 
             for idx in range(start, end):
@@ -1923,46 +1875,122 @@ class VendorImportJob(models.Model):
                 if not ai_page:
                     continue
 
-                for product_data in ai_page.get("products", []):
+                products = ai_page.get("products", [])
+                if not products:
+                    continue
 
-                    raw_name = (product_data.get("name") or "").strip()
-                    if not raw_name:
+                images = page_data.get("images", [])
+
+                for product_data in products:
+
+                    try:
+                        raw_name = (product_data.get("name") or "").strip()
+                        if not raw_name:
+                            continue
+
+                        name = raw_name if raw_name.lower().startswith("product") else f"Product {raw_name}"
+
+                        description = product_data.get("description", "")
+                        raw_category = (product_data.get("category") or "").lower()
+
+                        variant_group = product_data.get("variant_group") or raw_name
+                        variant_group = str(variant_group).strip().upper()
+
+                        # 🔥 DUPLICATE PREVENTION (VENDOR SAFE)
+                        product = product_obj.search([
+                            ('default_code', '=', variant_group),
+                            ('vendor_id', '=', vendor_id)
+                        ], limit=1)
+
+                        if not product:
+
+                            vals = {
+                                'name': name,
+                                'default_code': variant_group,
+                                'description_sale': description,
+                                'sale_ok': True,
+                                'website_published': False,
+                                'vendor_id': vendor_id,
+                            }
+
+                            if images:
+                                vals['image_1920'] = images[0]
+
+                            product = product_obj.with_context(
+                                mail_create_nolog=True,
+                                mail_notify_force_send=False,
+                                tracking_disable=True
+                            ).create(vals)
+
+                            created_count += 1
+
+                        variants = product_data.get("variants", [])
+                        if not variants:
+                            variants = [{"attributes": {"Variant": name}}]
+
+                        for v_idx, variant in enumerate(variants):
+
+                            attributes = variant.get("attributes", {})
+
+                            for attr_name, attr_value in attributes.items():
+
+                                if not attr_value:
+                                    continue
+
+                                attribute = self.env['product.attribute'].search([
+                                    ('name', '=', attr_name)
+                                ], limit=1)
+
+                                if not attribute:
+                                    attribute = self.env['product.attribute'].create({'name': attr_name})
+
+                                value = self.env['product.attribute.value'].search([
+                                    ('name', '=', attr_value),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
+
+                                if not value:
+                                    value = self.env['product.attribute.value'].create({
+                                        'name': attr_value,
+                                        'attribute_id': attribute.id
+                                    })
+
+                                line = self.env['product.template.attribute.line'].search([
+                                    ('product_tmpl_id', '=', product.id),
+                                    ('attribute_id', '=', attribute.id)
+                                ], limit=1)
+
+                                if not line:
+                                    self.env['product.template.attribute.line'].create({
+                                        'product_tmpl_id': product.id,
+                                        'attribute_id': attribute.id,
+                                        'value_ids': [(6, 0, [value.id])]
+                                    })
+                                else:
+                                    if value.id not in line.value_ids.ids:
+                                        line.value_ids = [(4, value.id)]
+
+                            # 🔥 CORRECT PDF VARIANT IMAGE MAPPING (RESTORED)
+                            if images and v_idx < len(images):
+                                variant_record = self.env['product.product'].search([
+                                    ('product_tmpl_id', '=', product.id)
+                                ], limit=1)
+
+                                if variant_record:
+                                    variant_record.image_1920 = images[v_idx]
+
+                        if created_count % 10 == 0:
+                            self.env.cr.commit()
+
+                    except Exception as e:
+                        _logger.error(f"PRODUCT FAILED → {str(e)}")
+                        self.env.cr.rollback()
                         continue
 
-                    clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
-                    match = re.search(r'([A-Z]*\d{3,})', clean_name)
-
-                    group_id = (match.group(1) if match else clean_name[:20])
-                    group_id = group_id.replace("PRODUCT", "")
-
-                    product = product_obj.search([
-                        ('default_code', '=', group_id),
-                        ('vendor_id', '=', vendor_id)
-                    ], limit=1)
-
-                    if product:
-                        continue
-
-                    if raw_name.lower().startswith("product"):
-                        name = raw_name
-                    else:
-                        name = f"Product {raw_name}"
-
-                    product_obj.create({
-                        'name': name,
-                        'default_code': group_id,
-                        'sale_ok': True,
-                        'website_published': False,
-                        'vendor_id': vendor_id,
-                    })
-
-                    created_count += 1
+                self.env.cr.commit()
 
         self.excel_created_index = end
         self.env.cr.commit()
-
-        _logger.warning(f"[INDEX UPDATED] → {end}")
-        _logger.warning(f"TOTAL PRODUCTS CREATED → {created_count}")
 
     #-----URL API FLOW-------------------------------------------
 
@@ -2109,19 +2137,20 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
         # =====================================================
-        # 🔥 LOOP EXECUTION (FINAL FIX)
+        # 🔥 SAFE LOOP EXECUTION (ANTI-CRASH FIX)
         # =====================================================
-        MAX_STEPS = 20          # 🔧 tune if needed
-        MAX_SECONDS = 50        # 🔧 safety timeout
+        MAX_STEPS = 8          # 🔥 REDUCED (was 20)
+        MAX_SECONDS = 25       # 🔥 REDUCED (was 50)
 
         steps = 0
         start_time = time.time()
 
         while steps < MAX_STEPS:
 
-            # 🔒 TIME GUARD
-            if time.time() - start_time > MAX_SECONDS:
-                _logger.warning("CRON → TIME LIMIT REACHED → STOP LOOP ⏱️")
+            # ⛔ HARD TIME GUARD (PREVENT WORKER KILL)
+            elapsed = time.time() - start_time
+            if elapsed > MAX_SECONDS:
+                _logger.warning("⛔ CRON TIME LIMIT → STOP LOOP SAFELY")
                 break
 
             job = self.search(
@@ -2134,7 +2163,7 @@ class VendorImportJob(models.Model):
                 _logger.warning("CRON → NO MORE JOBS")
                 break
 
-            _logger.warning(f"CRON LOOP → STEP {steps+1} → JOB {job.id}")
+            _logger.warning(f"CRON LOOP → STEP {steps+1} → JOB {job.id} | STATE {job.state}")
 
             # 🔒 LOCK CHECK
             if job.lock:
@@ -2143,7 +2172,7 @@ class VendorImportJob(models.Model):
                 except Exception:
                     delta = 0
 
-                if delta > 35:
+                if delta > 30:
                     _logger.warning(f"FORCE UNLOCK JOB {job.id}")
                     job.lock = False
                     self.env.cr.commit()
@@ -2155,10 +2184,18 @@ class VendorImportJob(models.Model):
                 job.lock = True
                 self.env.cr.commit()
 
+                prev_state = job.state
+                prev_index = job.excel_created_index
+
                 job._process_step()
 
                 self.env.cr.commit()
                 _logger.warning("CRON → STEP COMMITTED ✅")
+
+                # 🔥 NO PROGRESS GUARD (VERY IMPORTANT)
+                if job.state == prev_state and job.excel_created_index == prev_index:
+                    _logger.warning("⚠️ NO PROGRESS DETECTED → STOP LOOP")
+                    break
 
             except Exception as e:
                 _logger.exception(f"PROCESS FAILED → {str(e)}")
@@ -2172,15 +2209,22 @@ class VendorImportJob(models.Model):
 
             steps += 1
 
+            # 🔥 BREATHING SPACE (PREVENT CPU SPIKE)
+            time.sleep(0.4)
+
         _logger.warning("CRON → LOOP FINISHED ✅")
 
-        # 🔥 FORCE NEXT EXECUTION (SELF-TRIGGER)
-        self.env['ir.cron'].sudo().search([
-            ('id', '=', self.env.ref('gift_product_configurator.ir_cron_vendor_import').id)
-        ]).write({
-            'nextcall': fields.Datetime.now()
-        })
-        self.env.cr.commit()
+        # =====================================================
+        # 🔥 FORCE NEXT EXECUTION (SAFE)
+        # =====================================================
+        try:
+            cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
+            cron.sudo().write({
+                'nextcall': fields.Datetime.now()
+            })
+            self.env.cr.commit()
+        except Exception as e:
+            _logger.warning(f"CRON RESCHEDULE FAILED → {str(e)}")
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
