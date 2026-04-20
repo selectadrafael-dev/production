@@ -618,10 +618,8 @@ class VendorImportJob(models.Model):
         pdf_bytes = base64.b64decode(self.pdf_file)
 
         MAX_RETRIES = 3
-
-        # 🔥 BATCH CONFIG
         BATCH_SIZE = 1
-    
+
         all_pages = []
 
         try:
@@ -634,7 +632,6 @@ class VendorImportJob(models.Model):
         total_pages = len(doc)
         self.total_pages = total_pages
 
-        # 🔥 RESUME LOG (NEW)
         _logger.warning(f"RESUMING FROM PAGE → {self.current_page or 0}")
 
         start_page = self.current_page or 0
@@ -645,23 +642,8 @@ class VendorImportJob(models.Model):
 
         for i in range(start_page, end_page):
 
-            page = doc[i]
             _logger.warning(f"PROCESSING PAGE {i + 1}")
 
-            # ================= CREATE SINGLE PAGE PDF =================
-            try:
-                single_pdf = fitz.open()
-                single_pdf.insert_pdf(doc, from_page=i, to_page=i)
-
-                pdf_bytes_io = io.BytesIO()
-                single_pdf.save(pdf_bytes_io)
-                pdf_bytes_io.seek(0)
-
-            except Exception as e:
-                _logger.exception(f"FAILED TO SPLIT PAGE {i+1} → {str(e)}")
-                continue
-
-            # ================= CALL FLASK =================
             page_success = False
 
             for attempt in range(MAX_RETRIES):
@@ -669,74 +651,19 @@ class VendorImportJob(models.Model):
                 try:
                     _logger.warning(f"FLASK CALL PAGE {i+1} → ATTEMPT {attempt + 1}")
 
+                    # 🔥 CREATE FRESH FILE PER ATTEMPT (CRITICAL FIX)
+                    single_pdf = fitz.open()
+                    single_pdf.insert_pdf(doc, from_page=i, to_page=i)
+
+                    pdf_bytes_io = io.BytesIO()
+                    single_pdf.save(pdf_bytes_io)
+                    pdf_bytes_io.seek(0)
+
                     response = requests.post(
                         "https://pdf-extractor-staging.onrender.com/extract",
                         files={"file": ("page.pdf", pdf_bytes_io, "application/pdf")},
                         timeout=120
                     )
-
-                    # 👉 AFTER finishing with page (VERY IMPORTANT)
-                    # pdf_bytes_io.close()
-                    # single_pdf.close()
-
-                    try:
-                        _logger.warning(f"FLASK CALL PAGE {i+1} → ATTEMPT {attempt + 1}")
-
-                        response = requests.post(
-                            "https://pdf-extractor-staging.onrender.com/extract",
-                            files={"file": ("page.pdf", pdf_bytes_io, "application/pdf")},
-                            timeout=120
-                        )
-
-                        if response.status_code != 200:
-                            _logger.warning(f"FLASK ERROR PAGE {i+1}: {response.status_code}")
-                            continue
-
-                        page_data = response.json()
-
-                        if isinstance(page_data, dict):
-                            pages = page_data.get("pages", [])
-                        elif isinstance(page_data, list):
-                            pages = page_data
-                        else:
-                            pages = []
-
-                        if not pages:
-                            _logger.warning(f"EMPTY PAGE DATA PAGE {i+1}")
-                            continue
-
-                        _logger.warning(f"PAGE {i+1} → RECEIVED {len(pages)} BLOCKS")
-
-                        for p in pages:
-                            text = p.get("text", "")
-                            images = p.get("images", [])
-
-                            if not text and not images:
-                                continue
-
-                            all_pages.append({
-                                "page": i + 1,
-                                "text": text,
-                                "images": images
-                            })
-
-                        page_success = True
-                        break
-
-                    except Exception as e:
-                        _logger.exception(f"FLASK CALL FAILED PAGE {i+1} → {str(e)}")
-
-                    finally:
-                        # 🔥 ALWAYS RUNS (EVEN IF ERROR)
-                        try:
-                            pdf_bytes_io.close()
-                        except:
-                            pass
-
-                        try:
-                            single_pdf.close()
-                        except:
-                            pass
 
                     if response.status_code != 200:
                         _logger.warning(f"FLASK ERROR PAGE {i+1}: {response.status_code}")
@@ -779,12 +706,20 @@ class VendorImportJob(models.Model):
                 except Exception as e:
                     _logger.exception(f"FLASK CALL FAILED PAGE {i+1} → {str(e)}")
 
-                # time.sleep(5)
+                finally:
+                    # 🔥 SAFE CLOSE (NOW CORRECT)
+                    try:
+                        pdf_bytes_io.close()
+                    except:
+                        pass
+
+                    try:
+                        single_pdf.close()
+                    except:
+                        pass
 
             if not page_success:
                 _logger.error(f"PAGE {i+1} FAILED AFTER RETRIES")
-
-            # time.sleep(PAGE_DELAY)
 
         # ================= UPDATE PROGRESS =================
         self.current_page = end_page
@@ -812,22 +747,17 @@ class VendorImportJob(models.Model):
             self.state = "failed"
             return
 
-        # ================= 🔥 CRITICAL FIX =================
+        # ================= STATE CONTROL =================
 
         if self.current_page < total_pages:
 
             _logger.warning(f"JOB NOT FINISHED → NEXT START PAGE {self.current_page + 1}")
-
-            # 🔥 RETURN CONTROL TO PIPELINE (IMPORTANT)
             self.state = "processing"
 
         else:
 
             _logger.warning("ALL PAGES PROCESSED ✅")
-
-            # 🔥 MOVE TO AI (NOT DONE)
             self.state = "pdf_ai"
-
 
     # ---------------- OPENAI ----------------
     def send_to_openai_url(self):
