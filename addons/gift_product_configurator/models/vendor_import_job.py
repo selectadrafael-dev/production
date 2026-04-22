@@ -186,12 +186,15 @@ class VendorImportJob(models.Model):
                 # PDF
                 elif self.pdf_file:
 
-                    if not self.extracted_text:
+                    # STEP 1 → EXTRACTION
+                    if (self.current_page or 0) < (self.total_pages or 0):
                         self.state = 'pdf_extracting'
 
-                    elif not self.ai_response:
+                    # STEP 2 → AI
+                    elif (self.last_ai_page or 0) < (self.total_pages or 0):
                         self.state = 'pdf_ai'
 
+                    # STEP 3 → CREATE
                     else:
                         self.state = 'pdf_creating'
 
@@ -1446,7 +1449,15 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{total_pages}")
 
         # 🔥 merge previous + new (CRITICAL)
-        combined_pages = existing_pages + new_page_products
+        # combined_pages = existing_pages + new_page_products
+        # 🔥 PREVENT DUPLICATE PAGE MERGE
+        existing_map = {p.get("page"): p for p in existing_pages}
+        for p in new_page_products:
+            existing_map[p.get("page")] = p
+
+        combined_pages = list(existing_map.values())
+        combined_pages = sorted(combined_pages, key=lambda x: x.get("page", 0))
+        
         self.ai_response = json.dumps(combined_pages)
 
         _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{self.total_pages}")
