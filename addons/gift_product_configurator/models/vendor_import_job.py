@@ -348,38 +348,182 @@ class VendorImportJob(models.Model):
 
     def parse_url(self):
 
+        import json
+
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
 
         raw_data = self._run_apify_actor(self.data_url)
 
-        _logger.warning(f"RAW APIFY DATA SAMPLE → {str(raw_data)[:200]}")
+        # =====================================================
+        # APIFY STILL RUNNING
+        # =====================================================
 
-        # 🔥 VERY IMPORTANT FIX
         if raw_data is None:
-        
-            _logger.warning("APIFY NOT READY → STOP LOOP, WAIT NEXT CRON")
 
-            # 🔥 DO NOT CONTINUE LOOP
+            _logger.warning(
+                "APIFY NOT READY → WAIT NEXT CRON"
+            )
+
             self.state = "url_scraping"
 
-            # 🔥 HARD STOP THIS CYCLE
             return True
 
+        # =====================================================
+        # EMPTY RAW RESPONSE
+        # =====================================================
+
         if not raw_data:
-            _logger.error("APIFY FAILED → EMPTY DATASET")
+
+            _logger.error(
+                "APIFY FAILED → EMPTY DATASET"
+            )
+
+            self.state = "failed"
+
             return
 
-        structured_data = self._normalize_url_data(raw_data)
+        # =====================================================
+        # SAFE DEBUG LOG
+        # =====================================================
+
+        try:
+
+            _logger.warning(
+                f"RAW APIFY ITEMS → {len(raw_data)}"
+            )
+
+        except Exception:
+            pass
+
+        # =====================================================
+        # HANDLE STRUCTURED RESPONSES
+        # =====================================================
+
+        first = raw_data[0] if raw_data else {}
+
+        response_type = first.get("type")
+
+        # =====================================================
+        # BLOCKED
+        # =====================================================
+
+        if response_type == "BLOCKED":
+
+            reason = first.get(
+                "reason",
+                "Unknown block detected"
+            )
+
+            status_code = first.get(
+                "status_code"
+            )
+
+            _logger.error(
+                f"URL BLOCKED → {reason}"
+            )
+
+            if status_code:
+                _logger.error(
+                    f"BLOCK STATUS CODE → {status_code}"
+                )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # EMPTY
+        # =====================================================
+
+        if response_type == "EMPTY":
+
+            reason = first.get(
+                "reason",
+                "No products extracted"
+            )
+
+            _logger.error(
+                f"URL EXTRACTION EMPTY → {reason}"
+            )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # PRODUCTS
+        # =====================================================
+
+        structured_data = []
+
+        for block in raw_data:
+
+            if block.get("type") != "PRODUCTS":
+                continue
+
+            items = block.get("items", [])
+
+            if not items:
+                continue
+
+            structured_data.extend(items)
+
+        # =====================================================
+        # NO PRODUCTS AFTER PARSE
+        # =====================================================
 
         if not structured_data:
-            _logger.error("NORMALIZATION FAILED → EMPTY DATA")
+
+            _logger.error(
+                "NO VALID PRODUCTS FOUND AFTER PARSING"
+            )
+
+            self.state = "failed"
+
             return
 
-        # ✅ Convert to same format used by Excel/PDF
-        self.extracted_text = json.dumps(structured_data)
+        # =====================================================
+        # LIMIT SIZE (VERY IMPORTANT)
+        # =====================================================
 
-        _logger.warning(f"APIFY DONE → {len(structured_data)} ITEMS")
+        structured_data = structured_data[:40]
 
+        # =====================================================
+        # NORMALIZE
+        # =====================================================
+
+        normalized = self._normalize_url_data(
+            structured_data
+        )
+
+        if not normalized:
+
+            _logger.error(
+                "NORMALIZATION FAILED → EMPTY DATA"
+            )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # STORE SAFELY
+        # =====================================================
+
+        payload = json.dumps(normalized)
+
+        # 🔥 LIMIT STORAGE SIZE
+        self.extracted_text = payload[:50000]
+
+        _logger.warning(
+            f"APIFY DONE → {len(normalized)} ITEMS"
+        )
+
+        # =====================================================
+        # MOVE TO NEXT STEP
+        # =====================================================
+
+        self.state = "url_ai"
 
     #------excel parsing method---------------
 
