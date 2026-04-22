@@ -1437,9 +1437,9 @@ class VendorImportJob(models.Model):
                 "products": parsed
             })
 
-        # =====================================================
+        # =======================================================
         # 🔥 CRITICAL FIX → MOVE INDEX UPDATE OUTSIDE LOOP
-        # =====================================================
+        # =======================================================
         if end <= start:
             _logger.warning("🚨 FORCE AI INDEX MOVE")
             self.last_ai_page = start + 1
@@ -1457,7 +1457,7 @@ class VendorImportJob(models.Model):
 
         combined_pages = list(existing_map.values())
         combined_pages = sorted(combined_pages, key=lambda x: x.get("page", 0))
-        
+
         self.ai_response = json.dumps(combined_pages)
 
         _logger.warning(f"PDF AI PROGRESS → {self.last_ai_page}/{self.total_pages}")
