@@ -141,7 +141,7 @@ class VendorImportJob(models.Model):
 
         start_time = time.time()
         MAX_SECONDS = 10
-        MAX_LOOPS = 20
+        MAX_LOOPS = 5
 
         loops = 0
 
@@ -2617,8 +2617,11 @@ class VendorImportJob(models.Model):
         _logger.warning(f"APIFY ITEMS FETCHED → {len(data)}")
 
         if not data:
-            _logger.warning("APIFY RETURNED EMPTY → SKIP THIS URL")
-            return []
+            _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
+
+            self.state = 'done'   # 🔥 STOP LOOP COMPLETELY
+            self.env.cr.commit()
+            return
 
         # 🔥 CLEAN UP (IMPORTANT)
         self.apify_run_id = False
