@@ -79,6 +79,7 @@ class VendorImportJob(models.Model):
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
     processed_group_ids = fields.Text(default="[]")
+    url_total_batches = fields.Integer(default=0)
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -440,6 +441,7 @@ class VendorImportJob(models.Model):
         return True
 
     #------------parse url------------------------------------
+
     def parse_url(self):
 
         _logger.warning(f"APIFY SCRAPE → {self.data_url}")
@@ -798,7 +800,7 @@ class VendorImportJob(models.Model):
 
         import re
         import json
-
+        import math
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
 
@@ -807,6 +809,7 @@ class VendorImportJob(models.Model):
 
         client = OpenAI(api_key=api_key)
 
+        # ================= LOAD PAGES =================
         try:
             pages = json.loads(self.extracted_text or "[]")
         except Exception:
@@ -821,16 +824,17 @@ class VendorImportJob(models.Model):
         existing_products = []
         if self.ai_response:
             try:
-                existing_products = json.loads(self.ai_response)
-            except:
+                data = json.loads(self.ai_response)
+                if isinstance(data, list):
+                    existing_products = data
+            except Exception as e:
+                _logger.warning(f"AI RESPONSE LOAD FAILED → {str(e)}")
                 existing_products = []
 
-        current_batch = getattr(self, "url_batch_index", 0)
+        current_batch = self.url_batch_index or 0
 
         # ================= FLATTEN =================
-        all_blocks = [
-            b for p in pages for b in p.get("blocks", [])
-        ]
+        all_blocks = [b for p in pages for b in p.get("blocks", [])]
 
         _logger.warning(f"RAW BLOCKS → {len(all_blocks)}")
 
@@ -840,11 +844,10 @@ class VendorImportJob(models.Model):
         _logger.warning(f"CLEAN BLOCKS → {len(cleaned_blocks)}")
         _logger.warning(f"REMOVED BLOCKS → {len(all_blocks) - len(cleaned_blocks)}")
 
-        # Sort for consistency
         cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
 
         # ================= BATCH =================
-        BLOCK_BATCH_SIZE = 8  # 🔥 SAFE for memory
+        BLOCK_BATCH_SIZE = 8
 
         batched_blocks = [
             cleaned_blocks[i:i + BLOCK_BATCH_SIZE]
@@ -860,6 +863,7 @@ class VendorImportJob(models.Model):
         # ================= STOP IF DONE =================
         if current_batch >= total_batches:
             _logger.warning("ALL URL BATCHES PROCESSED ✅")
+            self.state = "url_creating"
             return
 
         # ================= PROCESS ONE BATCH =================
@@ -868,7 +872,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PROCESSING BLOCK COUNT → {len(block_batch)}")
         _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
 
-        # 🔥 DO NOT LIMIT AGAIN (FIXED)
         combined_text = "\n\n---\n\n".join([
             f"{b.get('text','')}\nIMAGE_URL: {b.get('image','')}"
             for b in block_batch
@@ -876,9 +879,9 @@ class VendorImportJob(models.Model):
 
         if not combined_text.strip():
             _logger.warning("EMPTY COMBINED TEXT → SKIP")
+            self.url_batch_index += 1
             return
 
-        # ================= SAFETY LIMIT =================
         if len(combined_text) > 15000:
             combined_text = combined_text[:15000]
             _logger.warning("TEXT TRIMMED → PREVENT TOKEN OVERFLOW")
@@ -990,10 +993,13 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(f"AI RETURNED → {len(cleaned)} PRODUCTS")
 
-                if len(cleaned) < 5:
-                    _logger.warning("⚠️ LOW EXTRACTION → CHECK BLOCK QUALITY")
+                # 🔥 DEDUPE BY NAME
+                existing_map = {p.get("name"): p for p in existing_products}
 
-                existing_products.extend(cleaned)
+                for p in cleaned:
+                    existing_map[p.get("name")] = p
+
+                existing_products = list(existing_map.values())
 
                 _logger.warning(f"TOTAL ACCUMULATED → {len(existing_products)}")
 
@@ -1004,24 +1010,24 @@ class VendorImportJob(models.Model):
             _logger.warning(f"AI ERROR → {str(e)}")
             return
 
-        # ================= SAVE PROGRESS =================
+        # ================= SAVE =================
         self.ai_response = json.dumps(existing_products)
         self.url_batch_index = current_batch + 1
 
         _logger.warning(f"URL AI PROGRESS → {self.url_batch_index}/{self.url_total_batches}")
 
-        # 🔥 STATE CONTROL (CRITICAL)
+        # ================= STATE =================
         if self.url_batch_index < self.url_total_batches:
             self.state = "url_ai"
         else:
             _logger.warning("URL AI FINISHED ALL BATCHES")
             self.state = "url_creating"
 
-        _logger.warning(f"NEXT BATCH INDEX → {self.url_batch_index}")
+        # 🔥 IMPORTANT: COMMIT FOR CRON CONTINUITY
+        self.env.cr.commit()
 
-        # ================= SAFE EXIT =================
-        _logger.warning("CRON EXIT → CONTINUE NEXT RUN")
         return
+
 
     #===========pdf and excel open ai OPENAI=========================
 
