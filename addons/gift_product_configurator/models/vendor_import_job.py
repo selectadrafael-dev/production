@@ -136,249 +136,213 @@ class VendorImportJob(models.Model):
 
     def _process_step(self):
 
-        import time
         import json
 
-        start_time = time.time()
-        MAX_SECONDS = 10
-        MAX_LOOPS = 5
+        _logger.warning(f"[PROCESS STEP] → state={self.state}")
 
-        loops = 0
+        # =====================================================
+        # STOP IF DONE
+        # =====================================================
+        if self.state == 'done':
+            _logger.warning(f"JOB {self.id} ALREADY DONE ✅")
+            return
 
-        while loops < MAX_LOOPS:
+        # =====================================================
+        # FIX STUCK REVIEW STATE
+        # =====================================================
+        if self.state == 'review':
+            self.state = 'processing'
+            return
 
-            loops += 1
+        # =====================================================
+        # ENTRY POINT
+        # =====================================================
+        if self.state == 'processing':
 
-            _logger.warning(f"[STEP LOOP] → iteration {loops} | state={self.state}")
+            _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
 
-            # 🔥 CRITICAL: STOP IMMEDIATELY IF DONE
-            if self.state == 'done':
-                _logger.warning(f"JOB {self.id} COMPLETED ✅ → EXIT LOOP")
-                break
-
-            prev_state = self.state
-            prev_created = self.excel_created_index
-            prev_processed = self.last_processed_product_index
-            prev_page = self.current_page or 0
-            prev_ai = self.last_ai_page or 0
-
-            # =====================================================
-            # FIX STUCK STATE
-            # =====================================================
-            if self.state == 'review':
-                self.state = 'processing'
-                self.env.cr.commit()
-                continue
-
-            # =====================================================
-            # ENTRY POINT
-            # =====================================================
-            if self.state == 'processing':
-
-                _logger.warning("STATE = PROCESSING → RESUME WORKFLOW")
-
-                if self.excel_file and not self.pdf_file:
-                    if not self.is_excel_parsed:
-                        self.state = 'excel_parsing'
-                    elif not self.ai_response:
-                        self.state = 'excel_ai'
-                    else:
-                        self.state = 'excel_creating'
-
-                elif self.pdf_file:
-                    if (self.current_page or 0) < (self.total_pages or 0):
-                        self.state = 'pdf_extracting'
-                    elif (self.last_ai_page or 0) < (self.total_pages or 0):
-                        self.state = 'pdf_ai'
-                    else:
-                        self.state = 'pdf_creating'
-
-                elif self.data_url:
-                    self.state = 'url_scraping'
-
-                self.env.cr.commit()
-                continue
-
-            # =====================================================
-            # 🔵 URL FLOW
-            # =====================================================
-            if self.data_url:
-
-                if self.state == 'draft':
-                    self.state = 'url_scraping'
-                    self.env.cr.commit()
-                    continue
-
-                if self.state == 'url_scraping':
-
-                    result = self.parse_url()
-
-                    # 🔥 FIX: DO NOT RETURN → JUST BREAK LOOP
-                    if result is True:
-                        _logger.warning("APIFY NOT READY → EXIT STEP LOOP")
-                        break
-
-                    if self.extracted_text:
-                        self.state = 'url_ai'
-                    else:
-                        self.state = 'processing'
-
-                    self.env.cr.commit()
-                    continue
-
-                if self.state == 'url_ai':
-
-                    self.send_to_openai_url()
-                    self.env.cr.commit()
-                    continue
-
-                if self.state == 'url_creating':
-
-                    if not self.ai_response:
-                        _logger.warning("URL CREATE SKIPPED → NO AI DATA")
-                        self.state = 'done'
-                        self.env.cr.commit()
-                        break
-
-                    self.create_products_url()
-
-                    try:
-                        total = len(json.loads(self.ai_response or "[]"))
-                    except:
-                        total = 0
-
-                    _logger.warning(f"[URL CREATE CHECK] → {self.last_processed_product_index}/{total}")
-
-                    if (self.last_processed_product_index or 0) >= total:
-                        _logger.warning("URL CREATE COMPLETE ✅")
-                        self.state = 'done'
-                        self.env.cr.commit()
-                        break
-                    else:
-                        self.state = 'url_creating'
-
-                    self.env.cr.commit()
-                    continue
-
-            # =====================================================
-            # 🔵 EXCEL FLOW (UNCHANGED)
-            # =====================================================
+            # ================= EXCEL =================
             if self.excel_file and not self.pdf_file:
 
-                if self.state == 'draft':
+                if not self.is_excel_parsed:
                     self.state = 'excel_parsing'
-                    self.env.cr.commit()
-                    continue
+                elif not self.ai_response:
+                    self.state = 'excel_ai'
+                else:
+                    self.state = 'excel_creating'
 
-                if self.state == 'excel_parsing':
+                return
 
-                    self.parse_excel()
+            # ================= PDF =================
+            elif self.pdf_file:
 
-                    if self.last_processed_product_index > (self.excel_ai_index or 0):
-                        self.state = 'excel_ai'
-                    else:
-                        self.state = 'processing'
-
-                    self.env.cr.commit()
-                    continue
-
-                if self.state == 'excel_ai':
-
-                    try:
-                        self.send_to_openai_pdf_excel()
-                    except Exception as e:
-                        _logger.error(f"AI ERROR → {str(e)}")
-                        self.state = 'processing'
-                        self.env.cr.commit()
-                        continue
-
-                    self.env.cr.commit()
-                    continue
-
-                if self.state == 'excel_creating':
-
-                    self.create_products_pdf_excel()
-
-                    total_rows = self.last_processed_product_index or 0
-
-                    if self.excel_created_index >= total_rows:
-                        if self.is_excel_parsed:
-                            self.state = 'done'
-                            _logger.warning("EXCEL COMPLETE → EXIT LOOP")
-                            self.env.cr.commit()
-                            break
-                        else:
-                            self.state = 'processing'
-                    else:
-                        self.state = 'excel_ai'
-
-                    self.env.cr.commit()
-                    continue
-
-            # ======================================================
-            # 🔵 PDF FLOW (UNCHANGED)
-            # ======================================================
-            if self.pdf_file:
-
-                if self.state == 'draft':
+                if (self.current_page or 0) < (self.total_pages or 0):
                     self.state = 'pdf_extracting'
-                    self.env.cr.commit()
-                    continue
 
-                if self.state == 'pdf_extracting':
+                elif (self.last_ai_page or 0) < (self.total_pages or 0):
+                    self.state = 'pdf_ai'
 
-                    self.extract_pdf()
+                else:
+                    self.state = 'pdf_creating'
 
-                    if self.current_page >= self.total_pages:
-                        self.state = 'pdf_ai'
+                return
 
-                    self.env.cr.commit()
-                    continue
+            # ================= URL =================
+            elif self.data_url:
+                self.state = 'url_scraping'
+                return
 
-                if self.state == 'pdf_ai':
+        # =====================================================
+        # 🔵 URL FLOW
+        # =====================================================
+        if self.data_url:
 
+            # ================= START =================
+            if self.state == 'draft':
+                self.state = 'url_scraping'
+                return
+
+            # ================= SCRAPE =================
+            if self.state == 'url_scraping':
+
+                result = self.parse_url()
+
+                # 🔥 APIFY STILL RUNNING
+                if result is True:
+                    _logger.warning("APIFY STILL RUNNING → WAIT NEXT CRON")
+                    return
+
+                # 🔥 EXTRACTION SUCCESS
+                if self.extracted_text:
+                    self.state = 'url_ai'
+                else:
+                    # 🔥 EMPTY EXTRACTION = FAIL
+                    self.state = 'failed'
+                    _logger.warning("URL EXTRACTION FAILED → NO DATA")
+
+                return
+
+            # ================= AI =================
+            if self.state == 'url_ai':
+
+                self.send_to_openai_url()
+
+                return
+
+            # ================= CREATE =================
+            if self.state == 'url_creating':
+
+                if not self.ai_response:
+                    _logger.warning("URL CREATE FAILED → NO AI RESPONSE")
+                    self.state = 'failed'
+                    return
+
+                self.create_products_url()
+
+                try:
+                    total = len(json.loads(self.ai_response or "[]"))
+                except:
+                    total = 0
+
+                _logger.warning(
+                    f"[URL CREATE CHECK] → "
+                    f"{self.last_processed_product_index}/{total}"
+                )
+
+                if (self.last_processed_product_index or 0) >= total:
+                    self.state = 'done'
+                    _logger.warning("URL CREATE COMPLETE ✅")
+
+                return
+
+        # =====================================================
+        # 🔵 EXCEL FLOW
+        # =====================================================
+        if self.excel_file and not self.pdf_file:
+
+            if self.state == 'draft':
+                self.state = 'excel_parsing'
+                return
+
+            if self.state == 'excel_parsing':
+
+                self.parse_excel()
+
+                if self.last_processed_product_index > (self.excel_ai_index or 0):
+                    self.state = 'excel_ai'
+                else:
+                    self.state = 'processing'
+
+                return
+
+            if self.state == 'excel_ai':
+
+                try:
                     self.send_to_openai_pdf_excel()
+                except Exception as e:
+                    _logger.error(f"AI ERROR → {str(e)}")
+                    self.state = 'processing'
 
-                    if self.last_ai_page >= self.total_pages:
-                        self.state = 'pdf_creating'
+                return
 
-                    self.env.cr.commit()
-                    continue
+            if self.state == 'excel_creating':
 
-                if self.state == 'pdf_creating':
+                self.create_products_pdf_excel()
 
-                    self.create_products_pdf_excel()
+                total_rows = self.last_processed_product_index or 0
 
-                    total = self.total_pages or 0
+                if self.excel_created_index >= total_rows:
 
-                    if self.excel_created_index >= total:
+                    if self.is_excel_parsed:
                         self.state = 'done'
+                        _logger.warning("EXCEL COMPLETE ✅")
 
-                    self.env.cr.commit()
-                    continue
+                    else:
+                        self.state = 'processing'
 
-            # =====================================================
-            # LOOP CONTROL
-            # =====================================================
-            elapsed = time.time() - start_time
+                else:
+                    self.state = 'excel_ai'
 
-            time.sleep(0.5)
+                return
 
-            if elapsed > MAX_SECONDS:
-                _logger.warning("TIME LIMIT REACHED → EXIT LOOP")
-                break
+        # =====================================================
+        # 🔵 PDF FLOW
+        # =====================================================
+        if self.pdf_file:
 
-            if (
-                self.state == prev_state and
-                self.excel_created_index == prev_created and
-                self.last_processed_product_index == prev_processed and
-                (self.current_page or 0) == prev_page and
-                (self.last_ai_page or 0) == prev_ai
-            ):
-                _logger.warning("NO PROGRESS → EXIT LOOP")
-                break
+            if self.state == 'draft':
+                self.state = 'pdf_extracting'
+                return
 
-        return
+            if self.state == 'pdf_extracting':
+
+                self.extract_pdf()
+
+                if self.current_page >= self.total_pages:
+                    self.state = 'pdf_ai'
+
+                return
+
+            if self.state == 'pdf_ai':
+
+                self.send_to_openai_pdf_excel()
+
+                if self.last_ai_page >= self.total_pages:
+                    self.state = 'pdf_creating'
+
+                return
+
+            if self.state == 'pdf_creating':
+
+                self.create_products_pdf_excel()
+
+                total = self.total_pages or 0
+
+                if self.excel_created_index >= total:
+                    self.state = 'done'
+                    _logger.warning("PDF COMPLETE ✅")
+
+                return
 
     #------------parse url------------------------------------
 
@@ -2250,7 +2214,6 @@ class VendorImportJob(models.Model):
 
     def run_pending_jobs(self):
 
-        import time
         from odoo import fields
 
         _logger.warning("🔥 CRON HEARTBEAT → RUNNING")
@@ -2274,13 +2237,17 @@ class VendorImportJob(models.Model):
         duplicates = self.env['vendor.import.job']
 
         for j in jobs:
+
             sig = j.upload_signature
+
             if not sig:
                 continue
 
             if sig not in seen:
                 seen[sig] = j
+
             else:
+
                 if j.id > seen[sig].id:
                     duplicates |= seen[sig]
                     seen[sig] = j
@@ -2292,94 +2259,84 @@ class VendorImportJob(models.Model):
             duplicates.unlink()
             self.env.cr.commit()
 
-        # ================= SAFE LOOP =================
-        MAX_STEPS = 12
-        MAX_SECONDS = 25
+        # =====================================================
+        # PROCESS ONLY ONE JOB PER CRON RUN
+        # =====================================================
 
-        steps = 0
-        start_time = time.time()
+        job = self.search(
+            [('state', 'in', active_states)],
+            order="id desc",
+            limit=1
+        )
 
-        while steps < MAX_STEPS:
+        if not job:
+            _logger.warning("CRON → NO MORE JOBS")
+            return
 
-            if time.time() - start_time > MAX_SECONDS:
-                _logger.warning("⛔ CRON TIME LIMIT → STOP LOOP SAFELY")
-                break
+        _logger.warning(
+            f"CRON → PROCESS JOB {job.id} | STATE {job.state}"
+        )
 
-            job = self.search(
-                [('state', 'in', active_states)],
-                order="id desc",
-                limit=1
-            )
+        # ================= LOCK HANDLING =================
 
-            if not job:
-                _logger.warning("CRON → NO MORE JOBS")
-                break
-
-            _logger.warning(f"CRON LOOP → STEP {steps+1} → JOB {job.id} | STATE {job.state}")
-
-            # ================= LOCK HANDLING =================
-            if job.lock:
-                try:
-                    delta = (fields.Datetime.now() - job.write_date).total_seconds()
-                except:
-                    delta = 0
-
-                if delta > 30:
-                    _logger.warning(f"FORCE UNLOCK JOB {job.id}")
-                    job.lock = False
-                else:
-                    _logger.warning(f"JOB {job.id} LOCKED → SKIP THIS RUN")
-                    break
+        if job.lock:
 
             try:
-                # 🔥 SET LOCK (NO COMMIT HERE)
-                job.lock = True
+                delta = (
+                    fields.Datetime.now() - job.write_date
+                ).total_seconds()
 
-                # TRACK PROGRESS
-                prev_state = job.state
-                prev_excel = job.excel_created_index
-                prev_processed = job.last_processed_product_index
-                prev_page = job.current_page or 0
-                prev_ai = job.last_ai_page or 0
-                prev_url_batch = job.url_batch_index or 0
+            except:
+                delta = 0
 
-                # 🔥 SAFE EXECUTION
-                try:
-                    job._process_step()
+            if delta > 30:
 
-                    # ✅ ONLY COMMIT HERE
-                    self.env.cr.commit()
+                _logger.warning(
+                    f"FORCE UNLOCK JOB {job.id}"
+                )
 
-                    _logger.warning("CRON → STEP COMMITTED ✅")
-
-                except Exception as e:
-                    _logger.exception(f"CRON STEP FAILED → {str(e)}")
-
-                    self.env.cr.rollback()
-                    job.state = 'failed'
-
-                # 🔥 NO PROGRESS CHECK
-                if (
-                    job.state == prev_state and
-                    job.excel_created_index == prev_excel and
-                    job.last_processed_product_index == prev_processed and
-                    (job.current_page or 0) == prev_page and
-                    (job.last_ai_page or 0) == prev_ai and
-                    (job.url_batch_index or 0) == prev_url_batch and
-                    job.state != 'url_scraping'
-                ):
-                    _logger.warning("⚠️ NO PROGRESS → BREAK LOOP (SAFE)")
-                    break
-
-            finally:
-                # 🔥 ALWAYS UNLOCK (NO COMMIT HERE)
                 job.lock = False
-                _logger.warning("CRON → JOB UNLOCKED 🔓")
 
-            steps += 1
-            time.sleep(0.4)
+            else:
 
-        _logger.warning("CRON → LOOP FINISHED ✅")
+                _logger.warning(
+                    f"JOB {job.id} LOCKED → SKIP THIS RUN"
+                )
+
+                return
+
+        try:
+
+            # 🔥 LOCK
+            job.lock = True
+
+            # 🔥 PROCESS SINGLE STEP
+            job._process_step()
+
+            # 🔥 SINGLE SAFE COMMIT
+            self.env.cr.commit()
+
+            _logger.warning("CRON → STEP COMMITTED ✅")
+
+        except Exception as e:
+
+            self.env.cr.rollback()
+
+            _logger.exception(
+                f"CRON STEP FAILED → {str(e)}"
+            )
+
+            job.state = 'failed'
+
+        finally:
+
+            # 🔥 ALWAYS UNLOCK
+            job.lock = False
+
+            self.env.cr.commit()
+
+            _logger.warning("CRON → JOB UNLOCKED 🔓")
+
         _logger.warning("CRON → COMPLETED RUN")
 
         return
@@ -2393,6 +2350,7 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("FLASK PING FAILED")
 
+  
     #---------------normalizer-------------------------------
    
     def _normalize_url_data(self, items):
