@@ -145,7 +145,7 @@ class VendorImportJob(models.Model):
 
         loops = 0
 
-        while True:
+        while loops < MAX_LOOPS:
 
             loops += 1
 
@@ -225,7 +225,7 @@ class VendorImportJob(models.Model):
 
                     # 🔥 CRITICAL: STOP LOOP IF APIFY NOT READY
                     if result is True:
-                        return True
+                       return
 
                     if self.extracted_text:
                         self.state = 'url_ai'
@@ -251,7 +251,7 @@ class VendorImportJob(models.Model):
                     if not self.ai_response:
                         _logger.warning("URL CREATE SKIPPED → NO AI DATA")
                         self.state = 'done'
-                        return True
+                        return
 
                     self.create_products_url()
 
@@ -265,7 +265,7 @@ class VendorImportJob(models.Model):
                     if (self.last_processed_product_index or 0) >= total:
                         _logger.warning("URL CREATE COMPLETE ✅")
                         self.state = 'done'
-                        return True
+                        return
                     else:
                         # 🔥 CONTINUE ONLY IF WORK REMAINS
                         if self.last_processed_product_index < total:
@@ -330,7 +330,7 @@ class VendorImportJob(models.Model):
                         if self.is_excel_parsed:
                             self.state = 'done'
                             _logger.warning("EXCEL COMPLETE → FORCE EXIT")
-                            return True
+                            return
                         else:
                             self.state = 'processing'
 
@@ -411,7 +411,7 @@ class VendorImportJob(models.Model):
             # =====================================================
             if self.state == 'done':
                 _logger.warning(f"JOB {self.id} COMPLETED ✅")
-                return True
+                return
 
             # =====================================================
             # LOOP CONTROL (FIXED)
@@ -438,7 +438,7 @@ class VendorImportJob(models.Model):
                 _logger.warning("NO PROGRESS → EXIT LOOP")
                 break
 
-        return True
+        return
 
     #------------parse url------------------------------------
 
@@ -2311,12 +2311,10 @@ class VendorImportJob(models.Model):
     def run_pending_jobs(self):
 
         import time
-        from datetime import timedelta
         from odoo import fields
 
         _logger.warning("🔥 CRON HEARTBEAT → RUNNING")
 
-        # 🔥 ACTIVE STATES
         active_states = [
             'draft', 'processing',
             'excel_parsing', 'excel_ai', 'excel_creating',
@@ -2324,13 +2322,8 @@ class VendorImportJob(models.Model):
             'url_scraping', 'url_ai', 'url_creating'
         ]
 
-        # =====================================================
-        # 🔥 REMOVE DUPLICATES (SAFE)
-        # =====================================================
-        jobs = self.search(
-            [('state', 'in', active_states)],
-            order="id desc"
-        )
+        # ================= REMOVE DUPLICATES =================
+        jobs = self.search([('state', 'in', active_states)], order="id desc")
 
         _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
 
@@ -2339,7 +2332,6 @@ class VendorImportJob(models.Model):
 
         for j in jobs:
             sig = j.upload_signature
-
             if not sig:
                 continue
 
@@ -2357,10 +2349,7 @@ class VendorImportJob(models.Model):
             duplicates.unlink()
             self.env.cr.commit()
 
-        # =====================================================
-        # 🔥 SAFE LOOP EXECUTION (ANTI-CRASH)
-        # =====================================================
-      
+        # ================= SAFE LOOP =================
         MAX_STEPS = 12
         MAX_SECONDS = 25
 
@@ -2369,8 +2358,7 @@ class VendorImportJob(models.Model):
 
         while steps < MAX_STEPS:
 
-            elapsed = time.time() - start_time
-            if elapsed > MAX_SECONDS:
+            if time.time() - start_time > MAX_SECONDS:
                 _logger.warning("⛔ CRON TIME LIMIT → STOP LOOP SAFELY")
                 break
 
@@ -2386,11 +2374,11 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"CRON LOOP → STEP {steps+1} → JOB {job.id} | STATE {job.state}")
 
-            # 🔒 LOCK CHECK
+            # LOCK HANDLING
             if job.lock:
                 try:
                     delta = (fields.Datetime.now() - job.write_date).total_seconds()
-                except Exception:
+                except:
                     delta = 0
 
                 if delta > 30:
@@ -2398,14 +2386,14 @@ class VendorImportJob(models.Model):
                     job.lock = False
                     self.env.cr.commit()
                 else:
-                    _logger.warning(f"JOB {job.id} LOCKED → STOP LOOP")
+                    _logger.warning(f"JOB {job.id} LOCKED → SKIP THIS RUN")
                     break
 
             try:
                 job.lock = True
                 self.env.cr.commit()
 
-                # 🔥 TRACK PROGRESS FOR ALL FLOWS (EXCEL + PDF + URL)
+                # TRACK PROGRESS
                 prev_state = job.state
                 prev_excel = job.excel_created_index
                 prev_processed = job.last_processed_product_index
@@ -2414,14 +2402,11 @@ class VendorImportJob(models.Model):
                 prev_url_batch = job.url_batch_index or 0
 
                 job._process_step()
-
                 self.env.cr.commit()
+
                 _logger.warning("CRON → STEP COMMITTED ✅")
 
-                # =====================================================
-                # 🔥 NO PROGRESS GUARD (FIXED FOR ALL FLOWS)
-                # =====================================================
-
+                # 🔥 NO PROGRESS → BREAK (NOT RETURN)
                 if (
                     job.state == prev_state and
                     job.excel_created_index == prev_excel and
@@ -2429,9 +2414,9 @@ class VendorImportJob(models.Model):
                     (job.current_page or 0) == prev_page and
                     (job.last_ai_page or 0) == prev_ai and
                     (job.url_batch_index or 0) == prev_url_batch and
-                    job.state != 'url_scraping'   # 🔥 ALLOW WAITING STATE
+                    job.state != 'url_scraping'
                 ):
-                    _logger.warning("⚠️ NO PROGRESS DETECTED → STOP LOOP")
+                    _logger.warning("⚠️ NO PROGRESS → BREAK LOOP (SAFE)")
                     break
 
             except Exception as e:
@@ -2445,30 +2430,11 @@ class VendorImportJob(models.Model):
                 _logger.warning("CRON → JOB UNLOCKED 🔓")
 
             steps += 1
-
-            # 🔥 SMALL DELAY (CPU PROTECTION)
             time.sleep(0.4)
 
         _logger.warning("CRON → LOOP FINISHED ✅")
-
-        #=========next cron call==============
-        try:
-            cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
-
-            # 🔥 ONLY UPDATE IF STUCK
-            if cron.nextcall and cron.nextcall < fields.Datetime.now():
-                next_time = fields.Datetime.now() + timedelta(seconds=60)
-
-                cron.sudo().write({
-                    'nextcall': next_time
-                })
-
-                self.env.cr.commit()
-
-                _logger.warning(f"CRON → RECOVERED NEXTCALL → {next_time}")
-
-        except Exception as e:
-            _logger.warning(f"CRON → NEXTCALL RECOVERY FAILED → {str(e)}")
+        _logger.warning("CRON → COMPLETED RUN")
+        return
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
@@ -2651,7 +2617,8 @@ class VendorImportJob(models.Model):
         _logger.warning(f"APIFY ITEMS FETCHED → {len(data)}")
 
         if not data:
-            raise Exception("Apify returned empty dataset")
+            _logger.warning("APIFY RETURNED EMPTY → SKIP THIS URL")
+            return []
 
         # 🔥 CLEAN UP (IMPORTANT)
         self.apify_run_id = False
