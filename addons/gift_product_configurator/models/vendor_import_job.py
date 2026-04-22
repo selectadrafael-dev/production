@@ -217,10 +217,14 @@ class VendorImportJob(models.Model):
                     self.env.cr.commit()
                     continue
 
-                # STEP 2 → SCRAPE
+                # STEP 2 → SCRAPE (ASYNC SAFE)
                 if self.state == 'url_scraping':
 
-                    self.parse_url()
+                    result = self.parse_url()
+
+                    # 🔥 CRITICAL: STOP LOOP IF APIFY NOT READY
+                    if result is True:
+                        return True
 
                     if self.extracted_text:
                         self.state = 'url_ai'
@@ -230,23 +234,23 @@ class VendorImportJob(models.Model):
                     self.env.cr.commit()
                     continue
 
-                # STEP 3 → AI (BATCHED)
+                # STEP 3 → AI (BATCHED, STATE CONTROLLED INTERNALLY)
                 if self.state == 'url_ai':
 
                     self.send_to_openai_url()
 
-                    # 🔥 STAY IN AI UNTIL ALL BATCHES DONE
-                    if (self.url_batch_index or 0) < (getattr(self, "url_total_batches", 0)):
-                        self.state = 'url_ai'
-                    else:
-                        _logger.warning("URL AI COMPLETE → MOVING TO CREATE")
-                        self.state = 'url_creating'
-
+                    # 🔥 DO NOT OVERRIDE STATE — AI METHOD CONTROLS FLOW
                     self.env.cr.commit()
                     continue
 
                 # STEP 4 → CREATE (BATCHED)
                 if self.state == 'url_creating':
+
+                    # 🔥 SAFETY: NO AI DATA
+                    if not self.ai_response:
+                        _logger.warning("URL CREATE SKIPPED → NO AI DATA")
+                        self.state = 'done'
+                        return True
 
                     self.create_products_url()
 
@@ -262,12 +266,12 @@ class VendorImportJob(models.Model):
                         self.state = 'done'
                         return True
                     else:
-                        # 🔥 CONTINUE CREATING
-                        self.state = 'url_creating'
+                        # 🔥 CONTINUE ONLY IF WORK REMAINS
+                        if self.last_processed_product_index < total:
+                            self.state = 'url_creating'
 
                     self.env.cr.commit()
                     continue
-
 
             # =====================================================
             # 🔵 EXCEL FLOW (UNCHANGED)
@@ -446,8 +450,14 @@ class VendorImportJob(models.Model):
 
         # 🔥 VERY IMPORTANT FIX
         if raw_data is None:
-            _logger.warning("APIFY NOT READY → WAIT NEXT CRON")
-            return
+        
+            _logger.warning("APIFY NOT READY → STOP LOOP, WAIT NEXT CRON")
+
+            # 🔥 DO NOT CONTINUE LOOP
+            self.state = "url_scraping"
+
+            # 🔥 HARD STOP THIS CYCLE
+            return True
 
         if not raw_data:
             _logger.error("APIFY FAILED → EMPTY DATASET")
@@ -2297,6 +2307,8 @@ class VendorImportJob(models.Model):
         import time
         from datetime import timedelta
         from odoo import fields
+
+        _logger.warning("🔥 CRON HEARTBEAT → RUNNING")
 
         # 🔥 ACTIVE STATES
         active_states = [
