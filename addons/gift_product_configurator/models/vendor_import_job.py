@@ -256,13 +256,16 @@ class VendorImportJob(models.Model):
             # =====================================================
             # 🔵 EXCEL FLOW (UNCHANGED)
             # =====================================================
+
             if self.excel_file and not self.pdf_file:
 
+                # STEP 1 → START
                 if self.state == 'draft':
                     self.state = 'excel_parsing'
                     self.env.cr.commit()
                     continue
 
+                # STEP 2 → PARSE
                 if self.state == 'excel_parsing':
 
                     self.parse_excel()
@@ -275,6 +278,7 @@ class VendorImportJob(models.Model):
                     self.env.cr.commit()
                     continue
 
+                # STEP 3 → AI
                 if self.state == 'excel_ai':
 
                     try:
@@ -285,14 +289,11 @@ class VendorImportJob(models.Model):
                         self.env.cr.commit()
                         continue
 
-                    if self.state == 'processing':
-                        self.env.cr.commit()
-                        continue
-
-                    self.state = 'excel_creating'
+                    # 🔥 CRITICAL FIX → RESPECT STATE SET INSIDE AI METHOD
                     self.env.cr.commit()
                     continue
 
+                # STEP 4 → CREATE
                 if self.state == 'excel_creating':
 
                     self.create_products_pdf_excel()
@@ -302,14 +303,18 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"[FLOW CHECK] created_index → {self.excel_created_index}")
                     _logger.warning(f"[FLOW CHECK] total_rows → {total_rows}")
 
+                    # 🔥 FINAL COMPLETION CHECK
                     if self.excel_created_index >= total_rows:
 
                         if self.is_excel_parsed:
                             self.state = 'done'
+                            _logger.warning("EXCEL COMPLETE → FORCE EXIT")
+                            return True
                         else:
                             self.state = 'processing'
 
                     else:
+                        # 🔥 ONLY GO BACK TO AI IF NOT COMPLETE
                         self.state = 'excel_ai'
 
                     self.env.cr.commit()
@@ -1023,8 +1028,13 @@ class VendorImportJob(models.Model):
             existing_products = []
             if self.ai_response:
                 try:
-                    existing_products = json.loads(self.ai_response)[0]["products"]
-                except:
+                    data = json.loads(self.ai_response)
+
+                    if isinstance(data, list) and data:
+                        existing_products = data[0].get("products", [])
+
+                except Exception as e:
+                    _logger.warning(f"EXCEL AI LOAD FAILED → {str(e)}")
                     existing_products = []
 
             new_products = []
@@ -1171,7 +1181,7 @@ class VendorImportJob(models.Model):
                     _logger.warning(f"ROW {idx} FAILED → {str(e)}")
 
             combined = existing_products + new_products
-
+        
             self.ai_response = json.dumps([{
                 "page": 1,
                 "products": combined
@@ -1184,8 +1194,12 @@ class VendorImportJob(models.Model):
             if end < len(pages):
                 self.state = "excel_ai"
             else:
-                _logger.warning("EXCEL AI COMPLETE ✅")
-                self.state = "excel_creating"
+                # 🔥 DO NOT LOOP BACK
+                if self.excel_created_index >= len(pages):
+                    self.state = "done"
+                else:
+                    _logger.warning("EXCEL AI COMPLETE ✅")
+                    self.state = "excel_creating"
 
             return
 
@@ -1856,6 +1870,14 @@ class VendorImportJob(models.Model):
 
             excel_ai_products = ai_pages[0].get("products", []) if ai_pages else []
 
+            # 🔥 SAFE LOAD OF PROCESSED GROUPS
+            processed_groups = set()
+            if self.processed_group_ids:
+                try:
+                    processed_groups = set(json.loads(self.processed_group_ids))
+                except:
+                    processed_groups = set()
+
             grouped_products = {}
 
             for p in excel_ai_products:
@@ -1870,9 +1892,11 @@ class VendorImportJob(models.Model):
 
                 grouped_products.setdefault(group_id, []).append(p)
 
+            processed_count = 0
+
             for group_id, group_items in grouped_products.items():
 
-                # 🔥 CRITICAL FIX (SKIP ALREADY PROCESSED)
+                # 🔥 SKIP ALREADY PROCESSED (DO NOT REMOVE)
                 if group_id in processed_groups:
                     _logger.warning(f"[EXCEL SKIP] → {group_id}")
                     continue
@@ -1908,6 +1932,7 @@ class VendorImportJob(models.Model):
 
                     created_count += 1
 
+                # ================= VARIANTS =================
                 for idx, item in enumerate(group_items):
 
                     attr_value = f"Variant {idx+1}"
@@ -1945,7 +1970,7 @@ class VendorImportJob(models.Model):
                         if value.id not in line.value_ids.ids:
                             line.value_ids = [(4, value.id)]
 
-                    # 🔥 KEEP YOUR WORKING VARIANT IMAGE LOGIC
+                    # 🔥 VARIANT IMAGE (KEEP THIS LOGIC)
                     variant_record = self.env['product.product'].search([
                         ('product_tmpl_id', '=', product.id),
                         ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
@@ -1954,11 +1979,23 @@ class VendorImportJob(models.Model):
                     if variant_record and item.get("image"):
                         variant_record.image_1920 = item.get("image")
 
-                # 🔥 MARK AS PROCESSED (PERSISTENT)
+                # 🔥 MARK GROUP AS PROCESSED
                 processed_groups.add(group_id)
                 self.processed_group_ids = json.dumps(list(processed_groups))
-                self.env.cr.commit()
 
+                processed_count += 1
+
+            # ================= FINALIZE (CRITICAL FIXES) =================
+
+            # 🔥 MOVE INDEX ONLY AFTER ALL GROUPS PROCESSED
+            if self.last_processed_product_index:
+                self.excel_created_index = self.last_processed_product_index
+
+            _logger.warning(f"[EXCEL CREATE FINAL INDEX] → {self.excel_created_index}")
+
+            # 🔥 SINGLE COMMIT (NOT INSIDE LOOP)
+            self.env.cr.commit()  
+       
 
         # ================= PDF (FIXED RANGE + STABILITY) =================
         elif self.pdf_file:
