@@ -2255,6 +2255,9 @@ class VendorImportJob(models.Model):
 
         _logger.warning("🔥 CRON HEARTBEAT → RUNNING")
 
+        # 🔥 KEEP CURSOR ALIVE
+        self.env.cr.execute("SELECT 1")
+
         active_states = [
             'draft', 'processing',
             'excel_parsing', 'excel_ai', 'excel_creating',
@@ -2314,7 +2317,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"CRON LOOP → STEP {steps+1} → JOB {job.id} | STATE {job.state}")
 
-            # LOCK HANDLING
+            # ================= LOCK HANDLING =================
             if job.lock:
                 try:
                     delta = (fields.Datetime.now() - job.write_date).total_seconds()
@@ -2324,14 +2327,13 @@ class VendorImportJob(models.Model):
                 if delta > 30:
                     _logger.warning(f"FORCE UNLOCK JOB {job.id}")
                     job.lock = False
-                    self.env.cr.commit()
                 else:
                     _logger.warning(f"JOB {job.id} LOCKED → SKIP THIS RUN")
                     break
 
             try:
+                # 🔥 SET LOCK (NO COMMIT HERE)
                 job.lock = True
-                self.env.cr.commit()
 
                 # TRACK PROGRESS
                 prev_state = job.state
@@ -2341,12 +2343,22 @@ class VendorImportJob(models.Model):
                 prev_ai = job.last_ai_page or 0
                 prev_url_batch = job.url_batch_index or 0
 
-                job._process_step()
-                self.env.cr.commit()
+                # 🔥 SAFE EXECUTION
+                try:
+                    job._process_step()
 
-                _logger.warning("CRON → STEP COMMITTED ✅")
+                    # ✅ ONLY COMMIT HERE
+                    self.env.cr.commit()
 
-                # 🔥 NO PROGRESS → BREAK (NOT RETURN)
+                    _logger.warning("CRON → STEP COMMITTED ✅")
+
+                except Exception as e:
+                    _logger.exception(f"CRON STEP FAILED → {str(e)}")
+
+                    self.env.cr.rollback()
+                    job.state = 'failed'
+
+                # 🔥 NO PROGRESS CHECK
                 if (
                     job.state == prev_state and
                     job.excel_created_index == prev_excel and
@@ -2359,14 +2371,9 @@ class VendorImportJob(models.Model):
                     _logger.warning("⚠️ NO PROGRESS → BREAK LOOP (SAFE)")
                     break
 
-            except Exception as e:
-                _logger.exception(f"PROCESS FAILED → {str(e)}")
-                job.state = 'failed'
-                self.env.cr.commit()
-
             finally:
+                # 🔥 ALWAYS UNLOCK (NO COMMIT HERE)
                 job.lock = False
-                self.env.cr.commit()
                 _logger.warning("CRON → JOB UNLOCKED 🔓")
 
             steps += 1
@@ -2374,6 +2381,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning("CRON → LOOP FINISHED ✅")
         _logger.warning("CRON → COMPLETED RUN")
+
         return
 
    #=============flask setup/installation=================== 
