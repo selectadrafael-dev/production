@@ -139,8 +139,8 @@ class VendorImportJob(models.Model):
         import json
 
         start_time = time.time()
-        MAX_SECONDS = 25
-        MAX_LOOPS = 100
+        MAX_SECONDS = 10
+        MAX_LOOPS = 20
 
         loops = 0
 
@@ -206,16 +206,20 @@ class VendorImportJob(models.Model):
                 continue
 
             # =====================================================
-            # 🔵 URL FLOW (UNCHANGED)
+            # 🔵 URL FLOW
             # =====================================================
+
             if self.data_url:
 
+                # STEP 1 → START
                 if self.state == 'draft':
                     self.state = 'url_scraping'
                     self.env.cr.commit()
                     continue
 
+                # STEP 2 → SCRAPE
                 if self.state == 'url_scraping':
+
                     self.parse_url()
 
                     if self.extracted_text:
@@ -226,18 +230,24 @@ class VendorImportJob(models.Model):
                     self.env.cr.commit()
                     continue
 
+                # STEP 3 → AI (BATCHED)
                 if self.state == 'url_ai':
+
                     self.send_to_openai_url()
 
-                    if self.url_batch_index >= getattr(self, "url_total_batches", 9999):
-                        self.state = 'url_creating'
+                    # 🔥 STAY IN AI UNTIL ALL BATCHES DONE
+                    if (self.url_batch_index or 0) < (getattr(self, "url_total_batches", 0)):
+                        self.state = 'url_ai'
                     else:
-                        self.state = 'processing'
+                        _logger.warning("URL AI COMPLETE → MOVING TO CREATE")
+                        self.state = 'url_creating'
 
                     self.env.cr.commit()
                     continue
 
+                # STEP 4 → CREATE (BATCHED)
                 if self.state == 'url_creating':
+
                     self.create_products_url()
 
                     try:
@@ -245,13 +255,19 @@ class VendorImportJob(models.Model):
                     except:
                         total = 0
 
-                    if self.last_processed_product_index >= total:
+                    _logger.warning(f"[URL CREATE CHECK] → {self.last_processed_product_index}/{total}")
+
+                    if (self.last_processed_product_index or 0) >= total:
+                        _logger.warning("URL CREATE COMPLETE ✅")
                         self.state = 'done'
+                        return True
                     else:
-                        self.state = 'processing'
+                        # 🔥 CONTINUE CREATING
+                        self.state = 'url_creating'
 
                     self.env.cr.commit()
                     continue
+
 
             # =====================================================
             # 🔵 EXCEL FLOW (UNCHANGED)
@@ -767,7 +783,7 @@ class VendorImportJob(models.Model):
             _logger.warning("ALL PAGES PROCESSED ✅")
             self.state = "pdf_ai"
 
-    # ---------------- OPENAI ----------------
+    # ---------------- Send to OPENAI URL ----------------
     def send_to_openai_url(self):
 
         import re
@@ -981,6 +997,15 @@ class VendorImportJob(models.Model):
         # ================= SAVE PROGRESS =================
         self.ai_response = json.dumps(existing_products)
         self.url_batch_index = current_batch + 1
+
+        _logger.warning(f"URL AI PROGRESS → {self.url_batch_index}/{self.url_total_batches}")
+
+        # 🔥 STATE CONTROL (CRITICAL)
+        if self.url_batch_index < self.url_total_batches:
+            self.state = "url_ai"
+        else:
+            _logger.warning("URL AI FINISHED ALL BATCHES")
+            self.state = "url_creating"
 
         _logger.warning(f"NEXT BATCH INDEX → {self.url_batch_index}")
 
@@ -1803,8 +1828,10 @@ class VendorImportJob(models.Model):
 
         if self.last_processed_product_index >= TOTAL_PRODUCTS:
             _logger.warning("ALL PRODUCTS CREATED ✅")
+            self.state = "done"
         else:
-            _logger.warning("MORE PRODUCTS REMAIN → NEXT CRON")
+            _logger.warning("MORE PRODUCTS REMAIN → CONTINUE CREATION")
+            self.state = "url_creating"
 
         self.env.cr.commit()
 
@@ -2315,7 +2342,8 @@ class VendorImportJob(models.Model):
         # =====================================================
         # 🔥 SAFE LOOP EXECUTION (ANTI-CRASH)
         # =====================================================
-        MAX_STEPS = 8
+      
+        MAX_STEPS = 12
         MAX_SECONDS = 25
 
         steps = 0
@@ -2365,6 +2393,7 @@ class VendorImportJob(models.Model):
                 prev_processed = job.last_processed_product_index
                 prev_page = job.current_page or 0
                 prev_ai = job.last_ai_page or 0
+                prev_url_batch = job.url_batch_index or 0
 
                 job._process_step()
 
@@ -2374,12 +2403,14 @@ class VendorImportJob(models.Model):
                 # =====================================================
                 # 🔥 NO PROGRESS GUARD (FIXED FOR ALL FLOWS)
                 # =====================================================
+    
                 if (
                     job.state == prev_state and
                     job.excel_created_index == prev_excel and
                     job.last_processed_product_index == prev_processed and
                     (job.current_page or 0) == prev_page and
-                    (job.last_ai_page or 0) == prev_ai
+                    (job.last_ai_page or 0) == prev_ai and
+                    (job.url_batch_index or 0) == prev_url_batch
                 ):
                     _logger.warning("⚠️ NO PROGRESS DETECTED → STOP LOOP")
                     break
@@ -2401,25 +2432,24 @@ class VendorImportJob(models.Model):
 
         _logger.warning("CRON → LOOP FINISHED ✅")
 
-        # =====================================================
-        # 🔥 FORCE NEXT RUN (SAFE FUTURE SCHEDULE)
-        # =====================================================
+        #=========next cron call==============
         try:
             cron = self.env.ref('gift_product_configurator.ir_cron_vendor_import')
 
-            # must be future to avoid write conflict
-            next_time = fields.Datetime.now() + timedelta(seconds=15)
+            # 🔥 ONLY UPDATE IF STUCK
+            if cron.nextcall and cron.nextcall < fields.Datetime.now():
+                next_time = fields.Datetime.now() + timedelta(seconds=60)
 
-            cron.sudo().write({
-                'nextcall': next_time
-            })
+                cron.sudo().write({
+                    'nextcall': next_time
+                })
 
-            self.env.cr.commit()
+                self.env.cr.commit()
 
-            _logger.warning(f"CRON → NEXT RUN FORCED AT → {next_time}")
+                _logger.warning(f"CRON → RECOVERED NEXTCALL → {next_time}")
 
         except Exception as e:
-            _logger.warning(f"CRON → NEXTCALL UPDATE FAILED → {str(e)}")
+            _logger.warning(f"CRON → NEXTCALL RECOVERY FAILED → {str(e)}")
 
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
