@@ -2421,14 +2421,15 @@ class VendorImportJob(models.Model):
                 # =====================================================
                 # 🔥 NO PROGRESS GUARD (FIXED FOR ALL FLOWS)
                 # =====================================================
-    
+
                 if (
                     job.state == prev_state and
                     job.excel_created_index == prev_excel and
                     job.last_processed_product_index == prev_processed and
                     (job.current_page or 0) == prev_page and
                     (job.last_ai_page or 0) == prev_ai and
-                    (job.url_batch_index or 0) == prev_url_batch
+                    (job.url_batch_index or 0) == prev_url_batch and
+                    job.state != 'url_scraping'   # 🔥 ALLOW WAITING STATE
                 ):
                     _logger.warning("⚠️ NO PROGRESS DETECTED → STOP LOOP")
                     break
