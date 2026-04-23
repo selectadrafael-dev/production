@@ -2613,46 +2613,46 @@ class VendorImportJob(models.Model):
 
 
     # #---------------clean_scraped_blocks-------------------------------
-    # def _clean_scraped_blocks(self, raw_blocks):
-    #     """
-    #     Clean Apify output before sending to AI
-    #     """
+    def _clean_scraped_blocks(self, raw_blocks):
+        """
+        Clean Apify output before sending to AI
+        """
 
-    #     cleaned = []
-    #     seen = set()
+        cleaned = []
+        seen = set()
 
-    #     for item in raw_blocks:
+        for item in raw_blocks:
 
-    #         text = (item.get("text") or "").strip()
-    #         image = item.get("image")
+            text = (item.get("text") or "").strip()
+            image = item.get("image")
 
-    #         # ❌ REMOVE NOISE
-    #         if not text:
-    #             continue
+            # ❌ REMOVE NOISE
+            if not text:
+                continue
 
-    #         if len(text) < 15:
-    #             continue
+            if len(text) < 15:
+                continue
 
-    #         if any(x in text.lower() for x in [
-    #             "privacy", "cookie", "terms", "login",
-    #             "menu", "navigation", "home"
-    #         ]):
-    #             continue
+            if any(x in text.lower() for x in [
+                "privacy", "cookie", "terms", "login",
+                "menu", "navigation", "home"
+            ]):
+                continue
 
-    #         # ❌ REMOVE DUPLICATES
-    #         key = text[:120]  # allow more variation
+            # ❌ REMOVE DUPLICATES
+            key = text[:120]  # allow more variation
 
-    #         if key in seen:
-    #             continue
+            if key in seen:
+                continue
 
-    #         seen.add(key)
+            seen.add(key)
 
-    #         cleaned.append({
-    #             "text": text,
-    #             "image": image
-    #         })
+            cleaned.append({
+                "text": text,
+                "image": image
+            })
 
-    #     return cleaned
+        return cleaned
 
     #---------------normalizer-------------------------------
 
@@ -2880,81 +2880,81 @@ class VendorImportJob(models.Model):
     
     #---------------clean scraped blocks-------------------------------
 
-    def _clean_scraped_blocks(self, blocks):
+    # def _clean_scraped_blocks(self, blocks):
 
-        cleaned = []
+    #     cleaned = []
 
-        seen = set()
+    #     seen = set()
 
-        for block in blocks:
+    #     for block in blocks:
 
-            text = (
-                block.get("text") or ""
-            ).strip()
+    #         text = (
+    #             block.get("text") or ""
+    #         ).strip()
 
-            image = block.get("image")
+    #         image = block.get("image")
 
-            # =====================================================
-            # BASIC VALIDATION
-            # =====================================================
+    #         # =====================================================
+    #         # BASIC VALIDATION
+    #         # =====================================================
 
-            if not text:
-                continue
+    #         if not text:
+    #             continue
 
-            if len(text) < 5:
-                continue
+    #         if len(text) < 5:
+    #             continue
 
-            lower = text.lower()
+    #         lower = text.lower()
 
-            # =====================================================
-            # REMOVE JUNK
-            # =====================================================
+    #         # =====================================================
+    #         # REMOVE JUNK
+    #         # =====================================================
 
-            junk_words = [
+    #         junk_words = [
 
-                'cookie',
-                'privacy',
-                'subscribe',
-                'login',
-                'sign in',
-                'filter',
-                'sort by',
-                'accept cookies'
+    #             'cookie',
+    #             'privacy',
+    #             'subscribe',
+    #             'login',
+    #             'sign in',
+    #             'filter',
+    #             'sort by',
+    #             'accept cookies'
 
-            ]
+    #         ]
 
-            if any(
-                word in lower
-                for word in junk_words
-            ):
-                continue
+    #         if any(
+    #             word in lower
+    #             for word in junk_words
+    #         ):
+    #             continue
 
-            # =====================================================
-            # REMOVE DUPLICATES
-            # =====================================================
+    #         # =====================================================
+    #         # REMOVE DUPLICATES
+    #         # =====================================================
 
-            key = text[:120]
+    #         key = text[:120]
 
-            if key in seen:
-                continue
+    #         if key in seen:
+    #             continue
 
-            seen.add(key)
+    #         seen.add(key)
 
-            cleaned.append({
+    #         cleaned.append({
 
-                "text": text,
+    #             "text": text,
 
-                "image": image
+    #             "image": image
 
-            })
+    #         })
 
-        _logger.warning(
-            f"CLEAN BLOCKS → {len(cleaned)}"
-        )
+    #     _logger.warning(
+    #         f"CLEAN BLOCKS → {len(cleaned)}"
+    #     )
 
-        _logger.warning(
-            f"REMOVED BLOCKS → "
-            f"{len(blocks) - len(cleaned)}"
-        )
+    #     _logger.warning(
+    #         f"REMOVED BLOCKS → "
+    #         f"{len(blocks) - len(cleaned)}"
+    #     )
 
-        return cleaned
+    #     return cleaned
