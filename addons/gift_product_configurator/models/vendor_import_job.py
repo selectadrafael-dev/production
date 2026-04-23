@@ -489,19 +489,53 @@ class VendorImportJob(models.Model):
         # PRODUCTS
         # =====================================================
 
+        # structured_data = []
+
+        # for block in raw_data:
+
+        #     if block.get("type") != "PRODUCTS":
+        #         continue
+
+        #     items = block.get("items", [])
+
+        #     if not items:
+        #         continue
+
+        #     structured_data.extend(items)
+
+        # =====================================================
+        # PRODUCTS
+        # =====================================================
+
         structured_data = []
 
         for block in raw_data:
 
-            if block.get("type") != "PRODUCTS":
+            # ==============================================
+            # FORMAT 1 → ORIGINAL EB FORMAT
+            # ==============================================
+
+            if block.get("text"):
+
+                structured_data.append({
+                    "text": block.get("text"),
+                    "image": block.get("image")
+                })
+
                 continue
 
-            items = block.get("items", [])
+            # ==============================================
+            # FORMAT 2 → STRUCTURED FORMAT
+            # ==============================================
 
-            if not items:
-                continue
+            if block.get("type") == "PRODUCTS":
 
-            structured_data.extend(items)
+                items = block.get("items", [])
+
+                if not items:
+                    continue
+
+                structured_data.extend(items)
 
         # =====================================================
         # NO PRODUCTS AFTER PARSE
