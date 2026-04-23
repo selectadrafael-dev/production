@@ -560,6 +560,7 @@ class VendorImportJob(models.Model):
 
         self.state = "url_ai"
 
+
     #------excel parsing method---------------
 
     def parse_excel(self):
@@ -2532,26 +2533,180 @@ class VendorImportJob(models.Model):
   
     #---------------normalizer-------------------------------
    
+    # def _normalize_url_data(self, items):
+
+    #     blocks = []
+
+    #     for item in items:
+
+    #         text = (item.get("text") or "").strip()
+    #         image = item.get("image")
+
+    #         # 🔥 STRICT VALIDATION
+    #         if not text or len(text) < 5:
+    #             continue
+
+    #         if image and isinstance(image, str) and not image.startswith("http"):
+    #             image = None
+
+    #         blocks.append({
+    #             "text": text,
+    #             "image": image
+    #         })
+
+    #     _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
+
+    #     # =====================================================
+    #     # 🔥 SPLIT INTO MULTIPLE PAGES (CRITICAL FIX)
+    #     # =====================================================
+
+    #     PAGE_SIZE = 20  # 🔥 prevents AI overload
+
+    #     pages = []
+
+    #     for i in range(0, len(blocks), PAGE_SIZE):
+
+    #         chunk = blocks[i:i + PAGE_SIZE]
+
+    #         pages.append({
+    #             "page": len(pages) + 1,
+    #             "blocks": chunk
+    #         })
+
+    #     _logger.warning(f"NORMALIZED PAGES → {len(pages)}")
+
+    #     return pages
+
+
+    # #---------------clean_scraped_blocks-------------------------------
+    # def _clean_scraped_blocks(self, raw_blocks):
+    #     """
+    #     Clean Apify output before sending to AI
+    #     """
+
+    #     cleaned = []
+    #     seen = set()
+
+    #     for item in raw_blocks:
+
+    #         text = (item.get("text") or "").strip()
+    #         image = item.get("image")
+
+    #         # ❌ REMOVE NOISE
+    #         if not text:
+    #             continue
+
+    #         if len(text) < 15:
+    #             continue
+
+    #         if any(x in text.lower() for x in [
+    #             "privacy", "cookie", "terms", "login",
+    #             "menu", "navigation", "home"
+    #         ]):
+    #             continue
+
+    #         # ❌ REMOVE DUPLICATES
+    #         key = text[:120]  # allow more variation
+
+    #         if key in seen:
+    #             continue
+
+    #         seen.add(key)
+
+    #         cleaned.append({
+    #             "text": text,
+    #             "image": image
+    #         })
+
+    #     return cleaned
+
+    #---------------normalizer-------------------------------
+
     def _normalize_url_data(self, items):
 
         blocks = []
 
         for item in items:
 
-            text = (item.get("text") or "").strip()
-            image = item.get("image")
+            # =====================================================
+            # FORMAT 1 → ORIGINAL WORKING FORMAT
+            # =====================================================
+            # {
+            #   "text": "...",
+            #   "image": "..."
+            # }
+            # =====================================================
 
-            # 🔥 STRICT VALIDATION
-            if not text or len(text) < 5:
+            if item.get("text"):
+
+                text = (item.get("text") or "").strip()
+                image = item.get("image")
+
+                # 🔥 STRICT VALIDATION
+                if not text or len(text) < 5:
+                    continue
+
+                if (
+                    image and
+                    isinstance(image, str) and
+                    not image.startswith("http")
+                ):
+                    image = None
+
+                blocks.append({
+                    "text": text,
+                    "image": image
+                })
+
                 continue
 
-            if image and isinstance(image, str) and not image.startswith("http"):
-                image = None
+            # =====================================================
+            # FORMAT 2 → STRUCTURED FORMAT
+            # =====================================================
+            # {
+            #   "type": "PRODUCTS",
+            #   "items": [...]
+            # }
+            # =====================================================
 
-            blocks.append({
-                "text": text,
-                "image": image
-            })
+            if item.get("type") == "PRODUCTS":
+
+                for sub in item.get("items", []):
+
+                    text = (
+                        sub.get("text") or ""
+                    ).strip()
+
+                    image = sub.get("image")
+
+                    if not text or len(text) < 5:
+                        continue
+
+                    if (
+                        image and
+                        isinstance(image, str) and
+                        not image.startswith("http")
+                    ):
+                        image = None
+
+                    blocks.append({
+                        "text": text,
+                        "image": image
+                    })
+
+            # =====================================================
+            # DEBUG TYPES
+            # =====================================================
+
+            elif item.get("type") in [
+                "EMPTY",
+                "BLOCKED"
+            ]:
+
+                _logger.error(
+                    f"URL DEBUG → "
+                    f"{item.get('reason')}"
+                )
 
         _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
 
@@ -2575,48 +2730,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"NORMALIZED PAGES → {len(pages)}")
 
         return pages
-
-    #---------------clean_scraped_blocks-------------------------------
-    def _clean_scraped_blocks(self, raw_blocks):
-        """
-        Clean Apify output before sending to AI
-        """
-
-        cleaned = []
-        seen = set()
-
-        for item in raw_blocks:
-
-            text = (item.get("text") or "").strip()
-            image = item.get("image")
-
-            # ❌ REMOVE NOISE
-            if not text:
-                continue
-
-            if len(text) < 15:
-                continue
-
-            if any(x in text.lower() for x in [
-                "privacy", "cookie", "terms", "login",
-                "menu", "navigation", "home"
-            ]):
-                continue
-
-            # ❌ REMOVE DUPLICATES
-            key = text[:120]  # allow more variation
-
-            if key in seen:
-                continue
-
-            seen.add(key)
-
-            cleaned.append({
-                "text": text,
-                "image": image
-            })
-
-        return cleaned
     
 
     #======apify url fetch/scrapp products===============
