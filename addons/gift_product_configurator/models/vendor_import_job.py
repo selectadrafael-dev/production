@@ -2878,3 +2878,83 @@ class VendorImportJob(models.Model):
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
     
+    #---------------clean scraped blocks-------------------------------
+
+    def _clean_scraped_blocks(self, blocks):
+
+        cleaned = []
+
+        seen = set()
+
+        for block in blocks:
+
+            text = (
+                block.get("text") or ""
+            ).strip()
+
+            image = block.get("image")
+
+            # =====================================================
+            # BASIC VALIDATION
+            # =====================================================
+
+            if not text:
+                continue
+
+            if len(text) < 5:
+                continue
+
+            lower = text.lower()
+
+            # =====================================================
+            # REMOVE JUNK
+            # =====================================================
+
+            junk_words = [
+
+                'cookie',
+                'privacy',
+                'subscribe',
+                'login',
+                'sign in',
+                'filter',
+                'sort by',
+                'accept cookies'
+
+            ]
+
+            if any(
+                word in lower
+                for word in junk_words
+            ):
+                continue
+
+            # =====================================================
+            # REMOVE DUPLICATES
+            # =====================================================
+
+            key = text[:120]
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            cleaned.append({
+
+                "text": text,
+
+                "image": image
+
+            })
+
+        _logger.warning(
+            f"CLEAN BLOCKS → {len(cleaned)}"
+        )
+
+        _logger.warning(
+            f"REMOVED BLOCKS → "
+            f"{len(blocks) - len(cleaned)}"
+        )
+
+        return cleaned
