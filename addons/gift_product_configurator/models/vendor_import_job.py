@@ -344,462 +344,257 @@ class VendorImportJob(models.Model):
 
                 return
 
+    
     #------------parse url------------------------------------
 
-        def parse_excel(self):
+    def parse_url(self):
 
-            # ============================================
-            # TEMP DEBUG RESET
-            # ============================================
+        import json
 
-            self.extracted_text = False
-            self.last_processed_product_index = 0
-            self.last_ai_page = 0
+        _logger.warning(f"APIFY SCRAPE → {self.data_url}")
 
-            _logger.warning("EXCEL → START PARSING (ADVANCED MODE)")
+        raw_data = self._run_apify_actor(self.data_url)
 
-            excel_bytes = base64.b64decode(self.excel_file)
-            wb = load_workbook(filename=BytesIO(excel_bytes))
+        # =====================================================
+        # APIFY STILL RUNNING
+        # =====================================================
 
-            headers = {"User-Agent": "Mozilla/5.0"}
-
-            pages = []
-
-            BATCH_SIZE = 8
-            MAX_BUFFER = 150
-
-            start_index = self.last_processed_product_index or 0
-            current_count = 0
-            global_index = 0
-
-            _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
-
-            total_rows = 0
-
-            # =====================================================
-            # COUNT VALID ROWS
-            # =====================================================
-
-            for sheet in wb.worksheets:
-
-                for idx, row in enumerate(sheet.iter_rows()):
-
-                    if idx == 0:
-                        continue
-
-                    row_values = [
-                        str(cell.value or "").strip()
-                        for cell in row
-                        if str(cell.value or "").strip()
-                    ]
-
-                    if row_values:
-                        total_rows += 1
-
-            _logger.warning(f"TOTAL VALID ROWS → {total_rows}")
-
-            # =====================================================
-            # MAIN LOOP
-            # =====================================================
-
-            last_valid_index = start_index
-
-            for sheet in wb.worksheets:
-
-                _logger.warning(f"PROCESSING SHEET → {sheet.title}")
-
-                image_loader = SheetImageLoader(sheet)
-
-                # =========================================
-                # DETECT HEADERS
-                # =========================================
-
-                header_map = {}
-
-                try:
-
-                    header_row = next(sheet.iter_rows(min_row=1, max_row=1))
-
-                    for idx, cell in enumerate(header_row):
-
-                        header_val = str(cell.value or "").strip().lower()
-
-                        header_map[idx] = header_val
-
-                except Exception:
-                    pass
-
-                _logger.warning(f"HEADER MAP → {header_map}")
-
-                # =========================================
-                # PROCESS ROWS
-                # =========================================
-
-                for idx, row in enumerate(sheet.iter_rows()):
-
-                    if current_count >= BATCH_SIZE:
-                        _logger.warning("BATCH LIMIT REACHED")
-                        break
-
-                    if idx == 0:
-                        continue
-
-                    row_values = [
-                        str(cell.value or "").strip()
-                        for cell in row
-                        if str(cell.value or "").strip()
-                    ]
-
-                    if not row_values:
-                        continue
-
-                    global_index += 1
-
-                    if global_index <= start_index:
-                        continue
-
-
-                    # =====================================================
-                    # DETECT PRICE + STOCK
-                    # =====================================================
-
-                    price = ""
-                    stock = ""
-
-                    detected_price_reason = ""
-                    detected_stock_reason = ""
-
-                    numeric_candidates = []
-
-                    for col_idx, cell in enumerate(row):
-
-                        raw_val = str(cell.value or "").strip()
-
-                        if not raw_val:
-                            continue
-
-                        # ============================================
-                        # SKIP RANGES
-                        # example: 2-43
-                        # ============================================
-
-                        if "-" in raw_val and not raw_val.startswith("-"):
-                            continue
-
-                        try:
-
-                            clean = raw_val.replace(",", ".")
-
-                            clean = re.sub(
-                                r"[^\d.]",
-                                "",
-                                clean
-                            )
-
-                            if not clean:
-                                continue
-
-                            num = float(clean)
-
-                            # ============================================
-                            # SMART DECIMAL DETECTION
-                            # ============================================
-
-                            is_real_decimal = False
-
-                            normalized = clean.strip()
-
-                            if "." in normalized:
-
-                                decimal_part = normalized.split(".")[-1]
-
-                                # ONLY treat as decimal if NOT .0 or .00
-
-                                if decimal_part not in ["0", "00"]:
-
-                                    is_real_decimal = True
-
-                            numeric_candidates.append({
-                                "col": col_idx,
-                                "raw": raw_val,
-                                "num": num,
-                                "has_decimal": is_real_decimal
-                            })
-
-                        except:
-                            continue
-
-
-                    # =====================================================
-                    # DETECT PRICE
-                    # RULE:
-                    # RIGHT-MOST REAL DECIMAL
-                    # =====================================================
-
-                    decimal_candidates = [
-
-                        x for x in numeric_candidates
-
-                        if (
-                            x["has_decimal"]
-                            and 0 < x["num"] < 1000
-                        )
-
-                    ]
-
-                    if decimal_candidates:
-
-                        best_price = sorted(
-                            decimal_candidates,
-                            key=lambda x: x["col"]
-                        )[-1]
-
-                        price = str(best_price["num"])
-
-                        detected_price_reason = (
-                            f"RIGHT REAL DECIMAL COL={best_price['col']}"
-                        )
-
-
-                    # =====================================================
-                    # DETECT STOCK
-                    # RULE:
-                    # LARGEST INTEGER BEFORE PRICE
-                    # =====================================================
-
-                    if price:
-
-                        try:
-
-                            price_col = best_price["col"]
-
-                            stock_candidates = []
-
-                            for item in numeric_candidates:
-
-                                val = item["num"]
-
-                                # ignore real decimals
-
-                                if item["has_decimal"]:
-                                    continue
-
-                                # ignore huge product IDs
-
-                                if val > 9999:
-                                    continue
-
-                                # must be before price column
-
-                                if item["col"] >= price_col:
-                                    continue
-
-                                stock_candidates.append(item)
-
-                            if stock_candidates:
-
-                                best_stock = max(
-                                    stock_candidates,
-                                    key=lambda x: x["num"]
-                                )
-
-                                stock = str(int(best_stock["num"]))
-
-                                detected_stock_reason = (
-                                    f"LARGEST INTEGER BEFORE PRICE COL={best_stock['col']}"
-                                )
-
-                        except Exception as e:
-
-                            _logger.warning(
-                                f"STOCK DETECTION FAILED → {str(e)}"
-                            )
-
-
-                    _logger.warning(
-                        f'''
-                        EXCEL DETECTION RESULT
-                        ----------------------
-
-                        ROW INDEX: {global_index}
-
-                        PRICE: {price}
-                        PRICE_REASON: {detected_price_reason}
-
-                        STOCK: {stock}
-                        STOCK_REASON: {detected_stock_reason}
-
-                        RAW VALUES:
-                        {" | ".join(row_values)}
-                        '''
-                    )
-
-                    # =====================================================
-                    # BUILD ROW TEXT
-                    # =====================================================
-
-                    row_text = f"""
-                    ROW_DATA:
-                    {" | ".join(row_values)}
-
-                    RULES:
-                    - THIS IS EXACTLY ONE PRODUCT
-                    - DO NOT SPLIT THIS ROW
-                    - THIS ROW MAY BE A VARIANT
-                    """
-
-                    # =====================================================
-                    # IMAGE EXTRACTION
-                    # =====================================================
-
-                    row_images = []
-
-                    for cell in row:
-
-                        try:
-
-                            if image_loader.image_in(cell.coordinate):
-
-                                pil_img = image_loader.get(cell.coordinate)
-
-                                buffer = BytesIO()
-
-                                pil_img.save(buffer, format="JPEG")
-
-                                img_base64 = base64.b64encode(
-                                    buffer.getvalue()
-                                ).decode("utf-8")
-
-                                row_images.append(img_base64)
-
-                                break
-
-                        except:
-                            continue
-
-                    # =====================================================
-                    # IMAGE URL FALLBACK
-                    # =====================================================
-
-                    if not row_images:
-
-                        for cell in row:
-
-                            val = str(cell.value or "").strip()
-
-                            if val.startswith("http"):
-
-                                try:
-
-                                    response = requests.get(
-                                        val,
-                                        headers=headers,
-                                        timeout=5
-                                    )
-
-                                    if (
-                                        response.status_code == 200
-                                        and "image" in response.headers.get(
-                                            "Content-Type",
-                                            ""
-                                        )
-                                    ):
-
-                                        img_base64 = base64.b64encode(
-                                            response.content
-                                        ).decode("utf-8")
-
-                                        row_images.append(img_base64)
-
-                                        break
-
-                                except:
-                                    continue
-
-                    # =====================================================
-                    # STORE
-                    # =====================================================
-
-                    pages.append({
-                        "page": global_index,
-                        "text": row_text,
-                        "images": row_images,
-                        "row_index": global_index,
-                        "price": price,
-                        "stock": stock,
-                    })
-
-                    current_count += 1
-
-                    last_valid_index = global_index
-
-                    if len(pages) >= MAX_BUFFER:
-                        _logger.warning("MAX BUFFER REACHED")
-                        break
-
-                if (
-                    current_count >= BATCH_SIZE
-                    or len(pages) >= MAX_BUFFER
-                ):
-                    break
-
-            # =====================================================
-            # STORE EXTRACTED DATA
-            # =====================================================
-
-            existing = []
-
-            if self.extracted_text:
-
-                try:
-                    existing = json.loads(self.extracted_text)
-                except:
-                    existing = []
-
-            combined = existing + pages
-
-            self.extracted_text = json.dumps(combined)
-
-            self.last_processed_product_index = last_valid_index
-
-            remaining = max(
-                total_rows - last_valid_index,
-                0
-            )
-
-            progress = (
-                round(
-                    (last_valid_index / total_rows) * 100,
-                    2
-                )
-                if total_rows
-                else 0
-            )
+        if raw_data is None:
 
             _logger.warning(
-                f"""
-                EXCEL PARSE SUMMARY
-                -------------------
-                CURRENT INDEX: {last_valid_index}
-                REMAINING: {remaining}
-                PROGRESS: {progress}%
-                STORED ROWS: {len(pages)}
-                """
+                "APIFY NOT READY → WAIT NEXT CRON"
             )
 
-            if last_valid_index >= total_rows:
+            self.state = "url_scraping"
 
-                _logger.warning("EXCEL PARSING COMPLETE ✅")
+            return True
 
-                self.is_excel_parsed = True
+        # =====================================================
+        # EMPTY RAW RESPONSE
+        # =====================================================
 
-            else:
+        if not raw_data:
 
-                _logger.warning("MORE EXCEL ROWS REMAIN")
+            _logger.error(
+                "APIFY FAILED → EMPTY DATASET"
+            )
 
-                self.state = "processing"
+            self.state = "failed"
 
-            wb.close()
+            return
+
+        # =====================================================
+        # SAFE DEBUG LOG
+        # =====================================================
+
+        try:
+
+            _logger.warning(
+                f"RAW APIFY ITEMS → {len(raw_data)}"
+            )
+
+        except Exception:
+            pass
+
+        # =====================================================
+        # HANDLE STRUCTURED RESPONSES
+        # =====================================================
+
+        first = raw_data[0] if raw_data else {}
+
+        response_type = first.get("type")
+
+        # =====================================================
+        # BLOCKED
+        # =====================================================
+
+        if response_type == "BLOCKED":
+
+            reason = first.get(
+                "reason",
+                "Unknown block detected"
+            )
+
+            status_code = first.get(
+                "status_code"
+            )
+
+            _logger.error(
+                f"URL BLOCKED → {reason}"
+            )
+
+            if status_code:
+                _logger.error(
+                    f"BLOCK STATUS CODE → {status_code}"
+                )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # EMPTY
+        # =====================================================
+
+        if response_type == "EMPTY":
+
+            reason = first.get(
+                "reason",
+                "No products extracted"
+            )
+
+            debug = first.get("debug", {})
+
+            _logger.error(
+                f"URL EXTRACTION EMPTY → {reason}"
+            )
+
+            if debug:
+
+                _logger.error(
+                    f"PAGE TITLE → {debug.get('title')}"
+                )
+
+                _logger.error(
+                    f"IMAGES FOUND → {debug.get('images_found')}"
+                )
+
+                _logger.error(
+                    f"LINKS FOUND → {debug.get('links_found')}"
+                )
+
+                _logger.error(
+                    f"POSSIBLE PRODUCT BLOCKS → "
+                    f"{debug.get('possible_product_blocks')}"
+                )
+
+                _logger.error(
+                    f"COOKIE DETECTED → "
+                    f"{debug.get('cookie_detected')}"
+                )
+
+                preview = debug.get(
+                    'body_preview',
+                    ''
+                )
+
+                _logger.error(
+                    f"BODY PREVIEW → {preview[:300]}"
+                )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # PRODUCTS
+        # =====================================================
+
+        # structured_data = []
+
+        # for block in raw_data:
+
+        #     if block.get("type") != "PRODUCTS":
+        #         continue
+
+        #     items = block.get("items", [])
+
+        #     if not items:
+        #         continue
+
+        #     structured_data.extend(items)
+
+        # ===================================================
+        # PRODUCTS
+        # ===================================================
+
+        structured_data = []
+
+        for block in raw_data:
+
+            # ==============================================
+            # FORMAT 1 → ORIGINAL EB FORMAT
+            # ==============================================
+
+            if block.get("text"):
+
+                structured_data.append({
+                    "text": block.get("text"),
+                    "image": block.get("image")
+                })
+
+                continue
+
+            # ==============================================
+            # FORMAT 2 → STRUCTURED FORMAT
+            # ==============================================
+
+            if block.get("type") == "PRODUCTS":
+
+                items = block.get("items", [])
+
+                if not items:
+                    continue
+
+                structured_data.extend(items)
+
+        # =====================================================
+        # NO PRODUCTS AFTER PARSE
+        # =====================================================
+
+        if not structured_data:
+
+            _logger.error(
+                "NO VALID PRODUCTS FOUND AFTER PARSING"
+            )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # LIMIT SIZE (VERY IMPORTANT)
+        # =====================================================
+
+        structured_data = structured_data[:40]
+
+        # =====================================================
+        # NORMALIZE
+        # =====================================================
+
+        normalized = self._normalize_url_data(
+            structured_data
+        )
+
+        if not normalized:
+
+            _logger.error(
+                "NORMALIZATION FAILED → EMPTY DATA"
+            )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # STORE SAFELY
+        # =====================================================
+
+        payload = json.dumps(normalized)
+
+        # 🔥 LIMIT STORAGE SIZE
+        self.extracted_text = payload[:50000]
+
+        _logger.warning(
+            f"APIFY DONE → {len(normalized)} ITEMS"
+        )
+
+        # =====================================================
+        # MOVE TO NEXT STEP
+        # =====================================================
+
+        self.state = "url_ai"
+
 
 
     #------excel parsing method---------------
@@ -872,67 +667,150 @@ class VendorImportJob(models.Model):
                     continue
 
                 # =========================================
-                # NEW → DETECT PRICE/STOCK
+                # DETECT PRICE/STOCK (SMART VERSION)
                 # =========================================
 
                 price = ""
                 stock = ""
 
-                for cell in row:
+                numeric_candidates = []
 
-                    val = str(cell.value or "").strip()
+                for col_idx, cell in enumerate(row):
 
-                    if not val:
+                    raw_val = str(cell.value or "").strip()
+
+                    if not raw_val:
                         continue
 
-                    lower_val = val.lower()
+                    # skip ranges like 2-43
 
-                    # ================= STOCK =================
+                    if "-" in raw_val and not raw_val.startswith("-"):
+                        continue
+
+                    try:
+
+                        clean = raw_val.replace(",", ".")
+
+                        clean = re.sub(
+                            r"[^\d.]",
+                            "",
+                            clean
+                        )
+
+                        if not clean:
+                            continue
+
+                        num = float(clean)
+
+                        # ====================================
+                        # detect REAL decimal
+                        # ====================================
+
+                        is_real_decimal = False
+
+                        if "." in clean:
+
+                            decimal_part = clean.split(".")[-1]
+
+                            # 210.0 => NOT price
+                            # 5.5 => price
+
+                            if decimal_part not in ["0", "00"]:
+
+                                is_real_decimal = True
+
+                        numeric_candidates.append({
+                            "col": col_idx,
+                            "num": num,
+                            "raw": raw_val,
+                            "is_decimal": is_real_decimal
+                        })
+
+                    except:
+                        continue
+
+
+                # =========================================
+                # DETECT PRICE
+                # RULE:
+                # RIGHT-MOST REAL DECIMAL
+                # =========================================
+
+                price_candidates = [
+
+                    x for x in numeric_candidates
 
                     if (
-                        "stock" in lower_val
-                        or "pcs" in lower_val
-                        or "pieces" in lower_val
-                        or "available" in lower_val
-                    ):
-                        stock = val
+                        x["is_decimal"]
+                        and 0 < x["num"] < 1000
+                    )
 
-                    # ================= PRICE =================
+                ]
 
-                    if not price:
+                if price_candidates:
 
-                        # currency symbols
+                    best_price = sorted(
+                        price_candidates,
+                        key=lambda x: x["col"]
+                    )[-1]
 
-                        if any(sym in val for sym in ["$", "€", "£"]):
-                            price = val
+                    price = str(best_price["num"])
 
-                        else:
 
-                            try:
+                # =========================================
+                # DETECT STOCK
+                # RULE:
+                # LARGEST INTEGER BEFORE PRICE
+                # =========================================
 
-                                clean_val = (
-                                    val.replace(",", ".")
-                                    .replace(" ", "")
-                                )
+                if price:
 
-                                num = float(clean_val)
+                    price_col = best_price["col"]
 
-                                # avoid IDs like 94646
+                    stock_candidates = []
 
-                                if (
-                                    0 < num < 10000
-                                    and ("." in val or "," in val)
-                                ):
-                                    price = val
+                    for item in numeric_candidates:
 
-                            except:
-                                pass
+                        if item["is_decimal"]:
+                            continue
 
-                global_index += 1
+                        val = item["num"]
 
-                if global_index <= start_index:
-                    continue
+                        # ignore huge product IDs
 
+                        if val > 9999:
+                            continue
+
+                        # must appear before price
+
+                        if item["col"] >= price_col:
+                            continue
+
+                        stock_candidates.append(item)
+
+                    if stock_candidates:
+
+                        best_stock = max(
+                            stock_candidates,
+                            key=lambda x: x["num"]
+                        )
+
+                        stock = str(int(best_stock["num"]))
+
+
+                _logger.warning(
+                    f"""
+                    EXCEL RAW ROW →
+
+                    TEXT=
+                    {' | '.join(row_text_parts)}
+
+                    PRICE={price}
+
+                    STOCK={stock}
+                    """
+                )
+                
                 # ================= FORMAT =================
                 row_text = f"""
                 ROW_DATA:
@@ -1035,6 +913,7 @@ class VendorImportJob(models.Model):
 
         # 🔥 CLEANUP (IMPORTANT)
         wb.close()
+
 
     # ---------------- PDF ----------------
 
