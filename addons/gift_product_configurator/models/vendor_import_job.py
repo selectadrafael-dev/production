@@ -348,6 +348,14 @@ class VendorImportJob(models.Model):
 
         def parse_excel(self):
 
+                        # ============================================
+            # TEMP DEBUG RESET
+            # ============================================
+
+            self.extracted_text = False
+            self.last_processed_product_index = 0
+            self.last_ai_page = 0
+
             _logger.warning("EXCEL → START PARSING (ADVANCED MODE)")
 
             excel_bytes = base64.b64decode(self.excel_file)
