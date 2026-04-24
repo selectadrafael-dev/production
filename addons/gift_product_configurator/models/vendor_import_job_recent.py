@@ -1492,7 +1492,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
 
-    #==========create pdf and excel product======================
+    #==========old create pdf and excel product======================
     
     def create_products_pdf_excel(self):
 
@@ -1793,6 +1793,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
 
+
     #-----URL API FLOW-------------------------------------------
 
     def scrape_with_playwright(self):
@@ -2039,8 +2040,7 @@ class VendorImportJob(models.Model):
             run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
 
             payload = {
-                "startUrls": [{"url": run_url}]
-                #"startUrls": [{"url": url}]
+                "startUrls": [{"url": url}]
             }
 
             headers = {

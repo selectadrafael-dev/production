@@ -26,12 +26,15 @@
 
                 </a>
 
-                 <!-- <a href="#"
-                   class="o_portal_doc d-flex align-items-center justify-content-start vendor-data-Status"
-                   data-bs-toggle="modal"
-                   data-bs-target="#vendorDataStatus"> -->
+                 <!-- upload report -->
                  <a href="#"
-                   class="o_portal_doc d-flex align-items-center justify-content-start vendor-data-status">
+                   class="o_portal_doc 
+                   d-flex align-items-center 
+                   justify-content-start 
+                   vendor-data-status"
+                   data-bs-toggle="modal"
+                   data-bs-target="#vendorProductsModal"
+                 >
 
                     <!-- ICON -->
                     <div class="o_portal_doc_icon me-3">
@@ -40,7 +43,7 @@
 
                     <!-- TEXT -->
                     <div class="o_portal_doc_text">
-                        <h5 class="mb-1">Upload Progress</h5>
+                        <h5 class="mb-1">Upload Report</h5>
                         <p class="mb-0 text-muted">
                             Status
                         </p>

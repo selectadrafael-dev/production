@@ -60,7 +60,7 @@
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
                 <!-- HERO CONTENT -->
-                <div class="col-lg-9 text-dark py-5">
+                <div class="col-lg-9 text-dark py-5 group-category-banner">
 
                   <nav class="mb-2 text-light">
                     Home /

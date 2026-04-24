@@ -34,6 +34,11 @@
 .hero-btn {
   padding: 14px 26px;
   border-radius: 8px;
+  transition: 0.25s ease-in-out;
+}
+
+.hero-btn:hover {
+  background-color: #666!important;
 }
 
 /* IMAGE */
