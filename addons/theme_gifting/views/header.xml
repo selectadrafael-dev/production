@@ -131,11 +131,51 @@
             </div>
 
             <div class="gifting-links">
-              <a href="#">New Arrivals</a>
-              <a href="#">Promotions</a>
-              <a href="#">Best Sellers</a>
-              <a href="#">Special Offers</a>
-              <a href="#">Eco friendly</a>
+              <t t-set="arriv"
+                  t-value="request.env.ref(
+                      'theme_gifting.category_new_arrivals'
+                  )"/>
+
+                <a t-att-href="'/shop/category/%s' % slug(arriv)">
+                  New Arrivals
+                </a>
+
+                <t t-set="promot"
+                  t-value="request.env.ref(
+                      'theme_gifting.category_promotions'
+                  )"/>
+
+                <a t-att-href="'/shop/category/%s' % slug(promot)">
+                  Promotions
+                </a>
+
+                 <t t-set="bseller"
+                  t-value="request.env.ref(
+                      'theme_gifting.category_seller'
+                  )"/>
+
+                <a t-att-href="'/shop/category/%s' % slug(bseller)">
+                  Best Sellers
+                </a>
+
+                 <t t-set="specoffers"
+                  t-value="request.env.ref(
+                      'theme_gifting.category_specffers'
+                  )"/>
+
+                <a t-att-href="'/shop/category/%s' % slug(specoffers)">
+                  Special Offers
+                </a>
+
+                <t t-set="frendly"
+                  t-value="request.env.ref(
+                      'theme_gifting.eco_friendly'
+                  )"/>
+
+                <a t-att-href="'/shop/category/%s' % slug(frendly)">
+                  Eco friendly
+                </a>
+             
             </div>
 
           </div>

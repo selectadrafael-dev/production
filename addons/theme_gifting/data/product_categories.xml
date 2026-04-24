@@ -30,6 +30,16 @@
       <field name="name">Promotions</field>
     </record>
 
+    <record id="category_seller"
+            model="product.public.category">
+      <field name="name">Best Seller</field>
+    </record>
+
+     <record id="category_specffers"
+            model="product.public.category">
+      <field name="name"> Special Offers</field>
+    </record>
+
     <record id="shop_industry"
             model="product.public.category">
       <field name="name">Shop By Industry</field>
