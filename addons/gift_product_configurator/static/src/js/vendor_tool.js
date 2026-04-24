@@ -271,27 +271,27 @@ async function loadVendorProducts(page = 1) {
 
             grid.innerHTML += `
 
-                <div class="col-md-3">
+                <div class="col-xl-3 col-lg-4 col-md-6">
 
-                    <div class="card h-100 shadow-sm">
+                    <div class="vendor-product-card">
 
-                        <img
-                            src="${product.image}"
-                            class="card-img-top"
-                            style="
-                                height:220px;
-                                object-fit:contain;
-                            "
-                        >
+                        <div class="vendor-product-image-wrap">
 
-                        <div class="card-body d-flex flex-column">
+                            <img
+                                src="${product.image}"
+                                class="vendor-product-image"
+                            >
 
-                            <h6>
+                        </div>
+
+                        <div class="vendor-product-content">
+
+                            <h6 class="vendor-product-title">
                                 ${product.name}
                             </h6>
 
                             <button
-                                class="btn btn-primary mt-auto manage-product-btn"
+                                class="btn btn-dark w-100 manage-product-btn"
                                 data-product-id="${product.id}"
                             >
                                 Manage Product
@@ -302,8 +302,27 @@ async function loadVendorProducts(page = 1) {
                     </div>
 
                 </div>
+
             `;
         });
+
+        if (!data.result.products.length) {
+
+            grid.innerHTML = `
+
+                <div class="col-12">
+
+                    <div class="alert alert-light text-center">
+
+                        No products found
+
+                    </div>
+
+                </div>
+            `;
+
+            return;
+        }
 
         document.getElementById(
             'vendorPageInfo'
