@@ -451,9 +451,9 @@ class VendorImportJob(models.Model):
                         continue
 
 
-                    # ====================================================
+                    # =====================================================
                     # DETECT PRICE + STOCK
-                    # ====================================================
+                    # =====================================================
 
                     price = ""
                     stock = ""
@@ -470,133 +470,17 @@ class VendorImportJob(models.Model):
                         if not raw_val:
                             continue
 
-                        header_name = (
-                            str(header_map.get(col_idx, ""))
-                            .lower()
-                            .strip()
-                        )
-
-                        lower_val = raw_val.lower()
-
-                        # =================================================
+                        # ============================================
                         # SKIP RANGES
                         # example: 2-43
-                        # =================================================
+                        # ============================================
 
                         if "-" in raw_val and not raw_val.startswith("-"):
                             continue
 
-                        # =================================================
-                        # STOCK KEYWORDS
-                        # =================================================
-
-                        stock_keywords = [
-                            "stock",
-                            "qty",
-                            "quantity",
-                            "available",
-                            "inventory",
-                            "pcs",
-                            "pieces"
-                        ]
-
-                        if not stock:
-
-                            if any(k in header_name for k in stock_keywords):
-
-                                try:
-
-                                    clean = re.sub(r"[^\d]", "", raw_val)
-
-                                    qty = int(clean)
-
-                                    if qty >= 0:
-
-                                        stock = str(qty)
-
-                                        detected_stock_reason = (
-                                            f"HEADER STOCK → {header_name}"
-                                        )
-
-                                except:
-                                    pass
-
-                        # =================================================
-                        # PRICE KEYWORDS
-                        # =================================================
-
-                        price_keywords = [
-                            "price",
-                            "cost",
-                            "amount",
-                            "sale",
-                            "unit price"
-                        ]
-
-                        if not price:
-
-                            if any(k in header_name for k in price_keywords):
-
-                                try:
-
-                                    clean = (
-                                        raw_val
-                                        .replace(",", ".")
-                                    )
-
-                                    clean = re.sub(
-                                        r"[^\d.]",
-                                        "",
-                                        clean
-                                    )
-
-                                    num = float(clean)
-
-                                    if 0 < num < 100000:
-
-                                        price = str(num)
-
-                                        detected_price_reason = (
-                                            f"HEADER PRICE → {header_name}"
-                                        )
-
-                                except:
-                                    pass
-
-                        # =================================================
-                        # CURRENCY PRICE MATCH
-                        # =================================================
-
-                        if not price:
-
-                            currency_match = re.search(
-                                r'(\$|€|£)\s?(\d+[.,]?\d*)',
-                                raw_val
-                            )
-
-                            if currency_match:
-
-                                price = (
-                                    currency_match
-                                    .group(2)
-                                    .replace(",", ".")
-                                )
-
-                                detected_price_reason = (
-                                    "CURRENCY MATCH"
-                                )
-
-                        # =================================================
-                        # COLLECT NUMERIC VALUES
-                        # =================================================
-
                         try:
 
-                            clean = (
-                                raw_val
-                                .replace(",", ".")
-                                .strip()
-                            )
+                            clean = raw_val.replace(",", ".")
 
                             clean = re.sub(
                                 r"[^\d.]",
@@ -621,83 +505,98 @@ class VendorImportJob(models.Model):
 
 
                     # =====================================================
-                    # FALLBACK PRICE DETECTION
+                    # DETECT PRICE
+                    # RULE:
+                    # RIGHT-MOST DECIMAL VALUE
                     # =====================================================
 
-                    if not price:
+                    decimal_candidates = [
 
-                        decimal_candidates = [
+                        x for x in numeric_candidates
 
-                            x for x in numeric_candidates
+                        if (
+                            x["has_decimal"]
+                            and 0 < x["num"] < 10000
+                        )
 
-                            if (
-                                x["has_decimal"]
-                                and 0 < x["num"] < 10000
-                            )
+                    ]
 
-                        ]
+                    if decimal_candidates:
 
-                        if decimal_candidates:
+                        best_price = sorted(
+                            decimal_candidates,
+                            key=lambda x: x["col"]
+                        )[-1]
 
-                            # prefer RIGHT-MOST decimal
+                        price = str(best_price["num"])
 
-                            best_price = sorted(
-                                decimal_candidates,
-                                key=lambda x: x["col"]
-                            )[-1]
-
-                            price = str(best_price["num"])
-
-                            detected_price_reason = (
-                                f"DECIMAL FALLBACK COL={best_price['col']}"
-                            )
+                        detected_price_reason = (
+                            f"RIGHT DECIMAL COL={best_price['col']}"
+                        )
 
 
                     # =====================================================
-                    # FALLBACK STOCK DETECTION
+                    # DETECT STOCK
+                    # RULE:
+                    # LARGEST INTEGER BEFORE PRICE
                     # =====================================================
 
-                    if not stock:
+                    if price:
 
-                        stock_candidates = []
+                        try:
 
-                        for item in numeric_candidates:
+                            price_col = best_price["col"]
 
-                            val = item["num"]
+                            stock_candidates = []
 
-                            # ignore decimals
+                            for item in numeric_candidates:
 
-                            if item["has_decimal"]:
-                                continue
+                                val = item["num"]
 
-                            # ignore large IDs
+                                # ignore decimals
 
-                            if val > 9999:
-                                continue
+                                if item["has_decimal"]:
+                                    continue
 
-                            # ignore tiny values
+                                # ignore huge IDs
 
-                            if val < 1:
-                                continue
+                                if val > 9999:
+                                    continue
 
-                            stock_candidates.append(item)
+                                # only values BEFORE price column
 
-                        if stock_candidates:
+                                if item["col"] >= price_col:
+                                    continue
 
-                            # choose first reasonable integer
+                                stock_candidates.append(item)
 
-                            best_stock = stock_candidates[0]
+                            if stock_candidates:
 
-                            stock = str(int(best_stock["num"]))
+                                # choose largest integer
 
-                            detected_stock_reason = (
-                                f"INTEGER FALLBACK COL={best_stock['col']}"
+                                best_stock = max(
+                                    stock_candidates,
+                                    key=lambda x: x["num"]
+                                )
+
+                                stock = str(int(best_stock["num"]))
+
+                                detected_stock_reason = (
+                                    f"LARGEST INTEGER BEFORE PRICE COL={best_stock['col']}"
+                                )
+
+                        except Exception as e:
+
+                            _logger.warning(
+                                f"STOCK DETECTION FAILED → {str(e)}"
                             )
+
 
                     _logger.warning(
-                        f"""
+                        f'''
                         EXCEL DETECTION RESULT
                         ----------------------
+
                         ROW INDEX: {global_index}
 
                         PRICE: {price}
@@ -706,9 +605,9 @@ class VendorImportJob(models.Model):
                         STOCK: {stock}
                         STOCK_REASON: {detected_stock_reason}
 
-                        ROW VALUES:
-                        {row_values}
-                        """
+                        RAW VALUES:
+                        {" | ".join(row_values)}
+                        '''
                     )
 
                     # =====================================================
