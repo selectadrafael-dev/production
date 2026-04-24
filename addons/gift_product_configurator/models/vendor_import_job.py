@@ -664,6 +664,63 @@ class VendorImportJob(models.Model):
                 if not row_text_parts:
                     continue
 
+                # =========================================
+                # NEW → DETECT PRICE/STOCK
+                # =========================================
+
+                price = ""
+                stock = ""
+
+                for cell in row:
+
+                    val = str(cell.value or "").strip()
+
+                    if not val:
+                        continue
+
+                    lower_val = val.lower()
+
+                    # ================= STOCK =================
+
+                    if (
+                        "stock" in lower_val
+                        or "pcs" in lower_val
+                        or "pieces" in lower_val
+                        or "available" in lower_val
+                    ):
+                        stock = val
+
+                    # ================= PRICE =================
+
+                    if not price:
+
+                        # currency symbols
+
+                        if any(sym in val for sym in ["$", "€", "£"]):
+                            price = val
+
+                        else:
+
+                            try:
+
+                                clean_val = (
+                                    val.replace(",", ".")
+                                    .replace(" ", "")
+                                )
+
+                                num = float(clean_val)
+
+                                # avoid IDs like 94646
+
+                                if (
+                                    0 < num < 10000
+                                    and ("." in val or "," in val)
+                                ):
+                                    price = val
+
+                            except:
+                                pass
+
                 global_index += 1
 
                 if global_index <= start_index:
@@ -710,11 +767,22 @@ class VendorImportJob(models.Model):
                             except:
                                 continue
 
+                # pages.append({
+                #     "page": global_index,
+                #     "text": row_text,
+                #     "images": row_images,
+                #     "row_index": global_index
+                # })
+
                 pages.append({
                     "page": global_index,
                     "text": row_text,
                     "images": row_images,
-                    "row_index": global_index
+                    "row_index": global_index,
+
+                    # NEW
+                    "price": price,
+                    "stock": stock,
                 })
 
                 current_count += 1
@@ -843,6 +911,34 @@ class VendorImportJob(models.Model):
                     for p in pages:
 
                         text = p.get("text", "")
+                        # =====================================
+                        # DETECT PRICE / STOCK
+                        # =====================================
+
+                        price = ""
+                        stock = ""
+
+                        # STOCK DETECTION
+
+                        stock_match = re.search(
+                            r'(stock|available)\s*:?\s*(\d+)\s*(pcs|pieces)?',
+                            text,
+                            re.I
+                        )
+
+                        if stock_match:
+                            stock = stock_match.group(0)
+
+                        # PRICE DETECTION
+
+                        price_match = re.search(
+                            r'(\$|€|£)\s?\d+[.,]?\d*',
+                            text
+                        )
+
+                        if price_match:
+                            price = price_match.group(0)
+                        
                         images = p.get("images", [])
 
                         if not text and not images:
@@ -851,6 +947,8 @@ class VendorImportJob(models.Model):
                         all_pages.append({
                             "page": i + 1,
                             "text": text,
+                            "price": price,
+                            "stock": stock,
                             "images": images
                         })
 
@@ -990,10 +1088,29 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PROCESSING BLOCK COUNT → {len(block_batch)}")
         _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
 
+        # combined_text = "\n\n---\n\n".join([
+        #     f"{b.get('text','')}\nIMAGE_URL: {b.get('image','')}"
+        #     for b in block_batch
+        # ])
+
         combined_text = "\n\n---\n\n".join([
-            f"{b.get('text','')}\nIMAGE_URL: {b.get('image','')}"
+            f"""
+            TEXT:
+            {b.get('text','')}
+
+            PRICE:
+            {b.get('price','')}
+
+            STOCK:
+            {b.get('stock','')}
+
+            IMAGE_URL:
+            {b.get('image','')}
+            """
+
             for b in block_batch
         ])
+
 
         if not combined_text.strip():
             _logger.warning("EMPTY COMBINED TEXT → SKIP")
@@ -1070,6 +1187,8 @@ class VendorImportJob(models.Model):
                 "name": "Clean product name",
                 "description": "Short product description (max 30 words)",
                 "category": "Best guess category",
+                "price": "",
+                "stock": "",
                 "image": "image_url_or_null"
             }}
             ]
@@ -1082,6 +1201,9 @@ class VendorImportJob(models.Model):
             - Description must be concise
             - Infer category intelligently
             - If no image exists → return null
+            - If price exists → extract it
+            - If stock exists → extract it
+            - NEVER invent stock or price
             - If unsure → still extract
 
             =====================================
@@ -1201,6 +1323,8 @@ class VendorImportJob(models.Model):
             for idx, row in enumerate(batch, start=start):
 
                 row_text = row.get("text", "")
+                row_price = row.get("price", "")
+                row_stock = row.get("stock", "")
                 images = row.get("images", [])
 
                 prompt = f"""
@@ -1288,6 +1412,13 @@ class VendorImportJob(models.Model):
                 - If ID is a mixture of numerical data and string → use it, but never use date or range
                 - If ID unclear → use first numeric value in row
 
+                - If price exists → preserve it
+                - If stock exists → preserve it
+                - NEVER invent price or stock
+                - Use product-level stock if catalog gives one stock value for entire product
+                - Use variant stock only if stock differs per variant
+
+
                 =====================================
                 OUTPUT FORMAT (STRICT)
                 =====================================
@@ -1297,6 +1428,8 @@ class VendorImportJob(models.Model):
                         "name": "",
                         "description": "",
                         "category": "",
+                        "price": "",
+                        "stock": "",
                         "variants": [
                             {{
                                 "attributes": {{
@@ -1313,7 +1446,14 @@ class VendorImportJob(models.Model):
                 ROW DATA
                 =====================================
 
+                ROW TEXT: 
                 {row_text}
+
+                DETECTED PRICE:
+                {row_price}
+
+                DETECTED STOCK:
+                {row_stock}
                 """
 
                 try:
@@ -1405,6 +1545,8 @@ class VendorImportJob(models.Model):
             page_no = page.get("page")
             page_text = page.get("text", "")
             images = page.get("images", [])
+            page_price = page.get("price", "")
+            page_stock = page.get("stock", "")
 
             if not page_text.strip() and not images:
                 continue
@@ -1517,6 +1659,11 @@ class VendorImportJob(models.Model):
             - Each product appears ONLY ONCE per page
             - Variants must be grouped under "variants"
             - If no variants exist → DO NOT include "variants"
+            - Use detected stock if found
+            - Use detected price if found
+            - Never invent stock or price
+            - Use product-level stock if shared across product
+            - Use variant stock only if variants differ
 
             ATTRIBUTE INFERENCE:
 
@@ -1572,6 +1719,8 @@ class VendorImportJob(models.Model):
                     "name": "",
                     "description": "",
                     "category": "",
+                    "price": "",
+                    "stock": "",
                     "variants": [
                         {{
                             "attributes": {{
@@ -1588,7 +1737,15 @@ class VendorImportJob(models.Model):
             - This page contains product images
 
             TEXT TO ANALYZE:
+
+            PAGE TEXT:
             {page_text}
+
+            DETECTED PRICE:
+            {page_price}
+
+            DETECTED STOCK:
+            {page_stock}
             """
 
             try:
@@ -2647,9 +2804,16 @@ class VendorImportJob(models.Model):
 
             seen.add(key)
 
+            # cleaned.append({
+            #     "text": text,
+            #     "image": image
+            # })
+
             cleaned.append({
                 "text": text,
-                "image": image
+                "image": image,
+                "price": item.get("price", ""),
+                "stock": item.get("stock", "")
             })
 
         return cleaned
@@ -2689,7 +2853,9 @@ class VendorImportJob(models.Model):
 
                 blocks.append({
                     "text": text,
-                    "image": image
+                    "image": image,
+                    "price": item.get("price", ""),
+                    "stock": item.get("stock", "")
                 })
 
                 continue
@@ -2723,9 +2889,16 @@ class VendorImportJob(models.Model):
                     ):
                         image = None
 
+                    # blocks.append({
+                    #     "text": text,
+                    #     "image": image
+                    # })
+
                     blocks.append({
                         "text": text,
-                        "image": image
+                        "image": image,
+                        "price": sub.get("price", ""),
+                        "stock": sub.get("stock", "")
                     })
 
             # =====================================================
@@ -2877,84 +3050,4 @@ class VendorImportJob(models.Model):
     #=======keep cron alive================
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
-    
-    #---------------clean scraped blocks-------------------------------
-
-    # def _clean_scraped_blocks(self, blocks):
-
-    #     cleaned = []
-
-    #     seen = set()
-
-    #     for block in blocks:
-
-    #         text = (
-    #             block.get("text") or ""
-    #         ).strip()
-
-    #         image = block.get("image")
-
-    #         # =====================================================
-    #         # BASIC VALIDATION
-    #         # =====================================================
-
-    #         if not text:
-    #             continue
-
-    #         if len(text) < 5:
-    #             continue
-
-    #         lower = text.lower()
-
-    #         # =====================================================
-    #         # REMOVE JUNK
-    #         # =====================================================
-
-    #         junk_words = [
-
-    #             'cookie',
-    #             'privacy',
-    #             'subscribe',
-    #             'login',
-    #             'sign in',
-    #             'filter',
-    #             'sort by',
-    #             'accept cookies'
-
-    #         ]
-
-    #         if any(
-    #             word in lower
-    #             for word in junk_words
-    #         ):
-    #             continue
-
-    #         # =====================================================
-    #         # REMOVE DUPLICATES
-    #         # =====================================================
-
-    #         key = text[:120]
-
-    #         if key in seen:
-    #             continue
-
-    #         seen.add(key)
-
-    #         cleaned.append({
-
-    #             "text": text,
-
-    #             "image": image
-
-    #         })
-
-    #     _logger.warning(
-    #         f"CLEAN BLOCKS → {len(cleaned)}"
-    #     )
-
-    #     _logger.warning(
-    #         f"REMOVED BLOCKS → "
-    #         f"{len(blocks) - len(cleaned)}"
-    #     )
-
-    #     return cleaned
+   
