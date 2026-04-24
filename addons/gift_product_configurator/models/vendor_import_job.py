@@ -810,7 +810,7 @@ class VendorImportJob(models.Model):
                     STOCK={stock}
                     """
                 )
-                
+
                 # ================= FORMAT =================
                 row_text = f"""
                 ROW_DATA:
@@ -2120,6 +2120,8 @@ class VendorImportJob(models.Model):
         }
 
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
+        vendor_id = self.partner_id.id if self.partner_id else False
+
         if not parent_category:
             parent_category = category_obj.create({'name': "All Products"})
 
@@ -2158,8 +2160,13 @@ class VendorImportJob(models.Model):
                 })
 
             # ================= DUPLICATE CHECK =================
+            # existing = product_obj.search([
+            #     ('name', 'ilike', name.strip())
+            # ], limit=1)
+
             existing = product_obj.search([
-                ('name', 'ilike', name.strip())
+                ('name', 'ilike', name.strip()),
+                ('vendor_id', '=', vendor_id)
             ], limit=1)
 
             if existing:
@@ -2173,6 +2180,7 @@ class VendorImportJob(models.Model):
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
+                'vendor_id': vendor_id,
             }
 
             # ================= IMAGE =================
@@ -2212,6 +2220,12 @@ class VendorImportJob(models.Model):
 
             # ================= CREATE =================
             try:
+                _logger.warning(
+                    f"[URL CREATE PRODUCT] → "
+                    f"NAME={name} | "
+                    f"VENDOR_ID={vendor_id}"
+                )
+
                 # product_obj.create(vals)
                 product = product_obj.with_context(
                     mail_create_nolog=True,
@@ -2243,6 +2257,7 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         self.env.cr.commit()
+
 
     #==========create pdf and excel product==========================
 
@@ -2665,6 +2680,7 @@ class VendorImportJob(models.Model):
 
         # _logger.warning(f"TOTAL PRODUCTS CREATED: {created_count}")
         _logger.warning(f"[PDF CREATE] TOTAL PRODUCTS CREATED: {created_count}")
+
 
     #-----URL API FLOW-------------------------------------------
 

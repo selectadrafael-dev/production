@@ -101,6 +101,67 @@
               </div>
             </div>
           </div>
+
+          <!--vendor products-->
+          <div class="modal fade"
+            id="vendorProductsModal"
+            tabindex="-1">
+
+            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+
+                <div class="modal-content">
+
+                    <!-- HEADER -->
+
+                    <div class="modal-header">
+
+                        <h5 class="modal-title">
+                            My Uploaded Products
+                        </h5>
+
+                        <button type="button"
+                                class="btn-close"
+                                data-bs-dismiss="modal"/>
+
+                    </div>
+
+                    <!-- BODY -->
+
+                    <div class="modal-body">
+
+                        <div id="vendorProductsGrid"
+                            class="row g-3">
+
+                        </div>
+
+                    </div>
+
+                    <!-- FOOTER -->
+
+                    <div class="modal-footer justify-content-between">
+
+                        <button class="btn btn-secondary"
+                                id="vendorPrevPage">
+                            Previous
+                        </button>
+
+                        <span id="vendorPageInfo">
+                            Page 1
+                        </span>
+
+                        <button class="btn btn-primary"
+                                id="vendorNextPage">
+                            Next
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
     </xpath>
   </template>
 </odoo>

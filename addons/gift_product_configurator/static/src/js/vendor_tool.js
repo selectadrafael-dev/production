@@ -237,4 +237,128 @@ document.addEventListener("DOMContentLoaded", function () {
 
 });
 
+/*vendor portal*/
+let vendorCurrentPage = 1;
+
+async function loadVendorProducts(page = 1) {
+
+    try {
+
+        const result = await fetch('/vendor/products', {
+
+            method: 'POST',
+
+            headers: {
+                'Content-Type': 'application/json',
+            },
+
+            body: JSON.stringify({
+                page: page,
+                limit: 50,
+            })
+
+        });
+
+        const data = await result.json();
+
+        const grid = document.getElementById(
+            'vendorProductsGrid'
+        );
+
+        grid.innerHTML = '';
+
+        data.result.products.forEach(product => {
+
+            grid.innerHTML += `
+
+                <div class="col-md-3">
+
+                    <div class="card h-100 shadow-sm">
+
+                        <img
+                            src="${product.image}"
+                            class="card-img-top"
+                            style="
+                                height:220px;
+                                object-fit:contain;
+                            "
+                        >
+
+                        <div class="card-body d-flex flex-column">
+
+                            <h6>
+                                ${product.name}
+                            </h6>
+
+                            <button
+                                class="btn btn-primary mt-auto manage-product-btn"
+                                data-product-id="${product.id}"
+                            >
+                                Manage Product
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </div>
+            `;
+        });
+
+        document.getElementById(
+            'vendorPageInfo'
+        ).innerText = `Page ${data.result.page}`;
+
+        document.getElementById(
+            'vendorPrevPage'
+        ).disabled = !data.result.has_prev;
+
+        document.getElementById(
+            'vendorNextPage'
+        ).disabled = !data.result.has_next;
+
+        vendorCurrentPage = data.result.page;
+
+    } catch (err) {
+
+        console.error(
+            'Vendor products load failed',
+            err
+        );
+    }
+}
+
+const vendorModal = document.getElementById(
+    'vendorProductsModal'
+);
+
+vendorModal.addEventListener(
+    'shown.bs.modal',
+    function () {
+
+        loadVendorProducts(1);
+    }
+);
+
+/**pagination */
+document
+.getElementById('vendorNextPage')
+.addEventListener('click', function () {
+
+    loadVendorProducts(
+        vendorCurrentPage + 1
+    );
+});
+
+
+document
+.getElementById('vendorPrevPage')
+.addEventListener('click', function () {
+
+    loadVendorProducts(
+        vendorCurrentPage - 1
+    );
+});
+
+
 })();
