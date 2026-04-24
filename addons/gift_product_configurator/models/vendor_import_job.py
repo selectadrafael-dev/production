@@ -346,254 +346,470 @@ class VendorImportJob(models.Model):
 
     #------------parse url------------------------------------
 
-    def parse_url(self):
+        def parse_excel(self):
 
-        import json
+            _logger.warning("EXCEL → START PARSING (ADVANCED MODE)")
 
-        _logger.warning(f"APIFY SCRAPE → {self.data_url}")
+            excel_bytes = base64.b64decode(self.excel_file)
+            wb = load_workbook(filename=BytesIO(excel_bytes))
 
-        raw_data = self._run_apify_actor(self.data_url)
+            headers = {"User-Agent": "Mozilla/5.0"}
 
-        # =====================================================
-        # APIFY STILL RUNNING
-        # =====================================================
+            pages = []
 
-        if raw_data is None:
+            BATCH_SIZE = 8
+            MAX_BUFFER = 150
+
+            start_index = self.last_processed_product_index or 0
+            current_count = 0
+            global_index = 0
+
+            _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
+
+            total_rows = 0
+
+            # =====================================================
+            # COUNT VALID ROWS
+            # =====================================================
+
+            for sheet in wb.worksheets:
+
+                for idx, row in enumerate(sheet.iter_rows()):
+
+                    if idx == 0:
+                        continue
+
+                    row_values = [
+                        str(cell.value or "").strip()
+                        for cell in row
+                        if str(cell.value or "").strip()
+                    ]
+
+                    if row_values:
+                        total_rows += 1
+
+            _logger.warning(f"TOTAL VALID ROWS → {total_rows}")
+
+            # =====================================================
+            # MAIN LOOP
+            # =====================================================
+
+            last_valid_index = start_index
+
+            for sheet in wb.worksheets:
+
+                _logger.warning(f"PROCESSING SHEET → {sheet.title}")
+
+                image_loader = SheetImageLoader(sheet)
+
+                # =========================================
+                # DETECT HEADERS
+                # =========================================
+
+                header_map = {}
+
+                try:
+
+                    header_row = next(sheet.iter_rows(min_row=1, max_row=1))
+
+                    for idx, cell in enumerate(header_row):
+
+                        header_val = str(cell.value or "").strip().lower()
+
+                        header_map[idx] = header_val
+
+                except Exception:
+                    pass
+
+                _logger.warning(f"HEADER MAP → {header_map}")
+
+                # =========================================
+                # PROCESS ROWS
+                # =========================================
+
+                for idx, row in enumerate(sheet.iter_rows()):
+
+                    if current_count >= BATCH_SIZE:
+                        _logger.warning("BATCH LIMIT REACHED")
+                        break
+
+                    if idx == 0:
+                        continue
+
+                    row_values = [
+                        str(cell.value or "").strip()
+                        for cell in row
+                        if str(cell.value or "").strip()
+                    ]
+
+                    if not row_values:
+                        continue
+
+                    global_index += 1
+
+                    if global_index <= start_index:
+                        continue
+
+                    # =====================================================
+                    # DETECT PRICE + STOCK
+                    # =====================================================
+
+                    price = ""
+                    stock = ""
+
+                    detected_price_reason = ""
+                    detected_stock_reason = ""
+
+                    for col_idx, cell in enumerate(row):
+
+                        raw_val = str(cell.value or "").strip()
+
+                        if not raw_val:
+                            continue
+
+                        lower_val = raw_val.lower()
+
+                        header_name = header_map.get(col_idx, "")
+
+                        # =================================================
+                        # STOCK DETECTION
+                        # =================================================
+
+                        stock_keywords = [
+                            "stock",
+                            "qty",
+                            "quantity",
+                            "available",
+                            "inventory",
+                            "pcs",
+                            "pieces"
+                        ]
+
+                        if not stock:
+
+                            # header based
+
+                            if any(k in header_name for k in stock_keywords):
+
+                                try:
+
+                                    clean = re.sub(r"[^\d.]", "", raw_val)
+
+                                    qty = int(float(clean))
+
+                                    if qty >= 0:
+
+                                        stock = str(qty)
+
+                                        detected_stock_reason = (
+                                            f"HEADER MATCH → {header_name}"
+                                        )
+
+                                except:
+                                    pass
+
+                            # inline detection
+
+                            if not stock:
+
+                                stock_match = re.search(
+                                    r'(\d+)\s*(pcs|pieces)',
+                                    lower_val
+                                )
+
+                                if stock_match:
+
+                                    stock = stock_match.group(1)
+
+                                    detected_stock_reason = (
+                                        "INLINE PCS MATCH"
+                                    )
+
+                        # =================================================
+                        # PRICE DETECTION
+                        # =================================================
+
+                        if not price:
+
+                            # header based
+
+                            price_headers = [
+                                "price",
+                                "cost",
+                                "amount",
+                                "unit price",
+                                "sale"
+                            ]
+
+                            if any(p in header_name for p in price_headers):
+
+                                try:
+
+                                    clean = (
+                                        raw_val
+                                        .replace(",", ".")
+                                    )
+
+                                    clean = re.sub(
+                                        r"[^\d.]",
+                                        "",
+                                        clean
+                                    )
+
+                                    num = float(clean)
+
+                                    # avoid IDs
+
+                                    if 0 < num < 10000:
+
+                                        price = str(num)
+
+                                        detected_price_reason = (
+                                            f"HEADER MATCH → {header_name}"
+                                        )
+
+                                except:
+                                    pass
+
+                            # currency match
+
+                            if not price:
+
+                                currency_match = re.search(
+                                    r'(\$|€|£)\s?(\d+[.,]?\d*)',
+                                    raw_val
+                                )
+
+                                if currency_match:
+
+                                    price = currency_match.group(2)
+
+                                    detected_price_reason = (
+                                        "CURRENCY MATCH"
+                                    )
+
+                            # decimal fallback
+
+                            if not price:
+
+                                try:
+
+                                    clean = (
+                                        raw_val
+                                        .replace(",", ".")
+                                        .strip()
+                                    )
+
+                                    # skip ranges
+
+                                    if "-" in clean:
+                                        raise Exception()
+
+                                    num = float(clean)
+
+                                    # avoid IDs like 94646
+
+                                    if (
+                                        0 < num < 500
+                                        and "." in clean
+                                    ):
+
+                                        price = str(num)
+
+                                        detected_price_reason = (
+                                            "DECIMAL FALLBACK"
+                                        )
+
+                                except:
+                                    pass
+
+                    # =====================================================
+                    # DEBUG
+                    # =====================================================
+
+                    _logger.warning(
+                        f"""
+                        EXCEL DETECTION RESULT
+                        ----------------------
+                        ROW INDEX: {global_index}
+
+                        PRICE: {price}
+                        PRICE_REASON: {detected_price_reason}
+
+                        STOCK: {stock}
+                        STOCK_REASON: {detected_stock_reason}
+
+                        ROW VALUES:
+                        {row_values}
+                        """
+                    )
+
+                    # =====================================================
+                    # BUILD ROW TEXT
+                    # =====================================================
+
+                    row_text = f"""
+                    ROW_DATA:
+                    {" | ".join(row_values)}
+
+                    RULES:
+                    - THIS IS EXACTLY ONE PRODUCT
+                    - DO NOT SPLIT THIS ROW
+                    - THIS ROW MAY BE A VARIANT
+                    """
+
+                    # =====================================================
+                    # IMAGE EXTRACTION
+                    # =====================================================
+
+                    row_images = []
+
+                    for cell in row:
+
+                        try:
+
+                            if image_loader.image_in(cell.coordinate):
+
+                                pil_img = image_loader.get(cell.coordinate)
+
+                                buffer = BytesIO()
+
+                                pil_img.save(buffer, format="JPEG")
+
+                                img_base64 = base64.b64encode(
+                                    buffer.getvalue()
+                                ).decode("utf-8")
+
+                                row_images.append(img_base64)
+
+                                break
+
+                        except:
+                            continue
+
+                    # =====================================================
+                    # IMAGE URL FALLBACK
+                    # =====================================================
+
+                    if not row_images:
+
+                        for cell in row:
+
+                            val = str(cell.value or "").strip()
+
+                            if val.startswith("http"):
+
+                                try:
+
+                                    response = requests.get(
+                                        val,
+                                        headers=headers,
+                                        timeout=5
+                                    )
+
+                                    if (
+                                        response.status_code == 200
+                                        and "image" in response.headers.get(
+                                            "Content-Type",
+                                            ""
+                                        )
+                                    ):
+
+                                        img_base64 = base64.b64encode(
+                                            response.content
+                                        ).decode("utf-8")
+
+                                        row_images.append(img_base64)
+
+                                        break
+
+                                except:
+                                    continue
+
+                    # =====================================================
+                    # STORE
+                    # =====================================================
+
+                    pages.append({
+                        "page": global_index,
+                        "text": row_text,
+                        "images": row_images,
+                        "row_index": global_index,
+                        "price": price,
+                        "stock": stock,
+                    })
+
+                    current_count += 1
+
+                    last_valid_index = global_index
+
+                    if len(pages) >= MAX_BUFFER:
+                        _logger.warning("MAX BUFFER REACHED")
+                        break
+
+                if (
+                    current_count >= BATCH_SIZE
+                    or len(pages) >= MAX_BUFFER
+                ):
+                    break
+
+            # =====================================================
+            # STORE EXTRACTED DATA
+            # =====================================================
+
+            existing = []
+
+            if self.extracted_text:
+
+                try:
+                    existing = json.loads(self.extracted_text)
+                except:
+                    existing = []
+
+            combined = existing + pages
+
+            self.extracted_text = json.dumps(combined)
+
+            self.last_processed_product_index = last_valid_index
+
+            remaining = max(
+                total_rows - last_valid_index,
+                0
+            )
+
+            progress = (
+                round(
+                    (last_valid_index / total_rows) * 100,
+                    2
+                )
+                if total_rows
+                else 0
+            )
 
             _logger.warning(
-                "APIFY NOT READY → WAIT NEXT CRON"
+                f"""
+                EXCEL PARSE SUMMARY
+                -------------------
+                CURRENT INDEX: {last_valid_index}
+                REMAINING: {remaining}
+                PROGRESS: {progress}%
+                STORED ROWS: {len(pages)}
+                """
             )
 
-            self.state = "url_scraping"
+            if last_valid_index >= total_rows:
 
-            return True
+                _logger.warning("EXCEL PARSING COMPLETE ✅")
 
-        # =====================================================
-        # EMPTY RAW RESPONSE
-        # =====================================================
+                self.is_excel_parsed = True
 
-        if not raw_data:
+            else:
 
-            _logger.error(
-                "APIFY FAILED → EMPTY DATASET"
-            )
+                _logger.warning("MORE EXCEL ROWS REMAIN")
 
-            self.state = "failed"
+                self.state = "processing"
 
-            return
-
-        # =====================================================
-        # SAFE DEBUG LOG
-        # =====================================================
-
-        try:
-
-            _logger.warning(
-                f"RAW APIFY ITEMS → {len(raw_data)}"
-            )
-
-        except Exception:
-            pass
-
-        # =====================================================
-        # HANDLE STRUCTURED RESPONSES
-        # =====================================================
-
-        first = raw_data[0] if raw_data else {}
-
-        response_type = first.get("type")
-
-        # =====================================================
-        # BLOCKED
-        # =====================================================
-
-        if response_type == "BLOCKED":
-
-            reason = first.get(
-                "reason",
-                "Unknown block detected"
-            )
-
-            status_code = first.get(
-                "status_code"
-            )
-
-            _logger.error(
-                f"URL BLOCKED → {reason}"
-            )
-
-            if status_code:
-                _logger.error(
-                    f"BLOCK STATUS CODE → {status_code}"
-                )
-
-            self.state = "failed"
-
-            return
-
-        # =====================================================
-        # EMPTY
-        # =====================================================
-
-        if response_type == "EMPTY":
-
-            reason = first.get(
-                "reason",
-                "No products extracted"
-            )
-
-            debug = first.get("debug", {})
-
-            _logger.error(
-                f"URL EXTRACTION EMPTY → {reason}"
-            )
-
-            if debug:
-
-                _logger.error(
-                    f"PAGE TITLE → {debug.get('title')}"
-                )
-
-                _logger.error(
-                    f"IMAGES FOUND → {debug.get('images_found')}"
-                )
-
-                _logger.error(
-                    f"LINKS FOUND → {debug.get('links_found')}"
-                )
-
-                _logger.error(
-                    f"POSSIBLE PRODUCT BLOCKS → "
-                    f"{debug.get('possible_product_blocks')}"
-                )
-
-                _logger.error(
-                    f"COOKIE DETECTED → "
-                    f"{debug.get('cookie_detected')}"
-                )
-
-                preview = debug.get(
-                    'body_preview',
-                    ''
-                )
-
-                _logger.error(
-                    f"BODY PREVIEW → {preview[:300]}"
-                )
-
-            self.state = "failed"
-
-            return
-
-        # =====================================================
-        # PRODUCTS
-        # =====================================================
-
-        # structured_data = []
-
-        # for block in raw_data:
-
-        #     if block.get("type") != "PRODUCTS":
-        #         continue
-
-        #     items = block.get("items", [])
-
-        #     if not items:
-        #         continue
-
-        #     structured_data.extend(items)
-
-        # ===================================================
-        # PRODUCTS
-        # ===================================================
-
-        structured_data = []
-
-        for block in raw_data:
-
-            # ==============================================
-            # FORMAT 1 → ORIGINAL EB FORMAT
-            # ==============================================
-
-            if block.get("text"):
-
-                structured_data.append({
-                    "text": block.get("text"),
-                    "image": block.get("image")
-                })
-
-                continue
-
-            # ==============================================
-            # FORMAT 2 → STRUCTURED FORMAT
-            # ==============================================
-
-            if block.get("type") == "PRODUCTS":
-
-                items = block.get("items", [])
-
-                if not items:
-                    continue
-
-                structured_data.extend(items)
-
-        # =====================================================
-        # NO PRODUCTS AFTER PARSE
-        # =====================================================
-
-        if not structured_data:
-
-            _logger.error(
-                "NO VALID PRODUCTS FOUND AFTER PARSING"
-            )
-
-            self.state = "failed"
-
-            return
-
-        # =====================================================
-        # LIMIT SIZE (VERY IMPORTANT)
-        # =====================================================
-
-        structured_data = structured_data[:40]
-
-        # =====================================================
-        # NORMALIZE
-        # =====================================================
-
-        normalized = self._normalize_url_data(
-            structured_data
-        )
-
-        if not normalized:
-
-            _logger.error(
-                "NORMALIZATION FAILED → EMPTY DATA"
-            )
-
-            self.state = "failed"
-
-            return
-
-        # =====================================================
-        # STORE SAFELY
-        # =====================================================
-
-        payload = json.dumps(normalized)
-
-        # 🔥 LIMIT STORAGE SIZE
-        self.extracted_text = payload[:50000]
-
-        _logger.warning(
-            f"APIFY DONE → {len(normalized)} ITEMS"
-        )
-
-        # =====================================================
-        # MOVE TO NEXT STEP
-        # =====================================================
-
-        self.state = "url_ai"
-
+            wb.close()
 
     #------excel parsing method---------------
 
@@ -767,13 +983,6 @@ class VendorImportJob(models.Model):
                             except:
                                 continue
 
-                # pages.append({
-                #     "page": global_index,
-                #     "text": row_text,
-                #     "images": row_images,
-                #     "row_index": global_index
-                # })
-
                 pages.append({
                     "page": global_index,
                     "text": row_text,
@@ -784,6 +993,10 @@ class VendorImportJob(models.Model):
                     "price": price,
                     "stock": stock,
                 })
+
+                _logger.warning(
+                    f"EXCEL RAW ROW → TEXT={row_text[:80]} | PRICE={price} | STOCK={stock}"
+                )
 
                 current_count += 1
                 last_valid_index = global_index  # 🔥 CRITICAL FIX
@@ -1327,6 +1540,14 @@ class VendorImportJob(models.Model):
                 row_stock = row.get("stock", "")
                 images = row.get("images", [])
 
+                _logger.warning(
+                    f"[EXCEL AI INPUT] → "
+                    f"ROW={idx} | "
+                    f"PRICE={row_price} | "
+                    f"STOCK={row_stock} | "
+                    f"TEXT={row_text[:120]}"
+                )
+
                 prompt = f"""
                 You are a structured Excel product parser.
 
@@ -1412,8 +1633,20 @@ class VendorImportJob(models.Model):
                 - If ID is a mixture of numerical data and string → use it, but never use date or range
                 - If ID unclear → use first numeric value in row
 
-                - If price exists → preserve it
-                - If stock exists → preserve it
+                - If DETECTED PRICE exists:
+                    → copy it EXACTLY into "price"
+
+                - If DETECTED STOCK exists:
+                    → copy it EXACTLY into "stock"
+
+                - NEVER invent price
+                - NEVER invent stock
+
+                - If no price found:
+                    → return ""
+
+                - If no stock found:
+                    → return ""
                 - NEVER invent price or stock
                 - Use product-level stock if catalog gives one stock value for entire product
                 - Use variant stock only if stock differs per variant
@@ -1469,8 +1702,22 @@ class VendorImportJob(models.Model):
                     if isinstance(parsed, list) and parsed:
                         parsed = parsed[0]
 
+                    # if images:
+                    #     parsed["image"] = images[0]
+
+                    # new_products.append(parsed)
+
+                    # _logger.warning(f"ROW {idx} → OK")
+
                     if images:
                         parsed["image"] = images[0]
+
+                    _logger.warning(
+                        f"[EXCEL AI OUTPUT] → "
+                        f"NAME={parsed.get('name')} | "
+                        f"PRICE={parsed.get('price')} | "
+                        f"STOCK={parsed.get('stock')}"
+                    )
 
                     new_products.append(parsed)
 
@@ -1501,6 +1748,7 @@ class VendorImportJob(models.Model):
                     self.state = "excel_creating"
 
             return
+
 
         # ================= PDF MODE (BATCHED FIX) =================
 
@@ -2237,10 +2485,18 @@ class VendorImportJob(models.Model):
                         'sale_ok': True,
                         'website_published': False,
                         'vendor_id': vendor_id,
+                        'list_price': self._safe_float(main_product.get("price")),
                     }
 
                     if main_product.get("image"):
                         vals['image_1920'] = main_product.get("image")
+
+                    _logger.warning(
+                        f"[EXCEL CREATE PRODUCT] → "
+                        f"NAME={name} | "
+                        f"PRICE={main_product.get('price')} | "
+                        f"FINAL_PRICE={vals.get('list_price')}"
+                    )
 
                     product = product_obj.with_context(
                         mail_create_nolog=True,
@@ -2294,8 +2550,63 @@ class VendorImportJob(models.Model):
                         ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
                     ], limit=1)
 
-                    if variant_record and item.get("image"):
-                        variant_record.image_1920 = item.get("image")
+                    # if variant_record and item.get("image"):
+                    #     variant_record.image_1920 = item.get("image")
+
+                    if variant_record:
+
+                        # ================= IMAGE =================
+
+                        if item.get("image"):
+                            variant_record.image_1920 = item.get("image")
+
+                        # ================= STOCK =================
+
+                        stock = item.get("stock")
+
+                        _logger.warning(
+                            f"[EXCEL VARIANT STOCK] → "
+                            f"VARIANT={variant_record.display_name} | "
+                            f"RAW_STOCK={stock}"
+                        )
+
+                        if stock not in [None, "", False]:
+
+                            try:
+
+                                qty = float(stock)
+
+                                stock_quant = self.env['stock.quant'].search([
+                                    ('product_id', '=', variant_record.id),
+                                    ('location_id', '=', self.env.ref('stock.stock_location_stock').id)
+                                ], limit=1)
+
+                                if stock_quant:
+
+                                    stock_quant.inventory_quantity = qty
+                                    stock_quant.action_apply_inventory()
+
+                                else:
+
+                                    stock_quant = self.env['stock.quant'].create({
+                                        'product_id': variant_record.id,
+                                        'location_id': self.env.ref('stock.stock_location_stock').id,
+                                        'inventory_quantity': qty,
+                                    })
+
+                                    stock_quant.action_apply_inventory()
+
+                                _logger.warning(
+                                    f"[STOCK APPLIED] → "
+                                    f"{variant_record.display_name} | "
+                                    f"QTY={qty}"
+                                )
+
+                            except Exception as e:
+
+                                _logger.exception(
+                                    f"[STOCK FAILED] → {str(e)}"
+                                )
 
                 # 🔥 MARK GROUP AS PROCESSED
                 processed_groups.add(group_id)
@@ -2721,53 +3032,6 @@ class VendorImportJob(models.Model):
         except Exception:
             _logger.warning("FLASK PING FAILED")
 
-  
-    #---------------normalizer-------------------------------
-   
-    # def _normalize_url_data(self, items):
-
-    #     blocks = []
-
-    #     for item in items:
-
-    #         text = (item.get("text") or "").strip()
-    #         image = item.get("image")
-
-    #         # 🔥 STRICT VALIDATION
-    #         if not text or len(text) < 5:
-    #             continue
-
-    #         if image and isinstance(image, str) and not image.startswith("http"):
-    #             image = None
-
-    #         blocks.append({
-    #             "text": text,
-    #             "image": image
-    #         })
-
-    #     _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
-
-    #     # =====================================================
-    #     # 🔥 SPLIT INTO MULTIPLE PAGES (CRITICAL FIX)
-    #     # =====================================================
-
-    #     PAGE_SIZE = 20  # 🔥 prevents AI overload
-
-    #     pages = []
-
-    #     for i in range(0, len(blocks), PAGE_SIZE):
-
-    #         chunk = blocks[i:i + PAGE_SIZE]
-
-    #         pages.append({
-    #             "page": len(pages) + 1,
-    #             "blocks": chunk
-    #         })
-
-    #     _logger.warning(f"NORMALIZED PAGES → {len(pages)}")
-
-    #     return pages
-
 
     # #---------------clean_scraped_blocks-------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
@@ -3051,3 +3315,22 @@ class VendorImportJob(models.Model):
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
    
+   #=========gloat numbers=============
+    def _safe_float(self, value):
+
+        try:
+
+            if value is None:
+                return 0.0
+
+            value = str(value)
+
+            value = value.replace('$', '')
+            value = value.replace('€', '')
+            value = value.replace('£', '')
+            value = value.replace(',', '')
+
+            return float(value.strip())
+
+        except:
+            return 0.0
