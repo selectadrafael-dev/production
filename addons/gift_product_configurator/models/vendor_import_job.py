@@ -450,15 +450,18 @@ class VendorImportJob(models.Model):
                     if global_index <= start_index:
                         continue
 
-                    # =====================================================
+
+                    # ====================================================
                     # DETECT PRICE + STOCK
-                    # =====================================================
+                    # ====================================================
 
                     price = ""
                     stock = ""
 
                     detected_price_reason = ""
                     detected_stock_reason = ""
+
+                    numeric_candidates = []
 
                     for col_idx, cell in enumerate(row):
 
@@ -467,12 +470,24 @@ class VendorImportJob(models.Model):
                         if not raw_val:
                             continue
 
+                        header_name = (
+                            str(header_map.get(col_idx, ""))
+                            .lower()
+                            .strip()
+                        )
+
                         lower_val = raw_val.lower()
 
-                        header_name = header_map.get(col_idx, "")
+                        # =================================================
+                        # SKIP RANGES
+                        # example: 2-43
+                        # =================================================
+
+                        if "-" in raw_val and not raw_val.startswith("-"):
+                            continue
 
                         # =================================================
-                        # STOCK DETECTION
+                        # STOCK KEYWORDS
                         # =================================================
 
                         stock_keywords = [
@@ -487,61 +502,40 @@ class VendorImportJob(models.Model):
 
                         if not stock:
 
-                            # header based
-
                             if any(k in header_name for k in stock_keywords):
 
                                 try:
 
-                                    clean = re.sub(r"[^\d.]", "", raw_val)
+                                    clean = re.sub(r"[^\d]", "", raw_val)
 
-                                    qty = int(float(clean))
+                                    qty = int(clean)
 
                                     if qty >= 0:
 
                                         stock = str(qty)
 
                                         detected_stock_reason = (
-                                            f"HEADER MATCH → {header_name}"
+                                            f"HEADER STOCK → {header_name}"
                                         )
 
                                 except:
                                     pass
 
-                            # inline detection
-
-                            if not stock:
-
-                                stock_match = re.search(
-                                    r'(\d+)\s*(pcs|pieces)',
-                                    lower_val
-                                )
-
-                                if stock_match:
-
-                                    stock = stock_match.group(1)
-
-                                    detected_stock_reason = (
-                                        "INLINE PCS MATCH"
-                                    )
-
                         # =================================================
-                        # PRICE DETECTION
+                        # PRICE KEYWORDS
                         # =================================================
+
+                        price_keywords = [
+                            "price",
+                            "cost",
+                            "amount",
+                            "sale",
+                            "unit price"
+                        ]
 
                         if not price:
 
-                            # header based
-
-                            price_headers = [
-                                "price",
-                                "cost",
-                                "amount",
-                                "unit price",
-                                "sale"
-                            ]
-
-                            if any(p in header_name for p in price_headers):
+                            if any(k in header_name for k in price_keywords):
 
                                 try:
 
@@ -558,74 +552,147 @@ class VendorImportJob(models.Model):
 
                                     num = float(clean)
 
-                                    # avoid IDs
-
-                                    if 0 < num < 10000:
+                                    if 0 < num < 100000:
 
                                         price = str(num)
 
                                         detected_price_reason = (
-                                            f"HEADER MATCH → {header_name}"
+                                            f"HEADER PRICE → {header_name}"
                                         )
 
                                 except:
                                     pass
 
-                            # currency match
+                        # =================================================
+                        # CURRENCY PRICE MATCH
+                        # =================================================
 
-                            if not price:
+                        if not price:
 
-                                currency_match = re.search(
-                                    r'(\$|€|£)\s?(\d+[.,]?\d*)',
-                                    raw_val
+                            currency_match = re.search(
+                                r'(\$|€|£)\s?(\d+[.,]?\d*)',
+                                raw_val
+                            )
+
+                            if currency_match:
+
+                                price = (
+                                    currency_match
+                                    .group(2)
+                                    .replace(",", ".")
                                 )
 
-                                if currency_match:
+                                detected_price_reason = (
+                                    "CURRENCY MATCH"
+                                )
 
-                                    price = currency_match.group(2)
+                        # =================================================
+                        # COLLECT NUMERIC VALUES
+                        # =================================================
 
-                                    detected_price_reason = (
-                                        "CURRENCY MATCH"
-                                    )
+                        try:
 
-                            # decimal fallback
+                            clean = (
+                                raw_val
+                                .replace(",", ".")
+                                .strip()
+                            )
 
-                            if not price:
+                            clean = re.sub(
+                                r"[^\d.]",
+                                "",
+                                clean
+                            )
 
-                                try:
+                            if not clean:
+                                continue
 
-                                    clean = (
-                                        raw_val
-                                        .replace(",", ".")
-                                        .strip()
-                                    )
+                            num = float(clean)
 
-                                    # skip ranges
+                            numeric_candidates.append({
+                                "col": col_idx,
+                                "raw": raw_val,
+                                "num": num,
+                                "has_decimal": "." in raw_val
+                            })
 
-                                    if "-" in clean:
-                                        raise Exception()
+                        except:
+                            continue
 
-                                    num = float(clean)
-
-                                    # avoid IDs like 94646
-
-                                    if (
-                                        0 < num < 500
-                                        and "." in clean
-                                    ):
-
-                                        price = str(num)
-
-                                        detected_price_reason = (
-                                            "DECIMAL FALLBACK"
-                                        )
-
-                                except:
-                                    pass
 
                     # =====================================================
-                    # DEBUG
+                    # FALLBACK PRICE DETECTION
                     # =====================================================
+
+                    if not price:
+
+                        decimal_candidates = [
+
+                            x for x in numeric_candidates
+
+                            if (
+                                x["has_decimal"]
+                                and 0 < x["num"] < 10000
+                            )
+
+                        ]
+
+                        if decimal_candidates:
+
+                            # prefer RIGHT-MOST decimal
+
+                            best_price = sorted(
+                                decimal_candidates,
+                                key=lambda x: x["col"]
+                            )[-1]
+
+                            price = str(best_price["num"])
+
+                            detected_price_reason = (
+                                f"DECIMAL FALLBACK COL={best_price['col']}"
+                            )
+
+
+                    # =====================================================
+                    # FALLBACK STOCK DETECTION
+                    # =====================================================
+
+                    if not stock:
+
+                        stock_candidates = []
+
+                        for item in numeric_candidates:
+
+                            val = item["num"]
+
+                            # ignore decimals
+
+                            if item["has_decimal"]:
+                                continue
+
+                            # ignore large IDs
+
+                            if val > 9999:
+                                continue
+
+                            # ignore tiny values
+
+                            if val < 1:
+                                continue
+
+                            stock_candidates.append(item)
+
+                        if stock_candidates:
+
+                            # choose first reasonable integer
+
+                            best_stock = stock_candidates[0]
+
+                            stock = str(int(best_stock["num"]))
+
+                            detected_stock_reason = (
+                                f"INTEGER FALLBACK COL={best_stock['col']}"
+                            )
 
                     _logger.warning(
                         f"""
@@ -810,6 +877,7 @@ class VendorImportJob(models.Model):
                 self.state = "processing"
 
             wb.close()
+
 
     #------excel parsing method---------------
 
