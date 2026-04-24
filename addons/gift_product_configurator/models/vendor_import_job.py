@@ -493,11 +493,35 @@ class VendorImportJob(models.Model):
 
                             num = float(clean)
 
+                            # ============================================
+                            # REAL DECIMAL DETECTION
+                            # ============================================
+
+                            is_real_decimal = False
+
+                            try:
+
+                                parts = raw_val.split(".")
+
+                                if len(parts) == 2:
+
+                                    decimal_part = parts[1].strip()
+
+                                    # only treat as decimal if NOT just .0
+
+                                    if decimal_part not in ["0", "00"]:
+
+                                        is_real_decimal = True
+
+                            except:
+                                pass
+
+
                             numeric_candidates.append({
                                 "col": col_idx,
                                 "raw": raw_val,
                                 "num": num,
-                                "has_decimal": "." in raw_val
+                                "has_decimal": is_real_decimal
                             })
 
                         except:
