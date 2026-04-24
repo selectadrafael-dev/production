@@ -62,7 +62,7 @@
     position: relative;
     /* bottom: 100px; */
     position: relative !important;
-    top: -250px;
+    top: -250px!important;
     background: white;
 }
 
@@ -75,7 +75,7 @@
   /*.o_wsale_products_main_row #products_grid_before{*/
    #products_grid_before{
     position: sticky !important;
-    top: 0;
+   top: 0!important;
     background: white;
    }
 
