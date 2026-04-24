@@ -348,7 +348,7 @@ class VendorImportJob(models.Model):
 
         def parse_excel(self):
 
-                        # ============================================
+            # ============================================
             # TEMP DEBUG RESET
             # ============================================
 
@@ -502,28 +502,22 @@ class VendorImportJob(models.Model):
                             num = float(clean)
 
                             # ============================================
-                            # REAL DECIMAL DETECTION
+                            # SMART DECIMAL DETECTION
                             # ============================================
 
                             is_real_decimal = False
 
-                            try:
+                            normalized = clean.strip()
 
-                                parts = raw_val.split(".")
+                            if "." in normalized:
 
-                                if len(parts) == 2:
+                                decimal_part = normalized.split(".")[-1]
 
-                                    decimal_part = parts[1].strip()
+                                # ONLY treat as decimal if NOT .0 or .00
 
-                                    # only treat as decimal if NOT just .0
+                                if decimal_part not in ["0", "00"]:
 
-                                    if decimal_part not in ["0", "00"]:
-
-                                        is_real_decimal = True
-
-                            except:
-                                pass
-
+                                    is_real_decimal = True
 
                             numeric_candidates.append({
                                 "col": col_idx,
@@ -539,7 +533,7 @@ class VendorImportJob(models.Model):
                     # =====================================================
                     # DETECT PRICE
                     # RULE:
-                    # RIGHT-MOST DECIMAL VALUE
+                    # RIGHT-MOST REAL DECIMAL
                     # =====================================================
 
                     decimal_candidates = [
@@ -548,7 +542,7 @@ class VendorImportJob(models.Model):
 
                         if (
                             x["has_decimal"]
-                            and 0 < x["num"] < 10000
+                            and 0 < x["num"] < 1000
                         )
 
                     ]
@@ -563,7 +557,7 @@ class VendorImportJob(models.Model):
                         price = str(best_price["num"])
 
                         detected_price_reason = (
-                            f"RIGHT DECIMAL COL={best_price['col']}"
+                            f"RIGHT REAL DECIMAL COL={best_price['col']}"
                         )
 
 
@@ -585,17 +579,17 @@ class VendorImportJob(models.Model):
 
                                 val = item["num"]
 
-                                # ignore decimals
+                                # ignore real decimals
 
                                 if item["has_decimal"]:
                                     continue
 
-                                # ignore huge IDs
+                                # ignore huge product IDs
 
                                 if val > 9999:
                                     continue
 
-                                # only values BEFORE price column
+                                # must be before price column
 
                                 if item["col"] >= price_col:
                                     continue
@@ -603,8 +597,6 @@ class VendorImportJob(models.Model):
                                 stock_candidates.append(item)
 
                             if stock_candidates:
-
-                                # choose largest integer
 
                                 best_stock = max(
                                     stock_candidates,
