@@ -55,28 +55,3 @@
 .carousel-control-next-icon {
   filter: invert(1);
 }
-
-/*store category*/
-/*.o_wsale_products_main_row #products_grid_before{*/
-  #products_grid_before{
-    position: relative;
-    /* bottom: 100px; */
-    position: relative !important;
-    top: -250px!important;
-    background: white;
-}
-
-
-#products_grid h1{
-  display: none;
-}
-
-@media (max-width: 768px) {
-  /*.o_wsale_products_main_row #products_grid_before{*/
-   #products_grid_before{
-    position: sticky !important;
-   top: 0!important;
-    background: white;
-   }
-
-}
