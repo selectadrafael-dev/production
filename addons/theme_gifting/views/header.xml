@@ -121,7 +121,7 @@
 
           <!-- ===== SECOND ROW ===== -->
           <div class="gifting-nav-bottom">
-           <div>
+           <!--div-->
                 <div class="gifting-categories">
 
                   <button class="cat-btn mobile-cat-toggle" data-cat-toggle="1">
@@ -176,11 +176,11 @@
                       Eco friendly
                     </a>
                 </div>
-            </div>
+            <!--/div-->
 
-            <div class="me-2">
+            <!--div class="me-2">
               Vat Switch
-            </div>
+            </div-->
 
           </div>
         </div>
