@@ -267,7 +267,7 @@ async function loadVendorProducts(page = 1) {
 
         grid.innerHTML = '';
 
-        data.result.products.forEach(product => {
+    data.products.forEach(product => {
 
             grid.innerHTML += `
 
@@ -303,7 +303,8 @@ async function loadVendorProducts(page = 1) {
             `;
         });
 
-        if (!data.result.products.length) {
+        
+if (!data.products.length) {
 
             grid.innerHTML = `
 
@@ -323,17 +324,17 @@ async function loadVendorProducts(page = 1) {
 
         document.getElementById(
             'vendorPageInfo'
-        ).innerText = `Page ${data.result.page}`;
+        ).innerText = `Page ${data.page}`;
 
         document.getElementById(
             'vendorPrevPage'
-        ).disabled = !data.result.has_prev;
+        ).disabled = !data.has_prev;
 
         document.getElementById(
             'vendorNextPage'
-        ).disabled = !data.result.has_next;
+        ).disabled = !data.has_next;
 
-        vendorCurrentPage = data.result.page;
+        vendorCurrentPage = data.page;
 
     } catch (err) {
 
@@ -456,6 +457,11 @@ async function loadVendorProductDetails(productId) {
         );
 
         const data = await result.json();
+        console.log(
+            'VENDOR PRODUCTS RESPONSE',
+            data
+        );
+
 
         // =========================================
         // ERROR
