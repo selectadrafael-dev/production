@@ -2883,6 +2883,27 @@ class VendorImportJob(models.Model):
 
             # 🔥 SINGLE SAFE COMMIT
             self.env.cr.commit()
+            # ============================================
+            # FORCE NEXT CRON EXECUTION SOON
+            # ============================================
+
+            cron = self.env.ref(
+                'gift_product_configurator.ir_cron_vendor_import_processor',
+                raise_if_not_found=False
+            )
+
+            if cron:
+
+                from datetime import timedelta
+                from odoo import fields
+
+                cron.write({
+                    'nextcall': fields.Datetime.now() + timedelta(seconds=15)
+                })
+
+                _logger.warning(
+                    'CRON NEXTCALL FORCED → 15s'
+                )
 
             _logger.warning("CRON → STEP COMMITTED ✅")
 

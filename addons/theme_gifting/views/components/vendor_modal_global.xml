@@ -159,8 +159,215 @@
                 </div>
 
             </div>
-
         </div>
+
+        <!--vendor product form view-->
+              ```xml
+      <!-- ===================================================== -->
+      <!-- PRODUCT DETAILS MODAL -->
+      <!-- ===================================================== -->
+
+      <div class="modal fade"
+          id="vendorProductDetailsModal"
+          tabindex="-1">
+
+          <div class="modal-dialog modal-xl modal-dialog-scrollable">
+
+              <div class="modal-content vendor-details-modal">
+
+                  <!-- HEADER -->
+
+                  <div class="modal-header">
+
+                      <h5 class="modal-title">
+                          Product Details
+                      </h5>
+
+                      <button type="button"
+                              class="btn-close"
+                              data-bs-dismiss="modal">
+                      </button>
+
+                  </div>
+
+
+                  <!-- BODY -->
+
+                  <div class="modal-body">
+
+                      <!-- WARNING -->
+
+                      <div id="vendorProductWarning"
+                          class="vendor-product-warning d-none">
+                      </div>
+
+
+                      <div class="row g-4">
+
+                          <!-- IMAGE PANEL -->
+
+                          <div class="col-lg-4">
+
+                              <div class="vendor-image-panel">
+
+                                  <img id="vendorProductPreview"
+                                      class="vendor-product-preview">
+
+                                  <input type="file"
+                                        id="vendorProductImage"
+                                        class="form-control mt-3">
+
+                              </div>
+
+                          </div>
+
+
+                          <!-- PRODUCT FORM -->
+
+                          <div class="col-lg-8">
+
+                              <form id="vendorProductForm">
+
+                                  <input type="hidden"
+                                        id="vendorProductId">
+
+
+                                  <div class="row g-3">
+
+                                      <!-- NAME -->
+
+                                      <div class="col-md-6">
+
+                                          <label class="form-label">
+                                              Product Name
+                                          </label>
+
+                                          <input type="text"
+                                                id="vendorProductName"
+                                                class="form-control">
+
+                                      </div>
+
+
+                                      <!-- CATEGORY -->
+
+                                      <div class="col-md-6">
+
+                                          <label class="form-label">
+                                              Category
+                                          </label>
+
+                                          <input type="text"
+                                                id="vendorProductCategory"
+                                                class="form-control">
+
+                                      </div>
+
+
+                                      <!-- PRICE -->
+
+                                      <div class="col-md-6">
+
+                                          <label class="form-label">
+                                              Price
+                                          </label>
+
+                                          <input type="number"
+                                                step="0.01"
+                                                id="vendorProductPrice"
+                                                class="form-control">
+
+                                      </div>
+
+
+                                      <!-- STATUS -->
+
+                                      <div class="col-md-6">
+
+                                          <label class="form-label">
+                                              Status
+                                          </label>
+
+                                          <input type="text"
+                                                id="vendorProductStatus"
+                                                class="form-control"
+                                                readonly>
+
+                                      </div>
+
+
+                                      <!-- DATE CREATED -->
+
+                                      <div class="col-md-6">
+
+                                          <label class="form-label">
+                                              Date Created
+                                          </label>
+
+                                          <input type="text"
+                                                id="vendorProductDate"
+                                                class="form-control"
+                                                readonly>
+
+                                      </div>
+
+
+                                      <!-- DESCRIPTION -->
+
+                                      <div class="col-12">
+
+                                          <label class="form-label">
+                                              Description
+                                          </label>
+
+                                          <textarea id="vendorProductDescription"
+                                                    rows="5"
+                                                    class="form-control">
+                                          </textarea>
+
+                                      </div>
+
+                                  </div>
+
+                              </form>
+
+                          </div>
+
+                      </div>
+
+                  </div>
+
+
+                  <!-- FOOTER -->
+
+                  <div class="modal-footer justify-content-between">
+
+                      <!-- DELETE -->
+
+                      <button class="btn btn-danger"
+                              id="deleteVendorProductBtn">
+
+                          Delete Product
+
+                      </button>
+
+
+                      <!-- SAVE -->
+
+                      <button class="btn btn-dark"
+                              id="saveVendorProductBtn">
+
+                          Save Changes
+
+                      </button>
+
+                  </div>
+
+              </div>
+
+          </div>
+
+      </div>
 
     </xpath>
   </template>
