@@ -349,6 +349,9 @@ const vendorModal = document.getElementById(
 );
 
 
+console.log('vendor Product modal -> ' + vendorModal);
+
+
 if (vendorModal) {
 
     vendorModal.addEventListener(
