@@ -344,26 +344,50 @@ async function loadVendorProducts(page = 1) {
     }
 }
 
-const vendorModal = document.getElementById(
-    'vendorProductsModal'
+
+//product loader
+document.addEventListener(
+
+    'DOMContentLoaded',
+
+    function () {
+
+        const vendorModal = (
+            document.getElementById(
+                'vendorProductsModal'
+            )
+        );
+
+        console.log(
+            'vendor Product modal -> ',
+            vendorModal
+        );
+
+
+        if (!vendorModal) {
+
+            console.error(
+                'vendorProductsModal NOT FOUND'
+            );
+
+            return;
+        }
+
+
+        vendorModal.addEventListener(
+
+            'shown.bs.modal',
+
+            function () {
+
+                loadVendorProducts(1);
+            }
+        );
+    }
 );
 
 
-console.log('vendor Product modal -> ' + vendorModal);
-
-
-if (vendorModal) {
-
-    vendorModal.addEventListener(
-        'shown.bs.modal',
-        function () {
-
-            loadVendorProducts(1);
-        }
-    );
-}
-
-
+//next page/pagination
 const vendorNextBtn = document.getElementById(
     'vendorNextPage'
 );
