@@ -2274,12 +2274,9 @@ class VendorImportJob(models.Model):
         # MODE DETECTION
         # =====================================================
 
-        is_excel = any(
-            "row_index" in p
-            for p in pages
-        )
-
-
+    
+        is_excel = bool(self.excel_file)
+    
         _logger.warning(
 
             f"MODE DETECTED → "
@@ -2493,6 +2490,7 @@ class VendorImportJob(models.Model):
                         "category": "",
                         "price": "",
                         "stock": "",
+                        "variant_group": "",
                         "variants": [
                             {{
                                 "attributes": {{
@@ -2531,13 +2529,48 @@ class VendorImportJob(models.Model):
                         timeout=60
                     )
 
-
                     result = (
-                        response.output_text.strip()
+                        response.output_text or ""
+                    ).strip()
+
+
+                    # =====================================
+                    # CLEAN MARKDOWN
+                    # =====================================
+
+                    result = result.replace(
+                        "```json",
+                        ""
                     )
 
-                    parsed = json.loads(result)
+                    result = result.replace(
+                        "```",
+                        ""
+                    ).strip()
 
+
+                    if not result:
+
+                        raise Exception(
+                            "EMPTY AI RESPONSE"
+                        )
+
+
+                    try:
+
+                        parsed = json.loads(result)
+
+                    except Exception as e:
+
+                        _logger.warning(
+
+                            f"INVALID EXCEL JSON → "
+
+                            f"{result[:500]}"
+                        )
+
+                        raise e
+                    
 
                     if (
                         isinstance(parsed, list)
@@ -2579,9 +2612,51 @@ class VendorImportJob(models.Model):
                     )
 
 
-            combined = (
-                existing_products
-                + new_products
+            combined_map = {}
+
+
+            for item in existing_products:
+
+                
+                key = (
+
+                    f"{item.get('variant_group','')}"
+
+                    f"__"
+
+                    f"{item.get('name','')}"
+
+                    f"__"
+
+                    f"{len(combined_map)}"
+                )
+            
+
+                combined_map[key] = item
+
+
+            for item in new_products:
+
+
+                key = (
+
+                    f"{item.get('variant_group','')}"
+
+                    f"__"
+
+                    f"{item.get('name','')}"
+
+                    f"__"
+
+                    f"{len(combined_map)}"
+                )
+            
+
+                combined_map[key] = item
+
+
+            combined = list(
+                combined_map.values()
             )
 
 
@@ -2595,7 +2670,7 @@ class VendorImportJob(models.Model):
 
 
             self.excel_ai_index = end
-
+        
 
             _logger.warning(
 
@@ -2630,6 +2705,10 @@ class VendorImportJob(models.Model):
                     self.state = (
                         "excel_creating"
                     )
+        
+            self.flush_recordset()
+
+            self.env.cr.commit()
 
             return
 
@@ -2925,6 +3004,7 @@ class VendorImportJob(models.Model):
                     "category": "",
                     "price": "",
                     "stock": "",
+                    "variant_group": "",
                     "variants": [
                         {{
                             "attributes": {{
@@ -2964,10 +3044,46 @@ class VendorImportJob(models.Model):
 
 
                 result = (
-                    response.output_text.strip()
+                    response.output_text or ""
+                ).strip()
+
+
+                # =====================================
+                # CLEAN MARKDOWN
+                # =====================================
+
+                result = result.replace(
+                    "```json",
+                    ""
                 )
 
-                parsed = json.loads(result)
+                result = result.replace(
+                    "```",
+                    ""
+                ).strip()
+
+
+                if not result:
+
+                    raise Exception(
+                        "EMPTY AI RESPONSE"
+                    )
+
+
+                try:
+
+                    parsed = json.loads(result)
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"INVALID PDF JSON → "
+
+                        f"{result[:500]}"
+                    )
+
+                    raise e
 
 
             except Exception as e:
@@ -2979,8 +3095,25 @@ class VendorImportJob(models.Model):
                     f"→ {str(e)}"
                 )
 
-                parsed = []
+                # parsed = []
 
+                parsed = [{
+
+                    "name": f"FAILED_PAGE_{i+1}",
+
+                    "description": "",
+
+                    "category": "",
+
+                    "price": page_price,
+
+                    "stock": page_stock,
+
+                    "variant_group": f"FAILED_{i+1}",
+
+                    "variants": []
+                }]
+                
 
             new_page_products.append({
 
@@ -3023,7 +3156,6 @@ class VendorImportJob(models.Model):
             combined_pages
         )
 
-
         _logger.warning(
 
             f"PDF AI PROGRESS → "
@@ -3045,6 +3177,9 @@ class VendorImportJob(models.Model):
             )
 
             self.state = "pdf_creating"
+        self.flush_recordset()
+
+        self.env.cr.commit()
 
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
@@ -3586,43 +3721,108 @@ class VendorImportJob(models.Model):
                             f"RAW_STOCK={stock}"
                         )
 
+
+                    
                         if stock not in [None, "", False]:
 
                             try:
 
                                 qty = float(stock)
 
-                                stock_quant = self.env['stock.quant'].search([
-                                    ('product_id', '=', variant_record.id),
-                                    ('location_id', '=', self.env.ref('stock.stock_location_stock').id)
-                                ], limit=1)
 
-                                if stock_quant:
+                                # =====================================
+                                # SAFE STOCK MODEL CHECK
+                                # =====================================
 
-                                    stock_quant.inventory_quantity = qty
-                                    stock_quant.action_apply_inventory()
+                                stock_quant_model = self.env.get(
+                                    'stock.quant'
+                                )
+
+
+                                if not stock_quant_model:
+
+                                    _logger.warning(
+                                        "STOCK MODULE NOT INSTALLED"
+                                    )
 
                                 else:
 
-                                    stock_quant = self.env['stock.quant'].create({
-                                        'product_id': variant_record.id,
-                                        'location_id': self.env.ref('stock.stock_location_stock').id,
-                                        'inventory_quantity': qty,
-                                    })
+                                    location = self.env.ref(
+                                        'stock.stock_location_stock',
+                                        raise_if_not_found=False
+                                    )
 
-                                    stock_quant.action_apply_inventory()
 
-                                _logger.warning(
-                                    f"[STOCK APPLIED] → "
-                                    f"{variant_record.display_name} | "
-                                    f"QTY={qty}"
-                                )
+                                    if not location:
+
+                                        _logger.warning(
+                                            "STOCK LOCATION NOT FOUND"
+                                        )
+
+                                    else:
+
+                                        stock_quant = stock_quant_model.search([
+
+                                            (
+                                                'product_id',
+                                                '=',
+                                                variant_record.id
+                                            ),
+
+                                            (
+                                                'location_id',
+                                                '=',
+                                                location.id
+                                            )
+
+                                        ], limit=1)
+
+
+                                        if stock_quant:
+
+                                            stock_quant.inventory_quantity = qty
+
+                                            stock_quant.action_apply_inventory()
+
+
+                                        else:
+
+                                            stock_quant = (
+                                                stock_quant_model.create({
+
+                                                    'product_id':
+                                                        variant_record.id,
+
+                                                    'location_id':
+                                                        location.id,
+
+                                                    'inventory_quantity':
+                                                        qty,
+                                                })
+                                            )
+
+                                            stock_quant.action_apply_inventory()
+
+
+                                        _logger.warning(
+
+                                            f"[STOCK APPLIED] → "
+
+                                            f"{variant_record.display_name} | "
+
+                                            f"QTY={qty}"
+                                        )
+
 
                             except Exception as e:
 
                                 _logger.exception(
-                                    f"[STOCK FAILED] → {str(e)}"
+
+                                    f"[STOCK FAILED] → "
+
+                                    f"{str(e)}"
                                 )
+
 
                 # 🔥 MARK GROUP AS PROCESSED
                 processed_groups.add(group_id)
@@ -4005,19 +4205,26 @@ class VendorImportJob(models.Model):
 
             self.env.cr.commit()
 
-
+        
         # =================================================
-        # GET JOB
+        # GET NEXT QUEUED JOB
         # =================================================
 
         job = self.search(
 
-            [('state', 'in', active_states)],
+            [
 
-            order="id desc",
+                ('state', 'in', active_states),
+
+                ('lock', '=', False)
+
+            ],
+
+            order="create_date asc, id asc",
 
             limit=1
         )
+        
 
 
         if not job:
@@ -4285,7 +4492,13 @@ class VendorImportJob(models.Model):
 
             try:
 
-                job.state = 'failed'
+                # job.state = 'failed'
+                _logger.warning(
+
+                    f"JOB RETRY NEXT CRON "
+
+                    f"→ {job.id}"
+                )
 
                 self.env.cr.commit()
 

@@ -48,12 +48,23 @@ class VendorProductsController(http.Controller):
 
         total = Product.search_count(domain)
 
+        _logger.warning(
+            f"PRODUCT DOMAIN → {domain}"
+        )
+    
+
         products = Product.search(
             domain,
             limit=limit,
             offset=offset,
             order='id desc'
         )
+
+        _logger.warning(
+            f"FOUND PRODUCTS → "
+            f"{len(products)}"
+        )
+
 
         result = []
 
@@ -105,6 +116,15 @@ class VendorProductsController(http.Controller):
     ):
 
         partner = request.env.user.partner_id
+        import logging
+
+        _logger = logging.getLogger(__name__)
+
+        _logger.warning(
+            f"PORTAL USER PARTNER ID → "
+            f"{partner.id}"
+        )
+
 
         product = request.env[
             'product.template'
