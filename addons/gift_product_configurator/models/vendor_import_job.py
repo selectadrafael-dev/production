@@ -1230,6 +1230,23 @@ class VendorImportJob(models.Model):
             combined = existing + all_pages
 
             self.extracted_text = json.dumps(combined)
+    
+            size_mb = round(
+                len(self.extracted_text.encode('utf-8'))
+                / 1024 / 1024,
+                2
+            )
+
+            _logger.warning(
+                f"EXTRACTED TEXT SIZE → {size_mb} MB"
+            )
+
+            if size_mb > 8:
+
+                _logger.error(
+                    "EXTRACTED TEXT TOO LARGE"
+                )
+
 
             _logger.warning(f"BATCH STORED → {len(all_pages)} pages")
             _logger.warning(f"TOTAL STORED → {len(combined)} pages")
@@ -2963,32 +2980,57 @@ class VendorImportJob(models.Model):
         self.extracted_text = json.dumps(pages)
 
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
-
-    #=========---------------- CRON ---------------======================
+        
+    # =====================================================
+    # CRON PROCESSOR
+    # =====================================================
 
     def run_pending_jobs(self):
 
         from odoo import fields
 
-        _logger.warning("🔥 CRON HEARTBEAT → RUNNING")
-
-        # 🔥 KEEP CURSOR ALIVE
-        self.env.cr.execute("SELECT 1")
+        _logger.warning(
+            "🔥 CRON HEARTBEAT → RUNNING"
+        )
 
         active_states = [
-            'draft', 'processing',
-            'excel_parsing', 'excel_ai', 'excel_creating',
-            'pdf_extracting', 'pdf_ai', 'pdf_creating',
-            'url_scraping', 'url_ai', 'url_creating'
+
+            'draft',
+
+            'excel_parsing',
+            'excel_ai',
+            'excel_creating',
+
+            'pdf_extracting',
+            'pdf_ai',
+            'pdf_creating',
+
+            'url_scraping',
+            'url_ai',
+            'url_creating',
         ]
 
-        # ================= REMOVE DUPLICATES =================
-        jobs = self.search([('state', 'in', active_states)], order="id desc")
+        # =================================================
+        # REMOVE DUPLICATES
+        # =================================================
 
-        _logger.warning(f"CRON → TOTAL ACTIVE JOBS → {len(jobs)}")
+        jobs = self.search(
+
+            [('state', 'in', active_states)],
+
+            order="id desc"
+        )
+
+        _logger.warning(
+            f"CRON → TOTAL ACTIVE JOBS "
+            f"→ {len(jobs)}"
+        )
 
         seen = {}
-        duplicates = self.env['vendor.import.job']
+
+        duplicates = self.env[
+            'vendor.import.job'
+        ]
 
         for j in jobs:
 
@@ -2998,121 +3040,308 @@ class VendorImportJob(models.Model):
                 continue
 
             if sig not in seen:
+
                 seen[sig] = j
 
             else:
 
                 if j.id > seen[sig].id:
+
                     duplicates |= seen[sig]
+
                     seen[sig] = j
+
                 else:
+
                     duplicates |= j
 
+
         if duplicates:
-            _logger.warning(f"CRON → REMOVING DUPLICATES → {len(duplicates)}")
+
+            _logger.warning(
+
+                f"CRON → REMOVING DUPLICATES "
+
+                f"→ {len(duplicates)}"
+            )
+
             duplicates.unlink()
+
             self.env.cr.commit()
 
-        # =====================================================
-        # PROCESS ONLY ONE JOB PER CRON RUN
-        # =====================================================
+
+        # =================================================
+        # GET JOB
+        # =================================================
 
         job = self.search(
+
             [('state', 'in', active_states)],
+
             order="id desc",
+
             limit=1
         )
 
+
         if not job:
-            _logger.warning("CRON → NO MORE JOBS")
+
+            _logger.warning(
+                "CRON → NO MORE JOBS"
+            )
+
             return
 
+
         _logger.warning(
-            f"CRON → PROCESS JOB {job.id} | STATE {job.state}"
+
+            f"CRON → PROCESS JOB "
+
+            f"{job.id} | STATE "
+
+            f"{job.state}"
         )
 
-        # ================= LOCK HANDLING =================
+
+        # =================================================
+        # LOCK HANDLING
+        # =================================================
 
         if job.lock:
 
             try:
+
                 delta = (
-                    fields.Datetime.now() - job.write_date
+
+                    fields.Datetime.now()
+
+                    - job.write_date
+
                 ).total_seconds()
 
             except:
+
                 delta = 0
+
 
             if delta > 30:
 
                 _logger.warning(
-                    f"FORCE UNLOCK JOB {job.id}"
+
+                    f"FORCE UNLOCK JOB "
+
+                    f"{job.id}"
                 )
 
                 job.lock = False
 
+                self.env.cr.commit()
+
             else:
 
                 _logger.warning(
-                    f"JOB {job.id} LOCKED → SKIP THIS RUN"
+
+                    f"JOB {job.id} "
+
+                    f"LOCKED → SKIP"
                 )
 
                 return
 
+
+        # =================================================
+        # PROCESS
+        # =================================================
+
         try:
 
-            # 🔥 LOCK
+            # =============================================
+            # LOCK
+            # =============================================
+
             job.lock = True
 
-            # 🔥 PROCESS SINGLE STEP
-            job._process_step()
-
-            # 🔥 SINGLE SAFE COMMIT
             self.env.cr.commit()
-            # ============================================
-            # FORCE NEXT CRON EXECUTION SOON
-            # ============================================
 
-            cron = self.env.ref(
-                'gift_product_configurator.ir_cron_vendor_import_processor',
-                raise_if_not_found=False
-            )
 
-            if cron:
+            # =============================================
+            # SAFE CHAIN
+            # =============================================
 
-                from datetime import timedelta
-                from odoo import fields
+            MAX_CHAIN = 5
 
-                cron.write({
-                    'nextcall': fields.Datetime.now() + timedelta(seconds=15)
-                })
+
+            for step in range(MAX_CHAIN):
+
+                job.invalidate_recordset()
+
 
                 _logger.warning(
-                    'CRON NEXTCALL FORCED → 15s'
+
+                    f"CHAIN STEP "
+
+                    f"{step + 1} "
+
+                    f"→ {job.state}"
                 )
 
-            _logger.warning("CRON → STEP COMMITTED ✅")
+
+                # =========================================
+                # STOP
+                # =========================================
+
+                if job.state in [
+
+                    'done',
+                    'failed'
+
+                ]:
+
+                    _logger.warning(
+
+                        f"CHAIN STOP "
+
+                        f"→ {job.state}"
+                    )
+
+                    break
+
+
+                # =========================================
+                # PROCESS STEP
+                # =========================================
+
+                previous_state = job.state
+
+                previous_page = (
+                    job.current_page or 0
+                )
+
+
+                job._process_step()
+
+
+                # =========================================
+                # SAVE
+                # =========================================
+
+                self.env.cr.commit()
+
+                job.invalidate_recordset()
+
+
+                _logger.warning(
+
+                    f"CHAIN RESULT → "
+
+                    f"{previous_state}"
+
+                    f" => "
+
+                    f"{job.state}"
+                )
+
+
+                # =========================================
+                # PDF PAGE PROGRESSION
+                # =========================================
+
+                if (
+
+                    job.state == 'pdf_extracting'
+
+                    and
+
+                    (
+                        job.current_page or 0
+                    ) > previous_page
+
+                ):
+
+                    _logger.warning(
+
+                        f"PDF PAGE ADVANCED "
+
+                        f"→ {job.current_page}"
+                    )
+
+                    continue
+
+
+                # =========================================
+                # SAME STATE GUARD
+                # =========================================
+
+                if (
+
+                    previous_state
+
+                    ==
+
+                    job.state
+
+                ):
+
+                    _logger.warning(
+
+                        f"NO STATE CHANGE "
+
+                        f"→ STOP CHAIN"
+                    )
+
+                    break
+
+
+            _logger.warning(
+                "CRON → STEP COMMITTED ✅"
+            )
+
 
         except Exception as e:
 
             self.env.cr.rollback()
 
             _logger.exception(
-                f"CRON STEP FAILED → {str(e)}"
+
+                f"CRON STEP FAILED "
+
+                f"→ {str(e)}"
             )
 
-            job.state = 'failed'
+            try:
+
+                job.state = 'failed'
+
+                self.env.cr.commit()
+
+            except:
+                pass
+
 
         finally:
 
-            # 🔥 ALWAYS UNLOCK
-            job.lock = False
+            # =============================================
+            # ALWAYS UNLOCK
+            # =============================================
 
-            self.env.cr.commit()
+            try:
 
-            _logger.warning("CRON → JOB UNLOCKED 🔓")
+                job.lock = False
 
-        _logger.warning("CRON → COMPLETED RUN")
+                self.env.cr.commit()
+
+            except:
+                pass
+
+
+            _logger.warning(
+                "CRON → JOB UNLOCKED 🔓"
+            )
+
+
+        _logger.warning(
+            "CRON → COMPLETED RUN"
+        )
 
         return
 
@@ -3220,11 +3449,6 @@ class VendorImportJob(models.Model):
 
             # =====================================================
             # FORMAT 2 → STRUCTURED FORMAT
-            # =====================================================
-            # {
-            #   "type": "PRODUCTS",
-            #   "items": [...]
-            # }
             # =====================================================
 
             if item.get("type") == "PRODUCTS":
