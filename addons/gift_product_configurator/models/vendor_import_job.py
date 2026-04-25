@@ -80,6 +80,10 @@ class VendorImportJob(models.Model):
     upload_signature = fields.Char(string="Upload Signature")
     processed_group_ids = fields.Text(default="[]")
     url_total_batches = fields.Integer(default=0)
+    
+    excel_parse_index = fields.Integer(
+        default=0
+    )
 
     source_type = fields.Selection([
         ("pdf", "PDF"),
@@ -756,40 +760,73 @@ class VendorImportJob(models.Model):
 
 
     #------excel parsing method---------------
-
     def parse_excel(self):
 
-        _logger.warning("EXCEL → START PARSING (BATCH MODE)")
+        _logger.warning(
+            "EXCEL → START PARSING (BATCH MODE)"
+        )
 
-        excel_bytes = base64.b64decode(self.excel_file)
-        wb = load_workbook(filename=BytesIO(excel_bytes))
+        excel_bytes = base64.b64decode(
+            self.excel_file
+        )
 
-        headers = {"User-Agent": "Mozilla/5.0"}
+        wb = load_workbook(
+            filename=BytesIO(excel_bytes)
+        )
+
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
 
         pages = []
 
-        # 🔥 SAFE BATCH CONTROL
+        # =====================================
+        # SAFE BATCH CONTROL
+        # =====================================
+
         BATCH_SIZE = 8
         MAX_BUFFER = 150
 
-        start_index = self.last_processed_product_index or 0
+        start_index = (
+            self.last_processed_product_index or 0
+        )
+
         current_count = 0
-        global_index = 0  # counts ONLY valid rows
 
-        _logger.warning(f"EXCEL RESUME FROM INDEX → {start_index}")
+        global_index = 0
 
-        # ================= TOTAL ROWS =================
+        _logger.warning(
+            f"EXCEL RESUME FROM INDEX "
+            f"→ {start_index}"
+        )
+
+
+        # =====================================
+        # TOTAL ROWS
+        # =====================================
+
         total_rows = 0
 
         for sheet in wb.worksheets:
-            for idx, row in enumerate(sheet.iter_rows()):
+
+            for idx, row in enumerate(
+
+                sheet.iter_rows()
+
+            ):
 
                 if idx == 0:
                     continue
 
                 row_text_parts = [
+
                     str(cell.value or "").strip()
-                    for cell in row if str(cell.value or "").strip()
+
+                    for cell in row
+
+                    if str(
+                        cell.value or ""
+                    ).strip()
                 ]
 
                 if not row_text_parts:
@@ -797,179 +834,277 @@ class VendorImportJob(models.Model):
 
                 total_rows += 1
 
-        _logger.warning(f"[DEBUG] REAL TOTAL ROWS → {total_rows}")
 
-        # ================= MAIN LOOP =================
-        last_valid_index = start_index
+        _logger.warning(
+            f"[DEBUG] REAL TOTAL ROWS "
+            f"→ {total_rows}"
+        )
+
+
+        # =====================================
+        # MAIN LOOP
+        # =====================================
 
         for sheet in wb.worksheets:
 
-            _logger.warning(f"PROCESSING SHEET → {sheet.title}")
-            image_loader = SheetImageLoader(sheet)
+            _logger.warning(
+                f"PROCESSING SHEET → "
+                f"{sheet.title}"
+            )
 
-            for idx, row in enumerate(sheet.iter_rows()):
+            image_loader = SheetImageLoader(
+                sheet
+            )
 
-                if current_count >= BATCH_SIZE:
-                    _logger.warning("BATCH LIMIT REACHED → NEXT CRON")
-                    break
+
+            for idx, row in enumerate(
+
+                sheet.iter_rows()
+
+            ):
 
                 if idx == 0:
                     continue
 
+
                 row_text_parts = [
+
                     str(cell.value or "").strip()
-                    for cell in row if str(cell.value or "").strip()
+
+                    for cell in row
+
+                    if str(
+                        cell.value or ""
+                    ).strip()
                 ]
+
 
                 if not row_text_parts:
                     continue
 
-                # =========================================
-                # DETECT PRICE/STOCK (SMART VERSION)
-                # =========================================
+
+                # =================================
+                # GLOBAL INDEX TRACKING
+                # =================================
+
+                global_index += 1
+
+
+                # =================================
+                # SKIP OLD ROWS
+                # =================================
+
+                if global_index <= start_index:
+                    continue
+
+
+                # =================================
+                # BATCH LIMIT
+                # =================================
+
+                if current_count >= BATCH_SIZE:
+
+                    _logger.warning(
+                        "BATCH LIMIT REACHED "
+                        "→ NEXT CRON"
+                    )
+
+                    break
+
+
+                # =================================
+                # PRICE/STOCK DETECTION
+                # =================================
 
                 price = ""
                 stock = ""
 
                 numeric_candidates = []
 
+
                 for col_idx, cell in enumerate(row):
 
-                    raw_val = str(cell.value or "").strip()
+                    raw_val = str(
+                        cell.value or ""
+                    ).strip()
 
                     if not raw_val:
                         continue
 
-                    # skip ranges like 2-43
 
-                    if "-" in raw_val and not raw_val.startswith("-"):
+                    # skip ranges
+                    if (
+                        "-" in raw_val
+                        and not raw_val.startswith("-")
+                    ):
                         continue
+
 
                     try:
 
-                        clean = raw_val.replace(",", ".")
+                        clean = raw_val.replace(
+                            ",",
+                            "."
+                        )
 
                         clean = re.sub(
+
                             r"[^\d.]",
+
                             "",
+
                             clean
                         )
+
 
                         if not clean:
                             continue
 
-                        num = float(clean)
 
-                        # ====================================
-                        # detect REAL decimal
-                        # ====================================
+                        num = float(clean)
 
                         is_real_decimal = False
 
+
                         if "." in clean:
 
-                            decimal_part = clean.split(".")[-1]
+                            decimal_part = (
+                                clean.split(".")[-1]
+                            )
 
-                            # 210.0 => NOT price
-                            # 5.5 => price
+                            if decimal_part not in [
 
-                            if decimal_part not in ["0", "00"]:
+                                "0",
+
+                                "00"
+                            ]:
 
                                 is_real_decimal = True
 
+
                         numeric_candidates.append({
+
                             "col": col_idx,
+
                             "num": num,
+
                             "raw": raw_val,
-                            "is_decimal": is_real_decimal
+
+                            "is_decimal":
+                                is_real_decimal
                         })
 
                     except:
                         continue
 
 
-                # =========================================
-                # DETECT PRICE
-                # RULE:
-                # RIGHT-MOST REAL DECIMAL
-                # =========================================
+                # =================================
+                # PRICE
+                # =================================
 
                 price_candidates = [
 
                     x for x in numeric_candidates
 
                     if (
-                        x["is_decimal"]
-                        and 0 < x["num"] < 1000
-                    )
 
+                        x["is_decimal"]
+
+                        and
+
+                        0 < x["num"] < 1000
+                    )
                 ]
+
+
+                best_price = None
+
 
                 if price_candidates:
 
                     best_price = sorted(
+
                         price_candidates,
+
                         key=lambda x: x["col"]
+
                     )[-1]
 
-                    price = str(best_price["num"])
+                    price = str(
+                        best_price["num"]
+                    )
 
 
-                # =========================================
-                # DETECT STOCK
-                # RULE:
-                # LARGEST INTEGER BEFORE PRICE
-                # =========================================
+                # =================================
+                # STOCK
+                # =================================
 
-                if price:
+                if best_price:
 
-                    price_col = best_price["col"]
+                    price_col = (
+                        best_price["col"]
+                    )
 
                     stock_candidates = []
+
 
                     for item in numeric_candidates:
 
                         if item["is_decimal"]:
                             continue
 
+
                         val = item["num"]
 
-                        # ignore huge product IDs
 
                         if val > 9999:
                             continue
 
-                        # must appear before price
 
                         if item["col"] >= price_col:
                             continue
 
-                        stock_candidates.append(item)
+
+                        stock_candidates.append(
+                            item
+                        )
+
 
                     if stock_candidates:
 
                         best_stock = max(
+
                             stock_candidates,
+
                             key=lambda x: x["num"]
                         )
 
-                        stock = str(int(best_stock["num"]))
+                        stock = str(
+
+                            int(
+                                best_stock["num"]
+                            )
+                        )
 
 
                 _logger.warning(
-                    f"""
+                    f'''
                     EXCEL RAW ROW →
 
                     TEXT=
-                    {' | '.join(row_text_parts)}
+                    {" | ".join(row_text_parts)}
 
                     PRICE={price}
 
                     STOCK={stock}
-                    """
+                    '''
                 )
 
-                # ================= FORMAT =================
+
+                # =================================
+                # ROW TEXT
+                # =================================
+
                 row_text = f"""
                 ROW_DATA:
                 {" | ".join(row_text_parts)}
@@ -977,99 +1112,268 @@ class VendorImportJob(models.Model):
                 RULE:
                 - THIS IS EXACTLY ONE PRODUCT
                 - DO NOT SPLIT THIS ROW
-                - THIS ROW MAY BE A VARIANT OF ANOTHER ROW
-                - USE SIMILAR ID/SKU TO GROUP VARIANTS
+                - THIS ROW MAY BE A VARIANT
+                - USE SIMILAR ID/SKU
                 """
+
 
                 row_images = []
 
-                # ================= IMAGE (EMBEDDED) =================
+
+                # =================================
+                # EMBEDDED IMAGE
+                # =================================
+
                 for cell in row:
+
                     try:
-                        if image_loader.image_in(cell.coordinate):
-                            pil_img = image_loader.get(cell.coordinate)
+
+                        if image_loader.image_in(
+                            cell.coordinate
+                        ):
+
+                            pil_img = (
+                                image_loader.get(
+                                    cell.coordinate
+                                )
+                            )
+
                             buffer = BytesIO()
-                            pil_img.save(buffer, format="JPEG")
-                            img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-                            row_images.append(img_base64)
+
+                            pil_img.save(
+                                buffer,
+                                format="JPEG"
+                            )
+
+                            img_base64 = (
+                                base64.b64encode(
+
+                                    buffer.getvalue()
+
+                                ).decode("utf-8")
+                            )
+
+                            row_images.append(
+                                img_base64
+                            )
+
                             break
+
                     except:
                         continue
 
-                # ================= IMAGE (URL) =================
+
+                # =================================
+                # URL IMAGE
+                # =================================
+
                 if not row_images:
+
                     for cell in row:
-                        val = str(cell.value or "").strip()
+
+                        val = str(
+                            cell.value or ""
+                        ).strip()
+
                         if val.startswith("http"):
+
                             try:
-                                response = requests.get(val, headers=headers, timeout=5)
-                                if response.status_code == 200 and "image" in response.headers.get("Content-Type", ""):
-                                    img_base64 = base64.b64encode(response.content).decode("utf-8")
-                                    row_images.append(img_base64)
+
+                                response = requests.get(
+
+                                    val,
+
+                                    headers=headers,
+
+                                    timeout=5
+                                )
+
+                                if (
+
+                                    response.status_code
+                                    == 200
+
+                                    and
+
+                                    "image"
+
+                                    in response.headers.get(
+                                        "Content-Type",
+                                        ""
+                                    )
+                                ):
+
+                                    img_base64 = (
+                                        base64.b64encode(
+
+                                            response.content
+
+                                        ).decode("utf-8")
+                                    )
+
+                                    row_images.append(
+                                        img_base64
+                                    )
+
                                     break
+
                             except:
                                 continue
 
+
+                # =================================
+                # STORE
+                # =================================
+
                 pages.append({
+
                     "page": global_index,
+
                     "text": row_text,
+
                     "images": row_images,
+
                     "row_index": global_index,
 
-                    # NEW
                     "price": price,
+
                     "stock": stock,
                 })
 
-                _logger.warning(
-                    f"EXCEL RAW ROW → TEXT={row_text[:80]} | PRICE={price} | STOCK={stock}"
-                )
 
                 current_count += 1
-                last_valid_index = global_index  # 🔥 CRITICAL FIX
 
-                # 🔥 MEMORY SAFETY
+
+                # =================================
+                # MEMORY SAFETY
+                # =================================
+
                 if len(pages) >= MAX_BUFFER:
-                    _logger.warning(f"EXCEL SAFETY BREAK → {len(pages)} rows buffered")
+
+                    _logger.warning(
+                        f"EXCEL SAFETY BREAK "
+                        f"→ {len(pages)} rows"
+                    )
+
                     break
 
-            if current_count >= BATCH_SIZE or len(pages) >= MAX_BUFFER:
+
+            if (
+                current_count >= BATCH_SIZE
+                or
+                len(pages) >= MAX_BUFFER
+            ):
                 break
 
-        # ================= STORE =================
+
+        # =====================================
+        # STORE
+        # =====================================
+
         existing = []
+
         if self.extracted_text:
+
             try:
-                existing = json.loads(self.extracted_text)
+
+                existing = json.loads(
+                    self.extracted_text
+                )
+
             except:
                 existing = []
 
+
         combined = existing + pages
-        self.extracted_text = json.dumps(combined)
 
-        # ================= SAVE PROGRESS =================
-        self.last_processed_product_index = last_valid_index
+        self.extracted_text = json.dumps(
+            combined
+        )
 
-        # ================= DEBUG =================
-        remaining = max(total_rows - last_valid_index, 0)
-        progress = round((last_valid_index / total_rows) * 100, 2) if total_rows else 0
 
-        _logger.warning(f"[DEBUG] CURRENT INDEX → {last_valid_index}")
-        _logger.warning(f"[DEBUG] REMAINING ROWS → {remaining}")
-        _logger.warning(f"[DEBUG] PROGRESS → {progress}%")
+        # =====================================
+        # SAVE PROGRESS
+        # =====================================
 
-        _logger.warning(f"EXCEL NEW INDEX → {last_valid_index}")
-        _logger.warning(f"EXCEL BATCH STORED → {len(pages)} rows")
+        new_index = (
+            start_index
+            +
+            current_count
+        )
 
-        # ================= COMPLETION =================
-        if last_valid_index >= total_rows:
-            _logger.warning("EXCEL → PARSING COMPLETED ✅")
+        self.last_processed_product_index = (
+            new_index
+        )
+
+
+        # =====================================
+        # DEBUG
+        # =====================================
+
+        remaining = max(
+            total_rows - new_index,
+            0
+        )
+
+        progress = round(
+
+            (new_index / total_rows) * 100,
+
+            2
+
+        ) if total_rows else 0
+
+
+        _logger.warning(
+            f"[DEBUG] CURRENT INDEX "
+            f"→ {new_index}"
+        )
+
+        _logger.warning(
+            f"[DEBUG] REMAINING ROWS "
+            f"→ {remaining}"
+        )
+
+        _logger.warning(
+            f"[DEBUG] PROGRESS "
+            f"→ {progress}%"
+        )
+
+        _logger.warning(
+            f"EXCEL NEW INDEX "
+            f"→ {new_index}"
+        )
+
+        _logger.warning(
+            f"EXCEL BATCH STORED "
+            f"→ {len(pages)} rows"
+        )
+
+
+        # =====================================
+        # COMPLETION
+        # =====================================
+
+        if new_index >= total_rows:
+
+            _logger.warning(
+                "EXCEL → PARSING COMPLETED ✅"
+            )
+
             self.is_excel_parsed = True
-        else:
-            _logger.warning("EXCEL → MORE DATA REMAIN → NEXT CRON")
-            self.state = "processing"
 
-        # 🔥 CLEANUP (IMPORTANT)
+            self.state = "excel_ai"
+
+        else:
+
+            _logger.warning(
+                "EXCEL → MORE DATA REMAIN "
+                "→ NEXT CRON"
+            )
+
+            self.state = "excel_parsing"
+
+
         wb.close()
 
 
