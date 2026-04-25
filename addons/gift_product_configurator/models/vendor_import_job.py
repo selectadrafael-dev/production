@@ -3508,7 +3508,7 @@ class VendorImportJob(models.Model):
             # SAFE CHAIN
             # =============================================
 
-            MAX_CHAIN = 2
+            MAX_CHAIN = 1
 
 
             for step in range(MAX_CHAIN):
@@ -4011,7 +4011,7 @@ class VendorImportJob(models.Model):
     #=======keep cron alive================
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
-        
+
    
    #=========gloat numbers=============
     def _safe_float(self, value):
