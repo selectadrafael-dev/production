@@ -1284,7 +1284,27 @@ class VendorImportJob(models.Model):
                 existing = []
 
 
-        combined = existing + pages
+        # combined = existing + pages
+        
+        existing_map = {
+
+            item.get("row_index"): item
+
+            for item in existing
+        }
+
+
+        for item in pages:
+
+            existing_map[
+                item.get("row_index")
+            ] = item
+
+
+        combined = list(
+            existing_map.values()
+        )
+    
 
         self.extracted_text = json.dumps(
             combined
@@ -2377,8 +2397,118 @@ class VendorImportJob(models.Model):
                     f"STOCK={row_stock}"
                 )
 
-
                 prompt = f"""
+                You are a structured Excel product parser.
+
+                Each input represents EXACTLY ONE ROW = ONE PRODUCT.
+
+                =====================================
+                COLUMN UNDERSTANDING (CRITICAL)
+                =====================================
+
+                The row contains mixed values like:
+
+                - ID (e.g. 94601, 12345)
+                - Range (e.g. 2-66, 11-00)
+                - Stock numbers
+                - Prices
+                - Links (http...)
+                - Image references
+
+                YOU MUST:
+
+                1. IDENTIFY PRODUCT ID
+                - Usually numeric (e.g. 94601)
+                - Column name may vary (KOD, SKU, ID, CODE)
+
+                2. IDENTIFY PRODUCT NAME
+                - MUST NOT be:
+                    - pure numbers
+                    - ranges (e.g. 2-66)
+                    - links
+                    - dates
+                    - column headers like FOTO
+
+                - If no clear name:
+                    → GENERATE NAME like:
+                    "Product <ID>"
+
+                3. DESCRIPTION:
+                - Short summary from row
+
+                4. CATEGORY:
+                - Guess intelligently (e.g. bottle → Drinkware)
+
+                =====================================
+                VARIANT DETECTION (VERY IMPORTANT)
+                =====================================
+
+                - If multiple rows share SAME ID
+                → they are VARIANTS of same product
+                - ALSO extract variant attributes from the row:
+    
+                Examples:
+                - Colors → Black, Blue, Red
+                - Sizes → S, M, L
+                - Range values (e.g. 2-66) → treat as Size or Option
+
+                - If row contains variation info:
+                    → put inside "variants"
+
+                - If no clear attribute:
+                    → create:
+                       "attributes": {{
+                            "Variant": "<value from row>"
+                        }}
+
+               =====================================
+                VARIANT GROUPING (MANDATORY - STRICT)
+                =====================================
+
+                - Every product MUST have "variant_group"
+
+                - Extract product ID from the row:
+                    (examples: 94601, 92070, ANT021)
+
+                - That ID MUST be used as variant_group
+
+                - RULES:
+                    - SAME ID → SAME variant_group
+                    - DIFFERENT ID → DIFFERENT product
+                    - NEVER leave variant_group empty
+                    - NEVER return null
+
+                - If ID exists → use it
+                - If ID is a mixture of numerical data and string → use it, but never use date or range
+                - If ID unclear → use first numeric value in row
+
+                =====================================
+                OUTPUT FORMAT (STRICT)
+                =====================================
+
+                 [
+                    {{
+                        "name": "",
+                        "description": "",
+                        "category": "",
+                        "price": "",
+                        "stock": "",
+                        "variants": [
+                            {{
+                                "attributes": {{
+                                    "Color": ""
+                                }},
+                                "image_index": 0,
+                                "stock": null
+                            }}
+                        ]
+                    }}
+                ]
+
+                =====================================
+                ROW DATA
+                =====================================
+
                 ROW TEXT:
                 {row_text}
 
@@ -2387,18 +2517,6 @@ class VendorImportJob(models.Model):
 
                 DETECTED STOCK:
                 {row_stock}
-
-                RETURN STRICT JSON ARRAY:
-                [
-                    {{
-                        "name": "",
-                        "description": "",
-                        "category": "",
-                        "price": "",
-                        "stock": "",
-                        "variants": []
-                    }}
-                ]
                 """
 
 
@@ -2644,7 +2762,185 @@ class VendorImportJob(models.Model):
             )
 
 
-            prompt = f"""
+            prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
+
+            =====================
+            CORE RULES (STRICT)
+            =====================
+
+            1. RETURN ONLY VALID JSON
+            2. NO explanation
+            3. NO markdown
+            4. NO text outside JSON
+            5. DO NOT duplicate products WITHIN THE SAME PAGE
+            6. DO NOT skip any product
+            7. EACH product must appear exactly once PER PAGE
+
+            IMPORTANT GLOBAL RULE:
+
+            - This input represents ONLY ONE PAGE of a catalog
+            - You MUST extract ONLY products visible on THIS PAGE
+            - DO NOT repeat products from previous pages
+            - DO NOT assume products continue across pages
+
+            =====================
+            PRODUCT DETECTION LOGIC
+            =====================
+
+            A page may contain:
+
+            (A) ONE large product (hero layout)
+            (B) MULTIPLE products (grid/catalog layout)
+            (C) MIX of large + small supporting products
+
+            You MUST:
+
+            - If SINGLE main product:
+            → return ONE product
+
+            - If MULTIPLE distinct products:
+            → extract EACH product separately
+
+            IMPORTANT:
+
+            - If multiple images exist → assume multiple products
+            - DO NOT collapse multiple items into one product
+            - If unsure → split into multiple products instead of merging
+
+            CRITICAL:
+
+            - Products are typically aligned with images
+            - Each image or grouped images usually represent a product
+            - DO NOT treat the whole page as one product
+
+            =====================
+            VARIANT DETECTION LOGIC (CRITICAL)
+            =====================
+
+            Products in catalogs may appear as multiple similar images WITHOUT explicit labels like "color" or "size".
+
+            You MUST detect variants using visual, structural, and contextual clues.
+
+            A product HAS VARIANTS ONLY IF:
+
+            - The items are clearly the SAME product design
+            - Differences are ONLY color, size, or minor variation
+            - The items would share the same product name in a store
+
+            DO NOT group items as variants if:
+            - They are different product types
+            - They have different shapes or purposes
+            - They would be listed separately in an e-commerce store
+
+            =====================
+            🔥 CRITICAL VARIANT COUNT RULE (NEW)
+            =====================
+
+            - If multiple similar items are displayed in a row or grid:
+            → EACH visible item MUST be treated as a variant
+
+            - You MUST COUNT the number of visible items
+            - DO NOT estimate
+            - DO NOT reduce the count
+
+            EXAMPLES:
+
+            - If 10 shirts are visible → return 10 variants
+            - If 6 bottles are shown → return 6 variants
+
+            GRID RULE:
+
+            - Each grid item = 1 variant
+
+            VISUAL PRIORITY:
+
+            - Images override text
+            - If images show more items than text → trust images
+
+            FAIL CONDITION:
+
+            - Returning fewer variants than visible items is WRONG
+
+            =====================
+            VARIANT RULES
+            =====================
+
+            - Each product appears ONLY ONCE per page
+            - Variants must be grouped under "variants"
+            - If no variants exist → DO NOT include "variants"
+
+            ATTRIBUTE INFERENCE:
+
+            - If difference looks like color → use "Color"
+            - If difference looks like size → use "Size"
+            - If unclear → use "Variant"
+
+            =====================
+            VARIANT IMAGE MAPPING (VERY IMPORTANT)
+            =====================
+
+            - Each variant MUST map to an image
+
+            - Provide:
+            "image_index": index of image (starting from 0)
+
+            STRICT RULE:
+
+            - Number of variants MUST NOT exceed number of images
+            - If multiple variants exist → distribute across images
+
+            =====================
+            WHEN TO SPLIT PRODUCTS
+            =====================
+
+            Treat items as SEPARATE products ONLY IF:
+            - Names are clearly different
+            - Designs are significantly different
+            - They are unrelated items
+
+            If unsure:
+            → Prefer splitting into separate products
+
+            =====================
+            ANTI-REPETITION RULE
+            =====================
+
+            - If same product appears multiple times on THIS PAGE → return it ONLY ONCE
+
+            =====================
+            MINIMUM EXTRACTION RULE
+            =====================
+
+            - You MUST extract at least ONE product
+            - NEVER return empty list
+
+            =====================
+            OUTPUT FORMAT
+            =====================
+
+            [
+                {{
+                    "name": "",
+                    "description": "",
+                    "category": "",
+                    "price": "",
+                    "stock": "",
+                    "variants": [
+                        {{
+                            "attributes": {{
+                                "Color": ""
+                            }},
+                            "image_index": 0,
+                            "stock": null
+                        }}
+                    ]
+                }}
+            ]
+
+            PAGE CONTEXT:
+            - This page contains product images
+
+            TEXT TO ANALYZE:
             PAGE TEXT:
             {page_text}
 
@@ -2653,11 +2949,7 @@ class VendorImportJob(models.Model):
 
             DETECTED STOCK:
             {page_stock}
-
-            RETURN STRICT JSON ARRAY
-            OF PRODUCTS.
             """
-
 
             try:
 
