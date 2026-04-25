@@ -348,33 +348,59 @@ const vendorModal = document.getElementById(
     'vendorProductsModal'
 );
 
-vendorModal.addEventListener(
-    'shown.bs.modal',
-    function () {
 
-        loadVendorProducts(1);
-    }
+if (vendorModal) {
+
+    vendorModal.addEventListener(
+        'shown.bs.modal',
+        function () {
+
+            loadVendorProducts(1);
+        }
+    );
+}
+
+
+const vendorNextBtn = document.getElementById(
+    'vendorNextPage'
 );
 
-/**pagination */
-document
-.getElementById('vendorNextPage')
-.addEventListener('click', function () {
+if (vendorNextBtn) {
 
-    loadVendorProducts(
-        vendorCurrentPage + 1
+    vendorNextBtn.addEventListener(
+
+        'click',
+
+        function () {
+
+            loadVendorProducts(
+                vendorCurrentPage + 1
+            );
+        }
     );
-});
+}
 
 
-document
-.getElementById('vendorPrevPage')
-.addEventListener('click', function () {
+// previous btn
+const vendorPrevBtn = document.getElementById(
+    'vendorPrevPage'
+);
 
-    loadVendorProducts(
-        vendorCurrentPage - 1
+if (vendorPrevBtn) {
+
+    vendorPrevBtn.addEventListener(
+
+        'click',
+
+        function () {
+
+            loadVendorProducts(
+                vendorCurrentPage - 1
+            );
+        }
     );
-});
+}
+
 
 //vendor product form view
 // =====================================================
