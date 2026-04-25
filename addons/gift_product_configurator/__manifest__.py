@@ -44,3 +44,4 @@
  # ✅ CUSTOM FIELD
 #'pre_init_hook': 'add_vendor_column',
 }
+

@@ -260,53 +260,120 @@ async function loadVendorProducts(page = 1) {
         });
 
         const data = await result.json();
+        console.log(
+            'VENDOR PRODUCTS RESPONSE',
+            data
+        );
+
+
+        // const grid = document.getElementById(
+        //     'vendorProductsGrid'
+        // );
+
+        // grid.innerHTML = '';
 
         const grid = document.getElementById(
             'vendorProductsGrid'
         );
 
+        console.log(
+            'GRID ELEMENT',
+            grid
+        );
+
+
+        if (!grid) {
+
+            console.error(
+                'vendorProductsGrid NOT FOUND'
+            );
+
+            return;
+        }
+
+
         grid.innerHTML = '';
 
-        data.result.products.forEach(product => {
+     
+const products = (
 
-            grid.innerHTML += `
+    data.products
 
-                <div class="col-xl-3 col-lg-4 col-md-6">
+    ||
 
-                    <div class="vendor-product-card">
+    data.result?.products
 
-                        <div class="vendor-product-image-wrap">
+    ||
 
-                            <img
-                                src="${product.image}"
-                                class="vendor-product-image"
-                            >
+    []
+);
 
-                        </div>
 
-                        <div class="vendor-product-content">
+console.log(
+    'FINAL PRODUCTS',
+    products
+);
 
-                            <h6 class="vendor-product-title">
-                                ${product.name}
-                            </h6>
 
-                            <button
-                                class="btn btn-dark w-100 manage-product-btn"
-                                data-product-id="${product.id}"
-                            >
-                                Manage Product
-                            </button>
+products.forEach(product => {
 
-                        </div>
+    console.log(
+        'PRODUCT IMAGE URL',
+        product.image
+    );
 
-                    </div>
+
+    grid.innerHTML += `
+
+        <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
+
+            <div class="vendor-product-card">
+
+                <div class="vendor-product-image-wrap">
+
+                    <img
+
+                        src="${product.image}"
+
+                        onerror="this.src='/web/static/img/placeholder.png'"
+
+                        class="img-fluid rounded vendor-product-image"
+
+                        loading="lazy"
+                    />
 
                 </div>
 
-            `;
+                <div class="vendor-product-content">
+
+                    <h6 class="vendor-product-title">
+
+                        ${product.name}
+
+                    </h6>
+
+                    <button
+
+                        class="btn btn-dark w-100 manage-product-btn"
+
+                        data-product-id="${product.id}"
+                    >
+
+                        Manage Product
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
         });
 
-        if (!data.result.products.length) {
+        
+if (!products.length) {
 
             grid.innerHTML = `
 
@@ -326,17 +393,26 @@ async function loadVendorProducts(page = 1) {
 
         document.getElementById(
             'vendorPageInfo'
-        ).innerText = `Page ${data.result.page}`;
+       ).innerText = `Page ${ data.page || data.result?.page || 1 }`;
 
         document.getElementById(
             'vendorPrevPage'
-        ).disabled = !data.result.has_prev;
+        ).disabled = !( data.has_prev || data.result?.has_prev );
 
         document.getElementById(
             'vendorNextPage'
-        ).disabled = !data.result.has_next;
+      
+            ).disabled = !(
 
-        vendorCurrentPage = data.result.page;
+                data.has_next
+
+                ||
+
+                data.result?.has_next
+            );
+
+
+        vendorCurrentPage = data.page;
 
     } catch (err) {
 
@@ -347,37 +423,604 @@ async function loadVendorProducts(page = 1) {
     }
 }
 
-const vendorModal = document.getElementById(
-    'vendorProductsModal'
-);
 
-vendorModal.addEventListener(
-    'shown.bs.modal',
+//product loader=====
+document.addEventListener(
+
+    'DOMContentLoaded',
+
     function () {
 
-        loadVendorProducts(1);
+        const vendorModal = (
+            document.getElementById(
+                'vendorProductsModal'
+            )
+        );
+
+        console.log(
+            'vendor Product modal -> ',
+            vendorModal
+        );
+
+
+        if (!vendorModal) {
+
+            console.error(
+                'vendorProductsModal NOT FOUND'
+            );
+
+            return;
+        }
     }
 );
 
-/**pagination */
-document
-.getElementById('vendorNextPage')
-.addEventListener('click', function () {
 
-    loadVendorProducts(
-        vendorCurrentPage + 1
+const vendorStatusBtn = document.querySelector(
+    '.vendor-data-status'
+);
+
+
+if (vendorStatusBtn) {
+
+    vendorStatusBtn.addEventListener(
+
+        'click',
+
+        function () {
+
+            console.log(
+                'LOADING VENDOR PRODUCTS'
+            );
+
+            setTimeout(function () {
+
+                loadVendorProducts(1);
+
+            }, 300);
+        }
     );
-});
+}
 
 
-document
-.getElementById('vendorPrevPage')
-.addEventListener('click', function () {
+//==================next page/pagination============
+const vendorNextBtn = document.getElementById(
+    'vendorNextPage'
+);
 
-    loadVendorProducts(
-        vendorCurrentPage - 1
+if (vendorNextBtn) {
+
+    vendorNextBtn.addEventListener(
+
+        'click',
+
+        function () {
+
+            loadVendorProducts(
+                vendorCurrentPage + 1
+            );
+        }
     );
-});
+}
 
+
+// previous btn
+const vendorPrevBtn = document.getElementById(
+    'vendorPrevPage'
+);
+
+if (vendorPrevBtn) {
+
+    vendorPrevBtn.addEventListener(
+
+        'click',
+
+        function () {
+
+            loadVendorProducts(
+                vendorCurrentPage - 1
+            );
+        }
+    );
+}
+
+
+//vendor product form view
+// =====================================================
+// VENDOR PRODUCT DETAILS
+// =====================================================
+
+async function loadVendorProductDetails(productId) {
+
+    try {
+
+        const result = await fetch(
+
+            '/vendor/product/details',
+
+            {
+                method: 'POST',
+
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+
+                body: JSON.stringify({
+                    product_id: productId
+                })
+            }
+        );
+
+        const data = await result.json();
+        console.log(
+            'VENDOR PRODUCTS RESPONSE',
+            data
+        );
+
+
+        // =========================================
+        // ERROR
+        // =========================================
+
+        if (
+            data.result &&
+            data.result.error
+        ) {
+
+            alert(data.result.error);
+
+            return;
+        }
+
+        const product = data.result;
+
+        // =========================================
+        // FORM VALUES
+        // =========================================
+
+        const productIdField =
+            document.getElementById(
+                'vendorProductId'
+            );
+
+        if (productIdField) {
+
+            productIdField.value =
+                product.id || '';
+        }
+
+
+        const productNameField =
+            document.getElementById(
+                'vendorProductName'
+            );
+
+        if (productNameField) {
+
+            productNameField.value =
+                product.name || '';
+        }
+
+
+        const descriptionField =
+            document.getElementById(
+                'vendorProductDescription'
+            );
+
+        if (descriptionField) {
+
+            descriptionField.value =
+                product.description || '';
+        }
+
+
+        const categoryField =
+            document.getElementById(
+                'vendorProductCategory'
+            );
+
+        if (categoryField) {
+
+            categoryField.value =
+                product.category || '';
+        }
+
+
+        const priceField =
+            document.getElementById(
+                'vendorProductPrice'
+            );
+
+        if (priceField) {
+
+            priceField.value =
+                product.price || 0;
+        }
+
+
+        const statusField =
+            document.getElementById(
+                'vendorProductStatus'
+            );
+
+        if (statusField) {
+
+            statusField.value = (
+
+                product.published
+
+                    ? 'Published'
+
+                    : 'Unpublished'
+            );
+        }
+
+
+        const dateField =
+            document.getElementById(
+                'vendorProductDate'
+            );
+
+        if (dateField) {
+
+            dateField.value =
+                product.create_date || '';
+        }
+
+
+        // =========================================
+        // IMAGE
+        // =========================================
+
+        const imagePreview =
+            document.getElementById(
+                'vendorProductPreview'
+            );
+
+        if (imagePreview) {
+
+            imagePreview.src =
+                product.image || '';
+        }
+
+
+        // =========================================
+        // WARNING
+        // =========================================
+
+        const warningBox =
+            document.getElementById(
+                'vendorProductWarning'
+            );
+
+        if (warningBox) {
+
+            if (product.warning) {
+
+                warningBox.classList.remove(
+                    'd-none'
+                );
+
+                warningBox.innerHTML =
+                    product.warning;
+
+            } else {
+
+                warningBox.classList.add(
+                    'd-none'
+                );
+            }
+        }
+
+
+        // =========================================
+        // OPEN MODAL
+        // =========================================
+
+        const modalElement =
+            document.getElementById(
+                'vendorProductDetailsModal'
+            );
+
+        if (!modalElement) {
+            return;
+        }
+
+        const modal =
+            new bootstrap.Modal(
+                modalElement
+            );
+
+        modal.show();
+
+    } catch (err) {
+
+        console.error(
+
+            'LOAD PRODUCT DETAILS FAILED',
+
+            err
+        );
+
+        alert(
+            'Failed to load product details'
+        );
+    }
+}
+
+
+// =====================================================
+// OPEN PRODUCT DETAILS MODAL
+// =====================================================
+
+document.addEventListener(
+
+    'click',
+
+    function (e) {
+
+        const trigger = e.target.closest(
+            '.open-vendor-product'
+        );
+
+        if (!trigger) {
+            return;
+        }
+
+        e.preventDefault();
+
+        const productId =
+            trigger.dataset.productId;
+
+        if (!productId) {
+            return;
+        }
+
+        loadVendorProductDetails(
+            productId
+        );
+    }
+);
+
+
+// =====================================================
+// SAVE PRODUCT
+// =====================================================
+
+const saveVendorBtn =
+    document.getElementById(
+        'saveVendorProductBtn'
+    );
+
+if (saveVendorBtn) {
+
+    saveVendorBtn.addEventListener(
+
+        'click',
+
+        async function () {
+
+            try {
+
+                const payload = {
+
+                    product_id:
+
+                        document.getElementById(
+                            'vendorProductId'
+                        ).value,
+
+
+                    name:
+
+                        document.getElementById(
+                            'vendorProductName'
+                        ).value,
+
+
+                    description:
+
+                        document.getElementById(
+                            'vendorProductDescription'
+                        ).value,
+
+
+                    price:
+
+                        document.getElementById(
+                            'vendorProductPrice'
+                        ).value,
+                };
+
+
+                const response = await fetch(
+
+                    '/vendor/product/update',
+
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+
+                        body: JSON.stringify(
+                            payload
+                        )
+                    }
+                );
+
+
+                const data =
+                    await response.json();
+
+
+                if (
+                    data.result &&
+                    data.result.error
+                ) {
+
+                    alert(
+                        data.result.error
+                    );
+
+                    return;
+                }
+
+
+                // =================================
+                // REFRESH PRODUCTS
+                // =================================
+
+                loadVendorProducts(
+                    vendorCurrentPage
+                );
+
+
+                alert(
+                    'Product updated successfully'
+                );
+
+            } catch (err) {
+
+                console.error(
+
+                    'SAVE PRODUCT FAILED',
+
+                    err
+                );
+
+                alert(
+                    'Failed to update product'
+                );
+            }
+        }
+    );
+}
+
+
+// =====================================================
+// DELETE PRODUCT
+// =====================================================
+
+const deleteVendorBtn =
+    document.getElementById(
+        'deleteVendorProductBtn'
+    );
+
+if (deleteVendorBtn) {
+
+    deleteVendorBtn.addEventListener(
+
+        'click',
+
+        async function () {
+
+            try {
+
+                const productId =
+                    document.getElementById(
+                        'vendorProductId'
+                    ).value;
+
+
+                const confirmed = confirm(
+
+                    'Delete this product?'
+                );
+
+                if (!confirmed) {
+                    return;
+                }
+
+
+                const response = await fetch(
+
+                    '/vendor/product/delete',
+
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+
+                        body: JSON.stringify({
+
+                            product_id:
+                                productId
+                        })
+                    }
+                );
+
+
+                const data =
+                    await response.json();
+
+
+                if (
+                    data.result &&
+                    data.result.error
+                ) {
+
+                    alert(
+                        data.result.error
+                    );
+
+                    return;
+                }
+
+
+                // =================================
+                // REFRESH PRODUCTS
+                // =================================
+
+                loadVendorProducts(
+                    vendorCurrentPage
+                );
+
+
+                // =================================
+                // CLOSE MODAL
+                // =================================
+
+                const modalElement =
+                    document.getElementById(
+                        'vendorProductDetailsModal'
+                    );
+
+                const modal =
+                    bootstrap.Modal
+                    .getInstance(
+                        modalElement
+                    );
+
+                if (modal) {
+
+                    modal.hide();
+                }
+
+
+                alert(
+                    'Product deleted successfully'
+                );
+
+            } catch (err) {
+
+                console.error(
+
+                    'DELETE PRODUCT FAILED',
+
+                    err
+                );
+
+                alert(
+                    'Failed to delete product'
+                );
+            }
+        }
+    );
+}
 
 })();
