@@ -96,14 +96,17 @@ class VendorProductsController(http.Controller):
 
                 'name': p.name,
 
+                # 'image': (
+
+                #     f'/web/image?model=product.template'
+                #     f'&id={p.id}'
+                #     f'&field=image_128'
+                # ),
+
                 'image': (
-
-                    f'/web/image?model=product.template'
-                    f'&id={p.id}'
-                    f'&field=image_128'
+                    f'/vendor/product/image/{p.id}'
                 ),
-
-                
+ 
             })
 
         return {
@@ -215,11 +218,16 @@ class VendorProductsController(http.Controller):
             'create_date':
                 str(product.create_date),
 
-            'image': (
+            # 'image': (
 
-                f'/web/image?model=product.template'
-                f'&id={p.id}'
-                f'&field=image_128'
+            #     f'/web/image?model=product.template'
+            #     f'&id={p.id}'
+            #     f'&field=image_128'
+            # ),
+
+        
+            'image': (
+                f'/vendor/product/image/{product.id}'
             ),
 
             'warning':
@@ -327,3 +335,84 @@ class VendorProductsController(http.Controller):
         return {
             'success': True
         }
+    
+
+    @http.route(
+
+        '/vendor/product/image/<int:product_id>',
+
+        type='http',
+
+        auth='user',
+
+        website=True
+    )
+    def vendor_product_image(
+
+        self,
+
+        product_id,
+
+        **kwargs
+    ):
+
+
+        partner = request.env.user.partner_id
+
+
+        product = request.env[
+            'product.template'
+        ].sudo().search([
+
+            ('id', '=', product_id),
+
+            ('vendor_id', '=', partner.id)
+
+        ], limit=1)
+        
+
+        if not product.exists():
+
+            return request.not_found()
+
+
+        image = (
+
+            product.image_128
+
+            or
+
+            product.product_variant_id.image_128
+        )
+
+
+        if not image:
+
+            return request.redirect(
+                '/web/static/img/placeholder.png'
+            )
+
+
+        import base64
+
+
+        try:
+
+            image_data = base64.b64decode(image)
+
+        except Exception:
+
+            image_data = image
+
+
+        return request.make_response(
+
+            image_data,
+
+            headers=[
+
+                ('Content-Type', 'image/png'),
+
+                ('Cache-Control', 'public, max-age=3600'),
+            ]
+        )
