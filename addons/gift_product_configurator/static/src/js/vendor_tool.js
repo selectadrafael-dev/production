@@ -433,7 +433,7 @@ if (vendorStatusBtn) {
 }
 
 
-//next page/pagination
+//==================next page/pagination============
 const vendorNextBtn = document.getElementById(
     'vendorNextPage'
 );
