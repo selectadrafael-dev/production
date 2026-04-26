@@ -137,10 +137,31 @@ class VendorProductsController(http.Controller):
         auth='user',
         website=True
     )
+    # def vendor_product_details(
+    #     self,
+    #     product_id
+    # ):
+
+
     def vendor_product_details(
+
         self,
-        product_id
+
+        product_id=None,
+
+        **kwargs
     ):
+        
+        try:
+
+            product_id = int(product_id)
+
+        except Exception:
+
+            return {
+                'error': 'Invalid product ID'
+            }
+    
 
         partner = request.env.user.partner_id
         import logging
@@ -148,6 +169,11 @@ class VendorProductsController(http.Controller):
         _logger.warning(
             f"PORTAL USER PARTNER ID → "
             f"{partner.id}"
+        )
+
+
+        _logger.warning(
+            f"FOUND PRODUCT → {product}"
         )
 
 
@@ -160,6 +186,11 @@ class VendorProductsController(http.Controller):
             ('vendor_id', '=', partner.id)
 
         ], limit=1)
+
+        _logger.warning(
+            f"FOUND PRODUCT → {product}"
+        )
+
 
         if not product:
 

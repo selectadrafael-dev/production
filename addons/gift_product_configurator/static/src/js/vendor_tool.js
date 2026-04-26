@@ -539,8 +539,13 @@ async function loadVendorProductDetails(productId) {
                 },
 
                 body: JSON.stringify({
-                    product_id: productId
+
+                    params: {
+
+                        product_id: productId
+                    }
                 })
+
             }
         );
 
