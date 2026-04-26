@@ -98,14 +98,11 @@ class VendorProductsController(http.Controller):
 
                 'image': (
 
-                    f'/web/image/product.template/'
-                    f'{p.id}/image_128'
-
-                    if p.image_128
-
-                    else '/web/static/img/placeholder.png'
+                    f'/web/image?model=product.template'
+                    f'&id={p.id}'
+                    f'&field=image_128'
                 ),
-            
+
                 
             })
 
@@ -218,15 +215,11 @@ class VendorProductsController(http.Controller):
             'create_date':
                 str(product.create_date),
 
-
             'image': (
 
-                f'/web/image/product.template/'
-                f'{product.id}/image_128'
-
-                if product.image_128
-
-                else '/web/static/img/placeholder.png'
+                f'/web/image?model=product.template'
+                f'&id={p.id}'
+                f'&field=image_128'
             ),
 
             'warning':
