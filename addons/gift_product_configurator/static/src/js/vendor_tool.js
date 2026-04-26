@@ -293,10 +293,29 @@ async function loadVendorProducts(page = 1) {
 
 
         grid.innerHTML = '';
-    
+
+     
+const products = (
+
+    data.products
+
+    ||
+
+    data.result?.products
+
+    ||
+
+    []
+);
 
 
-    data.products.forEach(product => {
+console.log(
+    'FINAL PRODUCTS',
+    products
+);
+
+
+products.forEach(product => {
 
             grid.innerHTML += `
 
@@ -333,7 +352,7 @@ async function loadVendorProducts(page = 1) {
         });
 
         
-if (!data.products.length) {
+if (!products.length) {
 
             grid.innerHTML = `
 
@@ -353,15 +372,24 @@ if (!data.products.length) {
 
         document.getElementById(
             'vendorPageInfo'
-        ).innerText = `Page ${data.page}`;
+       ).innerText = `Page ${ data.page || data.result?.page || 1 }`;
 
         document.getElementById(
             'vendorPrevPage'
-        ).disabled = !data.has_prev;
+        ).disabled = !( data.has_prev || data.result?.has_prev );
 
         document.getElementById(
             'vendorNextPage'
-        ).disabled = !data.has_next;
+      
+            ).disabled = !(
+
+                data.has_next
+
+                ||
+
+                data.result?.has_next
+            );
+
 
         vendorCurrentPage = data.page;
 
@@ -375,7 +403,7 @@ if (!data.products.length) {
 }
 
 
-//product loader
+//product loader=====
 document.addEventListener(
 
     'DOMContentLoaded',
