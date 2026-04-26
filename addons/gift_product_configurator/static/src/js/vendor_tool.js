@@ -266,12 +266,6 @@ async function loadVendorProducts(page = 1) {
         );
 
 
-        // const grid = document.getElementById(
-        //     'vendorProductsGrid'
-        // );
-
-        // grid.innerHTML = '';
-
         const grid = document.getElementById(
             'vendorProductsGrid'
         );
@@ -529,215 +523,235 @@ if (vendorPrevBtn) {
 // VENDOR PRODUCT DETAILS
 // =====================================================
 
-async function loadVendorProductDetails(productId) {
+
+async function loadVendorProductDetails(
+    productId
+) {
 
     try {
+
+        console.log(
+            'OPEN PRODUCT → ',
+            productId
+        );
+
 
         const result = await fetch(
 
             '/vendor/product/details',
 
             {
+
                 method: 'POST',
 
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type':
+                        'application/json'
                 },
 
                 body: JSON.stringify({
-                    product_id: productId
+
+                    params: {
+                        product_id: productId
+                    }
+
                 })
             }
         );
 
+
         const data = await result.json();
+
+
         console.log(
-            'VENDOR PRODUCTS RESPONSE',
+            'PRODUCT DETAILS RESPONSE',
             data
         );
 
 
-        // =========================================
-        // ERROR
-        // =========================================
+        const product = data.result;
+
 
         if (
-            data.result &&
-            data.result.error
+
+            !product
+
+            ||
+
+            product.error
+
         ) {
 
-            alert(data.result.error);
+            alert(
+                product?.error
+                ||
+                'Failed to load product details'
+            );
 
             return;
         }
 
-        const product = data.result;
 
-        // =========================================
-        // FORM VALUES
-        // =========================================
+        const setValue = function (
 
-        const productIdField =
-            document.getElementById(
-                'vendorProductId'
+            id,
+
+            value
+
+        ) {
+
+            const el = document.getElementById(id);
+
+            if (!el) {
+
+                console.error(
+                    'MISSING ELEMENT → ',
+                    id
+                );
+
+                return;
+            }
+
+            el.value = value || '';
+        };
+
+
+        setValue(
+            'vendorProductId',
+            product.id
+        );
+
+        setValue(
+            'vendorProductName',
+            product.name
+        );
+
+        setValue(
+            'vendorProductDescription',
+            product.description
+        );
+
+        setValue(
+            'vendorProductCategory',
+            product.category
+        );
+
+        setValue(
+            'vendorProductPrice',
+            product.price
+        );
+
+        setValue(
+
+            'vendorProductStatus',
+
+            product.published
+
+                ? 'Published'
+
+                : 'Unpublished'
+        );
+
+        setValue(
+            'vendorProductDate',
+            product.create_date
+        );
+
+
+        const preview = document.getElementById(
+            'vendorProductPreview'
+        );
+
+
+        if (preview) {
+
+            preview.src = (
+
+                product.image
+
+                ||
+
+                '/web/static/img/placeholder.png'
             );
-
-        if (productIdField) {
-
-            productIdField.value =
-                product.id || '';
         }
 
 
-        const productNameField =
-            document.getElementById(
-                'vendorProductName'
-            );
-
-        if (productNameField) {
-
-            productNameField.value =
-                product.name || '';
-        }
-
-
-        const descriptionField =
-            document.getElementById(
-                'vendorProductDescription'
-            );
-
-        if (descriptionField) {
-
-            descriptionField.value =
-                product.description || '';
-        }
-
-
-        const categoryField =
-            document.getElementById(
-                'vendorProductCategory'
-            );
-
-        if (categoryField) {
-
-            categoryField.value =
-                product.category || '';
-        }
-
-
-        const priceField =
-            document.getElementById(
-                'vendorProductPrice'
-            );
-
-        if (priceField) {
-
-            priceField.value =
-                product.price || 0;
-        }
-
-
-        const statusField =
-            document.getElementById(
-                'vendorProductStatus'
-            );
-
-        if (statusField) {
-
-            statusField.value = (
-
-                product.published
-
-                    ? 'Published'
-
-                    : 'Unpublished'
-            );
-        }
-
-
-        const dateField =
-            document.getElementById(
-                'vendorProductDate'
-            );
-
-        if (dateField) {
-
-            dateField.value =
-                product.create_date || '';
-        }
-
-
-        // =========================================
-        // IMAGE
-        // =========================================
-
-        const imagePreview =
-            document.getElementById(
-                'vendorProductPreview'
-            );
-
-        if (imagePreview) {
-
-            imagePreview.src =
-                product.image || '';
-        }
-
-
-        // =========================================
-        // WARNING
-        // =========================================
 
         const warningBox =
             document.getElementById(
                 'vendorProductWarning'
             );
 
-        if (warningBox) {
 
-            if (product.warning) {
+        if (product.warning) {
 
-                warningBox.classList.remove(
-                    'd-none'
-                );
+            warningBox.classList.remove(
+                'd-none'
+            );
 
-                warningBox.innerHTML =
-                    product.warning;
+            warningBox.innerHTML =
+                product.warning;
 
-            } else {
+        } else {
 
-                warningBox.classList.add(
-                    'd-none'
-                );
-            }
+            warningBox.classList.add(
+                'd-none'
+            );
         }
 
 
-        // =========================================
-        // OPEN MODAL
-        // =========================================
+const modalEl = document.getElementById(
+    'vendorProductDetailsModal'
+);
 
-        const modalElement =
-            document.getElementById(
-                'vendorProductDetailsModal'
-            );
 
-        if (!modalElement) {
-            return;
-        }
+if (!modalEl) {
 
-        const modal =
-            new bootstrap.Modal(
-                modalElement
-            );
+    console.error(
+        'DETAIL MODAL NOT FOUND'
+    );
 
-        modal.show();
+    return;
+}
+
+
+if (
+
+    typeof bootstrap !== 'undefined'
+
+    &&
+
+    bootstrap.Modal
+
+) {
+
+    const modal = new bootstrap.Modal(
+        modalEl
+    );
+
+    modal.show();
+
+} else {
+
+    console.error(
+        'Bootstrap modal not available'
+    );
+
+    modalEl.classList.add('show');
+
+    modalEl.style.display = 'block';
+
+    modalEl.removeAttribute(
+        'aria-hidden'
+    );
+}
+
+
 
     } catch (err) {
 
         console.error(
-
             'LOAD PRODUCT DETAILS FAILED',
-
             err
         );
 
@@ -746,6 +760,50 @@ async function loadVendorProductDetails(productId) {
         );
     }
 }
+
+//=======================================================
+// Close Detail Modal
+//=======================================================
+
+document.addEventListener(
+
+    'click',
+
+    function (e) {
+
+        const closeBtn = e.target.closest(
+
+            '#vendorProductDetailsModal .btn-close'
+        );
+
+
+        if (!closeBtn) {
+
+            return;
+        }
+
+
+        const modal = document.getElementById(
+            'vendorProductDetailsModal'
+        );
+
+
+        if (!modal) {
+
+            return;
+        }
+
+
+        modal.classList.remove('show');
+
+        modal.style.display = 'none';
+
+        modal.setAttribute(
+            'aria-hidden',
+            'true'
+        );
+    }
+);
 
 
 // =====================================================
@@ -756,26 +814,36 @@ document.addEventListener(
 
     'click',
 
-    function (e) {
+    async function (e) {
 
-        const trigger = e.target.closest(
-            '.open-vendor-product'
+        const btn = e.target.closest(
+            '.manage-product-btn'
         );
 
-        if (!trigger) {
+
+        if (!btn) {
             return;
         }
 
+
         e.preventDefault();
 
-        const productId =
-            trigger.dataset.productId;
+
+        const productId = btn.dataset.productId;
+
 
         if (!productId) {
             return;
         }
 
-        loadVendorProductDetails(
+
+        console.log(
+            'OPEN PRODUCT → ',
+            productId
+        );
+
+
+        await loadVendorProductDetails(
             productId
         );
     }
