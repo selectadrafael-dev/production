@@ -592,37 +592,58 @@ async function loadVendorProductDetails(
         }
 
 
-        document.getElementById(
-            'vendorProductId'
-        ).value = product.id || '';
+        const setValue = function (
+
+            id,
+
+            value
+
+        ) {
+
+            const el = document.getElementById(id);
+
+            if (!el) {
+
+                console.error(
+                    'MISSING ELEMENT → ',
+                    id
+                );
+
+                return;
+            }
+
+            el.value = value || '';
+        };
 
 
-        document.getElementById(
-            'vendorProductName'
-        ).value = product.name || '';
+        setValue(
+            'vendorProductId',
+            product.id
+        );
 
+        setValue(
+            'vendorProductName',
+            product.name
+        );
 
-        document.getElementById(
-            'vendorProductDescription'
-        ).value =
-            product.description || '';
+        setValue(
+            'vendorProductDescription',
+            product.description
+        );
 
+        setValue(
+            'vendorProductCategory',
+            product.category
+        );
 
-        document.getElementById(
-            'vendorProductCategory'
-        ).value =
-            product.category || '';
+        setValue(
+            'vendorProductPrice',
+            product.price
+        );
 
+        setValue(
 
-        document.getElementById(
-            'vendorProductPrice'
-        ).value =
-            product.price || 0;
-
-
-        document.getElementById(
-            'vendorProductStatus'
-        ).value = (
+            'vendorProductStatus',
 
             product.published
 
@@ -631,19 +652,29 @@ async function loadVendorProductDetails(
                 : 'Unpublished'
         );
 
+        setValue(
+            'vendorProductDate',
+            product.create_date
+        );
 
-        document.getElementById(
-            'vendorProductDate'
-        ).value =
-            product.create_date || '';
 
-
-        document.getElementById(
+        const preview = document.getElementById(
             'vendorProductPreview'
-        ).src =
-            product.image
-            ||
-            '/web/static/img/placeholder.png';
+        );
+
+
+        if (preview) {
+
+            preview.src = (
+
+                product.image
+
+                ||
+
+                '/web/static/img/placeholder.png'
+            );
+        }
+
 
 
         const warningBox =
