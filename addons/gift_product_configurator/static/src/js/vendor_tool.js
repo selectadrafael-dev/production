@@ -406,27 +406,32 @@ document.addEventListener(
 );
 
 
-document.addEventListener(
-
-    'click',
-
-    function (e) {
-
-        const trigger = e.target.closest(
-            '.vendor-data-status'
-        );
-
-        if (!trigger) {
-            return;
-        }
-
-        console.log(
-            'LOADING VENDOR PRODUCTS'
-        );
-
-        loadVendorProducts(1);
-    }
+const vendorStatusBtn = document.querySelector(
+    '.vendor-data-status'
 );
+
+
+if (vendorStatusBtn) {
+
+    vendorStatusBtn.addEventListener(
+
+        'click',
+
+        function () {
+
+            console.log(
+                'LOADING VENDOR PRODUCTS'
+            );
+
+            setTimeout(function () {
+
+                loadVendorProducts(1);
+
+            }, 300);
+        }
+    );
+}
+
 
 //next page/pagination
 const vendorNextBtn = document.getElementById(
