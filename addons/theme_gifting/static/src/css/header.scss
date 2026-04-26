@@ -400,8 +400,7 @@
   transform: translateY(10px);
 
   transition: all 0.25s ease;
-
-  z-index: 1200;
+  z-index: 9999999900;
 }
 
 /* show on hover (desktop) */
