@@ -81,17 +81,19 @@ class VendorProductsController(http.Controller):
                 'id': p.id,
 
                 'name': p.name,
+            
 
-                #=== 'image':
-                #     f'/web/image/product.template/'
-                #     f'{p.id}/image_1920'====,
-
-                
                 'image': (
-                    f'/web/image?model=product.template'
-                    f'&id={p.id}'
-                    f'&field=image_128'
+
+                    f'/web/image/product.product/'
+                    f'{p.product_variant_id.id}/image_1920'
+
+                    if p.product_variant_id
+                    and p.product_variant_id.image_1920
+
+                    else '/web/static/img/placeholder.png'
                 ),
+
 
             })
 
@@ -130,8 +132,6 @@ class VendorProductsController(http.Controller):
 
         partner = request.env.user.partner_id
         import logging
-
-        _logger = logging.getLogger(__name__)
 
         _logger.warning(
             f"PORTAL USER PARTNER ID → "
@@ -206,10 +206,17 @@ class VendorProductsController(http.Controller):
             'create_date':
                 str(product.create_date),
 
-            'image':
-                f'/web/image/product.template/'
-                f'{product.id}/image_1920',
+            'image': (
 
+                f'/web/image/product.product/'
+                f'{product.product_variant_id.id}/image_1920'
+
+                if product.product_variant_id
+                and product.product_variant_id.image_1920
+
+                else '/web/static/img/placeholder.png'
+            ),
+            
             'warning':
                 warning,
         }
