@@ -291,7 +291,7 @@
                                           <input type="text"
                                                 id="vendorProductStatus"
                                                 class="form-control"
-                                                readonly />
+                                                readonly="readonly" />
 
                                       </div>
 
@@ -307,7 +307,7 @@
                                           <input type="text"
                                                 id="vendorProductDate"
                                                 class="form-control"
-                                                readonly />
+                                               readonly="readonly" />
 
                                       </div>
 
