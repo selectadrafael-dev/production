@@ -82,9 +82,16 @@ class VendorProductsController(http.Controller):
 
                 'name': p.name,
 
-                'image':
-                    f'/web/image/product.template/'
-                    f'{p.id}/image_1920',
+                #=== 'image':
+                #     f'/web/image/product.template/'
+                #     f'{p.id}/image_1920'====,
+
+                
+                'image': (
+                    f'/web/image?model=product.template'
+                    f'&id={p.id}'
+                    f'&field=image_128'
+                ),
 
             })
 

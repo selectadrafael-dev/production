@@ -325,8 +325,20 @@ products.forEach(product => {
 
                         <div class="vendor-product-image-wrap">
 
-                            <img src="${product.image}" class="vendor-product-image open-vendor-product" data-product-id="${product.id}" >
+                            <img
 
+                                src="${product.image}"
+
+                                onerror="
+                                    this.src='/web/static/img/placeholder.png'
+                                "
+
+                                class="img-fluid rounded"
+
+                                loading="lazy"
+                            />
+
+                            
                         </div>
 
                         <div class="vendor-product-content">
