@@ -317,50 +317,59 @@ console.log(
 
 products.forEach(product => {
 
-            grid.innerHTML += `
+    console.log(
+        'PRODUCT IMAGE URL',
+        product.image
+    );
 
-                <div class="col-xl-3 col-lg-4 col-md-6">
 
-                    <div class="vendor-product-card">
+    grid.innerHTML += `
 
-                        <div class="vendor-product-image-wrap">
+        <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
 
-                            <img
+            <div class="vendor-product-card">
 
-                                src="${product.image}"
+                <div class="vendor-product-image-wrap">
 
-                                onerror="
-                                    this.src='/web/static/img/placeholder.png'
-                                "
+                    <img
 
-                                class="img-fluid rounded"
+                        src="${product.image}"
 
-                                loading="lazy"
-                            />
+                        onerror="this.src='/web/static/img/placeholder.png'"
 
-                            
-                        </div>
+                        class="img-fluid rounded vendor-product-image"
 
-                        <div class="vendor-product-content">
-
-                            <h6 class="vendor-product-title">
-                                ${product.name}
-                            </h6>
-
-                            <button
-                                class="btn btn-dark w-100 manage-product-btn"
-                                data-product-id="${product.id}"
-                            >
-                                Manage Product
-                            </button>
-
-                        </div>
-
-                    </div>
+                        loading="lazy"
+                    />
 
                 </div>
 
-            `;
+                <div class="vendor-product-content">
+
+                    <h6 class="vendor-product-title">
+
+                        ${product.name}
+
+                    </h6>
+
+                    <button
+
+                        class="btn btn-dark w-100 manage-product-btn"
+
+                        data-product-id="${product.id}"
+                    >
+
+                        Manage Product
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        `;
         });
 
         
