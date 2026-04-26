@@ -266,11 +266,35 @@ async function loadVendorProducts(page = 1) {
         );
 
 
+        // const grid = document.getElementById(
+        //     'vendorProductsGrid'
+        // );
+
+        // grid.innerHTML = '';
+
         const grid = document.getElementById(
             'vendorProductsGrid'
         );
 
+        console.log(
+            'GRID ELEMENT',
+            grid
+        );
+
+
+        if (!grid) {
+
+            console.error(
+                'vendorProductsGrid NOT FOUND'
+            );
+
+            return;
+        }
+
+
         grid.innerHTML = '';
+    
+
 
     data.products.forEach(product => {
 
