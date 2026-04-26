@@ -523,220 +523,166 @@ if (vendorPrevBtn) {
 // VENDOR PRODUCT DETAILS
 // =====================================================
 
-async function loadVendorProductDetails(productId) {
+
+async function loadVendorProductDetails(
+    productId
+) {
 
     try {
+
+        console.log(
+            'OPEN PRODUCT → ',
+            productId
+        );
+
 
         const result = await fetch(
 
             '/vendor/product/details',
 
             {
+
                 method: 'POST',
 
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type':
+                        'application/json'
                 },
 
                 body: JSON.stringify({
 
                     params: {
-
                         product_id: productId
                     }
-                })
 
+                })
             }
         );
 
+
         const data = await result.json();
+
+
         console.log(
-            'VENDOR PRODUCTS RESPONSE',
+            'PRODUCT DETAILS RESPONSE',
             data
         );
 
 
-        // =========================================
-        // ERROR
-        // =========================================
+        const product = data.result;
+
 
         if (
-            data.result &&
-            data.result.error
+
+            !product
+
+            ||
+
+            product.error
+
         ) {
 
-            alert(data.result.error);
+            alert(
+                product?.error
+                ||
+                'Failed to load product details'
+            );
 
             return;
         }
 
-        const product = data.result;
 
-        // =========================================
-        // FORM VALUES
-        // =========================================
-
-        const productIdField =
-            document.getElementById(
-                'vendorProductId'
-            );
-
-        if (productIdField) {
-
-            productIdField.value =
-                product.id || '';
-        }
+        document.getElementById(
+            'vendorProductId'
+        ).value = product.id || '';
 
 
-        const productNameField =
-            document.getElementById(
-                'vendorProductName'
-            );
-
-        if (productNameField) {
-
-            productNameField.value =
-                product.name || '';
-        }
+        document.getElementById(
+            'vendorProductName'
+        ).value = product.name || '';
 
 
-        const descriptionField =
-            document.getElementById(
-                'vendorProductDescription'
-            );
-
-        if (descriptionField) {
-
-            descriptionField.value =
-                product.description || '';
-        }
+        document.getElementById(
+            'vendorProductDescription'
+        ).value =
+            product.description || '';
 
 
-        const categoryField =
-            document.getElementById(
-                'vendorProductCategory'
-            );
-
-        if (categoryField) {
-
-            categoryField.value =
-                product.category || '';
-        }
+        document.getElementById(
+            'vendorProductCategory'
+        ).value =
+            product.category || '';
 
 
-        const priceField =
-            document.getElementById(
-                'vendorProductPrice'
-            );
-
-        if (priceField) {
-
-            priceField.value =
-                product.price || 0;
-        }
+        document.getElementById(
+            'vendorProductPrice'
+        ).value =
+            product.price || 0;
 
 
-        const statusField =
-            document.getElementById(
-                'vendorProductStatus'
-            );
+        document.getElementById(
+            'vendorProductStatus'
+        ).value = (
 
-        if (statusField) {
+            product.published
 
-            statusField.value = (
+                ? 'Published'
 
-                product.published
-
-                    ? 'Published'
-
-                    : 'Unpublished'
-            );
-        }
+                : 'Unpublished'
+        );
 
 
-        const dateField =
-            document.getElementById(
-                'vendorProductDate'
-            );
-
-        if (dateField) {
-
-            dateField.value =
-                product.create_date || '';
-        }
+        document.getElementById(
+            'vendorProductDate'
+        ).value =
+            product.create_date || '';
 
 
-        // =========================================
-        // IMAGE
-        // =========================================
+        document.getElementById(
+            'vendorProductPreview'
+        ).src =
+            product.image
+            ||
+            '/web/static/img/placeholder.png';
 
-        const imagePreview =
-            document.getElementById(
-                'vendorProductPreview'
-            );
-
-        if (imagePreview) {
-
-            imagePreview.src =
-                product.image || '';
-        }
-
-
-        // =========================================
-        // WARNING
-        // =========================================
 
         const warningBox =
             document.getElementById(
                 'vendorProductWarning'
             );
 
-        if (warningBox) {
 
-            if (product.warning) {
+        if (product.warning) {
 
-                warningBox.classList.remove(
-                    'd-none'
-                );
+            warningBox.classList.remove(
+                'd-none'
+            );
 
-                warningBox.innerHTML =
-                    product.warning;
+            warningBox.innerHTML =
+                product.warning;
 
-            } else {
+        } else {
 
-                warningBox.classList.add(
-                    'd-none'
-                );
-            }
+            warningBox.classList.add(
+                'd-none'
+            );
         }
 
 
-        // =========================================
-        // OPEN MODAL
-        // =========================================
+        const modal = new bootstrap.Modal(
 
-        const modalElement =
             document.getElementById(
                 'vendorProductDetailsModal'
-            );
+            )
+        );
 
-        if (!modalElement) {
-            return;
-        }
-
-        const modal =
-            new bootstrap.Modal(
-                modalElement
-            );
 
         modal.show();
 
     } catch (err) {
 
         console.error(
-
             'LOAD PRODUCT DETAILS FAILED',
-
             err
         );
 
@@ -745,7 +691,6 @@ async function loadVendorProductDetails(productId) {
         );
     }
 }
-
 
 // =====================================================
 // OPEN PRODUCT DETAILS MODAL
