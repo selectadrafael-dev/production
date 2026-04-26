@@ -761,6 +761,51 @@ if (
     }
 }
 
+//=======================================================
+// Close Detail Modal
+//=======================================================
+
+document.addEventListener(
+
+    'click',
+
+    function (e) {
+
+        const closeBtn = e.target.closest(
+
+            '#vendorProductDetailsModal .btn-close'
+        );
+
+
+        if (!closeBtn) {
+
+            return;
+        }
+
+
+        const modal = document.getElementById(
+            'vendorProductDetailsModal'
+        );
+
+
+        if (!modal) {
+
+            return;
+        }
+
+
+        modal.classList.remove('show');
+
+        modal.style.display = 'none';
+
+        modal.setAttribute(
+            'aria-hidden',
+            'true'
+        );
+    }
+);
+
+
 // =====================================================
 // OPEN PRODUCT DETAILS MODAL
 // =====================================================
