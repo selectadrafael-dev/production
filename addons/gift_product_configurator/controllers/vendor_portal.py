@@ -95,29 +95,17 @@ class VendorProductsController(http.Controller):
                 'id': p.id,
 
                 'name': p.name,
-            
 
-                # 'image': (
-
-                #     f'/web/image/product.product/'
-                #     f'{p.product_variant_id.id}/image_1920'
-
-                #     if p.product_variant_id
-                #     and p.product_variant_id.image_1920
-
-                #     else '/web/static/img/placeholder.png'
-                # ),
-
-            
                 'image': (
 
-                    f'/web/image/product.product/'
-                    f'{p.product_variant_id.id}/image_1920'
+                    f'/web/image/product.template/'
+                    f'{p.id}/image_128'
 
-                    if p.product_variant_id
+                    if p.image_128
 
                     else '/web/static/img/placeholder.png'
                 ),
+            
                 
             })
 
@@ -230,30 +218,17 @@ class VendorProductsController(http.Controller):
             'create_date':
                 str(product.create_date),
 
-            # 'image': (
-
-            #     f'/web/image/product.product/'
-            #     f'{product.product_variant_id.id}/image_1920'
-
-            #     if product.product_variant_id
-            #     and product.product_variant_id.image_1920
-
-            #     else '/web/static/img/placeholder.png'
-            # ),
-
 
             'image': (
 
-                f'/web/image/product.product/'
-                f'{product.product_variant_id.id}/image_1920'
+                f'/web/image/product.template/'
+                f'{product.id}/image_128'
 
-                if product.product_variant_id
+                if product.image_128
 
                 else '/web/static/img/placeholder.png'
             ),
-        
 
-            
             'warning':
                 warning,
         }
