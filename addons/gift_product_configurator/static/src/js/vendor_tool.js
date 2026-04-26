@@ -700,15 +700,53 @@ async function loadVendorProductDetails(
         }
 
 
-        const modal = new bootstrap.Modal(
-
-            document.getElementById(
-                'vendorProductDetailsModal'
-            )
-        );
+const modalEl = document.getElementById(
+    'vendorProductDetailsModal'
+);
 
 
-        modal.show();
+if (!modalEl) {
+
+    console.error(
+        'DETAIL MODAL NOT FOUND'
+    );
+
+    return;
+}
+
+
+if (
+
+    typeof bootstrap !== 'undefined'
+
+    &&
+
+    bootstrap.Modal
+
+) {
+
+    const modal = new bootstrap.Modal(
+        modalEl
+    );
+
+    modal.show();
+
+} else {
+
+    console.error(
+        'Bootstrap modal not available'
+    );
+
+    modalEl.classList.add('show');
+
+    modalEl.style.display = 'block';
+
+    modalEl.removeAttribute(
+        'aria-hidden'
+    );
+}
+
+
 
     } catch (err) {
 
