@@ -172,10 +172,6 @@ class VendorProductsController(http.Controller):
         )
 
 
-        _logger.warning(
-            f"FOUND PRODUCT → {product}"
-        )
-
 
         product = request.env[
             'product.template'
