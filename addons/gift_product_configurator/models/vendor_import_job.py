@@ -3711,6 +3711,11 @@ class VendorImportJob(models.Model):
                         if item.get("image"):
                             variant_record.image_1920 = item.get("image")
 
+                        _logger.warning(
+                            f"IMAGE VALUE → "
+                            f"{str(item.get('image'))[:200]}"
+                        )
+
                         # ================= STOCK =================
 
                         stock = item.get("stock")

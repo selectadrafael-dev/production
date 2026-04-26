@@ -76,6 +76,20 @@ class VendorProductsController(http.Controller):
 
         for p in products:
 
+            _logger.warning(
+
+                f"PRODUCT {p.id} | "
+
+                f"TEMPLATE IMAGE → "
+
+                f"{bool(p.image_1920)} | "
+
+                f"VARIANT IMAGE → "
+
+                f"{bool(p.product_variant_id.image_1920)}"
+            )
+
+
             result.append({
 
                 'id': p.id,
@@ -83,18 +97,28 @@ class VendorProductsController(http.Controller):
                 'name': p.name,
             
 
+                # 'image': (
+
+                #     f'/web/image/product.product/'
+                #     f'{p.product_variant_id.id}/image_1920'
+
+                #     if p.product_variant_id
+                #     and p.product_variant_id.image_1920
+
+                #     else '/web/static/img/placeholder.png'
+                # ),
+
+            
                 'image': (
 
                     f'/web/image/product.product/'
                     f'{p.product_variant_id.id}/image_1920'
 
                     if p.product_variant_id
-                    and p.product_variant_id.image_1920
 
                     else '/web/static/img/placeholder.png'
                 ),
-
-
+                
             })
 
         return {
@@ -206,16 +230,29 @@ class VendorProductsController(http.Controller):
             'create_date':
                 str(product.create_date),
 
+            # 'image': (
+
+            #     f'/web/image/product.product/'
+            #     f'{product.product_variant_id.id}/image_1920'
+
+            #     if product.product_variant_id
+            #     and product.product_variant_id.image_1920
+
+            #     else '/web/static/img/placeholder.png'
+            # ),
+
+
             'image': (
 
                 f'/web/image/product.product/'
                 f'{product.product_variant_id.id}/image_1920'
 
                 if product.product_variant_id
-                and product.product_variant_id.image_1920
 
                 else '/web/static/img/placeholder.png'
             ),
+        
+
             
             'warning':
                 warning,
