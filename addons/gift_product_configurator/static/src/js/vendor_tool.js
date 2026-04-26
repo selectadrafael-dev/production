@@ -266,12 +266,6 @@ async function loadVendorProducts(page = 1) {
         );
 
 
-        // const grid = document.getElementById(
-        //     'vendorProductsGrid'
-        // );
-
-        // grid.innerHTML = '';
-
         const grid = document.getElementById(
             'vendorProductsGrid'
         );
@@ -756,26 +750,36 @@ document.addEventListener(
 
     'click',
 
-    function (e) {
+    async function (e) {
 
-        const trigger = e.target.closest(
-            '.open-vendor-product'
+        const btn = e.target.closest(
+            '.manage-product-btn'
         );
 
-        if (!trigger) {
+
+        if (!btn) {
             return;
         }
 
+
         e.preventDefault();
 
-        const productId =
-            trigger.dataset.productId;
+
+        const productId = btn.dataset.productId;
+
 
         if (!productId) {
             return;
         }
 
-        loadVendorProductDetails(
+
+        console.log(
+            'OPEN PRODUCT → ',
+            productId
+        );
+
+
+        await loadVendorProductDetails(
             productId
         );
     }
