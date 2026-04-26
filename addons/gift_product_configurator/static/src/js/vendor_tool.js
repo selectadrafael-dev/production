@@ -260,6 +260,11 @@ async function loadVendorProducts(page = 1) {
         });
 
         const data = await result.json();
+        console.log(
+            'VENDOR PRODUCTS RESPONSE',
+            data
+        );
+
 
         const grid = document.getElementById(
             'vendorProductsGrid'
@@ -373,20 +378,31 @@ document.addEventListener(
 
             return;
         }
-
-
-        vendorModal.addEventListener(
-
-            'shown.bs.modal',
-
-            function () {
-
-                loadVendorProducts(1);
-            }
-        );
     }
 );
 
+
+document.addEventListener(
+
+    'click',
+
+    function (e) {
+
+        const trigger = e.target.closest(
+            '.vendor-data-status'
+        );
+
+        if (!trigger) {
+            return;
+        }
+
+        console.log(
+            'LOADING VENDOR PRODUCTS'
+        );
+
+        loadVendorProducts(1);
+    }
+);
 
 //next page/pagination
 const vendorNextBtn = document.getElementById(
