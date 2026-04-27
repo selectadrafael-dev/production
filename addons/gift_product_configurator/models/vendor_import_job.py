@@ -137,9 +137,6 @@ class VendorImportJob(models.Model):
 
 
     #============Processing Jobs===================================================
-
-    #============Processing Jobs===================================================
-
     def _process_step(self):
 
         import json
