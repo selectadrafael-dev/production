@@ -51,8 +51,9 @@
 
                       <!-- Price -->
                       <div class="arrival-price">
-                        $ <t t-esc="product.list_price"/>
+                       As low as  $ <t t-esc="product.list_price"/>
                       </div>
+
 
                     </div>
 

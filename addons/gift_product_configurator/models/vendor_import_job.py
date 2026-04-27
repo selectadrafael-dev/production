@@ -3400,6 +3400,11 @@ class VendorImportJob(models.Model):
             "powerbank": "Electronics",
             "charger": "Electronics",
             "laptop": "Electronics",
+            "football": "Football Fever",
+            "Wristband": "Football Fever",
+            "sports t-shirt": "Football Fever",
+            "sports towel": "Football Fever",
+            "Sports Bottles": "Football Fever"
         }
 
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
@@ -3587,6 +3592,11 @@ class VendorImportJob(models.Model):
             "powerbank": "Electronics",
             "charger": "Electronics",
             "laptop": "Electronics",
+            "football": "Football Fever",
+            "Wristband": "Football Fever",
+            "sports t-shirt": "Football Fever",
+            "sports towel": "Football Fever",
+            "Sports Bottles": "Football Fever"
         }
 
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
