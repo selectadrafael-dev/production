@@ -854,241 +854,252 @@ document.addEventListener(
 // SAVE PRODUCT
 // =====================================================
 
-const saveVendorBtn =
-    document.getElementById(
-        'saveVendorProductBtn'
-    );
-
-if (saveVendorBtn) {
-
-    saveVendorBtn.addEventListener(
-
-        'click',
-
-        async function () {
-
-            try {
-
-                const payload = {
-
-                    product_id:
-
-                        document.getElementById(
-                            'vendorProductId'
-                        ).value,
-
-
-                    name:
-
-                        document.getElementById(
-                            'vendorProductName'
-                        ).value,
-
-
-                    description:
-
-                        document.getElementById(
-                            'vendorProductDescription'
-                        ).value,
-
-
-                    price:
-
-                        document.getElementById(
-                            'vendorProductPrice'
-                        ).value,
-                };
-
-
-                const response = await fetch(
-
-                    '/vendor/product/update',
-
-                    {
-                        method: 'POST',
-
-                        headers: {
-                            'Content-Type':
-                                'application/json'
-                        },
-
-                        body: JSON.stringify(
-                            payload
-                        )
-                    }
-                );
-
-
-                const data =
-                    await response.json();
-
-
-                if (
-                    data.result &&
-                    data.result.error
-                ) {
-
-                    alert(
-                        data.result.error
-                    );
-
-                    return;
-                }
-
-
-                // =================================
-                // REFRESH PRODUCTS
-                // =================================
-
-                loadVendorProducts(
-                    vendorCurrentPage
-                );
-
-
-                alert(
-                    'Product updated successfully'
-                );
-
-            } catch (err) {
-
-                console.error(
-
-                    'SAVE PRODUCT FAILED',
-
-                    err
-                );
-
-                alert(
-                    'Failed to update product'
-                );
-            }
-        }
-    );
-}
 
 
 // =====================================================
 // DELETE PRODUCT
 // =====================================================
 
-const deleteVendorBtn =
-    document.getElementById(
-        'deleteVendorProductBtn'
-    );
 
-if (deleteVendorBtn) {
+//===========Save changes btn
+document.addEventListener(
 
-    deleteVendorBtn.addEventListener(
+    'click',
 
-        'click',
+    async function (e) {
 
-        async function () {
+        const saveBtn = e.target.closest(
+            '#saveVendorProductBtn'
+        );
 
-            try {
 
-                const productId =
+        if (!saveBtn) {
+
+            return;
+        }
+
+
+        try {
+
+            const payload = {
+
+                product_id:
+
                     document.getElementById(
                         'vendorProductId'
-                    ).value;
+                    ).value,
 
 
-                const confirmed = confirm(
+                name:
 
-                    'Delete this product?'
+                    document.getElementById(
+                        'vendorProductName'
+                    ).value,
+
+
+                description:
+
+                    document.getElementById(
+                        'vendorProductDescription'
+                    ).value,
+
+
+                price:
+
+                    document.getElementById(
+                        'vendorProductPrice'
+                    ).value
+            };
+
+
+            console.log(
+                'SAVE PAYLOAD',
+                payload
+            );
+
+
+            const response = await fetch(
+
+                '/vendor/product/update',
+
+                {
+
+                    method: 'POST',
+
+                    headers: {
+                        'Content-Type':
+                            'application/json'
+                    },
+
+                    body: JSON.stringify({
+
+                        params: payload
+                    })
+                }
+            );
+
+
+            const result =
+                await response.json();
+
+
+            console.log(
+                'SAVE RESPONSE',
+                result
+            );
+
+
+            if (
+
+                result.result
+
+                &&
+
+                result.result.success
+
+            ) {
+
+                alert(
+                    'Product updated successfully'
                 );
 
-                if (!confirmed) {
-                    return;
-                }
+            } else {
+
+                alert(
+                    result.result?.error
+                    ||
+                    'Update failed'
+                );
+            }
+
+        } catch (err) {
+
+            console.error(
+                'SAVE FAILED',
+                err
+            );
+
+            alert(
+                'Failed to save product'
+            );
+        }
+    }
+);
+
+//==============delete btn=============
+document.addEventListener(
+
+    'click',
+
+    async function (e) {
+
+        const deleteBtn = e.target.closest(
+            '#deleteVendorProductBtn'
+        );
 
 
-                const response = await fetch(
+        if (!deleteBtn) {
 
-                    '/vendor/product/delete',
+            return;
+        }
 
-                    {
-                        method: 'POST',
 
-                        headers: {
-                            'Content-Type':
-                                'application/json'
-                        },
+        const confirmed = confirm(
 
-                        body: JSON.stringify({
+            'Delete this product?'
+        );
+
+
+        if (!confirmed) {
+
+            return;
+        }
+
+
+        try {
+
+            const productId =
+
+                document.getElementById(
+                    'vendorProductId'
+                ).value;
+
+
+            const response = await fetch(
+
+                '/vendor/product/delete',
+
+                {
+
+                    method: 'POST',
+
+                    headers: {
+                        'Content-Type':
+                            'application/json'
+                    },
+
+                    body: JSON.stringify({
+
+                        params: {
 
                             product_id:
                                 productId
-                        })
-                    }
-                );
+                        }
 
-
-                const data =
-                    await response.json();
-
-
-                if (
-                    data.result &&
-                    data.result.error
-                ) {
-
-                    alert(
-                        data.result.error
-                    );
-
-                    return;
+                    })
                 }
+            );
 
 
-                // =================================
-                // REFRESH PRODUCTS
-                // =================================
-
-                loadVendorProducts(
-                    vendorCurrentPage
-                );
+            const result =
+                await response.json();
 
 
-                // =================================
-                // CLOSE MODAL
-                // =================================
+            console.log(
+                'DELETE RESPONSE',
+                result
+            );
 
-                const modalElement =
-                    document.getElementById(
-                        'vendorProductDetailsModal'
-                    );
 
-                const modal =
-                    bootstrap.Modal
-                    .getInstance(
-                        modalElement
-                    );
+            if (
 
-                if (modal) {
+                result.result
 
-                    modal.hide();
-                }
+                &&
 
+                result.result.success
+
+            ) {
 
                 alert(
                     'Product deleted successfully'
                 );
 
-            } catch (err) {
 
-                console.error(
+                location.reload();
 
-                    'DELETE PRODUCT FAILED',
-
-                    err
-                );
+            } else {
 
                 alert(
-                    'Failed to delete product'
+                    result.result?.error
+                    ||
+                    'Delete failed'
                 );
             }
+
+        } catch (err) {
+
+            console.error(
+                'DELETE FAILED',
+                err
+            );
+
+            alert(
+                'Failed to delete product'
+            );
         }
-    );
-}
+    }
+);
+
 
 })();

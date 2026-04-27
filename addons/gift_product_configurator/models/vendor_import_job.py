@@ -137,7 +137,6 @@ class VendorImportJob(models.Model):
 
 
     #============Processing Jobs===================================================
-
     def _process_step(self):
 
         import json
@@ -217,8 +216,6 @@ class VendorImportJob(models.Model):
 
                 result = self.parse_url()
 
-                # still running
-
                 if result is True:
 
                     _logger.warning(
@@ -228,8 +225,6 @@ class VendorImportJob(models.Model):
 
                     return
 
-
-                # extraction success
 
                 if self.extracted_text:
 
@@ -478,6 +473,30 @@ class VendorImportJob(models.Model):
 
                 self.extract_pdf()
 
+                self.env.cr.commit()
+                self.invalidate_recordset()
+
+                current_page = self.current_page or 0
+                total_pages = self.total_pages or 0
+
+                _logger.warning(
+                    f"PDF CHECK → PAGE {current_page}/{total_pages}"
+                )
+
+                # extraction finished
+
+                if current_page >= total_pages:
+
+                    self.state = 'pdf_ai'
+
+                    self.flush_recordset()
+
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "PDF EXTRACTION COMPLETE → pdf_ai"
+                    )
+
                 return
 
 
@@ -517,14 +536,13 @@ class VendorImportJob(models.Model):
                         "PDF COMPLETE ✅"
                     )
 
-
                 self.flush_recordset()
 
                 self.env.cr.commit()
 
                 return
 
-    
+   
     #------------parse url------------------------------------
 
     def parse_url(self):
