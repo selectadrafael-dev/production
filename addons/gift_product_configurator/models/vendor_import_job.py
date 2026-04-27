@@ -473,9 +473,8 @@ class VendorImportJob(models.Model):
 
                 self.extract_pdf()
 
+                self.env.cr.commit()
                 self.invalidate_recordset()
-
-                self.refresh()
 
                 current_page = self.current_page or 0
                 total_pages = self.total_pages or 0
