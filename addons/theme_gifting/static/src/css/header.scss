@@ -385,7 +385,7 @@
 .contact-menu {
   position: absolute;
   top: 100%;
-  left: 0;
+  left: 70px;
 
   width: 240px;
   background: #fff;
@@ -400,8 +400,7 @@
   transform: translateY(10px);
 
   transition: all 0.25s ease;
-
-  z-index: 1200;
+  z-index: 9999999900;
 }
 
 /* show on hover (desktop) */
