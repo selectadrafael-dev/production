@@ -115,8 +115,6 @@
 }
 
 /*new update*/
-/*new update*/
-
 .gifting-links {
   display: flex;
   gap: 25px;
@@ -135,6 +133,102 @@
   padding-bottom: 3px;
 }
 
+/*switch update*/
+/* =========================================
+   VAT TOGGLE + SAFE HORIZONTAL SCROLL
+========================================= */
+
+/* wrapper becomes flexible */
+.gifting-links-wrap {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.gifting-links-wrap::-webkit-scrollbar {
+  display: none;
+}
+
+/* keep links in one line */
+.gifting-links {
+  width: max-content;
+  min-width: max-content;
+}
+
+/* VAT BLOCK */
+.gifting-vat-toggle {
+  flex: 0 0 auto;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  margin-left: auto;
+  padding-left: 12px;
+
+  background: #fff;
+  position: sticky;
+  right: 0;
+  z-index: 3;
+}
+
+/* switch */
+.vat-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  display: inline-block;
+}
+
+.vat-switch input {
+  display: none;
+}
+
+.vat-slider {
+  position: absolute;
+  inset: 0;
+
+  background: #d9d9d9;
+  border-radius: 999px;
+
+  transition: 0.25s ease;
+}
+
+.vat-slider::before {
+  content: "";
+
+  position: absolute;
+  top: 3px;
+  left: 3px;
+
+  width: 18px;
+  height: 18px;
+
+  background: #fff;
+  border-radius: 50%;
+
+  transition: 0.25s ease;
+}
+
+/* active */
+.vat-switch input:checked + .vat-slider {
+  background: #1f73ff;
+}
+
+.vat-switch input:checked + .vat-slider::before {
+  transform: translateX(20px);
+}
+
+/* label */
+.vat-label {
+  font-size: 14px;
+  white-space: nowrap;
+  font-weight: 500;
+  color: #333;
+}
 
 /* ================= MEGA MENU ================= */
 
@@ -601,6 +695,48 @@
     font-size: 22px;
     font-weight: 600;
   }
+
+  /*==========switch update==================*/
+  .gifting-nav-bottom {
+  gap: 14px;
+}
+
+/* links area scrolls independently */
+.gifting-links-wrap {
+  overflow-x: auto;
+}
+
+/* keep VAT always visible */
+.gifting-vat-toggle {
+  position: sticky;
+  right: 0;
+
+  background: #fff;
+
+  padding-left: 10px;
+  margin-left: 0;
+
+  box-shadow: -8px 0 10px rgba(255,255,255,0.95);
+}
+
+/* slightly smaller */
+.vat-label {
+  font-size: 12px;
+}
+
+.vat-switch {
+  width: 40px;
+  height: 22px;
+}
+
+.vat-slider::before {
+  width: 16px;
+  height: 16px;
+}
+
+.vat-switch input:checked + .vat-slider::before {
+  transform: translateX(18px);
+}
 }
 
 @media (min-width: 769px) {
