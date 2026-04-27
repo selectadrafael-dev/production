@@ -162,7 +162,6 @@
         </div>
 
         <!--vendor product form view-->
-              ```xml
       <!-- ===================================================== -->
       <!-- PRODUCT DETAILS MODAL -->
       <!-- ===================================================== -->
@@ -307,7 +306,7 @@
                                           <input type="text"
                                                 id="vendorProductDate"
                                                 class="form-control"
-                                               readonly="readonly" />
+                                                readonly="readonly" />
 
                                       </div>
 
@@ -368,7 +367,6 @@
           </div>
 
       </div>
-
     </xpath>
   </template>
 </odoo>

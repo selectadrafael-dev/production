@@ -881,6 +881,73 @@ document.addEventListener(
 
         try {
 
+            // const payload = {
+
+            //     product_id:
+
+            //         document.getElementById(
+            //             'vendorProductId'
+            //         ).value,
+
+
+            //     name:
+
+            //         document.getElementById(
+            //             'vendorProductName'
+            //         ).value,
+
+
+            //     description:
+
+            //         document.getElementById(
+            //             'vendorProductDescription'
+            //         ).value,
+
+
+            //     price:
+
+            //         document.getElementById(
+            //             'vendorProductPrice'
+            //         ).value
+            // };
+
+            const imageInput = document.getElementById(
+                'vendorProductImage'
+            );
+
+            let imageBase64 = null;
+
+
+            if (
+
+                imageInput &&
+                imageInput.files &&
+                imageInput.files[0]
+
+            ) {
+
+                imageBase64 = await new Promise(
+                    (resolve) => {
+
+                        const reader = new FileReader();
+
+                        reader.onload = function () {
+
+                            resolve(
+                                reader.result.split(',')[1]
+                            );
+
+                        };
+
+                        reader.readAsDataURL(
+                            imageInput.files[0]
+                        );
+
+                    }
+                );
+            }
+
+
             const payload = {
 
                 product_id:
@@ -890,25 +957,19 @@ document.addEventListener(
                     ).value,
 
 
-                name:
+                name: document.getElementById(
+                    'vendorProductName'
+                ).value,
 
-                    document.getElementById(
-                        'vendorProductName'
-                    ).value,
+                description: document.getElementById(
+                    'vendorProductDescription'
+                ).value,
 
+                price: document.getElementById(
+                    'vendorProductPrice'
+                ).value,
 
-                description:
-
-                    document.getElementById(
-                        'vendorProductDescription'
-                    ).value,
-
-
-                price:
-
-                    document.getElementById(
-                        'vendorProductPrice'
-                    ).value
+                image: imageBase64
             };
 
 
