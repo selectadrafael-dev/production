@@ -95,14 +95,6 @@ class VendorProductsController(http.Controller):
                 'id': p.id,
 
                 'name': p.name,
-
-                # 'image': (
-
-                #     f'/web/image?model=product.template'
-                #     f'&id={p.id}'
-                #     f'&field=image_128'
-                # ),
-
                 'image': (
                     f'/vendor/product/image/{p.id}'
                 ),
@@ -261,7 +253,7 @@ class VendorProductsController(http.Controller):
                 warning,
         }
 
-
+ 
     # =======================================================
     # UPDATE PRODUCT
     # =======================================================
@@ -273,29 +265,44 @@ class VendorProductsController(http.Controller):
         website=True
     )
     def vendor_product_update(
+
         self,
-        **post
+
+        product_id=None,
+
+        name=None,
+
+        description=None,
+
+        price=None,
+
+        **kwargs
     ):
 
         partner = request.env.user.partner_id
+
+
+        try:
+
+            product_id = int(product_id)
+
+        except Exception:
+
+            return {
+                'error': 'Invalid product ID'
+            }
+
 
         product = request.env[
             'product.template'
         ].sudo().search([
 
-            (
-                'id',
-                '=',
-                int(post.get('product_id'))
-            ),
+            ('id', '=', product_id),
 
-            (
-                'vendor_id',
-                '=',
-                partner.id
-            )
+            ('vendor_id', '=', partner.id)
 
         ], limit=1)
+
 
         if not product:
 
@@ -303,25 +310,26 @@ class VendorProductsController(http.Controller):
                 'error': 'Unauthorized'
             }
 
+
         vals = {
 
-            'name':
-                post.get('name'),
+            'name': name or '',
 
             'description_sale':
-                post.get('description'),
+                description or '',
 
             'list_price':
-                float(
-                    post.get('price') or 0
-                ),
+                float(price or 0),
         }
 
+
         product.write(vals)
+
 
         return {
             'success': True
         }
+
 
 
     # =====================================================
@@ -335,21 +343,38 @@ class VendorProductsController(http.Controller):
         website=True
     )
     def vendor_product_delete(
+
         self,
-        product_id
+
+        product_id=None,
+
+        **kwargs
     ):
 
         partner = request.env.user.partner_id
+
+
+        try:
+
+            product_id = int(product_id)
+
+        except Exception:
+
+            return {
+                'error': 'Invalid product ID'
+            }
+
 
         product = request.env[
             'product.template'
         ].sudo().search([
 
-            ('id', '=', int(product_id)),
+            ('id', '=', product_id),
 
             ('vendor_id', '=', partner.id)
 
         ], limit=1)
+
 
         if not product:
 
@@ -357,12 +382,14 @@ class VendorProductsController(http.Controller):
                 'error': 'Unauthorized'
             }
 
+
         product.unlink()
+
 
         return {
             'success': True
         }
-    
+
 
     @http.route(
 
