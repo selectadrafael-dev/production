@@ -322,6 +322,9 @@ class VendorProductsController(http.Controller):
                 float(price or 0),
         }
 
+        if kwargs.get('image'):
+
+            vals['image_1920'] = kwargs.get('image')
 
         product.write(vals)
 
