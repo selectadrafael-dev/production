@@ -63,7 +63,7 @@
   display: flex;
   width: 100%;
   border: 1px solid #ddd;
-  border-radius: 8px;
+  border-radius: 30px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
@@ -806,14 +806,10 @@
   .gifting-search form {
     display: inline-flex;
     align-items: center;
-
     width: 100%;
     max-width: 560px;
-
     min-height: 48px;
-
     background: #fff;
-    border-radius: 30px;
     border: 1px solid #e6e6e6;
 
     box-shadow: 0 3px 10px rgba(0,0,0,0.04);
