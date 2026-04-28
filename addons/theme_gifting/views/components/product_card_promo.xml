@@ -48,6 +48,7 @@
             </div>
 
             <!-- ROW 2 -->
+            <span>As low as &nbsp&nbsp</span>
             <div class="promo-price"
                  t-esc="product.list_price"/>
 

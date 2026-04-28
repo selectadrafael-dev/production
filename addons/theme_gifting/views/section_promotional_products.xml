@@ -10,10 +10,10 @@
         <div class="container">
 
           <div class="text-center mb-5">
-            <h2 class="fw-bold">Promotional Products</h2>
-            <p class="text-muted">
-              Promotional products for your company
-            </p>
+            <h2 class="fw-bold">Promote your brand logo <br/> and increase awareness through the power of promotional products</h2>
+            <!--p class="text-muted">
+              Promote your brand logo and increase awareness through the power of promotional products
+            </p-->
           </div>
 
           <!--Fetch specific promotional categories -->
