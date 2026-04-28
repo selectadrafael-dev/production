@@ -48,8 +48,8 @@
             </div>
 
             <!-- ROW 2 -->
-            <span>As low as &nbsp;&nbsp;</span>
-            <div class="promo-price"
+            <span>As low as</span>
+            <div class="promo-price pl-1"
                  t-esc="product.list_price"/>
 
           </div>
