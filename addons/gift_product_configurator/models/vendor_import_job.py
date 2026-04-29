@@ -1832,9 +1832,6 @@ class VendorImportJob(models.Model):
 
             self.flush_recordset()
 
-            self.env.cr.commit()
-
-
             _logger.warning(
                 f"STATE SAVED → {self.state}"
             )
@@ -4396,27 +4393,7 @@ class VendorImportJob(models.Model):
                         )
 
                     break
-
-
-                # =========================================
-                # SAFE COMMIT
-                # =========================================
-
-                try:
-
-                    self.env.cr.commit()
-
-                except Exception as e:
-
-                    _logger.exception(
-
-                        f"COMMIT FAILED "
-
-                        f"→ {str(e)}"
-                    )
-
-                    break
-
+              
 
                 # =========================================
                 # SAFE REFRESH AGAIN
@@ -4446,58 +4423,6 @@ class VendorImportJob(models.Model):
 
                     f"{job.state}"
                 )
-
-
-                # =========================================
-                # PDF PAGE PROGRESS
-                # =========================================
-
-                if (
-
-                    job.state == 'pdf_extracting'
-
-                    and
-
-                    (
-                        job.current_page or 0
-                    ) > previous_page
-
-                ):
-
-                    _logger.warning(
-
-                        f"PDF PAGE ADVANCED "
-
-                        f"→ {job.current_page}"
-                    )
-
-                    continue
-
-
-                # =========================================
-                # PDF AI PROGRESS
-                # =========================================
-
-                if (
-
-                    job.state == 'pdf_ai'
-
-                    and
-
-                    (
-                        job.last_ai_page or 0
-                    ) > previous_ai
-
-                ):
-
-                    _logger.warning(
-
-                        f"PDF AI ADVANCED "
-
-                        f"→ {job.last_ai_page}"
-                    )
-
-                    continue
 
 
                 # =========================================
