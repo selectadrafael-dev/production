@@ -437,6 +437,7 @@ class VendorImportJob(models.Model):
             # WAIT FOR MORE PAGES
             # =====================================
 
+        
             if self.current_page < self.total_pages:
 
                 _logger.warning(
@@ -444,9 +445,11 @@ class VendorImportJob(models.Model):
                     f"→ PAGE {self.current_page}"
                 )
 
-                self.state = 'processing'
+                # KEEP PDF STATE
+                self.state = 'pdf_extracting'
 
                 return
+
 
 
             # =====================================
