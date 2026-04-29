@@ -141,6 +141,8 @@ class VendorImportJob(models.Model):
 
         import json
 
+        self.ensure_one()
+
         _logger.warning(
             f"[PROCESS STEP] → state={self.state}"
         )
@@ -181,7 +183,6 @@ class VendorImportJob(models.Model):
                 self.state = 'url_scraping'
 
             self.flush_recordset()
-
             self.env.cr.commit()
 
             return
@@ -202,7 +203,6 @@ class VendorImportJob(models.Model):
                 self.state = 'url_scraping'
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -219,19 +219,16 @@ class VendorImportJob(models.Model):
                 if result is True:
 
                     _logger.warning(
-                        "APIFY STILL RUNNING "
-                        "→ WAIT NEXT CRON"
+                        "APIFY STILL RUNNING → WAIT NEXT CRON"
                     )
 
                     return
-
 
                 if self.extracted_text:
 
                     self.state = 'url_ai'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     _logger.warning(
@@ -271,15 +268,12 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
                     _logger.warning(
-                        "URL CREATE FAILED "
-                        "→ NO AI RESPONSE"
+                        "URL CREATE FAILED → NO AI RESPONSE"
                     )
 
                     return
 
-
                 self.create_products_url()
-
 
                 try:
 
@@ -289,27 +283,17 @@ class VendorImportJob(models.Model):
                         )
                     )
 
-                except:
+                except Exception:
 
                     total = 0
 
-
                 _logger.warning(
-
                     f"[URL CREATE CHECK] → "
-
-                    f"{self.last_processed_product_index}"
-
-                    f"/{total}"
+                    f"{self.last_processed_product_index}/{total}"
                 )
 
-
                 if (
-
-                    self.last_processed_product_index
-
-                    >= total
-
+                    self.last_processed_product_index >= total
                 ):
 
                     self.state = 'done'
@@ -317,6 +301,9 @@ class VendorImportJob(models.Model):
                     _logger.warning(
                         "URL COMPLETE ✅"
                     )
+
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -327,7 +314,6 @@ class VendorImportJob(models.Model):
 
         if self.excel_file and not self.pdf_file:
 
-
             # =============================================
             # START
             # =============================================
@@ -337,7 +323,6 @@ class VendorImportJob(models.Model):
                 self.state = 'excel_parsing'
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -351,15 +336,9 @@ class VendorImportJob(models.Model):
 
                 self.parse_excel()
 
-
                 if (
-
-                    self.last_processed_product_index
-
-                    >
-
+                    self.last_processed_product_index >
                     (self.excel_ai_index or 0)
-
                 ):
 
                     self.state = 'excel_ai'
@@ -368,9 +347,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'excel_parsing'
 
-
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -404,19 +381,12 @@ class VendorImportJob(models.Model):
                 self.create_products_pdf_excel()
 
                 total_rows = (
-
-                    self.last_processed_product_index
-
-                    or 0
+                    self.last_processed_product_index or 0
                 )
 
-
                 if (
-
-                    self.excel_created_index
-
+                    (self.excel_created_index or 0)
                     >= total_rows
-
                 ):
 
                     if self.is_excel_parsed:
@@ -435,9 +405,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'excel_ai'
 
-
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -449,7 +417,6 @@ class VendorImportJob(models.Model):
 
         if self.pdf_file:
 
-
             # =============================================
             # START
             # =============================================
@@ -459,7 +426,6 @@ class VendorImportJob(models.Model):
                 self.state = 'pdf_extracting'
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -483,14 +449,14 @@ class VendorImportJob(models.Model):
                     f"PDF CHECK → PAGE {current_page}/{total_pages}"
                 )
 
-                # extraction finished
-
-                if current_page >= total_pages:
+                if (
+                    total_pages > 0
+                    and current_page >= total_pages
+                ):
 
                     self.state = 'pdf_ai'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     _logger.warning(
@@ -506,7 +472,15 @@ class VendorImportJob(models.Model):
 
             if self.state == 'pdf_ai':
 
-                self.send_to_openai_pdf_excel()
+                try:
+
+                    self.send_to_openai_pdf_excel()
+
+                except Exception as e:
+
+                    _logger.error(
+                        f"PDF AI ERROR → {str(e)}"
+                    )
 
                 return
 
@@ -519,15 +493,26 @@ class VendorImportJob(models.Model):
 
                 self.create_products_pdf_excel()
 
-                total = self.total_pages or 0
+                try:
 
+                    total_products = len(
+                        json.loads(
+                            self.ai_response or "[]"
+                        )
+                    )
+
+                except Exception:
+
+                    total_products = 0
+
+                _logger.warning(
+                    f"[PDF CREATE CHECK] → "
+                    f"{self.excel_created_index}/{total_products}"
+                )
 
                 if (
-
-                    self.excel_created_index
-
-                    >= total
-
+                    (self.excel_created_index or 0)
+                    >= total_products
                 ):
 
                     self.state = 'done'
@@ -536,12 +521,14 @@ class VendorImportJob(models.Model):
                         "PDF COMPLETE ✅"
                     )
 
-                self.flush_recordset()
+                else:
 
+                    self.state = 'pdf_ai'
+
+                self.flush_recordset()
                 self.env.cr.commit()
 
                 return
-
    
     #------------parse url------------------------------------
 
