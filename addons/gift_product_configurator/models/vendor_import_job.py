@@ -414,202 +414,103 @@ class VendorImportJob(models.Model):
         # PDF FLOW
         # =================================================
 
-        if self.pdf_file:
+        elif self.pdf_file:
 
-            # =============================================
-            # START
-            # =============================================
+            _logger.warning("FLOW → PDF")
 
-            if self.state == 'draft':
+            try:
 
-                _logger.warning(
-                    "PDF FLOW START"
+                self.extract_pdf()
+
+            except Exception as e:
+
+                _logger.exception(
+                    f"PDF EXTRACT FAILED → {str(e)}"
                 )
 
-                self.state = 'pdf_extracting'
-
-                self.flush_recordset()
-                self.env.cr.commit()
+                self.state = 'failed'
 
                 return
 
 
-            # =============================================
-            # EXTRACT
-            # =============================================
+            # =====================================
+            # WAIT FOR MORE PAGES
+            # =====================================
 
-            if self.state == 'pdf_extracting':
-
-                try:
-
-                    self.extract_pdf()
-
-                except Exception as e:
-
-                    _logger.exception(
-                        f"PDF EXTRACT FAILED → {str(e)}"
-                    )
-
-                    self.state = 'failed'
-
-                    self.flush_recordset()
-                    self.env.cr.commit()
-
-                    return
-
-
-                current_page = (
-                    self.current_page or 0
-                )
-
-                total_pages = (
-                    self.total_pages or 0
-                )
+            if self.current_page < self.total_pages:
 
                 _logger.warning(
-                    f"PDF CHECK → PAGE "
-                    f"{current_page}/{total_pages}"
+                    f"PDF WAITING NEXT BATCH "
+                    f"→ PAGE {self.current_page}"
                 )
 
-
-                # =====================================
-                # EXTRACTION COMPLETE
-                # =====================================
-
-                if (
-                    total_pages > 0
-                    and
-                    current_page >= total_pages
-                ):
-
-                    self.state = 'pdf_ai'
-
-                    self.flush_recordset()
-                    self.env.cr.commit()
-
-                    _logger.warning(
-                        "PDF EXTRACTION COMPLETE "
-                        "→ pdf_ai"
-                    )
-
-
-                else:
-
-                    _logger.warning(
-                        "PDF EXTRACTION CONTINUES"
-                    )
+                self.state = 'processing'
 
                 return
 
 
-            # =============================================
+            # =====================================
             # AI
-            # =============================================
+            # =====================================
 
-            if self.state == 'pdf_ai':
+            _logger.warning(
+                "STEP → SEND TO AI (PDF)"
+            )
 
-                try:
+            try:
 
-                    self.send_to_openai_pdf_excel()
+                self.send_to_openai_pdf_excel()
 
-                except Exception as e:
+            except Exception as e:
 
-                    _logger.exception(
-                        f"PDF AI ERROR → {str(e)}"
-                    )
+                _logger.exception(
+                    f"PDF AI FAILED → {str(e)}"
+                )
 
-                    self.state = 'failed'
-
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                self.state = 'failed'
 
                 return
 
 
-            # =============================================
-            # CREATE
-            # =============================================
-
-            if self.state == 'pdf_creating':
-
-                try:
-
-                    self.create_products_pdf_excel()
-
-                except Exception as e:
-
-                    _logger.exception(
-                        f"PDF CREATE ERROR → {str(e)}"
-                    )
-
-                    self.state = 'failed'
-
-                    self.flush_recordset()
-                    self.env.cr.commit()
-
-                    return
-
-
-                try:
-
-                    total_products = len(
-
-                        json.loads(
-                            self.ai_response or "[]"
-                        )
-                    )
-
-                except Exception:
-
-                    total_products = 0
-
-
-                created = (
-                    self.excel_created_index or 0
-                )
-
+            if not self.ai_response:
 
                 _logger.warning(
-                    f"[PDF CREATE CHECK] → "
-                    f"{created}/{total_products}"
+                    "PDF AI EMPTY"
                 )
 
-
-                # =====================================
-                # COMPLETE
-                # =====================================
-
-                if (
-                    total_products > 0
-                    and
-                    created >= total_products
-                ):
-
-                    self.state = 'done'
-
-                    _logger.warning(
-                        "PDF COMPLETE ✅"
-                    )
+                return
 
 
-                # =====================================
-                # CONTINUE
-                # =====================================
+            # =====================================
+            # CREATE PRODUCTS
+            # =====================================
 
-                else:
+            _logger.warning(
+                "STEP → CREATE PRODUCTS (PDF)"
+            )
 
-                    self.state = 'pdf_ai'
+            try:
 
-                    _logger.warning(
-                        "PDF CREATE INCOMPLETE "
-                        "→ BACK TO AI"
-                    )
+                self.create_products_pdf_excel()
 
+            except Exception as e:
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                _logger.exception(
+                    f"PDF CREATE FAILED → {str(e)}"
+                )
+
+                self.state = 'failed'
 
                 return
+
+
+            _logger.warning(
+                "PDF FLOW COMPLETE ✅"
+            )
+
+            self.state = 'done'
+
+            return
 
     #------------parse url------------------------------------
 
