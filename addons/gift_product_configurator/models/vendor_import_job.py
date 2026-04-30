@@ -849,6 +849,7 @@ class VendorImportJob(models.Model):
 
 
     #------excel parsing method---------------
+    
     def parse_excel(self):
 
         _logger.warning(
@@ -1553,52 +1554,68 @@ class VendorImportJob(models.Model):
 
             self.total_pages = total_pages
 
-            start_page = self.current_page or 0
+
+            # =====================================
+            # CRASH SAFE RECOVERY
+            # =====================================
+
+            last_saved_page = self.env[
+                'vendor.import.page'
+            ].search([
+
+                ('job_id', '=', self.id)
+
+            ], order='page_number desc', limit=1)
+
+
+            if last_saved_page:
+
+                start_page = (
+                    last_saved_page.page_number
+                )
+
+                _logger.warning(
+                    f"RECOVERED PAGE POSITION "
+                    f"→ {start_page}"
+                )
+
+            else:
+
+                start_page = (
+                    self.current_page or 0
+                )
+
+
+            # =====================================
+            # SAFETY CLAMP
+            # =====================================
+
+            if start_page >= total_pages:
+
+                start_page = total_pages
+
 
             end_page = min(
                 start_page + BATCH_SIZE,
                 total_pages
             )
 
+
             _logger.warning(
-                f"RESUMING FROM PAGE → {start_page}"
+                f"RESUMING FROM PAGE → "
+                f"{start_page}"
             )
 
             _logger.warning(
-                f"PDF TOTAL PAGES → {total_pages}"
+                f"PDF TOTAL PAGES → "
+                f"{total_pages}"
             )
 
             _logger.warning(
                 f"BATCH → Processing pages "
-                f"{start_page + 1} to {end_page}"
+                f"{start_page + 1} "
+                f"to {end_page}"
             )
-
-
-            # =====================================
-            # CLEAN OLD RECORDS
-            # =====================================
-
-            if start_page == 0:
-
-                try:
-
-                    self.env[
-                        'vendor.import.page'
-                    ].search([
-
-                        ('job_id', '=', self.id)
-
-                    ]).unlink()
-
-                    _logger.warning(
-                        "OLD PAGE DATA REMOVED"
-                    )
-
-                except Exception as e:
-
-                    _logger.exception(
-                        f"CLEANUP FAILED → {str(e)}"
-                    )
 
 
             # =====================================
@@ -1613,6 +1630,7 @@ class VendorImportJob(models.Model):
 
                 page_success = False
 
+
                 for attempt in range(MAX_RETRIES):
 
                     single_pdf = None
@@ -1626,6 +1644,7 @@ class VendorImportJob(models.Model):
                             f"→ ATTEMPT "
                             f"{attempt + 1}"
                         )
+
 
                         # =========================
                         # CREATE SINGLE PAGE PDF
@@ -1642,6 +1661,7 @@ class VendorImportJob(models.Model):
                             to_page=i
                         )
 
+
                         pdf_bytes_io = io.BytesIO()
 
                         single_pdf.save(
@@ -1649,6 +1669,7 @@ class VendorImportJob(models.Model):
                         )
 
                         pdf_bytes_io.seek(0)
+
 
                         # =========================
                         # CALL API
@@ -1672,6 +1693,7 @@ class VendorImportJob(models.Model):
 
                             timeout=60
                         )
+
 
                         if response.status_code != 200:
 
@@ -1746,6 +1768,7 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
+
                             if (
                                 not text
                                 and
@@ -1766,6 +1789,7 @@ class VendorImportJob(models.Model):
 
                                 text
                             )
+
 
                             if price_match:
 
@@ -1791,6 +1815,7 @@ class VendorImportJob(models.Model):
 
                                 re.I
                             )
+
 
                             if stock_match:
 
@@ -1828,7 +1853,7 @@ class VendorImportJob(models.Model):
 
 
                         # =========================
-                        # AVOID DUPLICATES
+                        # UPDATE / CREATE PAGE
                         # =========================
 
                         existing = self.env[
@@ -1846,10 +1871,6 @@ class VendorImportJob(models.Model):
                         ], limit=1)
 
 
-                        # =========================
-                        # UPDATE / CREATE
-                        # =========================
-
                         vals = {
 
                             'job_id': self.id,
@@ -1862,57 +1883,52 @@ class VendorImportJob(models.Model):
                         }
 
 
-                        try:
+                        if existing:
 
-                            if existing:
+                            existing.write(vals)
 
-                                existing.write(vals)
-
-                                _logger.warning(
-                                    f"PAGE UPDATED "
-                                    f"→ {i + 1}"
-                                )
-
-                            else:
-
-                                self.env[
-                                    'vendor.import.page'
-                                ].create(vals)
-
-                                _logger.warning(
-                                    f"PAGE CREATED "
-                                    f"→ {i + 1}"
-                                )
-
-
-                        except Exception as e:
-
-                            _logger.exception(
-                                f"PAGE SAVE FAILED "
-                                f"→ {str(e)}"
+                            _logger.warning(
+                                f"PAGE UPDATED "
+                                f"→ {i + 1}"
                             )
 
-                            continue
+                        else:
+
+                            self.env[
+                                'vendor.import.page'
+                            ].create(vals)
+
+                            _logger.warning(
+                                f"PAGE CREATED "
+                                f"→ {i + 1}"
+                            )
 
 
                         # =========================
-                        # SAVE CHECKPOINT IMMEDIATELY
+                        # SAVE CHECKPOINT
                         # =========================
 
                         self.current_page = i + 1
+
 
                         try:
 
                             self.flush_recordset()
 
-                        except Exception:
+                            self.env.cr.commit()
 
-                            pass
+                        except Exception as e:
+
+                            _logger.warning(
+                                f"CHECKPOINT SAVE FAILED "
+                                f"→ {str(e)}"
+                            )
 
 
                         _logger.warning(
                             f"CHECKPOINT SAVED "
-                            f"→ PAGE {self.current_page}"
+                            f"→ PAGE "
+                            f"{self.current_page}"
                         )
 
 
@@ -1986,16 +2002,21 @@ class VendorImportJob(models.Model):
 
 
             # =====================================
-            # FINAL FLUSH
+            # FINAL SAVE
             # =====================================
 
             try:
 
                 self.flush_recordset()
 
-            except Exception:
+                self.env.cr.commit()
 
-                pass
+            except Exception as e:
+
+                _logger.warning(
+                    f"FINAL SAVE FAILED "
+                    f"→ {str(e)}"
+                )
 
 
             _logger.warning(
@@ -2020,7 +2041,7 @@ class VendorImportJob(models.Model):
                 "MEMORY GC COLLECTED"
             )
 
-
+   
     # ---------------- Send to OPENAI URL ----------------
     def send_to_openai_url(self):
 
@@ -2834,12 +2855,17 @@ class VendorImportJob(models.Model):
 
             return
 
-
+     
         # =====================================================
         # PDF MODE
         # =====================================================
 
         BATCH_SIZE = 2
+
+
+        # =============================================
+        # LOAD PAGE RECORDS
+        # =============================================
 
         page_records = self.env[
             'vendor.import.page'
@@ -2864,45 +2890,8 @@ class VendorImportJob(models.Model):
             return
 
 
-        start = self.last_ai_page or 0
-
-
         # =============================================
-        # AI COMPLETE
-        # =============================================
-
-        if start >= total_available_pages:
-
-            _logger.warning(
-                "PDF AI COMPLETE ✅"
-            )
-
-            self.state = "pdf_creating"
-
-            self.flush_recordset()
-            self.env.cr.commit()
-
-            return
-
-
-        end = min(
-
-            start + BATCH_SIZE,
-
-            total_available_pages
-        )
-
-
-        _logger.warning(
-
-            f"PDF AI → PROCESSING "
-
-            f"PAGES {start + 1} to {end}"
-        )
-
-
-        # =============================================
-        # LOAD EXISTING AI RESPONSE
+        # CRASH SAFE RECOVERY
         # =============================================
 
         existing_pages = []
@@ -2935,21 +2924,89 @@ class VendorImportJob(models.Model):
                 existing_pages = []
 
 
+        processed_pages = set()
+
+
+        for p in existing_pages:
+
+            page_num = p.get("page")
+
+            if page_num:
+
+                processed_pages.add(
+                    page_num
+                )
+
+
+        # =============================================
+        # FIND NEXT UNPROCESSED PAGES
+        # =============================================
+
+        remaining_records = []
+
+
+        for record in page_records:
+
+            if (
+                record.page_number
+                not in processed_pages
+            ):
+
+                remaining_records.append(
+                    record
+                )
+
+
+        if not remaining_records:
+
+            _logger.warning(
+                "PDF AI COMPLETE ✅"
+            )
+
+            self.last_ai_page = (
+                total_available_pages
+            )
+
+            self.state = "pdf_creating"
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            return
+
+
+        batch_records = remaining_records[
+            :BATCH_SIZE
+        ]
+
+
+        _logger.warning(
+
+            f"PDF AI → PROCESSING "
+
+            f"{len(batch_records)} "
+
+            f"REMAINING PAGES"
+        )
+
+
         new_page_products = []
 
 
         # =============================================
-        # PROCESS PAGE BATCH
+        # PROCESS PAGES
         # =============================================
-
-        # for idx in range(start, end):
-
-        #     record = page_records[idx]
-
-        batch_records = page_records[start:end]
 
         for record in batch_records:
 
+
+            _logger.warning(
+
+                f"AI → PROCESSING PAGE "
+
+                f"{record.page_number}"
+            )
 
 
             try:
@@ -2990,6 +3047,10 @@ class VendorImportJob(models.Model):
 
                 continue
 
+
+            # =========================================
+            # BUILD PAGE DATA
+            # =========================================
 
             page_text = "\n".join([
 
@@ -3039,16 +3100,10 @@ class VendorImportJob(models.Model):
                     )
 
 
-            _logger.warning(
+            # =========================================
+            # PROMPT
+            # =========================================
 
-                f"AI → PROCESSING "
-
-                f"PAGE "
-
-                f"{record.page_number}"
-            )
-
-            
             prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
             =====================
@@ -3239,6 +3294,7 @@ class VendorImportJob(models.Model):
             {page_stock}
             """
 
+
             try:
 
                 response = client.responses.create(
@@ -3255,6 +3311,10 @@ class VendorImportJob(models.Model):
                     response.output_text or ""
                 ).strip()
 
+
+                # =====================================
+                # CLEAN RESPONSE
+                # =====================================
 
                 result = result.replace(
                     "```json",
@@ -3304,7 +3364,7 @@ class VendorImportJob(models.Model):
 
 
             # =========================================
-            # ATTACH PAGE IMAGES
+            # ATTACH IMAGES
             # =========================================
 
             for p_index, prod in enumerate(
@@ -3322,6 +3382,10 @@ class VendorImportJob(models.Model):
                     )
 
 
+            # =========================================
+            # SAVE PAGE RESULT
+            # =========================================
+
             new_page_products.append({
 
                 "page": record.page_number,
@@ -3331,7 +3395,7 @@ class VendorImportJob(models.Model):
 
 
         # =============================================
-        # MERGE PAGES SAFELY
+        # MERGE SAFELY
         # =============================================
 
         existing_map = {}
@@ -3367,7 +3431,13 @@ class VendorImportJob(models.Model):
         )
 
 
-        self.last_ai_page = end
+        # =============================================
+        # SAVE REAL PROGRESS
+        # =============================================
+
+        self.last_ai_page = len(
+            combined_pages
+        )
 
 
         _logger.warning(
@@ -3384,7 +3454,11 @@ class VendorImportJob(models.Model):
         # NEXT STATE
         # =============================================
 
-        if self.last_ai_page < total_available_pages:
+        if (
+            self.last_ai_page
+            <
+            total_available_pages
+        ):
 
             self.state = "pdf_ai"
 
@@ -3403,6 +3477,7 @@ class VendorImportJob(models.Model):
 
         return
     
+
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
 
