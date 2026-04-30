@@ -4797,8 +4797,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"CRON → TOTAL ACTIVE JOBS "
-
+            f"[CRON] ACTIVE JOBS "
             f"→ {len(jobs)}"
         )
 
@@ -4839,8 +4838,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"CRON → REMOVING DUPLICATES "
-
+                f"[CRON] REMOVING DUPLICATES "
                 f"→ {len(duplicates)}"
             )
 
@@ -4850,9 +4848,14 @@ class VendorImportJob(models.Model):
 
                 self.env.cr.commit()
 
+                _logger.warning(
+                    "[CRON] DUPLICATES REMOVED"
+                )
+
             except Exception as e:
 
                 _logger.exception(
+                    f"[CRON ERROR] "
                     f"DUPLICATE DELETE FAILED "
                     f"→ {str(e)}"
                 )
@@ -4881,7 +4884,7 @@ class VendorImportJob(models.Model):
         if not job:
 
             _logger.warning(
-                "CRON → NO MORE JOBS"
+                "[CRON] NO MORE JOBS"
             )
 
             return
@@ -4889,11 +4892,11 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"CRON → PROCESS JOB "
+            f"[CRON] PROCESS JOB "
 
-            f"{job.id} | STATE "
+            f"| id={job.id} "
 
-            f"{job.state}"
+            f"| state={job.state}"
         )
 
 
@@ -4922,9 +4925,9 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(
 
-                    f"FORCE UNLOCK JOB "
+                    f"[CRON] FORCE UNLOCK "
 
-                    f"{job.id}"
+                    f"| job={job.id}"
                 )
 
                 try:
@@ -4941,9 +4944,9 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(
 
-                    f"JOB {job.id} "
+                    f"[CRON] LOCKED "
 
-                    f"LOCKED → SKIP"
+                    f"| job={job.id}"
                 )
 
                 return
@@ -4964,18 +4967,26 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
 
+            _logger.warning(
+
+                f"[CRON] JOB LOCKED "
+
+                f"| job={job.id}"
+            )
+
+
             # =============================================
-            # SAFE SINGLE STEP
+            # MULTI STEP SAFE CHAIN
             # =============================================
 
-            MAX_CHAIN = 1
+            MAX_CHAIN = 10
 
 
             for step in range(MAX_CHAIN):
 
 
                 # =========================================
-                # SAFE REFRESH
+                # REFRESH
                 # =========================================
 
                 try:
@@ -4994,11 +5005,11 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(
 
-                    f"CHAIN STEP "
+                    f"[CHAIN] STEP "
 
                     f"{step + 1} "
 
-                    f"→ {job.state}"
+                    f"| state={job.state}"
                 )
 
 
@@ -5015,7 +5026,9 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"CHAIN STOP "
+                        f"[CHAIN STOP] "
+
+                        f"terminal state "
 
                         f"→ {job.state}"
                     )
@@ -5023,14 +5036,38 @@ class VendorImportJob(models.Model):
                     break
 
 
-                previous_state = job.state
+                # =========================================
+                # TRACK PROGRESS
+                # =========================================
+
+                previous_state = (
+                    job.state
+                )
 
                 previous_page = (
                     job.current_page or 0
                 )
 
-                previous_ai = (
+                previous_ai_page = (
                     job.last_ai_page or 0
+                )
+
+                previous_created = (
+                    job.last_created_page or 0
+                )
+
+
+                _logger.warning(
+
+                    f"[CHAIN BEFORE] "
+
+                    f"state={previous_state} "
+
+                    f"| extract={previous_page} "
+
+                    f"| ai={previous_ai_page} "
+
+                    f"| created={previous_created}"
                 )
 
 
@@ -5046,9 +5083,11 @@ class VendorImportJob(models.Model):
 
                     _logger.exception(
 
-                        f"PROCESS STEP FAILED "
+                        f"[PROCESS ERROR] "
 
-                        f"→ {str(e)}"
+                        f"job={job.id} "
+
+                        f"| {str(e)}"
                     )
 
                     try:
@@ -5060,15 +5099,17 @@ class VendorImportJob(models.Model):
                     except Exception:
 
                         _logger.warning(
-                            "FAILED STATE SAVE "
-                            "→ CONNECTION DEAD"
+
+                            "[PROCESS ERROR] "
+
+                            "FAILED SAVE FAILED"
                         )
 
                     break
-              
+
 
                 # =========================================
-                # SAFE REFRESH AGAIN
+                # REFRESH AGAIN
                 # =========================================
 
                 try:
@@ -5087,40 +5128,173 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(
 
-                    f"CHAIN RESULT → "
+                    f"[CHAIN AFTER] "
 
-                    f"{previous_state}"
+                    f"state={job.state} "
 
-                    f" => "
+                    f"| extract={job.current_page} "
 
-                    f"{job.state}"
+                    f"| ai={job.last_ai_page} "
+
+                    f"| created={job.last_created_page}"
                 )
 
 
                 # =========================================
-                # SAME STATE GUARD
+                # PROGRESS DETECTION
                 # =========================================
+
+                progress_detected = False
+
+
+                # extraction progress
 
                 if (
 
-                    previous_state
-                    ==
-                    job.state
+                    (job.current_page or 0)
+
+                    >
+
+                    previous_page
 
                 ):
 
+                    progress_detected = True
+
                     _logger.warning(
 
-                        f"NO STATE CHANGE "
+                        f"[PROGRESS] "
 
-                        f"→ STOP CHAIN"
+                        f"PDF "
+
+                        f"{previous_page}"
+
+                        f" → "
+
+                        f"{job.current_page}"
+                    )
+
+
+                # ai progress
+
+                if (
+
+                    (job.last_ai_page or 0)
+
+                    >
+
+                    previous_ai_page
+
+                ):
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        f"[PROGRESS] AI "
+
+                        f"{previous_ai_page}"
+
+                        f" → "
+
+                        f"{job.last_ai_page}"
+                    )
+
+
+                # create progress
+
+                if (
+
+                    (job.last_created_page or 0)
+
+                    >
+
+                    previous_created
+
+                ):
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        f"[PROGRESS] CREATE "
+
+                        f"{previous_created}"
+
+                        f" → "
+
+                        f"{job.last_created_page}"
+                    )
+
+
+                # state transition
+
+                if previous_state != job.state:
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        f"[PROGRESS] STATE "
+
+                        f"{previous_state}"
+
+                        f" → "
+
+                        f"{job.state}"
+                    )
+
+
+                # =========================================
+                # STOP / CONTINUE
+                # =========================================
+
+                if not progress_detected:
+
+                    _logger.warning(
+
+                        "[CHAIN STOP] "
+
+                        "NO PROGRESS DETECTED"
+                    )
+
+                    break
+
+
+                _logger.warning(
+
+                    "[CHAIN CONTINUE] "
+
+                    "PROGRESS DETECTED"
+                )
+
+
+                # =========================================
+                # SAFETY COMMIT
+                # =========================================
+
+                try:
+
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "[CHAIN] COMMIT OK"
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"[CHAIN COMMIT ERROR] "
+
+                        f"{str(e)}"
                     )
 
                     break
 
 
             _logger.warning(
-                "CRON → STEP COMMITTED ✅"
+                "[CRON] PROCESS LOOP COMPLETE"
             )
 
 
@@ -5128,34 +5302,36 @@ class VendorImportJob(models.Model):
 
             _logger.exception(
 
-                f"CRON STEP FAILED "
+                f"[CRON FATAL ERROR] "
 
-                f"→ {str(e)}"
+                f"{str(e)}"
             )
 
 
             # =========================================
-            # SAFE ROLLBACK
+            # ROLLBACK
             # =========================================
 
             try:
 
                 self.env.cr.rollback()
 
+                _logger.warning(
+                    "[CRON] ROLLBACK OK"
+                )
+
             except Exception:
 
                 _logger.warning(
 
-                    "ROLLBACK FAILED "
-
-                    "→ CONNECTION DEAD"
+                    "[CRON] ROLLBACK FAILED"
                 )
 
 
         finally:
 
             # =============================================
-            # SAFE UNLOCK
+            # UNLOCK
             # =============================================
 
             try:
@@ -5176,26 +5352,27 @@ class VendorImportJob(models.Model):
 
 
                     _logger.warning(
-                        "CRON → JOB UNLOCKED 🔓"
+
+                        f"[CRON] JOB UNLOCKED "
+
+                        f"| job={job.id}"
                     )
 
             except Exception:
 
                 _logger.warning(
 
-                    "UNLOCK FAILED "
-
-                    "→ CONNECTION DEAD"
+                    "[CRON] UNLOCK FAILED"
                 )
 
 
         _logger.warning(
-            "CRON → COMPLETED RUN"
+            "[CRON] RUN COMPLETE"
         )
 
         return
 
-  
+
    #=============flask setup/installation=================== 
     def ping_flask_server(self):
       
