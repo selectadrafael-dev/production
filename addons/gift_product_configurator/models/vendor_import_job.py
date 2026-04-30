@@ -4129,14 +4129,46 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()  
        
 
-        # ================= PDF (FIXED RANGE + STABILITY) =================
+        # ================= PDF ==================
 
         elif self.pdf_file:
+
+            _logger.warning(
+                "[PDF CREATE] START"
+            )
+
 
             if not self.ai_response:
 
                 _logger.warning(
-                    "NO PDF AI RESPONSE → STOP"
+                    "[PDF CREATE] "
+                    "NO AI RESPONSE"
+                )
+
+                self.state = 'pdf_ai'
+
+                return
+
+
+            # =====================================
+            # LOAD AI PAGES
+            # =====================================
+
+            try:
+
+                ai_pages = json.loads(
+                    self.ai_response
+                )
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[PDF CREATE ERROR] "
+
+                    f"AI LOAD FAILED "
+
+                    f"→ {str(e)}"
                 )
 
                 return
@@ -4144,20 +4176,88 @@ class VendorImportJob(models.Model):
 
             total_ai_pages = len(ai_pages)
 
+
             _logger.warning(
 
                 f"[PDF CREATE] "
 
-                f"AI PAGE COUNT → "
+                f"TOTAL AI PAGES "
 
-                f"{total_ai_pages}"
+                f"→ {total_ai_pages}"
             )
 
 
-            BATCH_SIZE = 2
+            # =====================================
+            # RECOVERY TRACKER
+            # =====================================
 
-            start = (
-                self.last_created_page or 0
+            tracker_model = self.env[
+                'vendor.import.created.page'
+            ]
+
+
+            completed_records = tracker_model.search([
+
+                ('job_id', '=', self.id)
+
+            ])
+
+
+            completed_pages = set()
+
+
+            for rec in completed_records:
+
+                completed_pages.add(
+                    rec.page_number
+                )
+
+
+            _logger.warning(
+
+                f"[PDF CREATE RECOVERY] "
+
+                f"completed pages "
+
+                f"→ "
+
+                f"{sorted(list(completed_pages))}"
+            )
+
+
+            # =====================================
+            # FIND REMAINING
+            # =====================================
+
+            remaining_pages = []
+
+
+            for page_data in ai_pages:
+
+                page_num = page_data.get(
+                    "page"
+                )
+
+
+                if (
+                    page_num
+                    not in completed_pages
+                ):
+
+                    remaining_pages.append(
+                        page_data
+                    )
+
+
+            _logger.warning(
+
+                f"[PDF CREATE] "
+
+                f"remaining pages "
+
+                f"→ "
+
+                f"{len(remaining_pages)}"
             )
 
 
@@ -4165,62 +4265,42 @@ class VendorImportJob(models.Model):
             # ALL COMPLETE
             # =====================================
 
-            if start >= total_ai_pages:
+            if not remaining_pages:
 
                 _logger.warning(
-                    "PDF CREATION COMPLETE ✅"
+                    "[PDF CREATE] "
+                    "ALL COMPLETE ✅"
                 )
 
                 self.state = 'done'
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
 
 
-            end = min(
+            # =====================================
+            # SMALL SAFE BATCH
+            # =====================================
 
-                start + BATCH_SIZE,
-
-                total_ai_pages
-            )
-
-
-            _logger.warning(
-
-                f"[PDF CREATE] "
-
-                f"PROCESSING "
-
-                f"{start} to {end}"
-            )
+            batch_pages = remaining_pages[:1]
 
 
             created_this_batch = 0
 
 
-            for idx in range(start, end):
+            # =====================================
+            # PROCESS PAGE
+            # =====================================
 
-                try:
+            for page_data in batch_pages:
 
-                    # page_data = ai_pages[idx]
-                    page_data = ai_pages[idx]
 
-                    page_number = page_data.get(
-                        "page",
-                        idx + 1
-                    )
-                    
-
-                except Exception:
-
-                    _logger.warning(
-                        f"INVALID PAGE "
-                        f"INDEX → {idx}"
-                    )
-
-                    continue
+                page_number = page_data.get(
+                    "page"
+                )
 
 
                 products = page_data.get(
@@ -4229,25 +4309,35 @@ class VendorImportJob(models.Model):
                 )
 
 
-                page_number = page_data.get(
-                    "page",
-                    idx + 1
-                )
-
-
                 _logger.warning(
 
                     f"[PDF PAGE] "
 
-                    f"{page_number} "
+                    f"page={page_number} "
 
-                    f"→ PRODUCTS "
-
-                    f"{len(products)}"
+                    f"| products={len(products)}"
                 )
 
 
                 if not products:
+
+                    _logger.warning(
+
+                        f"[PDF PAGE] "
+
+                        f"EMPTY PRODUCTS "
+
+                        f"| page={page_number}"
+                    )
+
+
+                    tracker_model.create({
+
+                        'job_id': self.id,
+
+                        'page_number': page_number
+                    })
+
 
                     continue
 
@@ -4299,9 +4389,9 @@ class VendorImportJob(models.Model):
 
                         _logger.warning(
 
-                            f"IMAGE LOAD FAILED "
+                            f"[PDF IMAGE ERROR] "
 
-                            f"→ {str(e)}"
+                            f"{str(e)}"
                         )
 
 
@@ -4330,6 +4420,16 @@ class VendorImportJob(models.Model):
                         if not name:
 
                             continue
+
+
+                        _logger.warning(
+
+                            f"[PDF PRODUCT] "
+
+                            f"CREATING "
+
+                            f"| {name}"
+                        )
 
 
                         description = (
@@ -4365,9 +4465,9 @@ class VendorImportJob(models.Model):
                         )
 
 
-                        # =========================
-                        # FIND EXISTING
-                        # =========================
+                        # =====================
+                        # EXISTING
+                        # =====================
 
                         product = product_obj.search([
 
@@ -4386,9 +4486,9 @@ class VendorImportJob(models.Model):
                         ], limit=1)
 
 
-                        # =========================
-                        # CREATE TEMPLATE
-                        # =========================
+                        # =====================
+                        # CREATE
+                        # =====================
 
                         if not product:
 
@@ -4415,8 +4515,7 @@ class VendorImportJob(models.Model):
                             if (
                                 page_images
                                 and
-                                p_idx
-                                <
+                                p_idx <
                                 len(page_images)
                             ):
 
@@ -4438,158 +4537,14 @@ class VendorImportJob(models.Model):
                             ).create(vals)
 
 
-                            created_count += 1
+                            _logger.warning(
 
+                                f"[PDF PRODUCT] "
 
-                        # =========================
-                        # VARIANTS
-                        # =========================
+                                f"CREATED "
 
-                        variants = product_data.get(
-                            "variants",
-                            []
-                        )
-
-
-                        if not variants:
-
-                            variants = [{
-
-                                "attributes": {
-
-                                    "Variant":
-                                        name
-                                }
-
-                            }]
-
-
-                        for v_idx, variant in enumerate(
-                            variants
-                        ):
-
-                            attributes = variant.get(
-                                "attributes",
-                                {}
+                                f"| {name}"
                             )
-
-
-                            for (
-                                attr_name,
-                                attr_value
-                            ) in attributes.items():
-
-                                if not attr_value:
-                                    continue
-
-
-                                attribute = self.env[
-                                    'product.attribute'
-                                ].search([
-
-                                    (
-                                        'name',
-                                        '=',
-                                        attr_name
-                                    )
-
-                                ], limit=1)
-
-
-                                if not attribute:
-
-                                    attribute = self.env[
-                                        'product.attribute'
-                                    ].create({
-
-                                        'name':
-                                            attr_name
-                                    })
-
-
-                                value = self.env[
-                                    'product.attribute.value'
-                                ].search([
-
-                                    (
-                                        'name',
-                                        '=',
-                                        attr_value
-                                    ),
-
-                                    (
-                                        'attribute_id',
-                                        '=',
-                                        attribute.id
-                                    )
-
-                                ], limit=1)
-
-
-                                if not value:
-
-                                    value = self.env[
-                                        'product.attribute.value'
-                                    ].create({
-
-                                        'name':
-                                            attr_value,
-
-                                        'attribute_id':
-                                            attribute.id
-                                    })
-
-
-                                line = self.env[
-                                    'product.template.attribute.line'
-                                ].search([
-
-                                    (
-                                        'product_tmpl_id',
-                                        '=',
-                                        product.id
-                                    ),
-
-                                    (
-                                        'attribute_id',
-                                        '=',
-                                        attribute.id
-                                    )
-
-                                ], limit=1)
-
-
-                                if not line:
-
-                                    self.env[
-                                        'product.template.attribute.line'
-                                    ].create({
-
-                                        'product_tmpl_id':
-                                            product.id,
-
-                                        'attribute_id':
-                                            attribute.id,
-
-                                        'value_ids': [(
-                                            6,
-                                            0,
-                                            [value.id]
-                                        )]
-                                    })
-
-                                else:
-
-                                    if (
-                                        value.id
-                                        not in
-                                        line.value_ids.ids
-                                    ):
-
-                                        line.value_ids = [(
-                                            4,
-                                            value.id
-                                        )]
 
 
                         created_this_batch += 1
@@ -4599,46 +4554,42 @@ class VendorImportJob(models.Model):
 
                         _logger.exception(
 
-                            f"PDF PRODUCT FAILED "
+                            f"[PDF PRODUCT ERROR] "
 
-                            f"→ {str(e)}"
+                            f"{str(e)}"
                         )
 
-                        continue
 
+                # =================================
+                # TRACK PAGE COMPLETE
+                # =================================
 
-            # =====================================
-            # SAVE PROGRESS
-            # =====================================
+                tracker_model.create({
 
-            self.last_created_page = end
+                    'job_id': self.id,
 
+                    'page_number': page_number
+                })
 
-            _logger.warning(
-
-                f"[PDF CREATE PROGRESS] "
-
-                f"{self.last_created_page}/"
-
-                f"{total_ai_pages}"
-            )
-
-
-            # =====================================
-            # NEXT STATE
-            # =====================================
-
-            if self.last_created_page < total_ai_pages:
-
-                self.state = 'pdf_creating'
-
-            else:
 
                 _logger.warning(
-                    "PDF PRODUCTS COMPLETE ✅"
+
+                    f"[PDF TRACKED] "
+
+                    f"page={page_number}"
                 )
 
-                self.state = 'done'
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
+
+
+            # =====================================
+            # KEEP ACTIVE
+            # =====================================
+
+            self.state = 'pdf_creating'
 
 
             self.flush_recordset()
@@ -4648,9 +4599,11 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"[PDF CREATED THIS BATCH] "
+                f"[PDF CREATE] "
 
-                f"{created_this_batch}"
+                f"created batch "
+
+                f"→ {created_this_batch}"
             )
 
         _logger.warning(f"[PDF CREATE] TOTAL PRODUCTS CREATED: {created_count}")
