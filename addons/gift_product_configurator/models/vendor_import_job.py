@@ -1488,6 +1488,7 @@ class VendorImportJob(models.Model):
 
 
     # ---------------- PDF ----------------
+ 
     def extract_pdf(self):
 
         import gc
@@ -1499,13 +1500,14 @@ class VendorImportJob(models.Model):
         import requests
 
         _logger.warning(
-            "PDF → START EXTRACTION (SAFE MODE)"
+            f"[PDF EXTRACT] START "
+            f"| job={self.id}"
         )
 
         MAX_RETRIES = 3
 
-        # safer for Odoo.sh workers
-        BATCH_SIZE = 1
+        # balanced batch size
+        BATCH_SIZE = 3
 
         doc = None
 
@@ -1518,7 +1520,9 @@ class VendorImportJob(models.Model):
         except Exception as e:
 
             _logger.exception(
-                f"PDF DECODE FAILED → {str(e)}"
+                f"[PDF EXTRACT ERROR] "
+                f"PDF DECODE FAILED "
+                f"| {str(e)}"
             )
 
             self.state = "failed"
@@ -1540,7 +1544,9 @@ class VendorImportJob(models.Model):
         except Exception as e:
 
             _logger.exception(
-                f"PDF OPEN FAILED → {str(e)}"
+                f"[PDF EXTRACT ERROR] "
+                f"PDF OPEN FAILED "
+                f"| {str(e)}"
             )
 
             self.state = "failed"
@@ -1555,11 +1561,17 @@ class VendorImportJob(models.Model):
             self.total_pages = total_pages
 
 
+            _logger.warning(
+                f"[PDF EXTRACT] "
+                f"TOTAL PAGES={total_pages}"
+            )
+
+
             # =====================================
             # CRASH SAFE RECOVERY
             # =====================================
 
-            last_saved_page = self.env[
+            existing_pages = self.env[
                 'vendor.import.page'
             ].search([
 
@@ -1568,21 +1580,28 @@ class VendorImportJob(models.Model):
             ], order='page_number desc', limit=1)
 
 
-            if last_saved_page:
+            if existing_pages:
 
+                # move to NEXT page
                 start_page = (
-                    last_saved_page.page_number
+                    existing_pages.page_number
                 )
 
                 _logger.warning(
-                    f"RECOVERED PAGE POSITION "
-                    f"→ {start_page}"
+                    f"[PDF RECOVERY] "
+                    f"LAST SAVED PAGE="
+                    f"{existing_pages.page_number}"
                 )
 
             else:
 
                 start_page = (
                     self.current_page or 0
+                )
+
+                _logger.warning(
+                    f"[PDF RECOVERY] "
+                    f"NO SAVED PAGES"
                 )
 
 
@@ -1602,20 +1621,13 @@ class VendorImportJob(models.Model):
 
 
             _logger.warning(
-                f"RESUMING FROM PAGE → "
-                f"{start_page}"
+                f"[PDF BATCH] "
+                f"START={start_page + 1} "
+                f"| END={end_page}"
             )
 
-            _logger.warning(
-                f"PDF TOTAL PAGES → "
-                f"{total_pages}"
-            )
 
-            _logger.warning(
-                f"BATCH → Processing pages "
-                f"{start_page + 1} "
-                f"to {end_page}"
-            )
+            processed_count = 0
 
 
             # =====================================
@@ -1625,10 +1637,39 @@ class VendorImportJob(models.Model):
             for i in range(start_page, end_page):
 
                 _logger.warning(
-                    f"PROCESSING PAGE {i + 1}"
+                    f"[PDF PAGE] "
+                    f"START PAGE={i + 1}"
                 )
 
                 page_success = False
+
+
+                # =================================
+                # SKIP IF ALREADY EXISTS
+                # =================================
+
+                existing = self.env[
+                    'vendor.import.page'
+                ].search([
+
+                    ('job_id', '=', self.id),
+
+                    ('page_number', '=', i + 1)
+
+                ], limit=1)
+
+
+                if existing:
+
+                    _logger.warning(
+                        f"[PDF PAGE] "
+                        f"SKIP EXISTING "
+                        f"| page={i + 1}"
+                    )
+
+                    self.current_page = i + 1
+
+                    continue
 
 
                 for attempt in range(MAX_RETRIES):
@@ -1639,15 +1680,14 @@ class VendorImportJob(models.Model):
                     try:
 
                         _logger.warning(
-                            f"FLASK CALL PAGE "
-                            f"{i + 1} "
-                            f"→ ATTEMPT "
-                            f"{attempt + 1}"
+                            f"[PDF API] "
+                            f"PAGE={i + 1} "
+                            f"| ATTEMPT={attempt + 1}"
                         )
 
 
                         # =========================
-                        # CREATE SINGLE PAGE PDF
+                        # SINGLE PAGE PDF
                         # =========================
 
                         single_pdf = fitz.open()
@@ -1672,7 +1712,7 @@ class VendorImportJob(models.Model):
 
 
                         # =========================
-                        # CALL API
+                        # API CALL
                         # =========================
 
                         response = requests.post(
@@ -1691,17 +1731,19 @@ class VendorImportJob(models.Model):
                                 )
                             },
 
-                            timeout=60
+                            timeout=45
+                        )
+
+
+                        _logger.warning(
+                            f"[PDF API] "
+                            f"STATUS="
+                            f"{response.status_code} "
+                            f"| page={i + 1}"
                         )
 
 
                         if response.status_code != 200:
-
-                            _logger.warning(
-                                f"FLASK ERROR PAGE "
-                                f"{i + 1}: "
-                                f"{response.status_code}"
-                            )
 
                             continue
 
@@ -1735,18 +1777,12 @@ class VendorImportJob(models.Model):
                         if not pages:
 
                             _logger.warning(
-                                f"EMPTY PAGE DATA "
-                                f"PAGE {i + 1}"
+                                f"[PDF PAGE] "
+                                f"EMPTY RESPONSE "
+                                f"| page={i + 1}"
                             )
 
                             continue
-
-
-                        _logger.warning(
-                            f"PAGE {i + 1} "
-                            f"→ RECEIVED "
-                            f"{len(pages)} BLOCKS"
-                        )
 
 
                         normalized_blocks = []
@@ -1777,11 +1813,10 @@ class VendorImportJob(models.Model):
                                 continue
 
 
-                            # =====================
-                            # PRICE
-                            # =====================
-
                             price = ""
+
+                            stock = ""
+
 
                             price_match = re.search(
 
@@ -1797,12 +1832,6 @@ class VendorImportJob(models.Model):
                                     price_match.group(0)
                                 )
 
-
-                            # =====================
-                            # STOCK
-                            # =====================
-
-                            stock = ""
 
                             stock_match = re.search(
 
@@ -1838,40 +1867,24 @@ class VendorImportJob(models.Model):
                             })
 
 
-                        # =========================
-                        # NOTHING VALID
-                        # =========================
-
                         if not normalized_blocks:
 
                             _logger.warning(
+                                f"[PDF PAGE] "
                                 f"NO VALID BLOCKS "
-                                f"→ PAGE {i + 1}"
+                                f"| page={i + 1}"
                             )
 
                             continue
 
 
                         # =========================
-                        # UPDATE / CREATE PAGE
+                        # SAVE PAGE
                         # =========================
 
-                        existing = self.env[
+                        self.env[
                             'vendor.import.page'
-                        ].search([
-
-                            ('job_id', '=', self.id),
-
-                            (
-                                'page_number',
-                                '=',
-                                i + 1
-                            )
-
-                        ], limit=1)
-
-
-                        vals = {
+                        ].create({
 
                             'job_id': self.id,
 
@@ -1880,57 +1893,19 @@ class VendorImportJob(models.Model):
                             'extracted_json': json.dumps(
                                 normalized_blocks
                             )
-                        }
-
-
-                        if existing:
-
-                            existing.write(vals)
-
-                            _logger.warning(
-                                f"PAGE UPDATED "
-                                f"→ {i + 1}"
-                            )
-
-                        else:
-
-                            self.env[
-                                'vendor.import.page'
-                            ].create(vals)
-
-                            _logger.warning(
-                                f"PAGE CREATED "
-                                f"→ {i + 1}"
-                            )
-
-
-                        # =========================
-                        # SAVE CHECKPOINT
-                        # =========================
-
-                        self.current_page = i + 1
-
-
-                        try:
-
-                            self.flush_recordset()
-
-                            self.env.cr.commit()
-
-                        except Exception as e:
-
-                            _logger.warning(
-                                f"CHECKPOINT SAVE FAILED "
-                                f"→ {str(e)}"
-                            )
+                        })
 
 
                         _logger.warning(
-                            f"CHECKPOINT SAVED "
-                            f"→ PAGE "
-                            f"{self.current_page}"
+                            f"[PDF PAGE] "
+                            f"SAVED "
+                            f"| page={i + 1}"
                         )
 
+
+                        self.current_page = i + 1
+
+                        processed_count += 1
 
                         page_success = True
 
@@ -1940,9 +1915,9 @@ class VendorImportJob(models.Model):
                     except Exception as e:
 
                         _logger.exception(
-                            f"FLASK CALL FAILED "
-                            f"PAGE {i + 1} "
-                            f"→ {str(e)}"
+                            f"[PDF PAGE ERROR] "
+                            f"page={i + 1} "
+                            f"| {str(e)}"
                         )
 
 
@@ -1966,44 +1941,33 @@ class VendorImportJob(models.Model):
                             pass
 
 
-                # =====================================
-                # PAGE FAILED
-                # =====================================
-
                 if not page_success:
 
                     _logger.error(
-                        f"PAGE {i + 1} "
-                        f"FAILED AFTER RETRIES"
+                        f"[PDF PAGE FAILED] "
+                        f"page={i + 1}"
                     )
 
 
             # =====================================
-            # NEXT STATE
+            # SAVE BATCH ONCE
             # =====================================
+
+            _logger.warning(
+                f"[PDF BATCH] "
+                f"PROCESSED="
+                f"{processed_count}"
+            )
+
 
             if self.current_page < total_pages:
 
                 self.state = "pdf_extracting"
 
-                _logger.warning(
-                    f"JOB NOT FINISHED "
-                    f"→ NEXT START PAGE "
-                    f"{self.current_page + 1}"
-                )
-
             else:
 
                 self.state = "pdf_ai"
 
-                _logger.warning(
-                    "ALL PAGES PROCESSED ✅"
-                )
-
-
-            # =====================================
-            # FINAL SAVE
-            # =====================================
 
             try:
 
@@ -2011,17 +1975,19 @@ class VendorImportJob(models.Model):
 
                 self.env.cr.commit()
 
-            except Exception as e:
-
                 _logger.warning(
-                    f"FINAL SAVE FAILED "
-                    f"→ {str(e)}"
+                    f"[PDF SAVE] "
+                    f"SUCCESS "
+                    f"| state={self.state} "
+                    f"| current={self.current_page}"
                 )
 
+            except Exception as e:
 
-            _logger.warning(
-                f"STATE SAVED → {self.state}"
-            )
+                _logger.exception(
+                    f"[PDF SAVE ERROR] "
+                    f"{str(e)}"
+                )
 
 
         finally:
@@ -2038,10 +2004,10 @@ class VendorImportJob(models.Model):
             gc.collect()
 
             _logger.warning(
-                "MEMORY GC COLLECTED"
+                "[PDF GC] COMPLETE"
             )
 
-   
+
     # ---------------- Send to OPENAI URL ----------------
     def send_to_openai_url(self):
 
@@ -4814,6 +4780,72 @@ class VendorImportJob(models.Model):
                 )
 
 
+ 
+        # =================================================
+        # RECOVER STALE LOCKS
+        # =================================================
+
+        stale_jobs = self.search([
+
+            ('state', 'in', active_states),
+
+            ('lock', '=', True)
+
+        ])
+
+
+        for stale in stale_jobs:
+
+            try:
+
+                delta = (
+
+                    fields.Datetime.now()
+
+                    - stale.write_date
+
+                ).total_seconds()
+
+            except Exception:
+
+                delta = 0
+
+
+            _logger.warning(
+
+                f"[LOCK CHECK] "
+
+                f"job={stale.id} "
+
+                f"| seconds={delta}"
+            )
+
+
+            if delta > 60:
+
+                _logger.warning(
+
+                    f"[STALE LOCK RESET] "
+
+                    f"job={stale.id}"
+                )
+
+                try:
+
+                    stale.lock = False
+
+                    self.env.cr.commit()
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"[STALE LOCK ERROR] "
+
+                        f"{str(e)}"
+                    )
+
+
         # =================================================
         # GET NEXT JOB
         # =================================================
@@ -4837,21 +4869,13 @@ class VendorImportJob(models.Model):
         if not job:
 
             _logger.warning(
-                "[CRON] NO MORE JOBS"
+
+                "[CRON] NO AVAILABLE JOBS "
+                "(all locked or done)"
             )
 
             return
-
-
-        _logger.warning(
-
-            f"[CRON] PROCESS JOB "
-
-            f"| id={job.id} "
-
-            f"| state={job.state}"
-        )
-
+    
 
         # =================================================
         # LOCK CHECK
