@@ -2855,12 +2855,11 @@ class VendorImportJob(models.Model):
 
             return
 
-     
         # =====================================================
         # PDF MODE
         # =====================================================
 
-        BATCH_SIZE = 2
+        BATCH_SIZE = 1
 
 
         # =============================================
@@ -2891,7 +2890,7 @@ class VendorImportJob(models.Model):
 
 
         # =============================================
-        # CRASH SAFE RECOVERY
+        # LOAD EXISTING AI RESPONSE
         # =============================================
 
         existing_pages = []
@@ -2924,6 +2923,10 @@ class VendorImportJob(models.Model):
                 existing_pages = []
 
 
+        # =============================================
+        # FIND PROCESSED PAGES
+        # =============================================
+
         processed_pages = set()
 
 
@@ -2939,10 +2942,10 @@ class VendorImportJob(models.Model):
 
 
         # =============================================
-        # FIND NEXT UNPROCESSED PAGES
+        # FIND NEXT PAGE
         # =============================================
 
-        remaining_records = []
+        next_record = None
 
 
         for record in page_records:
@@ -2952,12 +2955,16 @@ class VendorImportJob(models.Model):
                 not in processed_pages
             ):
 
-                remaining_records.append(
-                    record
-                )
+                next_record = record
+
+                break
 
 
-        if not remaining_records:
+        # =============================================
+        # ALL COMPLETE
+        # =============================================
+
+        if not next_record:
 
             _logger.warning(
                 "PDF AI COMPLETE ✅"
@@ -2976,134 +2983,114 @@ class VendorImportJob(models.Model):
             return
 
 
-        batch_records = remaining_records[
-            :BATCH_SIZE
-        ]
-
-
         _logger.warning(
 
-            f"PDF AI → PROCESSING "
+            f"AI → PROCESSING PAGE "
 
-            f"{len(batch_records)} "
-
-            f"REMAINING PAGES"
+            f"{next_record.page_number}"
         )
 
 
-        new_page_products = []
-
-
         # =============================================
-        # PROCESS PAGES
+        # LOAD PAGE DATA
         # =============================================
 
-        for record in batch_records:
+        try:
 
+            page_blocks = json.loads(
+
+                next_record.extracted_json
+                or
+                "[]"
+            )
+
+        except Exception as e:
 
             _logger.warning(
 
-                f"AI → PROCESSING PAGE "
+                f"PAGE LOAD FAILED "
 
-                f"{record.page_number}"
+                f"→ PAGE "
+
+                f"{next_record.page_number} "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        if not page_blocks:
+
+            _logger.warning(
+
+                f"EMPTY PAGE BLOCKS "
+
+                f"→ PAGE "
+
+                f"{next_record.page_number}"
+            )
+
+            return
+
+
+        # =============================================
+        # BUILD PAGE DATA
+        # =============================================
+
+        page_text = "\n".join([
+
+            p.get("text", "")
+
+            for p in page_blocks
+
+        ])
+
+
+        page_images = []
+
+
+        for p in page_blocks:
+
+            page_images.extend(
+                p.get("images", [])
             )
 
 
-            try:
+        page_price = ""
 
-                page_blocks = json.loads(
-
-                    record.extracted_json
-                    or
-                    "[]"
-                )
-
-            except Exception as e:
-
-                _logger.warning(
-
-                    f"PAGE LOAD FAILED "
-
-                    f"→ PAGE "
-
-                    f"{record.page_number} "
-
-                    f"| {str(e)}"
-                )
-
-                continue
+        page_stock = ""
 
 
-            if not page_blocks:
+        for p in page_blocks:
 
-                _logger.warning(
+            if (
+                not page_price
+                and
+                p.get("price")
+            ):
 
-                    f"EMPTY PAGE BLOCKS "
-
-                    f"→ PAGE "
-
-                    f"{record.page_number}"
-                )
-
-                continue
-
-
-            # =========================================
-            # BUILD PAGE DATA
-            # =========================================
-
-            page_text = "\n".join([
-
-                p.get("text", "")
-
-                for p in page_blocks
-
-            ])
-
-
-            page_images = []
-
-
-            for p in page_blocks:
-
-                page_images.extend(
-                    p.get("images", [])
-                )
-
-
-            page_price = ""
-
-            page_stock = ""
-
-
-            for p in page_blocks:
-
-                if (
-                    not page_price
-                    and
+                page_price = (
                     p.get("price")
-                ):
-
-                    page_price = (
-                        p.get("price")
-                    )
+                )
 
 
-                if (
-                    not page_stock
-                    and
+            if (
+                not page_stock
+                and
+                p.get("stock")
+            ):
+
+                page_stock = (
                     p.get("stock")
-                ):
-
-                    page_stock = (
-                        p.get("stock")
-                    )
+                )
 
 
-            # =========================================
-            # PROMPT
-            # =========================================
+        # =============================================
+        # PROMPT
+        # =============================================
 
+          
             prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
             =====================
@@ -3295,107 +3282,95 @@ class VendorImportJob(models.Model):
             """
 
 
-            try:
+        # =============================================
+        # AI CALL
+        # =============================================
 
-                response = client.responses.create(
+        try:
 
-                    model="gpt-4.1-mini",
+            response = client.responses.create(
 
-                    input=prompt,
+                model="gpt-4.1-mini",
 
-                    timeout=60
+                input=prompt,
+
+                timeout=40
+            )
+
+
+            result = (
+                response.output_text or ""
+            ).strip()
+
+
+            result = result.replace(
+                "```json",
+                ""
+            )
+
+            result = result.replace(
+                "```",
+                ""
+            ).strip()
+
+
+            if not result:
+
+                raise Exception(
+                    "EMPTY AI RESPONSE"
                 )
 
 
-                result = (
-                    response.output_text or ""
-                ).strip()
+            parsed = json.loads(
+                result
+            )
 
 
-                # =====================================
-                # CLEAN RESPONSE
-                # =====================================
-
-                result = result.replace(
-                    "```json",
-                    ""
-                )
-
-                result = result.replace(
-                    "```",
-                    ""
-                ).strip()
-
-
-                if not result:
-
-                    raise Exception(
-                        "EMPTY AI RESPONSE"
-                    )
-
-
-                parsed = json.loads(
-                    result
-                )
-
-
-                if not isinstance(
-                    parsed,
-                    list
-                ):
-
-                    parsed = []
-
-
-            except Exception as e:
-
-                _logger.warning(
-
-                    f"PAGE "
-
-                    f"{record.page_number} "
-
-                    f"FAILED "
-
-                    f"→ {str(e)}"
-                )
+            if not isinstance(
+                parsed,
+                list
+            ):
 
                 parsed = []
 
 
-            # =========================================
-            # ATTACH IMAGES
-            # =========================================
+        except Exception as e:
 
-            for p_index, prod in enumerate(
-                parsed
-            ):
+            _logger.warning(
 
-                if (
-                    page_images
-                    and
-                    p_index < len(page_images)
-                ):
+                f"AI FAILED "
 
-                    prod["image"] = (
-                        page_images[p_index]
-                    )
+                f"→ PAGE "
 
+                f"{next_record.page_number} "
 
-            # =========================================
-            # SAVE PAGE RESULT
-            # =========================================
+                f"| {str(e)}"
+            )
 
-            new_page_products.append({
-
-                "page": record.page_number,
-
-                "products": parsed
-            })
+            return
 
 
         # =============================================
-        # MERGE SAFELY
+        # ATTACH IMAGES
+        # =============================================
+
+        for p_index, prod in enumerate(
+            parsed
+        ):
+
+            if (
+                page_images
+                and
+                p_index < len(page_images)
+            ):
+
+                prod["image"] = (
+                    page_images[p_index]
+                )
+
+
+        # =============================================
+        # MERGE IMMEDIATELY
         # =============================================
 
         existing_map = {}
@@ -3408,11 +3383,14 @@ class VendorImportJob(models.Model):
             ] = p
 
 
-        for p in new_page_products:
+        existing_map[
+            next_record.page_number
+        ] = {
 
-            existing_map[
-                p.get("page")
-            ] = p
+            "page": next_record.page_number,
+
+            "products": parsed
+        }
 
 
         combined_pages = sorted(
@@ -3426,14 +3404,14 @@ class VendorImportJob(models.Model):
         )
 
 
+        # =============================================
+        # SAVE IMMEDIATELY
+        # =============================================
+
         self.ai_response = json.dumps(
             combined_pages
         )
 
-
-        # =============================================
-        # SAVE REAL PROGRESS
-        # =============================================
 
         self.last_ai_page = len(
             combined_pages
@@ -3442,11 +3420,11 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"PDF AI PROGRESS → "
+            f"AI PAGE SAVED "
 
-            f"{self.last_ai_page}/"
+            f"→ PAGE "
 
-            f"{total_available_pages}"
+            f"{next_record.page_number}"
         )
 
 
