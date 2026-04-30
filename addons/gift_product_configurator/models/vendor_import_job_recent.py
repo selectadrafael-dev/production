@@ -933,6 +933,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI → PROCESSING PAGE {page_no}")
 
+            
             prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
             =====================
@@ -1094,6 +1095,9 @@ class VendorImportJob(models.Model):
                     "name": "",
                     "description": "",
                     "category": "",
+                    "price": "",
+                    "stock": "",
+                    "variant_group": "",
                     "variants": [
                         {{
                             "attributes": {{
@@ -1110,8 +1114,17 @@ class VendorImportJob(models.Model):
             - This page contains product images
 
             TEXT TO ANALYZE:
+            PAGE TEXT:
             {page_text}
+
+            DETECTED PRICE:
+            {page_price}
+
+            DETECTED STOCK:
+            {page_stock}
             """
+
+
 
             try:
                 image_inputs = [
