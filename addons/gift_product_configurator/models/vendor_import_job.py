@@ -4419,7 +4419,7 @@ class VendorImportJob(models.Model):
     def create_products_excel(self):
 
         import json
-        import time
+        import re
 
         _logger.warning(
             "[EXCEL CREATE] START"
@@ -4433,55 +4433,16 @@ class VendorImportJob(models.Model):
         if not self.ai_response:
 
             _logger.warning(
-                "[EXCEL CREATE] "
-                "NO AI RESPONSE"
+                "[EXCEL CREATE] NO AI RESPONSE"
             )
 
             return
 
-
-        if not self.extracted_text:
-
-            _logger.warning(
-                "[EXCEL CREATE] "
-                "NO EXTRACTED TEXT"
-            )
-
-            return
-
-
-        # =====================================================
-        # LOAD EXTRACTED DATA
-        # =====================================================
-
-        try:
-
-            extracted_pages = json.loads(
-                self.extracted_text
-            )
-
-        except Exception as e:
-
-            _logger.exception(
-
-                f"[EXCEL CREATE] "
-
-                f"EXTRACTED JSON ERROR "
-
-                f"| {str(e)}"
-            )
-
-            return
-
-
-        # =====================================================
-        # LOAD AI DATA
-        # =====================================================
 
         try:
 
             ai_pages = json.loads(
-                self.ai_response
+                self.ai_response or "[]"
             )
 
         except Exception as e:
@@ -4490,41 +4451,26 @@ class VendorImportJob(models.Model):
 
                 f"[EXCEL CREATE] "
 
-                f"AI JSON ERROR "
+                f"INVALID AI JSON "
 
                 f"| {str(e)}"
             )
 
             return
-
-
-        _logger.warning(
-
-            f"[EXCEL CREATE] "
-
-            f"EXTRACTED={len(extracted_pages)} "
-
-            f"| AI={len(ai_pages)}"
-        )
 
 
         if not ai_pages:
 
             _logger.warning(
-                "[EXCEL CREATE] "
-                "NO AI PAGES"
+                "[EXCEL CREATE] EMPTY AI"
             )
 
             return
 
 
-        # =====================================================
-        # EXCEL AI STRUCTURE
-        # =====================================================
+        ai_page = ai_pages[0]
 
-        ai_data = ai_pages[0]
-
-        products = ai_data.get(
+        products = ai_page.get(
             "products",
             []
         )
@@ -4534,16 +4480,11 @@ class VendorImportJob(models.Model):
 
             f"[EXCEL CREATE] "
 
-            f"TOTAL PRODUCTS={len(products)}"
+            f"RAW PRODUCTS={len(products)}"
         )
 
 
         if not products:
-
-            _logger.warning(
-                "[EXCEL CREATE] "
-                "NO PRODUCTS"
-            )
 
             return
 
@@ -4558,6 +4499,18 @@ class VendorImportJob(models.Model):
 
         category_obj = self.env[
             'product.category'
+        ]
+
+        attribute_obj = self.env[
+            'product.attribute'
+        ]
+
+        attribute_value_obj = self.env[
+            'product.attribute.value'
+        ]
+
+        line_obj = self.env[
+            'product.template.attribute.line'
         ]
 
 
@@ -4581,16 +4534,6 @@ class VendorImportJob(models.Model):
             })
 
 
-        vendor_id = (
-
-            self.partner_id.id
-
-            if self.partner_id
-
-            else False
-        )
-
-
         # =====================================================
         # CATEGORY MAP
         # =====================================================
@@ -4611,105 +4554,166 @@ class VendorImportJob(models.Model):
             "powerbank": "Electronics",
             "charger": "Electronics",
             "laptop": "Electronics",
-            "football": "Football Fever",
-            "Wristband": "Football Fever",
-            "sports t-shirt": "Football Fever",
-            "sports towel": "Football Fever",
-            "Sports Bottles": "Football Fever"
         }
 
 
         # =====================================================
-        # BATCHING
+        # GROUP PRODUCTS
+        # =====================================================
+
+        grouped_products = {}
+
+
+        for p in products:
+
+            raw_name = (
+                p.get("name") or ""
+            ).strip()
+
+
+            variant_group = (
+                p.get("variant_group")
+            )
+
+
+            if variant_group:
+
+                group_id = str(
+                    variant_group
+                ).strip().upper()
+
+            else:
+
+                match = re.search(
+
+                    r'(?:Product\s*)?([A-Z]*\d+)',
+
+                    raw_name,
+
+                    re.I
+                )
+
+
+                if match:
+
+                    group_id = (
+                        match.group(1)
+                        .upper()
+                    )
+
+                else:
+
+                    group_id = (
+                        raw_name.upper()
+                    )
+
+
+            grouped_products.setdefault(
+
+                group_id,
+
+                []
+
+            ).append(p)
+
+
+        grouped_keys = list(
+            grouped_products.keys()
+        )
+
+
+        _logger.warning(
+
+            f"[EXCEL GROUPS] "
+
+            f"TOTAL={len(grouped_keys)}"
+        )
+
+
+        # =====================================================
+        # BATCH GROUPS
         # =====================================================
 
         BATCH_SIZE = 10
 
         start = (
-            self.excel_created_index
-            or 0
+            self.excel_created_index or 0
         )
 
         end = min(
 
             start + BATCH_SIZE,
 
-            len(products)
+            len(grouped_keys)
         )
 
 
         _logger.warning(
 
-            f"[EXCEL RANGE] "
+            f"[EXCEL BATCH] "
 
-            f"START={start} "
-
-            f"| END={end} "
-
-            f"| TOTAL={len(products)}"
+            f"{start} → {end}"
         )
 
 
         created_count = 0
+        merged_count = 0
 
 
         # =====================================================
-        # MAIN LOOP
+        # PROCESS GROUPS
         # =====================================================
 
-        for idx in range(start, end):
+        for group_idx in range(start, end):
 
             try:
 
-                product_data = products[idx]
+                group_id = grouped_keys[
+                    group_idx
+                ]
+
+                group_items = grouped_products[
+                    group_id
+                ]
+
+
+                _logger.warning(
+
+                    f"[EXCEL GROUP] "
+
+                    f"{group_id} "
+
+                    f"| items={len(group_items)}"
+                )
+
+
+                main_product = (
+                    group_items[0]
+                )
 
 
                 name = (
 
-                    product_data.get(
+                    main_product.get(
                         "name"
-                    )
-
-                    or ""
+                    ) or ""
 
                 ).strip()
 
 
-                if not name:
-
-                    _logger.warning(
-
-                        f"[EXCEL SKIP] "
-
-                        f"EMPTY NAME "
-
-                        f"| index={idx}"
-                    )
-
-                    self.excel_created_index = (
-                        idx + 1
-                    )
-
-                    continue
-
-
                 description = (
 
-                    product_data.get(
+                    main_product.get(
                         "description"
-                    )
-
-                    or ""
+                    ) or ""
                 )
 
 
                 raw_category = (
 
-                    product_data.get(
+                    main_product.get(
                         "category"
-                    )
-
-                    or ""
+                    ) or ""
 
                 ).lower()
 
@@ -4730,7 +4734,11 @@ class VendorImportJob(models.Model):
 
                 category = category_obj.search([
 
-                    ('name', '=', mapped_category),
+                    (
+                        'name',
+                        '=',
+                        mapped_category
+                    ),
 
                     (
                         'parent_id',
@@ -4745,127 +4753,276 @@ class VendorImportJob(models.Model):
 
                     category = category_obj.create({
 
-                        'name': mapped_category,
+                        'name':
+                            mapped_category,
 
                         'parent_id':
                             parent_category.id
                     })
 
 
-                variant_group = (
-
-                    product_data.get(
-                        "variant_group"
-                    )
-
-                    or
-
-                    name
-                )
-
-
                 # =================================================
-                # SAFER DUPLICATE CHECK
+                # FIND PARENT PRODUCT
                 # =================================================
 
-                existing = product_obj.search([
+                product = product_obj.search([
 
                     (
-                        'name',
+                        'default_code',
                         '=',
-                        name
-                    ),
-
-                    (
-                        'vendor_id',
-                        '=',
-                        vendor_id
+                        group_id
                     )
 
                 ], limit=1)
 
 
-                if existing:
+                # =================================================
+                # CREATE PARENT
+                # =================================================
+
+                if not product:
+
+                    vals = {
+
+                        'name': name,
+
+                        'default_code':
+                            group_id,
+
+                        'description_sale':
+                            description,
+
+                        'categ_id':
+                            category.id,
+
+                        'sale_ok': True,
+
+                        'website_published':
+                            False,
+                    }
+
+
+                    image = main_product.get(
+                        "image"
+                    )
+
+
+                    if image:
+
+                        vals[
+                            'image_1920'
+                        ] = image
+
+
+                    product = product_obj.create(
+                        vals
+                    )
+
+
+                    created_count += 1
+
 
                     _logger.warning(
 
-                        f"[EXCEL SKIP] "
+                        f"[EXCEL CREATED] "
 
-                        f"EXISTING NAME "
-
-                        f"| {name}"
+                        f"{group_id}"
                     )
 
-                    self.excel_created_index = (
-                        idx + 1
+                else:
+
+                    merged_count += 1
+
+
+                    _logger.warning(
+
+                        f"[EXCEL MERGED] "
+
+                        f"{group_id}"
                     )
 
-                    continue
-
 
                 # =================================================
-                # CREATE VALUES
+                # VARIANTS
                 # =================================================
 
-                vals = {
+                for idx, item in enumerate(
+                    group_items
+                ):
 
-                    'name': name,
-
-                    'default_code':
-                        variant_group,
-
-                    'description_sale':
-                        description,
-
-                    'categ_id':
-                        category.id,
-
-                    'sale_ok': True,
-
-                    'website_published':
-                        False,
-
-                    'vendor_id':
-                        vendor_id,
-                }
+                    attr_value = (
+                        f"Variant {idx+1}"
+                    )
 
 
-                image = product_data.get(
-                    "image"
-                )
+                    attribute = attribute_obj.search([
+
+                        (
+                            'name',
+                            '=',
+                            "Variant"
+                        )
+
+                    ], limit=1)
 
 
-                if image:
+                    if not attribute:
 
-                    vals[
-                        'image_1920'
-                    ] = image
+                        attribute = (
+                            attribute_obj.create({
 
-
-                # =================================================
-                # CREATE PRODUCT
-                # =================================================
-
-                product_obj.with_context(
-
-                    mail_create_nolog=True,
-
-                    mail_notify_force_send=False,
-
-                    tracking_disable=True
-
-                ).create(vals)
+                                'name':
+                                    "Variant"
+                            })
+                        )
 
 
-                created_count += 1
+                    value = (
+                        attribute_value_obj.search([
+
+                            (
+                                'name',
+                                '=',
+                                attr_value
+                            ),
+
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
+
+                        ], limit=1)
+                    )
 
 
-                _logger.warning(
+                    if not value:
 
-                    f"[EXCEL PRODUCT CREATED] "
+                        value = (
+                            attribute_value_obj.create({
 
-                    f"{name}"
-                )
+                                'name':
+                                    attr_value,
+
+                                'attribute_id':
+                                    attribute.id
+                            })
+                        )
+
+
+                    line = line_obj.search([
+
+                        (
+                            'product_tmpl_id',
+                            '=',
+                            product.id
+                        ),
+
+                        (
+                            'attribute_id',
+                            '=',
+                            attribute.id
+                        )
+
+                    ], limit=1)
+
+
+                    if not line:
+
+                        line_obj.create({
+
+                            'product_tmpl_id':
+                                product.id,
+
+                            'attribute_id':
+                                attribute.id,
+
+                            'value_ids': [
+
+                                (
+                                    6,
+                                    0,
+                                    [value.id]
+                                )
+                            ]
+                        })
+
+
+                        _logger.warning(
+
+                            f"[VARIANT LINE CREATED] "
+
+                            f"{group_id}"
+                        )
+
+                    else:
+
+                        if value.id not in line.value_ids.ids:
+
+                            line.value_ids = [
+
+                                (
+                                    4,
+                                    value.id
+                                )
+                            ]
+
+
+                            _logger.warning(
+
+                                f"[VARIANT ADDED] "
+
+                                f"{group_id} "
+
+                                f"| {attr_value}"
+                            )
+
+
+                    # =============================================
+                    # VARIANT IMAGE
+                    # =============================================
+
+                    variant_record = self.env[
+                        'product.product'
+                    ].search([
+
+                        (
+                            'product_tmpl_id',
+                            '=',
+                            product.id
+                        ),
+
+                        (
+                            'product_template_attribute_value_ids.product_attribute_value_id',
+                            '=',
+                            value.id
+                        )
+
+                    ], limit=1)
+
+
+                    if variant_record:
+
+                        variant_image = item.get(
+                            "image"
+                        )
+
+
+                        if variant_image:
+
+                            variant_record.image_1920 = (
+                                variant_image
+                            )
+
+
+                            _logger.warning(
+
+                                f"[VARIANT IMAGE] "
+
+                                f"{group_id} "
+
+                                f"| {attr_value}"
+                            )
 
 
                 # =================================================
@@ -4873,7 +5030,7 @@ class VendorImportJob(models.Model):
                 # =================================================
 
                 self.excel_created_index = (
-                    idx + 1
+                    group_idx + 1
                 )
 
 
@@ -4882,16 +5039,28 @@ class VendorImportJob(models.Model):
                 self.env.cr.commit()
 
 
+                _logger.warning(
+
+                    f"[EXCEL SAVE] "
+
+                    f"index="
+
+                    f"{self.excel_created_index}"
+                )
+
+
             except Exception as e:
 
                 _logger.exception(
 
-                    f"[EXCEL CREATE ERROR] "
+                    f"[EXCEL GROUP ERROR] "
 
-                    f"INDEX={idx} "
+                    f"group_idx={group_idx} "
 
                     f"| {str(e)}"
                 )
+
+                self.env.cr.rollback()
 
 
         # =====================================================
@@ -4900,17 +5069,19 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"[EXCEL CREATE COMPLETE] "
+            f"[EXCEL COMPLETE] "
 
-            f"created={created_count}"
+            f"created={created_count} "
+
+            f"| merged={merged_count}"
         )
 
 
         # =====================================================
-        # FINAL STATE
+        # STATE
         # =====================================================
 
-        if self.excel_created_index >= len(products):
+        if self.excel_created_index >= len(grouped_keys):
 
             self.state = 'done'
 

@@ -1242,6 +1242,7 @@ class VendorImportJob(models.Model):
 
         self.ai_response = json.dumps(page_products)
 
+
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
 
@@ -1809,6 +1810,7 @@ class VendorImportJob(models.Model):
                     _logger.error(f"PDF PRODUCT FAILED → {str(e)}")
 
         self.env.cr.commit()
+
 
     #-----URL API FLOW-------------------------------------------
 
