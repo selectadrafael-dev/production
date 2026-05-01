@@ -5106,12 +5106,60 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # STATE
+        # NEXT STATE
         # =====================================================
 
-        if self.excel_created_index >= len(grouped_keys):
+        all_groups_done = (
 
-            self.state = 'done'
+            self.excel_created_index
+            >=
+            len(grouped_keys)
+
+        )
+
+
+        more_excel_rows_exist = (
+
+            (
+                self.excel_parse_index or 0
+            )
+
+            <
+
+            (
+                self.excel_total_rows or 0
+            )
+
+        )
+
+
+        if all_groups_done:
+
+            if more_excel_rows_exist:
+
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    "MORE EXCEL ROWS REMAIN "
+
+                    "→ RETURN TO PARSE"
+                )
+
+                # reset AI/create cycle
+                self.ai_response = False
+                self.excel_ai_index = 0
+                self.excel_created_index = 0
+
+                self.state = 'excel_parsing'
+
+            else:
+
+                _logger.warning(
+                    "[EXCEL FLOW] COMPLETE"
+                )
+
+                self.state = 'done'
 
         else:
 
