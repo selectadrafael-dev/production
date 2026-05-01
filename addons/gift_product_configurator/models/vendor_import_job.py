@@ -379,7 +379,8 @@ class VendorImportJob(models.Model):
             if self.state == 'excel_parsing':
 
                 previous_index = (
-                    self.last_processed_product_index or 0
+                
+                    self.excel_parse_index or 0
                 )
 
                 _logger.warning(
@@ -394,7 +395,8 @@ class VendorImportJob(models.Model):
 
 
                 new_index = (
-                    self.last_processed_product_index or 0
+                   
+                    self.excel_parse_index or 0
                 )
 
 
@@ -1031,9 +1033,11 @@ class VendorImportJob(models.Model):
         BATCH_SIZE = 8
         MAX_BUFFER = 150
 
+
         start_index = (
-            self.last_processed_product_index or 0
+            self.excel_parse_index or 0
         )
+
 
         current_count = 0
 
@@ -1571,8 +1575,15 @@ class VendorImportJob(models.Model):
             current_count
         )
 
-        self.last_processed_product_index = (
+        self.excel_parse_index = (
             new_index
+        )
+
+        _logger.warning(
+
+            f"[EXCEL PARSE INDEX SAVE] "
+
+            f"{self.excel_parse_index}"
         )
 
 
