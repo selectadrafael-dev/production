@@ -756,6 +756,7 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"ROW {idx} → PROCESSING")
                 _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
 
+                
                 prompt = f"""
                 You are a structured Excel product parser.
 
@@ -868,6 +869,7 @@ class VendorImportJob(models.Model):
 
                 {row_text}
                 """
+
 
                 try:
                     response = client.responses.create(

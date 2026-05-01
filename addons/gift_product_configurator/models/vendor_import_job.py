@@ -123,11 +123,11 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PROCESS START → Job {self.id}")
 
         try:
-            if self.state == 'review':
-                self.state = 'processing'
+            # if self.state == 'review':
+            #     self.state = 'processing'
 
-            if self.state == 'draft':
-                self.state = 'processing'
+            # if self.state == 'draft':
+            #     self.state = 'processing'
 
             self._process_step()
 
@@ -137,16 +137,37 @@ class VendorImportJob(models.Model):
 
 
     #============Processing Jobs===================================================
-    
+     
     def _process_step(self):
 
         import json
 
         self.ensure_one()
 
+ 
+        # =================================================
+        # SAFETY
+        # =================================================
+
+        if self.pdf_file and self.excel_file:
+
+            _logger.error(
+                "[PROCESS STEP] BOTH PDF AND EXCEL PROVIDED"
+            )
+
+            self.state = "failed"
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            return
+
+
         _logger.warning(
             f"[PROCESS STEP] → state={self.state}"
         )
+
 
         # =================================================
         # DONE
@@ -183,7 +204,9 @@ class VendorImportJob(models.Model):
 
                 self.state = 'url_scraping'
 
+
             self.flush_recordset()
+
             self.env.cr.commit()
 
             return
@@ -204,6 +227,7 @@ class VendorImportJob(models.Model):
                 self.state = 'url_scraping'
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
@@ -225,11 +249,13 @@ class VendorImportJob(models.Model):
 
                     return
 
+
                 if self.extracted_text:
 
                     self.state = 'url_ai'
 
                     self.flush_recordset()
+
                     self.env.cr.commit()
 
                     _logger.warning(
@@ -274,7 +300,9 @@ class VendorImportJob(models.Model):
 
                     return
 
+
                 self.create_products_url()
+
 
                 try:
 
@@ -288,13 +316,20 @@ class VendorImportJob(models.Model):
 
                     total = 0
 
+
                 _logger.warning(
+
                     f"[URL CREATE CHECK] → "
+
                     f"{self.last_processed_product_index}/{total}"
                 )
 
+
                 if (
-                    self.last_processed_product_index >= total
+
+                    self.last_processed_product_index
+                    >= total
+
                 ):
 
                     self.state = 'done'
@@ -303,7 +338,9 @@ class VendorImportJob(models.Model):
                         "URL COMPLETE ✅"
                     )
 
+
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
@@ -315,6 +352,11 @@ class VendorImportJob(models.Model):
 
         if self.excel_file and not self.pdf_file:
 
+            _logger.warning(
+                "FLOW → EXCEL"
+            )
+
+
             # =============================================
             # START
             # =============================================
@@ -324,6 +366,7 @@ class VendorImportJob(models.Model):
                 self.state = 'excel_parsing'
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
@@ -337,9 +380,15 @@ class VendorImportJob(models.Model):
 
                 self.parse_excel()
 
+
                 if (
-                    self.last_processed_product_index >
+
+                    self.last_processed_product_index
+
+                    >
+
                     (self.excel_ai_index or 0)
+
                 ):
 
                     self.state = 'excel_ai'
@@ -348,7 +397,9 @@ class VendorImportJob(models.Model):
 
                     self.state = 'excel_parsing'
 
+
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
@@ -362,13 +413,63 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    self.send_to_openai_pdf_excel()
+                    self.send_to_openai_excel()
 
                 except Exception as e:
 
-                    _logger.error(
-                        f"AI ERROR → {str(e)}"
+                    _logger.exception(
+
+                        f"EXCEL AI FAILED → {str(e)}"
                     )
+
+                    self.state = 'failed'
+
+                    self.flush_recordset()
+
+                    self.env.cr.commit()
+
+                    return
+
+
+                total_rows = (
+                    self.last_processed_product_index
+                    or 0
+                )
+
+
+                if (
+
+                    (self.excel_ai_index or 0)
+
+                    <
+
+                    total_rows
+
+                ):
+
+                    _logger.warning(
+
+                        f"EXCEL AI CONTINUES "
+
+                        f"→ {self.excel_ai_index}/"
+
+                        f"{total_rows}"
+                    )
+
+                    self.state = 'excel_ai'
+
+                else:
+
+                    _logger.warning(
+                        "EXCEL AI COMPLETE → excel_creating"
+                    )
+
+                    self.state = 'excel_creating'
+
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
 
                 return
 
@@ -379,37 +480,82 @@ class VendorImportJob(models.Model):
 
             if self.state == 'excel_creating':
 
-                self.create_products_pdf_excel()
+                try:
 
-                total_rows = (
-                    self.last_processed_product_index or 0
-                )
+                    self.create_products_excel()
 
-                if (
-                    (self.excel_created_index or 0)
-                    >= total_rows
-                ):
+                except Exception as e:
 
-                    if self.is_excel_parsed:
+                    _logger.exception(
 
-                        self.state = 'done'
+                        f"EXCEL CREATE FAILED → {str(e)}"
+                    )
 
-                        _logger.warning(
-                            "EXCEL COMPLETE ✅"
+                    self.state = 'failed'
+
+                    self.flush_recordset()
+
+                    self.env.cr.commit()
+
+                    return
+
+
+                try:
+
+                    ai_data = json.loads(
+                        self.ai_response or "[]"
+                    )
+
+                    total_products = len(
+
+                        ai_data[0].get(
+                            "products",
+                            []
                         )
 
-                    else:
+                    ) if ai_data else 0
 
-                        self.state = 'excel_parsing'
+                except Exception:
+
+                    total_products = 0
+
+
+                if (
+
+                    (self.excel_created_index or 0)
+
+                    <
+
+                    total_products
+
+                ):
+
+                    _logger.warning(
+
+                        f"EXCEL CREATE CONTINUES "
+
+                        f"→ {self.excel_created_index}/"
+
+                        f"{total_products}"
+                    )
+
+                    self.state = 'excel_creating'
 
                 else:
 
-                    self.state = 'excel_ai'
+                    _logger.warning(
+                        "EXCEL COMPLETE ✅"
+                    )
+
+                    self.state = 'done'
+
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
+
 
         # =================================================
         # PDF FLOW
@@ -417,7 +563,10 @@ class VendorImportJob(models.Model):
 
         elif self.pdf_file:
 
-            _logger.warning("FLOW → PDF")
+            _logger.warning(
+                "FLOW → PDF"
+            )
+
 
             # =============================================
             # START
@@ -428,13 +577,14 @@ class VendorImportJob(models.Model):
                 self.state = 'pdf_extracting'
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
 
 
             # =============================================
-            # EXTRACT PDF
+            # EXTRACT
             # =============================================
 
             if self.state == 'pdf_extracting':
@@ -446,30 +596,37 @@ class VendorImportJob(models.Model):
                 except Exception as e:
 
                     _logger.exception(
+
                         f"PDF EXTRACT FAILED → {str(e)}"
                     )
 
                     self.state = 'failed'
 
                     self.flush_recordset()
+
                     self.env.cr.commit()
 
                     return
 
 
-                # =========================================
-                # CONTINUE EXTRACTION
-                # =========================================
-
                 if (
+
                     (self.current_page or 0)
+
                     <
+
                     (self.total_pages or 0)
+
                 ):
 
                     _logger.warning(
+
                         f"PDF EXTRACTION CONTINUES "
-                        f"→ PAGE {self.current_page}/"
+
+                        f"→ PAGE "
+
+                        f"{self.current_page}/"
+
                         f"{self.total_pages}"
                     )
 
@@ -478,14 +635,14 @@ class VendorImportJob(models.Model):
                 else:
 
                     _logger.warning(
-                        "PDF EXTRACTION COMPLETE "
-                        "→ pdf_ai"
+                        "PDF EXTRACTION COMPLETE → pdf_ai"
                     )
 
                     self.state = 'pdf_ai'
 
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
@@ -499,17 +656,19 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    self.send_to_openai_pdf_excel()
+                    self.send_to_openai_pdf()
 
                 except Exception as e:
 
                     _logger.exception(
+
                         f"PDF AI FAILED → {str(e)}"
                     )
 
                     self.state = 'failed'
 
                     self.flush_recordset()
+
                     self.env.cr.commit()
 
                     return
@@ -519,15 +678,23 @@ class VendorImportJob(models.Model):
                     self.total_pages or 0
                 )
 
+
                 if (
+
                     (self.last_ai_page or 0)
+
                     <
+
                     total_pages
+
                 ):
 
                     _logger.warning(
+
                         f"PDF AI CONTINUES "
+
                         f"→ {self.last_ai_page}/"
+
                         f"{total_pages}"
                     )
 
@@ -536,14 +703,14 @@ class VendorImportJob(models.Model):
                 else:
 
                     _logger.warning(
-                        "PDF AI COMPLETE "
-                        "→ pdf_creating"
+                        "PDF AI COMPLETE → pdf_creating"
                     )
 
                     self.state = 'pdf_creating'
 
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
@@ -557,17 +724,19 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    self.create_products_pdf_excel()
+                    self.create_products_pdf()
 
                 except Exception as e:
 
                     _logger.exception(
+
                         f"PDF CREATE FAILED → {str(e)}"
                     )
 
                     self.state = 'failed'
 
                     self.flush_recordset()
+
                     self.env.cr.commit()
 
                     return
@@ -587,14 +756,21 @@ class VendorImportJob(models.Model):
 
 
                 if (
+
                     (self.last_created_page or 0)
+
                     <
+
                     total_ai_pages
+
                 ):
 
                     _logger.warning(
+
                         f"PDF CREATE CONTINUES "
+
                         f"→ {self.last_created_page}/"
+
                         f"{total_ai_pages}"
                     )
 
@@ -610,6 +786,7 @@ class VendorImportJob(models.Model):
 
 
                 self.flush_recordset()
+
                 self.env.cr.commit()
 
                 return
@@ -2262,9 +2439,9 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF + EXCEL OPENAI =========================
+    # =========== PDF OPENAI =========================
 
-    def send_to_openai_pdf_excel(self):
+    def send_to_openai_pdf(self):
 
         import json
 
@@ -2281,81 +2458,638 @@ class VendorImportJob(models.Model):
             )
 
 
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(
+            api_key=api_key
+        )
+
+
+        _logger.warning(
+            "[PDF AI] START"
+        )
 
 
         # =====================================================
-        # LOAD DATA
+        # LOAD PAGE RECORDS
         # =====================================================
 
-        pages = []
+        page_records = self.env[
+            'vendor.import.page'
+        ].search([
+
+            ('job_id', '=', self.id)
+
+        ], order='page_number asc')
 
 
-        # =====================================================
-        # PDF MODE
-        # =====================================================
-
-        if self.pdf_file:
+        total_available_pages = len(
+            page_records
+        )
 
 
-            page_records = self.env[
-                'vendor.import.page'
-            ].search([
+        _logger.warning(
 
-                ('job_id', '=', self.id)
+            f"[PDF AI] "
 
-            ], order='page_number asc')
+            f"TOTAL PAGE RECORDS="
 
+            f"{total_available_pages}"
+        )
+
+
+        if total_available_pages <= 0:
 
             _logger.warning(
-
-                f"PDF PAGE RECORDS → "
-
-                f"{len(page_records)}"
+                "[PDF AI] "
+                "NO PAGE RECORDS FOUND"
             )
 
-
-            for rec in page_records:
-
-                try:
-
-                    data = json.loads(
-                        rec.extracted_json or '[]'
-                    )
-
-                    if isinstance(data, list):
-
-                        pages.extend(data)
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"PAGE LOAD FAILED → "
-
-                        f"{str(e)}"
-                    )
+            return
 
 
         # =====================================================
-        # EXCEL MODE
+        # LOAD EXISTING AI RESPONSE
         # =====================================================
 
-        else:
+        existing_pages = []
+
+
+        if self.ai_response:
 
             try:
 
-                pages = json.loads(
-                    self.extracted_text or "[]"
+                loaded = json.loads(
+                    self.ai_response
                 )
 
-            except Exception:
+                if isinstance(
+                    loaded,
+                    list
+                ):
 
-                _logger.error(
-                    "INVALID extracted_text JSON"
+                    existing_pages = loaded
+
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI] "
+
+                    f"LOAD EXISTING FAILED "
+
+                    f"| {str(e)}"
                 )
 
-                return
+                existing_pages = []
+
+
+        # =====================================================
+        # FIND PROCESSED PAGES
+        # =====================================================
+
+        processed_pages = set()
+
+
+        for p in existing_pages:
+
+            page_num = p.get("page")
+
+            if page_num:
+
+                processed_pages.add(
+                    page_num
+                )
+
+
+        _logger.warning(
+
+            f"[PDF AI] "
+
+            f"PROCESSED PAGES="
+
+            f"{sorted(list(processed_pages))}"
+        )
+
+
+        # =====================================================
+        # FIND NEXT PAGE
+        # =====================================================
+
+        next_record = None
+
+
+        for record in page_records:
+
+            if (
+
+                record.page_number
+
+                not in processed_pages
+
+            ):
+
+                next_record = record
+
+                break
+
+
+        # =====================================================
+        # ALL COMPLETE
+        # =====================================================
+
+        if not next_record:
+
+            _logger.warning(
+                "[PDF AI] COMPLETE ✅"
+            )
+
+            self.last_ai_page = (
+                total_available_pages
+            )
+
+            self.state = "pdf_creating"
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            return
+
+
+        _logger.warning(
+
+            f"[PDF AI] "
+
+            f"PROCESSING PAGE "
+
+            f"{next_record.page_number}"
+        )
+
+
+        # =====================================================
+        # LOAD PAGE DATA
+        # =====================================================
+
+        try:
+
+            page_blocks = json.loads(
+
+                next_record.extracted_json
+                or
+                "[]"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[PDF AI] "
+
+                f"PAGE LOAD FAILED "
+
+                f"| PAGE "
+
+                f"{next_record.page_number} "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        if not page_blocks:
+
+            _logger.warning(
+
+                f"[PDF AI] "
+
+                f"EMPTY PAGE BLOCKS "
+
+                f"| PAGE "
+
+                f"{next_record.page_number}"
+            )
+
+            return
+
+
+        # =====================================================
+        # BUILD PAGE DATA
+        # =====================================================
+
+        page_text = "\n".join([
+
+            p.get("text", "")
+
+            for p in page_blocks
+
+        ])
+
+
+        page_images = []
+
+
+        for p in page_blocks:
+
+            page_images.extend(
+                p.get("images", [])
+            )
+
+
+        page_price = ""
+
+        page_stock = ""
+
+
+        for p in page_blocks:
+
+            if (
+
+                not page_price
+
+                and
+
+                p.get("price")
+
+            ):
+
+                page_price = (
+                    p.get("price")
+                )
+
+
+            if (
+
+                not page_stock
+
+                and
+
+                p.get("stock")
+
+            ):
+
+                page_stock = (
+                    p.get("stock")
+                )
+
+
+        # =====================================================
+        # PROMPT
+        # =====================================================
+
+        prompt = f"""
+        You are an advanced product extraction and interpretation engine for catalog PDFs.
+
+        =====================
+        CORE RULES (STRICT)
+        =====================
+
+        1. RETURN ONLY VALID JSON
+        2. NO explanation
+        3. NO markdown
+        4. NO text outside JSON
+        5. DO NOT duplicate products WITHIN THE SAME PAGE
+        6. DO NOT skip any product
+        7. EACH product must appear exactly once PER PAGE
+
+        IMPORTANT GLOBAL RULE:
+
+        - This input represents ONLY ONE PAGE of a catalog
+        - You MUST extract ONLY products visible on THIS PAGE
+        - DO NOT repeat products from previous pages
+        - DO NOT assume products continue across pages
+
+        =====================
+        PRODUCT DETECTION LOGIC
+        =====================
+
+        A page may contain:
+
+        (A) ONE large product (hero layout)
+        (B) MULTIPLE products (grid/catalog layout)
+        (C) MIX of large + small supporting products
+
+        You MUST:
+
+        - If SINGLE main product:
+        → return ONE product
+
+        - If MULTIPLE distinct products:
+        → extract EACH product separately
+
+        IMPORTANT:
+
+        - If multiple images exist → assume multiple products
+        - DO NOT collapse multiple items into one product
+        - If unsure → split into multiple products instead of merging
+
+        CRITICAL:
+
+        - Products are typically aligned with images
+        - Each image or grouped images usually represent a product
+        - DO NOT treat the whole page as one product
+
+        =====================
+        VARIANT DETECTION LOGIC (CRITICAL)
+        =====================
+
+        Products in catalogs may appear as multiple similar images WITHOUT explicit labels like "color" or "size".
+
+        You MUST detect variants using visual, structural, and contextual clues.
+
+        A product HAS VARIANTS ONLY IF:
+
+        - The items are clearly the SAME product design
+        - Differences are ONLY color, size, or minor variation
+        - The items would share the same product name in a store
+
+        DO NOT group items as variants if:
+        - They are different product types
+        - They have different shapes or purposes
+        - They would be listed separately in an e-commerce store
+
+        =====================
+        CRITICAL VARIANT COUNT RULE
+        =====================
+
+        - If multiple similar items are displayed in a row or grid:
+        → EACH visible item MUST be treated as a variant
+
+        - You MUST COUNT the number of visible items
+        - DO NOT estimate
+        - DO NOT reduce the count
+
+        =====================
+        OUTPUT FORMAT
+        =====================
+
+        [
+            {{
+                "name": "",
+                "description": "",
+                "category": "",
+                "price": "",
+                "stock": "",
+                "variant_group": "",
+                "variants": [
+                    {{
+                        "attributes": {{
+                            "Color": ""
+                        }},
+                        "image_index": 0,
+                        "stock": null
+                    }}
+                ]
+            }}
+        ]
+
+        PAGE TEXT:
+        {page_text}
+
+        DETECTED PRICE:
+        {page_price}
+
+        DETECTED STOCK:
+        {page_stock}
+        """
+
+
+        # =====================================================
+        # AI CALL
+        # =====================================================
+
+        try:
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt,
+
+                timeout=40
+            )
+
+
+            result = (
+                response.output_text or ""
+            ).strip()
+
+
+            result = result.replace(
+                "```json",
+                ""
+            )
+
+            result = result.replace(
+                "```",
+                ""
+            ).strip()
+
+
+            if not result:
+
+                raise Exception(
+                    "EMPTY AI RESPONSE"
+                )
+
+
+            parsed = json.loads(
+                result
+            )
+
+
+            if not isinstance(
+                parsed,
+                list
+            ):
+
+                parsed = []
+
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[PDF AI] "
+
+                f"FAILED "
+
+                f"| PAGE "
+
+                f"{next_record.page_number} "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        # =====================================================
+        # ATTACH IMAGES
+        # =====================================================
+
+        for p_index, prod in enumerate(
+            parsed
+        ):
+
+            if (
+
+                page_images
+
+                and
+
+                p_index < len(page_images)
+
+            ):
+
+                prod["image"] = (
+                    page_images[p_index]
+                )
+
+
+        # =====================================================
+        # MERGE RESULTS
+        # =====================================================
+
+        existing_map = {}
+
+
+        for p in existing_pages:
+
+            existing_map[
+                p.get("page")
+            ] = p
+
+
+        existing_map[
+            next_record.page_number
+        ] = {
+
+            "page": next_record.page_number,
+
+            "products": parsed
+        }
+
+
+        combined_pages = sorted(
+
+            list(existing_map.values()),
+
+            key=lambda x: x.get(
+                "page",
+                0
+            )
+        )
+
+
+        # =====================================================
+        # SAVE
+        # =====================================================
+
+        self.ai_response = json.dumps(
+            combined_pages
+        )
+
+
+        self.last_ai_page = len(
+            combined_pages
+        )
+
+
+        _logger.warning(
+
+            f"[PDF AI] "
+
+            f"PAGE SAVED "
+
+            f"| PAGE "
+
+            f"{next_record.page_number}"
+        )
+
+
+        # =====================================================
+        # NEXT STATE
+        # =====================================================
+
+        if (
+
+            self.last_ai_page
+
+            <
+
+            total_available_pages
+
+        ):
+
+            self.state = "pdf_ai"
+
+        else:
+
+            _logger.warning(
+                "[PDF AI] COMPLETE ✅"
+            )
+
+            self.state = "pdf_creating"
+
+
+        self.flush_recordset()
+
+        self.env.cr.commit()
+
+        return
+
+    #===========Excel Open AI================================
+
+    def send_to_openai_excel(self):
+
+        import json
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+
+            raise Exception(
+                "OpenAI API key not configured"
+            )
+
+
+        client = OpenAI(
+            api_key=api_key
+        )
+
+
+        _logger.warning(
+            "[EXCEL AI] START"
+        )
+
+
+        # =====================================================
+        # LOAD EXTRACTED DATA
+        # =====================================================
+
+        try:
+
+            pages = json.loads(
+                self.extracted_text or "[]"
+            )
+
+        except Exception as e:
+
+            _logger.error(
+
+                f"[EXCEL AI] "
+
+                f"INVALID extracted_text JSON "
+
+                f"| {str(e)}"
+            )
+
+            return
 
 
         # =====================================================
@@ -2365,7 +3099,8 @@ class VendorImportJob(models.Model):
         if not pages:
 
             _logger.error(
-                "NO PAGES TO PROCESS"
+                "[EXCEL AI] "
+                "NO ROWS TO PROCESS"
             )
 
             return
@@ -2373,137 +3108,134 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"TOTAL LOADED BLOCKS → "
+            f"[EXCEL AI] "
 
-            f"{len(pages)}"
+            f"TOTAL ROWS={len(pages)}"
         )
 
 
         # =====================================================
-        # MODE DETECTION
+        # BATCH
         # =====================================================
 
-    
-        is_excel = bool(self.excel_file)
-    
+        BATCH_SIZE = 5
+
+        start = (
+            self.excel_ai_index or 0
+        )
+
+        end = min(
+
+            start + BATCH_SIZE,
+
+            len(pages)
+        )
+
+
+        batch = pages[start:end]
+
+
         _logger.warning(
 
-            f"MODE DETECTED → "
+            f"[EXCEL AI] "
 
-            f"{'EXCEL' if is_excel else 'PDF'}"
+            f"PROCESSING ROWS "
+
+            f"{start} to {end}"
         )
 
 
         # =====================================================
-        # EXCEL MODE
+        # LOAD EXISTING PRODUCTS
         # =====================================================
 
-        if is_excel:
+        existing_products = []
 
-            BATCH_SIZE = 5
 
-            start = (
-                self.excel_ai_index or 0
+        if self.ai_response:
+
+            try:
+
+                data = json.loads(
+                    self.ai_response
+                )
+
+                if (
+                    isinstance(data, list)
+                    and data
+                ):
+
+                    existing_products = (
+                        data[0].get(
+                            "products",
+                            []
+                        )
+                    )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[EXCEL AI] "
+
+                    f"LOAD FAILED "
+
+                    f"| {str(e)}"
+                )
+
+                existing_products = []
+
+
+        new_products = []
+
+
+        # =====================================================
+        # LOOP ROWS
+        # =====================================================
+
+        for idx, row in enumerate(
+
+            batch,
+
+            start=start
+
+        ):
+
+            row_text = row.get(
+                "text",
+                ""
             )
 
-            end = min(
-                start + BATCH_SIZE,
-                len(pages)
+            row_price = row.get(
+                "price",
+                ""
             )
 
+            row_stock = row.get(
+                "stock",
+                ""
+            )
 
-            batch = pages[start:end]
+            images = row.get(
+                "images",
+                []
+            )
 
 
             _logger.warning(
 
-                f"EXCEL AI → "
+                f"[EXCEL AI INPUT] "
 
-                f"PROCESSING ROWS "
+                f"ROW={idx} "
 
-                f"{start} to {end}"
+                f"| PRICE={row_price} "
+
+                f"| STOCK={row_stock}"
             )
 
 
-            existing_products = []
-
-
-            if self.ai_response:
-
-                try:
-
-                    data = json.loads(
-                        self.ai_response
-                    )
-
-                    if (
-                        isinstance(data, list)
-                        and data
-                    ):
-
-                        existing_products = (
-                            data[0].get(
-                                "products",
-                                []
-                            )
-                        )
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"EXCEL AI LOAD FAILED "
-
-                        f"→ {str(e)}"
-                    )
-
-                    existing_products = []
-
-
-            new_products = []
-
-
-            for idx, row in enumerate(
-
-                batch,
-
-                start=start
-
-            ):
-
-                row_text = row.get(
-                    "text",
-                    ""
-                )
-
-                row_price = row.get(
-                    "price",
-                    ""
-                )
-
-                row_stock = row.get(
-                    "stock",
-                    ""
-                )
-
-                images = row.get(
-                    "images",
-                    []
-                )
-
-
-                _logger.warning(
-
-                    f"[EXCEL AI INPUT] → "
-
-                    f"ROW={idx} | "
-
-                    f"PRICE={row_price} | "
-
-                    f"STOCK={row_stock}"
-                )
-
-                prompt = f"""
+                
+            prompt = f"""
                 You are a structured Excel product parser.
 
                 Each input represents EXACTLY ONE ROW = ONE PRODUCT.
@@ -2627,792 +3359,205 @@ class VendorImportJob(models.Model):
                 """
 
 
+            try:
+
+                response = client.responses.create(
+
+                    model="gpt-4.1-mini",
+
+                    input=prompt,
+
+                    timeout=60
+                )
+
+
+                result = (
+                    response.output_text or ""
+                ).strip()
+
+
+                # =================================================
+                # CLEAN MARKDOWN
+                # =================================================
+
+                result = result.replace(
+                    "```json",
+                    ""
+                )
+
+                result = result.replace(
+                    "```",
+                    ""
+                ).strip()
+
+
+                if not result:
+
+                    raise Exception(
+                        "EMPTY AI RESPONSE"
+                    )
+
+
                 try:
 
-                    response = client.responses.create(
-
-                        model="gpt-4.1-mini",
-
-                        input=prompt,
-
-                        timeout=60
+                    parsed = json.loads(
+                        result
                     )
-
-                    result = (
-                        response.output_text or ""
-                    ).strip()
-
-
-                    # =====================================
-                    # CLEAN MARKDOWN
-                    # =====================================
-
-                    result = result.replace(
-                        "```json",
-                        ""
-                    )
-
-                    result = result.replace(
-                        "```",
-                        ""
-                    ).strip()
-
-
-                    if not result:
-
-                        raise Exception(
-                            "EMPTY AI RESPONSE"
-                        )
-
-
-                    try:
-
-                        parsed = json.loads(result)
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"INVALID EXCEL JSON → "
-
-                            f"{result[:500]}"
-                        )
-
-                        raise e
-                    
-
-                    if (
-                        isinstance(parsed, list)
-                        and parsed
-                    ):
-
-                        parsed = parsed[0]
-
-
-                    if images:
-
-                        parsed["image"] = (
-                            images[0]
-                        )
-
-
-                    _logger.warning(
-
-                        f"[EXCEL AI OUTPUT] → "
-
-                        f"NAME={parsed.get('name')} | "
-
-                        f"PRICE={parsed.get('price')} | "
-
-                        f"STOCK={parsed.get('stock')}"
-                    )
-
-
-                    new_products.append(parsed)
-
 
                 except Exception as e:
 
                     _logger.warning(
 
-                        f"ROW {idx} FAILED "
+                        f"[EXCEL AI] "
 
-                        f"→ {str(e)}"
+                        f"INVALID JSON "
+
+                        f"| {result[:500]}"
                     )
 
+                    raise e
 
-            combined_map = {}
-
-
-            for item in existing_products:
-
-                
-                key = (
-
-                    f"{item.get('variant_group','')}"
-
-                    f"__"
-
-                    f"{item.get('name','')}"
-
-                    f"__"
-
-                    f"{len(combined_map)}"
-                )
-            
-
-                combined_map[key] = item
-
-
-            for item in new_products:
-
-
-                key = (
-
-                    f"{item.get('variant_group','')}"
-
-                    f"__"
-
-                    f"{item.get('name','')}"
-
-                    f"__"
-
-                    f"{len(combined_map)}"
-                )
-            
-
-                combined_map[key] = item
-
-
-            combined = list(
-                combined_map.values()
-            )
-
-
-            self.ai_response = json.dumps([{
-
-                "page": 1,
-
-                "products": combined
-
-            }])
-
-
-            self.excel_ai_index = end
-        
-
-            _logger.warning(
-
-                f"EXCEL AI PROGRESS → "
-
-                f"{end}/{len(pages)}"
-            )
-
-
-            if end < len(pages):
-
-                self.state = "excel_ai"
-
-            else:
 
                 if (
 
-                    self.excel_created_index
+                    isinstance(parsed, list)
 
-                    >= len(pages)
+                    and parsed
 
                 ):
 
-                    self.state = "done"
+                    parsed = parsed[0]
 
-                else:
 
-                    _logger.warning(
-                        "EXCEL AI COMPLETE ✅"
+                # =================================================
+                # ATTACH IMAGE
+                # =================================================
+
+                if images:
+
+                    parsed["image"] = (
+                        images[0]
                     )
 
-                    self.state = (
-                        "excel_creating"
-                    )
-        
-            self.flush_recordset()
 
-            self.env.cr.commit()
+                _logger.warning(
 
-            return
+                    f"[EXCEL AI OUTPUT] "
 
-        # =====================================================
-        # PDF MODE
-        # =====================================================
+                    f"NAME={parsed.get('name')} "
 
-        BATCH_SIZE = 1
+                    f"| PRICE={parsed.get('price')} "
 
-
-        # =============================================
-        # LOAD PAGE RECORDS
-        # =============================================
-
-        page_records = self.env[
-            'vendor.import.page'
-        ].search([
-
-            ('job_id', '=', self.id)
-
-        ], order='page_number asc')
-
-
-        total_available_pages = len(
-            page_records
-        )
-
-
-        if total_available_pages <= 0:
-
-            _logger.warning(
-                "NO PDF PAGE RECORDS FOUND"
-            )
-
-            return
-
-
-        # =============================================
-        # LOAD EXISTING AI RESPONSE
-        # =============================================
-
-        existing_pages = []
-
-
-        if self.ai_response:
-
-            try:
-
-                loaded = json.loads(
-                    self.ai_response
+                    f"| STOCK={parsed.get('stock')}"
                 )
 
-                if isinstance(
-                    loaded,
-                    list
-                ):
 
-                    existing_pages = loaded
+                new_products.append(
+                    parsed
+                )
+
 
             except Exception as e:
 
                 _logger.warning(
 
-                    f"PDF AI LOAD FAILED "
+                    f"[EXCEL AI] "
 
-                    f"→ {str(e)}"
-                )
+                    f"ROW {idx} FAILED "
 
-                existing_pages = []
-
-
-        # =============================================
-        # FIND PROCESSED PAGES
-        # =============================================
-
-        processed_pages = set()
-
-
-        for p in existing_pages:
-
-            page_num = p.get("page")
-
-            if page_num:
-
-                processed_pages.add(
-                    page_num
+                    f"| {str(e)}"
                 )
 
 
-        # =============================================
-        # FIND NEXT PAGE
-        # =============================================
+        # =====================================================
+        # MERGE PRODUCTS
+        # =====================================================
 
-        next_record = None
-
-
-        for record in page_records:
-
-            if (
-                record.page_number
-                not in processed_pages
-            ):
-
-                next_record = record
-
-                break
+        combined_map = {}
 
 
-        # =============================================
-        # ALL COMPLETE
-        # =============================================
+        for item in existing_products:
 
-        if not next_record:
+            key = (
 
-            _logger.warning(
-                "PDF AI COMPLETE ✅"
+                f"{item.get('variant_group','')}"
+
+                f"__"
+
+                f"{item.get('name','')}"
+
+                f"__"
+
+                f"{len(combined_map)}"
             )
 
-            self.last_ai_page = (
-                total_available_pages
+            combined_map[key] = item
+
+
+        for item in new_products:
+
+            key = (
+
+                f"{item.get('variant_group','')}"
+
+                f"__"
+
+                f"{item.get('name','')}"
+
+                f"__"
+
+                f"{len(combined_map)}"
             )
 
-            self.state = "pdf_creating"
+            combined_map[key] = item
 
-            self.flush_recordset()
 
-            self.env.cr.commit()
+        combined = list(
+            combined_map.values()
+        )
 
-            return
+
+        # =====================================================
+        # SAVE AI RESPONSE
+        # =====================================================
+
+        self.ai_response = json.dumps([{
+
+            "page": 1,
+
+            "products": combined
+
+        }])
+
+
+        self.excel_ai_index = end
 
 
         _logger.warning(
 
-            f"AI → PROCESSING PAGE "
+            f"[EXCEL AI PROGRESS] "
 
-            f"{next_record.page_number}"
+            f"{end}/{len(pages)}"
         )
 
 
-        # =============================================
-        # LOAD PAGE DATA
-        # =============================================
-
-        try:
-
-            page_blocks = json.loads(
-
-                next_record.extracted_json
-                or
-                "[]"
-            )
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"PAGE LOAD FAILED "
-
-                f"→ PAGE "
-
-                f"{next_record.page_number} "
-
-                f"| {str(e)}"
-            )
-
-            return
-
-
-        if not page_blocks:
-
-            _logger.warning(
-
-                f"EMPTY PAGE BLOCKS "
-
-                f"→ PAGE "
-
-                f"{next_record.page_number}"
-            )
-
-            return
-
-
-        # =============================================
-        # BUILD PAGE DATA
-        # =============================================
-
-        page_text = "\n".join([
-
-            p.get("text", "")
-
-            for p in page_blocks
-
-        ])
-
-
-        page_images = []
-
-
-        for p in page_blocks:
-
-            page_images.extend(
-                p.get("images", [])
-            )
-
-
-        page_price = ""
-
-        page_stock = ""
-
-
-        for p in page_blocks:
-
-            if (
-                not page_price
-                and
-                p.get("price")
-            ):
-
-                page_price = (
-                    p.get("price")
-                )
-
-
-            if (
-                not page_stock
-                and
-                p.get("stock")
-            ):
-
-                page_stock = (
-                    p.get("stock")
-                )
-
-
-        # =============================================
-        # PROMPT
-        # =============================================
-
-          
-            prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
-
-            =====================
-            CORE RULES (STRICT)
-            =====================
-
-            1. RETURN ONLY VALID JSON
-            2. NO explanation
-            3. NO markdown
-            4. NO text outside JSON
-            5. DO NOT duplicate products WITHIN THE SAME PAGE
-            6. DO NOT skip any product
-            7. EACH product must appear exactly once PER PAGE
-
-            IMPORTANT GLOBAL RULE:
-
-            - This input represents ONLY ONE PAGE of a catalog
-            - You MUST extract ONLY products visible on THIS PAGE
-            - DO NOT repeat products from previous pages
-            - DO NOT assume products continue across pages
-
-            =====================
-            PRODUCT DETECTION LOGIC
-            =====================
-
-            A page may contain:
-
-            (A) ONE large product (hero layout)
-            (B) MULTIPLE products (grid/catalog layout)
-            (C) MIX of large + small supporting products
-
-            You MUST:
-
-            - If SINGLE main product:
-            → return ONE product
-
-            - If MULTIPLE distinct products:
-            → extract EACH product separately
-
-            IMPORTANT:
-
-            - If multiple images exist → assume multiple products
-            - DO NOT collapse multiple items into one product
-            - If unsure → split into multiple products instead of merging
-
-            CRITICAL:
-
-            - Products are typically aligned with images
-            - Each image or grouped images usually represent a product
-            - DO NOT treat the whole page as one product
-
-            =====================
-            VARIANT DETECTION LOGIC (CRITICAL)
-            =====================
-
-            Products in catalogs may appear as multiple similar images WITHOUT explicit labels like "color" or "size".
-
-            You MUST detect variants using visual, structural, and contextual clues.
-
-            A product HAS VARIANTS ONLY IF:
-
-            - The items are clearly the SAME product design
-            - Differences are ONLY color, size, or minor variation
-            - The items would share the same product name in a store
-
-            DO NOT group items as variants if:
-            - They are different product types
-            - They have different shapes or purposes
-            - They would be listed separately in an e-commerce store
-
-            =====================
-            🔥 CRITICAL VARIANT COUNT RULE (NEW)
-            =====================
-
-            - If multiple similar items are displayed in a row or grid:
-            → EACH visible item MUST be treated as a variant
-
-            - You MUST COUNT the number of visible items
-            - DO NOT estimate
-            - DO NOT reduce the count
-
-            EXAMPLES:
-
-            - If 10 shirts are visible → return 10 variants
-            - If 6 bottles are shown → return 6 variants
-
-            GRID RULE:
-
-            - Each grid item = 1 variant
-
-            VISUAL PRIORITY:
-
-            - Images override text
-            - If images show more items than text → trust images
-
-            FAIL CONDITION:
-
-            - Returning fewer variants than visible items is WRONG
-
-            =====================
-            VARIANT RULES
-            =====================
-
-            - Each product appears ONLY ONCE per page
-            - Variants must be grouped under "variants"
-            - If no variants exist → DO NOT include "variants"
-
-            ATTRIBUTE INFERENCE:
-
-            - If difference looks like color → use "Color"
-            - If difference looks like size → use "Size"
-            - If unclear → use "Variant"
-
-            =====================
-            VARIANT IMAGE MAPPING (VERY IMPORTANT)
-            =====================
-
-            - Each variant MUST map to an image
-
-            - Provide:
-            "image_index": index of image (starting from 0)
-
-            STRICT RULE:
-
-            - Number of variants MUST NOT exceed number of images
-            - If multiple variants exist → distribute across images
-
-            =====================
-            WHEN TO SPLIT PRODUCTS
-            =====================
-
-            Treat items as SEPARATE products ONLY IF:
-            - Names are clearly different
-            - Designs are significantly different
-            - They are unrelated items
-
-            If unsure:
-            → Prefer splitting into separate products
-
-            =====================
-            ANTI-REPETITION RULE
-            =====================
-
-            - If same product appears multiple times on THIS PAGE → return it ONLY ONCE
-
-            =====================
-            MINIMUM EXTRACTION RULE
-            =====================
-
-            - You MUST extract at least ONE product
-            - NEVER return empty list
-
-            =====================
-            OUTPUT FORMAT
-            =====================
-
-            [
-                {{
-                    "name": "",
-                    "description": "",
-                    "category": "",
-                    "price": "",
-                    "stock": "",
-                    "variant_group": "",
-                    "variants": [
-                        {{
-                            "attributes": {{
-                                "Color": ""
-                            }},
-                            "image_index": 0,
-                            "stock": null
-                        }}
-                    ]
-                }}
-            ]
-
-            PAGE CONTEXT:
-            - This page contains product images
-
-            TEXT TO ANALYZE:
-            PAGE TEXT:
-            {page_text}
-
-            DETECTED PRICE:
-            {page_price}
-
-            DETECTED STOCK:
-            {page_stock}
-            """
-
-
-        # =============================================
-        # AI CALL
-        # =============================================
-
-        try:
-
-            response = client.responses.create(
-
-                model="gpt-4.1-mini",
-
-                input=prompt,
-
-                timeout=40
-            )
-
-
-            result = (
-                response.output_text or ""
-            ).strip()
-
-
-            result = result.replace(
-                "```json",
-                ""
-            )
-
-            result = result.replace(
-                "```",
-                ""
-            ).strip()
-
-
-            if not result:
-
-                raise Exception(
-                    "EMPTY AI RESPONSE"
-                )
-
-
-            parsed = json.loads(
-                result
-            )
-
-
-            if not isinstance(
-                parsed,
-                list
-            ):
-
-                parsed = []
-
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"AI FAILED "
-
-                f"→ PAGE "
-
-                f"{next_record.page_number} "
-
-                f"| {str(e)}"
-            )
-
-            return
-
-
-        # =============================================
-        # ATTACH IMAGES
-        # =============================================
-
-        for p_index, prod in enumerate(
-            parsed
-        ):
-
-            if (
-                page_images
-                and
-                p_index < len(page_images)
-            ):
-
-                prod["image"] = (
-                    page_images[p_index]
-                )
-
-
-        # =============================================
-        # MERGE IMMEDIATELY
-        # =============================================
-
-        existing_map = {}
-
-
-        for p in existing_pages:
-
-            existing_map[
-                p.get("page")
-            ] = p
-
-
-        existing_map[
-            next_record.page_number
-        ] = {
-
-            "page": next_record.page_number,
-
-            "products": parsed
-        }
-
-
-        combined_pages = sorted(
-
-            list(existing_map.values()),
-
-            key=lambda x: x.get(
-                "page",
-                0
-            )
-        )
-
-
-        # =============================================
-        # SAVE IMMEDIATELY
-        # =============================================
-
-        self.ai_response = json.dumps(
-            combined_pages
-        )
-
-
-        self.last_ai_page = len(
-            combined_pages
-        )
-
-
-        _logger.warning(
-
-            f"AI PAGE SAVED "
-
-            f"→ PAGE "
-
-            f"{next_record.page_number}"
-        )
-
-
-        # =============================================
+        # =====================================================
         # NEXT STATE
-        # =============================================
+        # =====================================================
 
-        if (
-            self.last_ai_page
-            <
-            total_available_pages
-        ):
+        if end < len(pages):
 
-            self.state = "pdf_ai"
+            self.state = "excel_ai"
 
         else:
 
             _logger.warning(
-                "PDF AI COMPLETE ✅"
+                "[EXCEL AI] COMPLETE ✅"
             )
 
-            self.state = "pdf_creating"
+            self.state = (
+                "excel_creating"
+            )
 
 
         self.flush_recordset()
@@ -3420,7 +3565,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-    
+
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -3769,12 +3914,18 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
 
-    #==========create pdf and excel product==========================
-    def create_products_pdf_excel(self):
+    #==========create pdf product==========================
+   
+    def create_products_pdf(self):
 
         import json
         import re
         import time
+
+        _logger.warning(
+            "[PDF CREATE] START"
+        )
+
 
         # =====================================================
         # LOAD AI DATA
@@ -3783,7 +3934,7 @@ class VendorImportJob(models.Model):
         if not self.ai_response:
 
             _logger.warning(
-                "NO AI RESPONSE → STOP"
+                "[PDF CREATE] NO AI RESPONSE"
             )
 
             return
@@ -3798,90 +3949,60 @@ class VendorImportJob(models.Model):
         except Exception as e:
 
             _logger.error(
-                f"INVALID AI JSON → {str(e)}"
+
+                f"[PDF CREATE] INVALID AI JSON "
+
+                f"| {str(e)}"
             )
 
             return
 
 
         # =====================================================
-        # LOAD SOURCE DATA
+        # LOAD PDF PAGES
         # =====================================================
 
         pages = []
 
+        page_records = self.env[
+            'vendor.import.page'
+        ].search([
 
-        # =====================================================
-        # PDF MODE
-        # =====================================================
+            ('job_id', '=', self.id)
 
-        if self.pdf_file:
-
-            page_records = self.env[
-                'vendor.import.page'
-            ].search([
-
-                ('job_id', '=', self.id)
-
-            ], order='page_number asc')
+        ], order='page_number asc')
 
 
-            _logger.warning(
-                f"[PDF CREATE DEBUG] "
-                f"PAGE RECORDS={len(page_records)}"
-            )
+        _logger.warning(
+
+            f"[PDF CREATE] "
+
+            f"PAGE RECORDS={len(page_records)}"
+        )
 
 
-            for rec in page_records:
-
-                try:
-
-                    data = json.loads(
-                        rec.extracted_json or "[]"
-                    )
-
-                    if isinstance(data, list):
-
-                        pages.extend(data)
-
-                except Exception as e:
-
-                    _logger.warning(
-                        f"[PDF CREATE LOAD FAILED] "
-                        f"PAGE={rec.page_number} "
-                        f"| {str(e)}"
-                    )
-
-
-        # =====================================================
-        # EXCEL MODE
-        # =====================================================
-
-        else:
-
-            if not self.extracted_text:
-
-                _logger.warning(
-                    "NO EXTRACTED TEXT → STOP"
-                )
-
-                return
-
+        for rec in page_records:
 
             try:
 
-                pages = json.loads(
-                    self.extracted_text
+                data = json.loads(
+                    rec.extracted_json or "[]"
                 )
+
+                if isinstance(data, list):
+
+                    pages.extend(data)
 
             except Exception as e:
 
-                _logger.error(
-                    f"INVALID EXTRACTED JSON "
-                    f"→ {str(e)}"
-                )
+                _logger.warning(
 
-                return
+                    f"[PDF CREATE LOAD FAILED] "
+
+                    f"PAGE={rec.page_number} "
+
+                    f"| {str(e)}"
+                )
 
 
         # =====================================================
@@ -3889,34 +4010,30 @@ class VendorImportJob(models.Model):
         # =====================================================
 
         _logger.warning(
-            f"[CREATE DEBUG] "
+
+            f"[PDF CREATE DEBUG] "
+
             f"PAGES={len(pages)} "
-            f"| AI={len(ai_pages)} "
-            f"| PDF={bool(self.pdf_file)} "
-            f"| EXCEL={bool(self.excel_file)}"
+
+            f"| AI={len(ai_pages)}"
         )
 
 
         if not pages:
 
             _logger.warning(
-                "NO SOURCE PAGES FOUND"
+                "[PDF CREATE] "
+                "NO SOURCE PAGES"
             )
 
             return
-
-
-        _logger.warning(
-            "CREATING PRODUCTS "
-            "(SAFE FINAL VERSION)"
-        )
 
 
         created_count = 0
 
 
         # =====================================================
-        # SHARED MODELS
+        # MODELS
         # =====================================================
 
         product_obj = self.env[
@@ -3929,57 +4046,10 @@ class VendorImportJob(models.Model):
 
 
         _logger.warning(
-            "[CREATE INIT] "
-            "product_obj + category_obj ready"
+            "[PDF CREATE INIT] "
+            "MODELS READY"
         )
 
-
-        # =====================================================
-        # BATCH
-        # =====================================================
-
-        BATCH_SIZE = 5
-
-
-        # =====================================================
-        # SAFE MODE INDEXING
-        # =====================================================
-
-        if self.pdf_file:
-
-            start = self.last_created_page or 0
-
-            total_items = len(ai_pages)
-
-        else:
-
-            start = self.excel_created_index or 0
-
-            # IMPORTANT:
-            # Excel uses extracted rows/pages count
-            # NOT ai_pages count
-            total_items = len(pages)
-
-
-        end = min(
-            start + BATCH_SIZE,
-            total_items
-        )
-
-
-        _logger.warning(
-
-            f"[CREATE RANGE] "
-
-            f"START={start} "
-
-            f"| END={end} "
-
-            f"| TOTAL={total_items} "
-
-            f"| PDF={bool(self.pdf_file)} "
-            f"| EXCEL={bool(self.excel_file)}"
-        )
 
         # =====================================================
         # CATEGORY MAP
@@ -4009,6 +4079,10 @@ class VendorImportJob(models.Model):
         }
 
 
+        # =====================================================
+        # ROOT CATEGORY
+        # =====================================================
+
         parent_category = category_obj.search([
 
             ('name', '=', "All Products")
@@ -4026,39 +4100,40 @@ class VendorImportJob(models.Model):
 
 
         vendor_id = (
+
             self.partner_id.id
+
             if self.partner_id
+
             else False
         )
 
 
         # =====================================================
-        # RECOVERY
+        # BATCH
         # =====================================================
 
-        try:
+        BATCH_SIZE = 5
 
-            completed_pages = set(
+        start = self.last_created_page or 0
 
-                json.loads(
-                    self.processed_group_ids
-                    or
-                    "[]"
-                )
-            )
+        end = min(
 
-        except Exception:
+            start + BATCH_SIZE,
 
-            completed_pages = set()
+            len(ai_pages)
+        )
 
 
         _logger.warning(
 
-            f"[PDF RECOVERY] "
+            f"[PDF RANGE] "
 
-            f"completed pages "
+            f"START={start} "
 
-            f"→ {sorted(list(completed_pages))}"
+            f"| END={end} "
+
+            f"| TOTAL={len(ai_pages)}"
         )
 
 
@@ -4070,89 +4145,21 @@ class VendorImportJob(models.Model):
 
             try:
 
-                # =====================================
-                # PDF MODE
-                # =====================================
+                page_data = ai_pages[
+                    page_index
+                ]
 
-                if self.pdf_file:
-
-                    page_data = ai_pages[page_index]
-
-                    page_number = page_data.get(
-                        "page"
-                    )
-
-
-                # =====================================
-                # EXCEL MODE
-                # =====================================
-
-                else:
-
-                    page_data = pages[page_index]
-
-                    page_number = page_data.get(
-                        "page"
-                    )
-
-
-                    ai_page = next(
-
-                        (
-
-                            p for p in ai_pages
-
-                            if p.get("page")
-                            == page_number
-
-                        ),
-
-                        None
-                    )
-
-
-                    if not ai_page:
-
-                        _logger.warning(
-
-                            f"[EXCEL] "
-
-                            f"NO AI PAGE "
-
-                            f"| page={page_number}"
-                        )
-
-                        continue
-
-
-                    page_data = ai_page
-
+                page_number = page_data.get(
+                    "page"
+                )
 
             except Exception as e:
 
                 _logger.warning(
 
-                    f"[CREATE LOOP ERROR] "
+                    f"[PDF LOOP ERROR] "
 
                     f"{str(e)}"
-                )
-
-                continue
-
-
-            if (
-                self.pdf_file
-                and
-                page_number in completed_pages
-            ):
-
-                _logger.warning(
-
-                    f"[PDF SKIP] "
-
-                    f"already completed "
-
-                    f"| page={page_number}"
                 )
 
                 continue
@@ -4166,13 +4173,17 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"[CREATE PAGE] "
+                f"[PDF PAGE] "
 
                 f"page={page_number} "
 
                 f"| products={len(products)}"
             )
 
+
+            # =================================================
+            # CREATE PRODUCTS
+            # =================================================
 
             for product_data in products:
 
@@ -4206,7 +4217,9 @@ class VendorImportJob(models.Model):
                     ).lower()
 
 
-                    mapped_category = "General"
+                    mapped_category = (
+                        "General"
+                    )
 
 
                     for key, val in CATEGORY_MAPPING.items():
@@ -4275,7 +4288,7 @@ class VendorImportJob(models.Model):
 
                         _logger.warning(
 
-                            f"[CREATE SKIP] "
+                            f"[PDF SKIP] "
 
                             f"DUPLICATE "
 
@@ -4336,7 +4349,7 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"[PRODUCT CREATED] "
+                        f"[PDF PRODUCT CREATED] "
 
                         f"{name}"
                     )
@@ -4346,45 +4359,29 @@ class VendorImportJob(models.Model):
 
                     _logger.exception(
 
-                        f"[CREATE ERROR] "
+                        f"[PDF CREATE ERROR] "
 
                         f"{str(e)}"
                     )
 
 
             # =================================================
-            # SAVE RECOVERY
+            # SAVE PROGRESS
             # =================================================
 
-            if self.pdf_file:
-
-                completed_pages.add(
-                    page_number
-                )
-
-                self.processed_group_ids = json.dumps(
-
-                    list(completed_pages)
-                )
+            self.last_created_page = (
+                page_index + 1
+            )
 
 
-                self.last_created_page = (
-                    page_index + 1
-                )
+            _logger.warning(
 
+                f"[PDF TRACKED] "
 
-                _logger.warning(
+                f"last_created_page="
 
-                    f"[PDF TRACKED] "
-
-                    f"page={page_number}"
-                )
-
-            else:
-
-                self.excel_created_index = (
-                    page_index + 1
-                )
+                f"{self.last_created_page}"
+            )
 
 
             self.flush_recordset()
@@ -4398,31 +4395,528 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"[CREATE COMPLETE] "
+            f"[PDF CREATE COMPLETE] "
 
             f"created={created_count}"
         )
 
 
-        if self.pdf_file:
+        if self.last_created_page >= len(ai_pages):
 
-            if self.last_created_page >= len(ai_pages):
-
-                self.state = 'done'
-
-            else:
-
-                self.state = 'pdf_creating'
+            self.state = 'done'
 
         else:
 
-            if self.excel_created_index >= len(ai_pages):
+            self.state = 'pdf_creating'
 
-                self.state = 'done'
 
-            else:
+        self.flush_recordset()
 
-                self.state = 'excel_creating'
+        self.env.cr.commit()
+
+
+    #==========create excel product==========================
+    def create_products_excel(self):
+
+        import json
+        import time
+
+        _logger.warning(
+            "[EXCEL CREATE] START"
+        )
+
+
+        # =====================================================
+        # VALIDATION
+        # =====================================================
+
+        if not self.ai_response:
+
+            _logger.warning(
+                "[EXCEL CREATE] "
+                "NO AI RESPONSE"
+            )
+
+            return
+
+
+        if not self.extracted_text:
+
+            _logger.warning(
+                "[EXCEL CREATE] "
+                "NO EXTRACTED TEXT"
+            )
+
+            return
+
+
+        # =====================================================
+        # LOAD EXTRACTED DATA
+        # =====================================================
+
+        try:
+
+            extracted_pages = json.loads(
+                self.extracted_text
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+
+                f"[EXCEL CREATE] "
+
+                f"EXTRACTED JSON ERROR "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        # =====================================================
+        # LOAD AI DATA
+        # =====================================================
+
+        try:
+
+            ai_pages = json.loads(
+                self.ai_response
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+
+                f"[EXCEL CREATE] "
+
+                f"AI JSON ERROR "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        _logger.warning(
+
+            f"[EXCEL CREATE] "
+
+            f"EXTRACTED={len(extracted_pages)} "
+
+            f"| AI={len(ai_pages)}"
+        )
+
+
+        if not ai_pages:
+
+            _logger.warning(
+                "[EXCEL CREATE] "
+                "NO AI PAGES"
+            )
+
+            return
+
+
+        # =====================================================
+        # EXCEL AI STRUCTURE
+        # =====================================================
+
+        ai_data = ai_pages[0]
+
+        products = ai_data.get(
+            "products",
+            []
+        )
+
+
+        _logger.warning(
+
+            f"[EXCEL CREATE] "
+
+            f"TOTAL PRODUCTS={len(products)}"
+        )
+
+
+        if not products:
+
+            _logger.warning(
+                "[EXCEL CREATE] "
+                "NO PRODUCTS"
+            )
+
+            return
+
+
+        # =====================================================
+        # MODELS
+        # =====================================================
+
+        product_obj = self.env[
+            'product.template'
+        ]
+
+        category_obj = self.env[
+            'product.category'
+        ]
+
+
+        # =====================================================
+        # ROOT CATEGORY
+        # =====================================================
+
+        parent_category = category_obj.search([
+
+            ('name', '=', "All Products")
+
+        ], limit=1)
+
+
+        if not parent_category:
+
+            parent_category = category_obj.create({
+
+                'name': "All Products"
+
+            })
+
+
+        vendor_id = (
+
+            self.partner_id.id
+
+            if self.partner_id
+
+            else False
+        )
+
+
+        # =====================================================
+        # CATEGORY MAP
+        # =====================================================
+
+        CATEGORY_MAPPING = {
+
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
+            "football": "Football Fever",
+            "Wristband": "Football Fever",
+            "sports t-shirt": "Football Fever",
+            "sports towel": "Football Fever",
+            "Sports Bottles": "Football Fever"
+        }
+
+
+        # =====================================================
+        # BATCHING
+        # =====================================================
+
+        BATCH_SIZE = 10
+
+        start = (
+            self.excel_created_index
+            or 0
+        )
+
+        end = min(
+
+            start + BATCH_SIZE,
+
+            len(products)
+        )
+
+
+        _logger.warning(
+
+            f"[EXCEL RANGE] "
+
+            f"START={start} "
+
+            f"| END={end} "
+
+            f"| TOTAL={len(products)}"
+        )
+
+
+        created_count = 0
+
+
+        # =====================================================
+        # MAIN LOOP
+        # =====================================================
+
+        for idx in range(start, end):
+
+            try:
+
+                product_data = products[idx]
+
+
+                name = (
+
+                    product_data.get(
+                        "name"
+                    )
+
+                    or ""
+
+                ).strip()
+
+
+                if not name:
+
+                    _logger.warning(
+
+                        f"[EXCEL SKIP] "
+
+                        f"EMPTY NAME "
+
+                        f"| index={idx}"
+                    )
+
+                    self.excel_created_index = (
+                        idx + 1
+                    )
+
+                    continue
+
+
+                description = (
+
+                    product_data.get(
+                        "description"
+                    )
+
+                    or ""
+                )
+
+
+                raw_category = (
+
+                    product_data.get(
+                        "category"
+                    )
+
+                    or ""
+
+                ).lower()
+
+
+                mapped_category = (
+                    "General"
+                )
+
+
+                for key, val in CATEGORY_MAPPING.items():
+
+                    if key in raw_category:
+
+                        mapped_category = val
+
+                        break
+
+
+                category = category_obj.search([
+
+                    ('name', '=', mapped_category),
+
+                    (
+                        'parent_id',
+                        '=',
+                        parent_category.id
+                    )
+
+                ], limit=1)
+
+
+                if not category:
+
+                    category = category_obj.create({
+
+                        'name': mapped_category,
+
+                        'parent_id':
+                            parent_category.id
+                    })
+
+
+                variant_group = (
+
+                    product_data.get(
+                        "variant_group"
+                    )
+
+                    or
+
+                    name
+                )
+
+
+                # =================================================
+                # SAFER DUPLICATE CHECK
+                # =================================================
+
+                existing = product_obj.search([
+
+                    (
+                        'name',
+                        '=',
+                        name
+                    ),
+
+                    (
+                        'vendor_id',
+                        '=',
+                        vendor_id
+                    )
+
+                ], limit=1)
+
+
+                if existing:
+
+                    _logger.warning(
+
+                        f"[EXCEL SKIP] "
+
+                        f"EXISTING NAME "
+
+                        f"| {name}"
+                    )
+
+                    self.excel_created_index = (
+                        idx + 1
+                    )
+
+                    continue
+
+
+                # =================================================
+                # CREATE VALUES
+                # =================================================
+
+                vals = {
+
+                    'name': name,
+
+                    'default_code':
+                        variant_group,
+
+                    'description_sale':
+                        description,
+
+                    'categ_id':
+                        category.id,
+
+                    'sale_ok': True,
+
+                    'website_published':
+                        False,
+
+                    'vendor_id':
+                        vendor_id,
+                }
+
+
+                image = product_data.get(
+                    "image"
+                )
+
+
+                if image:
+
+                    vals[
+                        'image_1920'
+                    ] = image
+
+
+                # =================================================
+                # CREATE PRODUCT
+                # =================================================
+
+                product_obj.with_context(
+
+                    mail_create_nolog=True,
+
+                    mail_notify_force_send=False,
+
+                    tracking_disable=True
+
+                ).create(vals)
+
+
+                created_count += 1
+
+
+                _logger.warning(
+
+                    f"[EXCEL PRODUCT CREATED] "
+
+                    f"{name}"
+                )
+
+
+                # =================================================
+                # SAVE PROGRESS
+                # =================================================
+
+                self.excel_created_index = (
+                    idx + 1
+                )
+
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
+
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[EXCEL CREATE ERROR] "
+
+                    f"INDEX={idx} "
+
+                    f"| {str(e)}"
+                )
+
+
+        # =====================================================
+        # FINAL LOG
+        # =====================================================
+
+        _logger.warning(
+
+            f"[EXCEL CREATE COMPLETE] "
+
+            f"created={created_count}"
+        )
+
+
+        # =====================================================
+        # FINAL STATE
+        # =====================================================
+
+        if self.excel_created_index >= len(products):
+
+            self.state = 'done'
+
+        else:
+
+            self.state = 'excel_creating'
 
 
         self.flush_recordset()
@@ -4529,7 +5023,6 @@ class VendorImportJob(models.Model):
     # =====================================================
     # CRON PROCESSOR
     # =====================================================
-
     def run_pending_jobs(self):
 
         from odoo import fields
@@ -4558,7 +5051,7 @@ class VendorImportJob(models.Model):
 
 
         # =================================================
-        # REMOVE DUPLICATES
+        # LOAD JOBS
         # =================================================
 
         jobs = self.search(
@@ -4572,9 +5065,14 @@ class VendorImportJob(models.Model):
         _logger.warning(
 
             f"[CRON] ACTIVE JOBS "
+
             f"→ {len(jobs)}"
         )
 
+
+        # =================================================
+        # REMOVE DUPLICATES
+        # =================================================
 
         seen = {}
 
@@ -4588,6 +5086,7 @@ class VendorImportJob(models.Model):
             sig = j.upload_signature
 
             if not sig:
+
                 continue
 
 
@@ -4613,6 +5112,7 @@ class VendorImportJob(models.Model):
             _logger.warning(
 
                 f"[CRON] REMOVING DUPLICATES "
+
                 f"→ {len(duplicates)}"
             )
 
@@ -4629,13 +5129,15 @@ class VendorImportJob(models.Model):
             except Exception as e:
 
                 _logger.exception(
+
                     f"[CRON ERROR] "
+
                     f"DUPLICATE DELETE FAILED "
+
                     f"→ {str(e)}"
                 )
 
 
- 
         # =================================================
         # RECOVER STALE LOCKS
         # =================================================
@@ -4730,58 +5232,6 @@ class VendorImportJob(models.Model):
             )
 
             return
-    
-
-        # =================================================
-        # LOCK CHECK
-        # =================================================
-
-        if job.lock:
-
-            try:
-
-                delta = (
-
-                    fields.Datetime.now()
-
-                    - job.write_date
-
-                ).total_seconds()
-
-            except Exception:
-
-                delta = 0
-
-
-            if delta > 60:
-
-                _logger.warning(
-
-                    f"[CRON] FORCE UNLOCK "
-
-                    f"| job={job.id}"
-                )
-
-                try:
-
-                    job.lock = False
-
-                    self.env.cr.commit()
-
-                except Exception:
-
-                    pass
-
-            else:
-
-                _logger.warning(
-
-                    f"[CRON] LOCKED "
-
-                    f"| job={job.id}"
-                )
-
-                return
 
 
         # =================================================
@@ -4791,7 +5241,7 @@ class VendorImportJob(models.Model):
         try:
 
             # =============================================
-            # LOCK JOB
+            # LOCK
             # =============================================
 
             job.lock = True
@@ -4808,14 +5258,13 @@ class VendorImportJob(models.Model):
 
 
             # =============================================
-            # MULTI STEP SAFE CHAIN
+            # SAFER CHAIN
             # =============================================
 
-            MAX_CHAIN = 10
+            MAX_CHAIN = 2
 
 
             for step in range(MAX_CHAIN):
-
 
                 # =========================================
                 # REFRESH
@@ -4869,7 +5318,7 @@ class VendorImportJob(models.Model):
 
 
                 # =========================================
-                # TRACK PROGRESS
+                # TRACK BEFORE
                 # =========================================
 
                 previous_state = (
@@ -4888,6 +5337,14 @@ class VendorImportJob(models.Model):
                     job.last_created_page or 0
                 )
 
+                previous_excel_ai = (
+                    job.excel_ai_index or 0
+                )
+
+                previous_excel_created = (
+                    job.excel_created_index or 0
+                )
+
 
                 _logger.warning(
 
@@ -4899,12 +5356,16 @@ class VendorImportJob(models.Model):
 
                     f"| ai={previous_ai_page} "
 
-                    f"| created={previous_created}"
+                    f"| create={previous_created} "
+
+                    f"| excel_ai={previous_excel_ai} "
+
+                    f"| excel_create={previous_excel_created}"
                 )
 
 
                 # =========================================
-                # PROCESS STEP
+                # PROCESS
                 # =========================================
 
                 try:
@@ -4941,7 +5402,7 @@ class VendorImportJob(models.Model):
 
 
                 # =========================================
-                # REFRESH AGAIN
+                # REFRESH AFTER
                 # =========================================
 
                 try:
@@ -4968,7 +5429,11 @@ class VendorImportJob(models.Model):
 
                     f"| ai={job.last_ai_page} "
 
-                    f"| created={job.last_created_page}"
+                    f"| create={job.last_created_page} "
+
+                    f"| excel_ai={job.excel_ai_index} "
+
+                    f"| excel_create={job.excel_created_index}"
                 )
 
 
@@ -4979,7 +5444,7 @@ class VendorImportJob(models.Model):
                 progress_detected = False
 
 
-                # extraction progress
+                # PDF extract progress
 
                 if (
 
@@ -4995,9 +5460,7 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"[PROGRESS] "
-
-                        f"PDF "
+                        f"[PROGRESS] PDF "
 
                         f"{previous_page}"
 
@@ -5007,7 +5470,7 @@ class VendorImportJob(models.Model):
                     )
 
 
-                # ai progress
+                # PDF AI progress
 
                 if (
 
@@ -5023,7 +5486,7 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"[PROGRESS] AI "
+                        f"[PROGRESS] PDF AI "
 
                         f"{previous_ai_page}"
 
@@ -5033,7 +5496,7 @@ class VendorImportJob(models.Model):
                     )
 
 
-                # create progress
+                # PDF create progress
 
                 if (
 
@@ -5049,13 +5512,65 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"[PROGRESS] CREATE "
+                        f"[PROGRESS] PDF CREATE "
 
                         f"{previous_created}"
 
                         f" → "
 
                         f"{job.last_created_page}"
+                    )
+
+
+                # Excel AI progress
+
+                if (
+
+                    (job.excel_ai_index or 0)
+
+                    >
+
+                    previous_excel_ai
+
+                ):
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        f"[PROGRESS] EXCEL AI "
+
+                        f"{previous_excel_ai}"
+
+                        f" → "
+
+                        f"{job.excel_ai_index}"
+                    )
+
+
+                # Excel create progress
+
+                if (
+
+                    (job.excel_created_index or 0)
+
+                    >
+
+                    previous_excel_created
+
+                ):
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        f"[PROGRESS] EXCEL CREATE "
+
+                        f"{previous_excel_created}"
+
+                        f" → "
+
+                        f"{job.excel_created_index}"
                     )
 
 
@@ -5078,7 +5593,7 @@ class VendorImportJob(models.Model):
 
 
                 # =========================================
-                # STOP / CONTINUE
+                # STOP IF NO PROGRESS
                 # =========================================
 
                 if not progress_detected:
@@ -5102,7 +5617,7 @@ class VendorImportJob(models.Model):
 
 
                 # =========================================
-                # SAFETY COMMIT
+                # COMMIT
                 # =========================================
 
                 try:
@@ -5140,10 +5655,6 @@ class VendorImportJob(models.Model):
             )
 
 
-            # =========================================
-            # ROLLBACK
-            # =========================================
-
             try:
 
                 self.env.cr.rollback()
@@ -5155,7 +5666,6 @@ class VendorImportJob(models.Model):
             except Exception:
 
                 _logger.warning(
-
                     "[CRON] ROLLBACK FAILED"
                 )
 
