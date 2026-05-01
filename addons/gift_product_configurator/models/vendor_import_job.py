@@ -3770,14 +3770,12 @@ class VendorImportJob(models.Model):
 
 
     #==========create pdf and excel product==========================
-
     def create_products_pdf_excel(self):
 
         import json
         import re
         import time
 
-       
         # =====================================================
         # LOAD AI DATA
         # =====================================================
@@ -3887,7 +3885,7 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # FINAL VALIDATION
+        # VALIDATION
         # =====================================================
 
         _logger.warning(
@@ -3908,13 +3906,18 @@ class VendorImportJob(models.Model):
             return
 
 
-        _logger.warning("CREATING PRODUCTS (FINAL STABLE VERSION WITH FIXED PDF)")
+        _logger.warning(
+            "CREATING PRODUCTS "
+            "(SAFE FINAL VERSION)"
+        )
+
 
         created_count = 0
 
-        # ======================================================
+
+        # =====================================================
         # SHARED MODELS
-        # ======================================================
+        # =====================================================
 
         product_obj = self.env[
             'product.template'
@@ -3929,15 +3932,52 @@ class VendorImportJob(models.Model):
             "[CREATE INIT] "
             "product_obj + category_obj ready"
         )
-        
 
+
+        # =====================================================
+        # BATCH
+        # =====================================================
 
         BATCH_SIZE = 5
-        
-        start = self.excel_created_index or 0
-        end = min(start + BATCH_SIZE, len(pages))
+
+
+        # =====================================================
+        # SAFE MODE INDEXING
+        # =====================================================
+
+        if self.pdf_file:
+
+            start = self.last_created_page or 0
+
+        else:
+
+            start = self.excel_created_index or 0
+
+
+        end = min(
+            start + BATCH_SIZE,
+            len(ai_pages)
+        )
+
+
+        _logger.warning(
+
+            f"[CREATE RANGE] "
+
+            f"START={start} "
+
+            f"| END={end} "
+
+            f"| PDF={bool(self.pdf_file)}"
+        )
+
+
+        # =====================================================
+        # CATEGORY MAP
+        # =====================================================
 
         CATEGORY_MAPPING = {
+
             "t-shirt": "Apparel",
             "shirt": "Apparel",
             "polo": "Apparel",
@@ -3959,721 +3999,311 @@ class VendorImportJob(models.Model):
             "Sports Bottles": "Football Fever"
         }
 
-        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
-        if not parent_category:
-            parent_category = category_obj.create({'name': "All Products"})
 
-        vendor_id = self.partner_id.id if self.partner_id else False
+        parent_category = category_obj.search([
+
+            ('name', '=', "All Products")
+
+        ], limit=1)
+
+
+        if not parent_category:
+
+            parent_category = category_obj.create({
+
+                'name': "All Products"
+
+            })
+
+
+        vendor_id = (
+            self.partner_id.id
+            if self.partner_id
+            else False
+        )
+
+
+        # =====================================================
+        # RECOVERY
+        # =====================================================
 
         try:
-            processed_groups = set(json.loads(self.processed_group_ids or "[]"))
+
+            completed_pages = set(
+
+                json.loads(
+                    self.processed_group_ids
+                    or
+                    "[]"
+                )
+            )
+
         except Exception:
-            processed_groups = set()
-
-        # ================= EXCEL =================
-        if self.excel_file:
-
-            excel_ai_products = ai_pages[0].get("products", []) if ai_pages else []
-
-            # 🔥 SAFE LOAD OF PROCESSED GROUPS
-            processed_groups = set()
-            if self.processed_group_ids:
-                try:
-                    processed_groups = set(json.loads(self.processed_group_ids))
-                except:
-                    processed_groups = set()
-
-            grouped_products = {}
-
-            for p in excel_ai_products:
-                raw_name = (p.get("name") or "").strip()
-                if not raw_name:
-                    continue
-
-                clean_name = re.sub(r'[^A-Z0-9]', '', raw_name.upper())
-                match = re.search(r'([A-Z]*\d{3,})', clean_name)
-
-                group_id = (match.group(1) if match else clean_name[:20]).replace("PRODUCT", "")
-
-                grouped_products.setdefault(group_id, []).append(p)
-
-            processed_count = 0
-
-            for group_id, group_items in grouped_products.items():
-
-                # 🔥 SKIP ALREADY PROCESSED (DO NOT REMOVE)
-                if group_id in processed_groups:
-                    _logger.warning(f"[EXCEL SKIP] → {group_id}")
-                    continue
-
-                main_product = group_items[0]
-                raw_name = (main_product.get("name") or "").strip()
-
-                name = raw_name if raw_name.lower().startswith("product") else f"Product {raw_name}"
-
-                product = product_obj.search([
-                    ('default_code', '=', group_id),
-                    ('vendor_id', '=', vendor_id)
-                ], limit=1)
-
-                if not product:
-
-                    vals = {
-                        'name': name,
-                        'default_code': group_id,
-                        'sale_ok': True,
-                        'website_published': False,
-                        'vendor_id': vendor_id,
-                        'list_price': self._safe_float(main_product.get("price")),
-                    }
-
-                    if main_product.get("image"):
-                        vals['image_1920'] = main_product.get("image")
-
-                    _logger.warning(
-                        f"[EXCEL CREATE PRODUCT] → "
-                        f"NAME={name} | "
-                        f"PRICE={main_product.get('price')} | "
-                        f"FINAL_PRICE={vals.get('list_price')}"
-                    )
-
-                    product = product_obj.with_context(
-                        mail_create_nolog=True,
-                        mail_notify_force_send=False,
-                        tracking_disable=True
-                    ).create(vals)
-
-                    created_count += 1
-
-                # ================= VARIANTS =================
-                for idx, item in enumerate(group_items):
-
-                    attr_value = f"Variant {idx+1}"
-
-                    attribute = self.env['product.attribute'].search([
-                        ('name', '=', "Variant")
-                    ], limit=1)
-
-                    if not attribute:
-                        attribute = self.env['product.attribute'].create({'name': "Variant"})
-
-                    value = self.env['product.attribute.value'].search([
-                        ('name', '=', attr_value),
-                        ('attribute_id', '=', attribute.id)
-                    ], limit=1)
-
-                    if not value:
-                        value = self.env['product.attribute.value'].create({
-                            'name': attr_value,
-                            'attribute_id': attribute.id
-                        })
-
-                    line = self.env['product.template.attribute.line'].search([
-                        ('product_tmpl_id', '=', product.id),
-                        ('attribute_id', '=', attribute.id)
-                    ], limit=1)
-
-                    if not line:
-                        self.env['product.template.attribute.line'].create({
-                            'product_tmpl_id': product.id,
-                            'attribute_id': attribute.id,
-                            'value_ids': [(6, 0, [value.id])]
-                        })
-                    else:
-                        if value.id not in line.value_ids.ids:
-                            line.value_ids = [(4, value.id)]
-
-                    # 🔥 VARIANT IMAGE (KEEP THIS LOGIC)
-                    variant_record = self.env['product.product'].search([
-                        ('product_tmpl_id', '=', product.id),
-                        ('product_template_attribute_value_ids.product_attribute_value_id', '=', value.id)
-                    ], limit=1)
-
-                 
-                    if variant_record:
-
-                        # ================= IMAGE =================
-
-                        if item.get("image"):
-                            variant_record.image_1920 = item.get("image")
-
-                        _logger.warning(
-                            f"IMAGE VALUE → "
-                            f"{str(item.get('image'))[:200]}"
-                        )
-
-                        # ================= STOCK =================
-
-                        stock = item.get("stock")
-
-                        _logger.warning(
-                            f"[EXCEL VARIANT STOCK] → "
-                            f"VARIANT={variant_record.display_name} | "
-                            f"RAW_STOCK={stock}"
-                        )
-
-
-                    
-                        if stock not in [None, "", False]:
-
-                            try:
-
-                                qty = float(stock)
-
-
-                                # =====================================
-                                # SAFE STOCK MODEL CHECK
-                                # =====================================
-
-                                stock_quant_model = self.env.get(
-                                    'stock.quant'
-                                )
-
-
-                                if not stock_quant_model:
-
-                                    _logger.warning(
-                                        "STOCK MODULE NOT INSTALLED"
-                                    )
-
-                                else:
-
-                                    location = self.env.ref(
-                                        'stock.stock_location_stock',
-                                        raise_if_not_found=False
-                                    )
-
-
-                                    if not location:
-
-                                        _logger.warning(
-                                            "STOCK LOCATION NOT FOUND"
-                                        )
-
-                                    else:
-
-                                        stock_quant = stock_quant_model.search([
-
-                                            (
-                                                'product_id',
-                                                '=',
-                                                variant_record.id
-                                            ),
-
-                                            (
-                                                'location_id',
-                                                '=',
-                                                location.id
-                                            )
-
-                                        ], limit=1)
-
-
-                                        if stock_quant:
-
-                                            stock_quant.inventory_quantity = qty
-
-                                            stock_quant.action_apply_inventory()
-
-
-                                        else:
-
-                                            stock_quant = (
-                                                stock_quant_model.create({
-
-                                                    'product_id':
-                                                        variant_record.id,
-
-                                                    'location_id':
-                                                        location.id,
-
-                                                    'inventory_quantity':
-                                                        qty,
-                                                })
-                                            )
-
-                                            stock_quant.action_apply_inventory()
-
-
-                                        _logger.warning(
-
-                                            f"[STOCK APPLIED] → "
-
-                                            f"{variant_record.display_name} | "
-
-                                            f"QTY={qty}"
-                                        )
-
-
-                            except Exception as e:
-
-                                _logger.exception(
-
-                                    f"[STOCK FAILED] → "
-
-                                    f"{str(e)}"
-                                )
-
-
-                # 🔥 MARK GROUP AS PROCESSED
-                processed_groups.add(group_id)
-                self.processed_group_ids = json.dumps(list(processed_groups))
-
-                processed_count += 1
-
-            # ================= FINALIZE (CRITICAL FIXES) =================
-
-            # 🔥 MOVE INDEX ONLY AFTER ALL GROUPS PROCESSED
-            if self.last_processed_product_index:
-                self.excel_created_index = self.last_processed_product_index
-
-            _logger.warning(f"[EXCEL CREATE FINAL INDEX] → {self.excel_created_index}")
-
-            # 🔥 SINGLE COMMIT (NOT INSIDE LOOP)
-            self.env.cr.commit()  
-       
-
-        # ================= PDF ==================
-
-        elif self.pdf_file:
-
-            _logger.warning(
-                "[PDF CREATE] START"
-            )
-
-
-            if not self.ai_response:
-
-                _logger.warning(
-                    "[PDF CREATE] "
-                    "NO AI RESPONSE"
-                )
-
-                self.state = 'pdf_ai'
-
-                return
-
-
-            # =====================================
-            # LOAD AI PAGES
-            # =====================================
-
-            try:
-
-                ai_pages = json.loads(
-                    self.ai_response
-                )
-
-            except Exception as e:
-
-                _logger.exception(
-
-                    f"[PDF CREATE ERROR] "
-
-                    f"AI LOAD FAILED "
-
-                    f"→ {str(e)}"
-                )
-
-                return
-
-
-            total_ai_pages = len(ai_pages)
-
-
-            _logger.warning(
-
-                f"[PDF CREATE] "
-
-                f"TOTAL AI PAGES "
-
-                f"→ {total_ai_pages}"
-            )
-
-
-            # =====================================
-            # RECOVERY TRACKER
-            # =====================================
-
-            tracker_model = self.env[
-                'vendor.import.created.page'
-            ]
-
-
-            completed_records = tracker_model.search([
-
-                ('job_id', '=', self.id)
-
-            ])
-
 
             completed_pages = set()
 
 
-            for rec in completed_records:
+        _logger.warning(
 
-                completed_pages.add(
-                    rec.page_number
+            f"[PDF RECOVERY] "
+
+            f"completed pages "
+
+            f"→ {sorted(list(completed_pages))}"
+        )
+
+
+        # =====================================================
+        # MAIN LOOP
+        # =====================================================
+
+        for page_index in range(start, end):
+
+            try:
+
+                page_data = ai_pages[page_index]
+
+            except Exception:
+
+                continue
+
+
+            page_number = page_data.get(
+                "page"
+            )
+
+
+            if (
+                self.pdf_file
+                and
+                page_number in completed_pages
+            ):
+
+                _logger.warning(
+
+                    f"[PDF SKIP] "
+
+                    f"already completed "
+
+                    f"| page={page_number}"
                 )
+
+                continue
+
+
+            products = page_data.get(
+                "products",
+                []
+            )
 
 
             _logger.warning(
 
-                f"[PDF CREATE RECOVERY] "
+                f"[CREATE PAGE] "
 
-                f"completed pages "
+                f"page={page_number} "
 
-                f"→ "
-
-                f"{sorted(list(completed_pages))}"
+                f"| products={len(products)}"
             )
 
 
-            # =====================================
-            # FIND REMAINING
-            # =====================================
+            for product_data in products:
 
-            remaining_pages = []
+                try:
 
-
-            for page_data in ai_pages:
-
-                page_num = page_data.get(
-                    "page"
-                )
+                    name = (
+                        product_data.get(
+                            "name"
+                        ) or ""
+                    ).strip()
 
 
-                if (
-                    page_num
-                    not in completed_pages
-                ):
+                    if not name:
 
-                    remaining_pages.append(
-                        page_data
+                        continue
+
+
+                    description = (
+                        product_data.get(
+                            "description"
+                        ) or ""
                     )
 
 
-            _logger.warning(
+                    raw_category = (
 
-                f"[PDF CREATE] "
+                        product_data.get(
+                            "category"
+                        ) or ""
 
-                f"remaining pages "
-
-                f"→ "
-
-                f"{len(remaining_pages)}"
-            )
+                    ).lower()
 
 
-            # =====================================
-            # ALL COMPLETE
-            # =====================================
-
-            if not remaining_pages:
-
-                _logger.warning(
-                    "[PDF CREATE] "
-                    "ALL COMPLETE ✅"
-                )
-
-                self.state = 'done'
-
-                self.flush_recordset()
-
-                self.env.cr.commit()
-
-                return
+                    mapped_category = "General"
 
 
-            # =====================================
-            # SMALL SAFE BATCH
-            # =====================================
+                    for key, val in CATEGORY_MAPPING.items():
 
-            batch_pages = remaining_pages[:1]
+                        if key in raw_category:
 
+                            mapped_category = val
 
-            created_this_batch = 0
-
-
-            # =====================================
-            # PROCESS PAGE
-            # =====================================
-
-            for page_data in batch_pages:
+                            break
 
 
-                page_number = page_data.get(
-                    "page"
-                )
+                    category = category_obj.search([
 
+                        ('name', '=', mapped_category),
 
-                products = page_data.get(
-                    "products",
-                    []
-                )
-
-
-                _logger.warning(
-
-                    f"[PDF PAGE] "
-
-                    f"page={page_number} "
-
-                    f"| products={len(products)}"
-                )
-
-
-                if not products:
-
-                    _logger.warning(
-
-                        f"[PDF PAGE] "
-
-                        f"EMPTY PRODUCTS "
-
-                        f"| page={page_number}"
-                    )
-
-
-                    tracker_model.create({
-
-                        'job_id': self.id,
-
-                        'page_number': page_number
-                    })
-
-
-                    continue
-
-
-                # =================================
-                # LOAD PAGE RECORD
-                # =================================
-
-                page_record = self.env[
-                    'vendor.import.page'
-                ].search([
-
-                    ('job_id', '=', self.id),
-
-                    (
-                        'page_number',
-                        '=',
-                        page_number
-                    )
-
-                ], limit=1)
-
-
-                page_images = []
-
-
-                if page_record:
-
-                    try:
-
-                        raw_blocks = json.loads(
-
-                            page_record.extracted_json
-                            or
-                            "[]"
+                        (
+                            'parent_id',
+                            '=',
+                            parent_category.id
                         )
 
+                    ], limit=1)
 
-                        for b in raw_blocks:
 
-                            page_images.extend(
-                                b.get(
-                                    "images",
-                                    []
-                                )
-                            )
+                    if not category:
 
-                    except Exception as e:
+                        category = category_obj.create({
+
+                            'name': mapped_category,
+
+                            'parent_id':
+                                parent_category.id
+                        })
+
+
+                    variant_group = (
+
+                        product_data.get(
+                            "variant_group"
+                        )
+
+                        or
+
+                        name
+                    )
+
+
+                    existing = product_obj.search([
+
+                        (
+                            'default_code',
+                            '=',
+                            variant_group
+                        ),
+
+                        (
+                            'vendor_id',
+                            '=',
+                            vendor_id
+                        )
+
+                    ], limit=1)
+
+
+                    if existing:
 
                         _logger.warning(
 
-                            f"[PDF IMAGE ERROR] "
+                            f"[CREATE SKIP] "
 
-                            f"{str(e)}"
-                        )
-
-
-                # =================================
-                # CREATE PRODUCTS
-                # =================================
-
-                for p_idx, product_data in enumerate(
-                    products
-                ):
-
-                    try:
-
-                        name = (
-
-                            product_data.get(
-                                "name"
-                            )
-
-                            or
-
-                            ""
-                        ).strip()
-
-
-                        if not name:
-
-                            continue
-
-
-                        _logger.warning(
-
-                            f"[PDF PRODUCT] "
-
-                            f"CREATING "
+                            f"DUPLICATE "
 
                             f"| {name}"
                         )
 
-
-                        description = (
-
-                            product_data.get(
-                                "description"
-                            )
-
-                            or
-
-                            ""
-                        )
+                        continue
 
 
-                        variant_group = (
+                    vals = {
 
-                            product_data.get(
-                                "variant_group"
-                            )
+                        'name': name,
 
-                            or
+                        'default_code':
+                            variant_group,
 
-                            name
-                        )
+                        'description_sale':
+                            description,
 
+                        'categ_id':
+                            category.id,
 
-                        variant_group = (
-                            str(
-                                variant_group
-                            )
-                            .strip()
-                            .upper()
-                        )
+                        'sale_ok': True,
 
+                        'website_published':
+                            False,
 
-                        # =====================
-                        # EXISTING
-                        # =====================
-
-                        product = product_obj.search([
-
-                            (
-                                'default_code',
-                                '=',
-                                variant_group
-                            ),
-
-                            (
-                                'vendor_id',
-                                '=',
-                                vendor_id
-                            )
-
-                        ], limit=1)
+                        'vendor_id':
+                            vendor_id,
+                    }
 
 
-                        # =====================
-                        # CREATE
-                        # =====================
-
-                        if not product:
-
-                            vals = {
-
-                                'name': name,
-
-                                'default_code':
-                                    variant_group,
-
-                                'description_sale':
-                                    description,
-
-                                'sale_ok': True,
-
-                                'website_published':
-                                    False,
-
-                                'vendor_id':
-                                    vendor_id,
-                            }
+                    image = product_data.get(
+                        "image"
+                    )
 
 
-                            if (
-                                page_images
-                                and
-                                p_idx <
-                                len(page_images)
-                            ):
+                    if image:
 
-                                vals[
-                                    'image_1920'
-                                ] = (
-                                    page_images[p_idx]
-                                )
+                        vals[
+                            'image_1920'
+                        ] = image
 
 
-                            product = product_obj.with_context(
+                    product_obj.with_context(
 
-                                mail_create_nolog=True,
+                        mail_create_nolog=True,
 
-                                mail_notify_force_send=False,
+                        mail_notify_force_send=False,
 
-                                tracking_disable=True
+                        tracking_disable=True
 
-                            ).create(vals)
-
-
-                            _logger.warning(
-
-                                f"[PDF PRODUCT] "
-
-                                f"CREATED "
-
-                                f"| {name}"
-                            )
+                    ).create(vals)
 
 
-                        created_this_batch += 1
+                    created_count += 1
 
 
-                    except Exception as e:
+                    _logger.warning(
 
-                        _logger.exception(
+                        f"[PRODUCT CREATED] "
 
-                            f"[PDF PRODUCT ERROR] "
-
-                            f"{str(e)}"
-                        )
+                        f"{name}"
+                    )
 
 
-                # =================================
-                # TRACK PAGE COMPLETE
-                # =================================
+                except Exception as e:
 
-                tracker_model.create({
+                    _logger.exception(
 
-                    'job_id': self.id,
+                        f"[CREATE ERROR] "
 
-                    'page_number': page_number
-                })
+                        f"{str(e)}"
+                    )
+
+
+            # =================================================
+            # SAVE RECOVERY
+            # =================================================
+
+            if self.pdf_file:
+
+                completed_pages.add(
+                    page_number
+                )
+
+                self.processed_group_ids = json.dumps(
+
+                    list(completed_pages)
+                )
+
+
+                self.last_created_page = (
+                    page_index + 1
+                )
 
 
                 _logger.warning(
@@ -4683,17 +4313,11 @@ class VendorImportJob(models.Model):
                     f"page={page_number}"
                 )
 
+            else:
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
-
-
-            # =====================================
-            # KEEP ACTIVE
-            # =====================================
-
-            self.state = 'pdf_creating'
+                self.excel_created_index = (
+                    page_index + 1
+                )
 
 
             self.flush_recordset()
@@ -4701,17 +4325,42 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
 
-            _logger.warning(
+        # =====================================================
+        # FINAL STATE
+        # =====================================================
 
-                f"[PDF CREATE] "
+        _logger.warning(
 
-                f"created batch "
+            f"[CREATE COMPLETE] "
 
-                f"→ {created_this_batch}"
-            )
+            f"created={created_count}"
+        )
 
-        _logger.warning(f"[PDF CREATE] TOTAL PRODUCTS CREATED: {created_count}")
 
+        if self.pdf_file:
+
+            if self.last_created_page >= len(ai_pages):
+
+                self.state = 'done'
+
+            else:
+
+                self.state = 'pdf_creating'
+
+        else:
+
+            if self.excel_created_index >= len(ai_pages):
+
+                self.state = 'done'
+
+            else:
+
+                self.state = 'excel_creating'
+
+
+        self.flush_recordset()
+
+        self.env.cr.commit()
 
 
     #-----URL API FLOW-------------------------------------------
