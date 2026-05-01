@@ -3910,14 +3910,11 @@ class VendorImportJob(models.Model):
 
         _logger.warning("CREATING PRODUCTS (FINAL STABLE VERSION WITH FIXED PDF)")
 
-        # created_count = 0
-
         created_count = 0
 
-
-        # =====================================================
+        # ======================================================
         # SHARED MODELS
-        # =====================================================
+        # ======================================================
 
         product_obj = self.env[
             'product.template'
