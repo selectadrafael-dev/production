@@ -137,14 +137,15 @@ class VendorImportJob(models.Model):
 
 
     #============Processing Jobs===================================================
-     
+
     def _process_step(self):
 
         import json
+        import re
 
         self.ensure_one()
 
- 
+
         # =================================================
         # SAFETY
         # =================================================
@@ -158,7 +159,6 @@ class VendorImportJob(models.Model):
             self.state = "failed"
 
             self.flush_recordset()
-
             self.env.cr.commit()
 
             return
@@ -206,7 +206,6 @@ class VendorImportJob(models.Model):
 
 
             self.flush_recordset()
-
             self.env.cr.commit()
 
             return
@@ -218,6 +217,11 @@ class VendorImportJob(models.Model):
 
         if self.data_url:
 
+            _logger.warning(
+                "FLOW → URL"
+            )
+
+
             # =============================================
             # START
             # =============================================
@@ -227,7 +231,6 @@ class VendorImportJob(models.Model):
                 self.state = 'url_scraping'
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -255,7 +258,6 @@ class VendorImportJob(models.Model):
                     self.state = 'url_ai'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     _logger.warning(
@@ -340,7 +342,6 @@ class VendorImportJob(models.Model):
 
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -366,7 +367,6 @@ class VendorImportJob(models.Model):
                 self.state = 'excel_parsing'
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -378,28 +378,73 @@ class VendorImportJob(models.Model):
 
             if self.state == 'excel_parsing':
 
+                previous_index = (
+                    self.last_processed_product_index or 0
+                )
+
+                _logger.warning(
+
+                    f"[EXCEL PARSE START] "
+
+                    f"previous_index={previous_index}"
+                )
+
+
                 self.parse_excel()
 
 
-                if (
+                new_index = (
+                    self.last_processed_product_index or 0
+                )
 
-                    self.last_processed_product_index
 
-                    >
+                _logger.warning(
 
-                    (self.excel_ai_index or 0)
+                    f"[EXCEL PARSE CHECK] "
 
-                ):
+                    f"{previous_index} -> {new_index}"
+                )
+
+
+                # =========================================
+                # NEW ROWS FOUND
+                # =========================================
+
+                if new_index > previous_index:
+
+                    _logger.warning(
+                        "[EXCEL PARSE] NEW BATCH READY → excel_ai"
+                    )
+
+                    # reset AI/create cycle
+                    self.excel_ai_index = 0
+                    self.excel_created_index = 0
+                    self.ai_response = False
 
                     self.state = 'excel_ai'
 
                 else:
 
-                    self.state = 'excel_parsing'
+                    _logger.warning(
+                        "[EXCEL PARSE] NO NEW ROWS"
+                    )
+
+
+                    # parser itself decides completion
+                    if self.is_excel_parsed:
+
+                        _logger.warning(
+                            "[EXCEL PARSE] FULLY COMPLETE"
+                        )
+
+                        self.state = 'done'
+
+                    else:
+
+                        self.state = 'excel_parsing'
 
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -425,7 +470,6 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     return
@@ -435,6 +479,7 @@ class VendorImportJob(models.Model):
                     self.last_processed_product_index
                     or 0
                 )
+
 
                 _logger.warning(
 
@@ -446,14 +491,13 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(
 
-                    f"[EXCEL CREATE STATE] "
+                    f"[EXCEL AI STATE] "
 
                     f"{self.state}"
                 )
 
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -479,143 +523,20 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     return
 
 
-                try:
+                _logger.warning(
 
-                    import re
+                    f"[EXCEL CREATE STATE] "
 
-                    ai_data = json.loads(
-                        self.ai_response or "[]"
-                    )
-
-                    raw_products = (
-
-                        ai_data[0].get(
-                            "products",
-                            []
-                        )
-
-                        if ai_data else []
-
-                    )
-
-
-                    grouped_keys = set()
-
-
-                    for p in raw_products:
-
-                        raw_name = (
-                            p.get("name") or ""
-                        ).strip()
-
-
-                        variant_group = (
-                            p.get("variant_group")
-                        )
-
-
-                        if variant_group:
-
-                            group_id = str(
-                                variant_group
-                            ).strip().upper()
-
-                        else:
-
-                            match = re.search(
-
-                                r'(?:Product\s*)?([A-Z]*\d+)',
-
-                                raw_name,
-
-                                re.I
-                            )
-
-
-                            if match:
-
-                                group_id = (
-                                    match.group(1)
-                                    .upper()
-                                )
-
-                            else:
-
-                                group_id = (
-                                    raw_name.upper()
-                                )
-
-
-                        grouped_keys.add(
-                            group_id
-                        )
-
-
-                    total_groups = len(
-                        grouped_keys
-                    )
-
-
-                    _logger.warning(
-
-                        f"[EXCEL GROUP TOTAL] "
-
-                        f"{total_groups}"
-                    )
-
-
-                except Exception as e:
-
-                    _logger.exception(
-
-                        f"[EXCEL GROUP COUNT ERROR] "
-
-                        f"{str(e)}"
-                    )
-
-                    total_groups = 0
-
-
-                if (
-
-                    (self.excel_created_index or 0)
-
-                    <
-
-                    total_groups
-
-                ):
-                
-
-
-                    _logger.warning(
-
-                        f"EXCEL CREATE CONTINUES "
-
-                        f"→ {self.excel_created_index}/"
-
-                        f"{total_products}"
-                    )
-
-                    self.state = 'excel_creating'
-
-                else:
-
-                    _logger.warning(
-                        "EXCEL COMPLETE ✅"
-                    )
-
-                    self.state = 'done'
+                    f"{self.state}"
+                )
 
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -641,7 +562,6 @@ class VendorImportJob(models.Model):
                 self.state = 'pdf_extracting'
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -667,7 +587,6 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     return
@@ -706,7 +625,6 @@ class VendorImportJob(models.Model):
 
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -732,7 +650,6 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     return
@@ -774,7 +691,6 @@ class VendorImportJob(models.Model):
 
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
@@ -800,7 +716,6 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
                     self.flush_recordset()
-
                     self.env.cr.commit()
 
                     return
@@ -850,11 +765,9 @@ class VendorImportJob(models.Model):
 
 
                 self.flush_recordset()
-
                 self.env.cr.commit()
 
                 return
-
 
     #------------parse url------------------------------------
 
