@@ -3777,19 +3777,150 @@ class VendorImportJob(models.Model):
         import re
         import time
 
-        if not self.ai_response or not self.extracted_text:
-            _logger.warning("NO AI OR EXTRACTED DATA → STOP")
+        # if not self.ai_response or not self.extracted_text:
+        #     _logger.warning("NO AI OR EXTRACTED DATA → STOP")
+        #     return
+
+        # product_obj = self.env['product.template']
+        # category_obj = self.env['product.category']
+
+        # try:
+        #     pages = json.loads(self.extracted_text)
+        #     ai_pages = json.loads(self.ai_response)
+        # except Exception:
+        #     _logger.error("INVALID JSON → STOP")
+        #     return
+
+       
+        # =====================================================
+        # LOAD AI DATA
+        # =====================================================
+
+        if not self.ai_response:
+
+            _logger.warning(
+                "NO AI RESPONSE → STOP"
+            )
+
             return
 
-        product_obj = self.env['product.template']
-        category_obj = self.env['product.category']
 
         try:
-            pages = json.loads(self.extracted_text)
-            ai_pages = json.loads(self.ai_response)
-        except Exception:
-            _logger.error("INVALID JSON → STOP")
+
+            ai_pages = json.loads(
+                self.ai_response
+            )
+
+        except Exception as e:
+
+            _logger.error(
+                f"INVALID AI JSON → {str(e)}"
+            )
+
             return
+
+
+        # =====================================================
+        # LOAD SOURCE DATA
+        # =====================================================
+
+        pages = []
+
+
+        # =====================================================
+        # PDF MODE
+        # =====================================================
+
+        if self.pdf_file:
+
+            page_records = self.env[
+                'vendor.import.page'
+            ].search([
+
+                ('job_id', '=', self.id)
+
+            ], order='page_number asc')
+
+
+            _logger.warning(
+                f"[PDF CREATE DEBUG] "
+                f"PAGE RECORDS={len(page_records)}"
+            )
+
+
+            for rec in page_records:
+
+                try:
+
+                    data = json.loads(
+                        rec.extracted_json or "[]"
+                    )
+
+                    if isinstance(data, list):
+
+                        pages.extend(data)
+
+                except Exception as e:
+
+                    _logger.warning(
+                        f"[PDF CREATE LOAD FAILED] "
+                        f"PAGE={rec.page_number} "
+                        f"| {str(e)}"
+                    )
+
+
+        # =====================================================
+        # EXCEL MODE
+        # =====================================================
+
+        else:
+
+            if not self.extracted_text:
+
+                _logger.warning(
+                    "NO EXTRACTED TEXT → STOP"
+                )
+
+                return
+
+
+            try:
+
+                pages = json.loads(
+                    self.extracted_text
+                )
+
+            except Exception as e:
+
+                _logger.error(
+                    f"INVALID EXTRACTED JSON "
+                    f"→ {str(e)}"
+                )
+
+                return
+
+
+        # =====================================================
+        # FINAL VALIDATION
+        # =====================================================
+
+        _logger.warning(
+            f"[CREATE DEBUG] "
+            f"PAGES={len(pages)} "
+            f"| AI={len(ai_pages)} "
+            f"| PDF={bool(self.pdf_file)} "
+            f"| EXCEL={bool(self.excel_file)}"
+        )
+
+
+        if not pages:
+
+            _logger.warning(
+                "NO SOURCE PAGES FOUND"
+            )
+
+            return
+
 
         _logger.warning("CREATING PRODUCTS (FINAL STABLE VERSION WITH FIXED PDF)")
 
