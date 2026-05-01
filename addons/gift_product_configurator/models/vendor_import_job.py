@@ -3949,14 +3949,21 @@ class VendorImportJob(models.Model):
 
             start = self.last_created_page or 0
 
+            total_items = len(ai_pages)
+
         else:
 
             start = self.excel_created_index or 0
 
+            # IMPORTANT:
+            # Excel uses extracted rows/pages count
+            # NOT ai_pages count
+            total_items = len(pages)
+
 
         end = min(
             start + BATCH_SIZE,
-            len(ai_pages)
+            total_items
         )
 
 
@@ -3968,9 +3975,11 @@ class VendorImportJob(models.Model):
 
             f"| END={end} "
 
-            f"| PDF={bool(self.pdf_file)}"
-        )
+            f"| TOTAL={total_items} "
 
+            f"| PDF={bool(self.pdf_file)} "
+            f"| EXCEL={bool(self.excel_file)}"
+        )
 
         # =====================================================
         # CATEGORY MAP
@@ -4061,16 +4070,74 @@ class VendorImportJob(models.Model):
 
             try:
 
-                page_data = ai_pages[page_index]
+                # =====================================
+                # PDF MODE
+                # =====================================
 
-            except Exception:
+                if self.pdf_file:
+
+                    page_data = ai_pages[page_index]
+
+                    page_number = page_data.get(
+                        "page"
+                    )
+
+
+                # =====================================
+                # EXCEL MODE
+                # =====================================
+
+                else:
+
+                    page_data = pages[page_index]
+
+                    page_number = page_data.get(
+                        "page"
+                    )
+
+
+                    ai_page = next(
+
+                        (
+
+                            p for p in ai_pages
+
+                            if p.get("page")
+                            == page_number
+
+                        ),
+
+                        None
+                    )
+
+
+                    if not ai_page:
+
+                        _logger.warning(
+
+                            f"[EXCEL] "
+
+                            f"NO AI PAGE "
+
+                            f"| page={page_number}"
+                        )
+
+                        continue
+
+
+                    page_data = ai_page
+
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[CREATE LOOP ERROR] "
+
+                    f"{str(e)}"
+                )
 
                 continue
-
-
-            page_number = page_data.get(
-                "page"
-            )
 
 
             if (
