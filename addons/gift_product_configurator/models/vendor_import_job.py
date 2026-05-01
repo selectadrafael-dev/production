@@ -4702,12 +4702,30 @@ class VendorImportJob(models.Model):
                 # FIND PARENT PRODUCT
                 # =================================================
 
+                # vendor_id = (
+
+                #     self.vendor_id.id
+
+                #     if self.vendor_id
+
+                #     else False
+                # )
+
+                vendor_id = self.partner_id.id if self.partner_id else False
+
+
                 product = product_obj.search([
 
                     (
                         'default_code',
                         '=',
                         group_id
+                    ),
+
+                    (
+                        'vendor_id',
+                        '=',
+                        vendor_id
                     )
 
                 ], limit=1)
@@ -4736,6 +4754,19 @@ class VendorImportJob(models.Model):
 
                         'website_published':
                             False,
+
+                        # =====================================
+                        # IMPORTANT
+                        # RESTORE VENDOR LINK
+                        # =====================================
+
+                        'vendor_id':
+                            vendor_id,
+
+                        'list_price':
+                            self.safe_float(
+                                main_product.get("price")
+                            ),
                     }
 
 
@@ -4763,7 +4794,9 @@ class VendorImportJob(models.Model):
 
                         f"[EXCEL CREATED] "
 
-                        f"{group_id}"
+                        f"{group_id} "
+
+                        f"| vendor={vendor_id}"
                     )
 
                 else:
@@ -4773,10 +4806,15 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"[EXCEL MERGED] "
+                        f"[EXCEL EXISTING PRODUCT] "
 
-                        f"{group_id}"
+                        f"{group_id} "
+
+                        f"| vendor={vendor_id} "
+
+                        f"| product_id={product.id}"
                     )
+
 
 
                 # =================================================
