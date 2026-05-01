@@ -436,35 +436,20 @@ class VendorImportJob(models.Model):
                     or 0
                 )
 
+                _logger.warning(
 
-                if (
+                    f"[EXCEL AI TOTAL ROWS] "
 
-                    (self.excel_ai_index or 0)
+                    f"{total_rows}"
+                )
 
-                    <
 
-                    total_rows
+                _logger.warning(
 
-                ):
+                    f"[EXCEL CREATE STATE] "
 
-                    _logger.warning(
-
-                        f"EXCEL AI CONTINUES "
-
-                        f"→ {self.excel_ai_index}/"
-
-                        f"{total_rows}"
-                    )
-
-                    self.state = 'excel_ai'
-
-                else:
-
-                    _logger.warning(
-                        "EXCEL AI COMPLETE → excel_creating"
-                    )
-
-                    self.state = 'excel_creating'
+                    f"{self.state}"
+                )
 
 
                 self.flush_recordset()
