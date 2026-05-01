@@ -5109,57 +5109,36 @@ class VendorImportJob(models.Model):
         # NEXT STATE
         # =====================================================
 
-        all_groups_done = (
+        if self.excel_created_index >= len(grouped_keys):
 
-            self.excel_created_index
-            >=
-            len(grouped_keys)
+            _logger.warning(
 
-        )
+                "[EXCEL FLOW] "
 
+                "GROUP BATCH COMPLETE "
+                "→ RETURN TO excel_parsing"
+            )
+            
+            # reset AI/create cycle
+            self.excel_created_index = 0
+            self.excel_ai_index = 0
 
-        more_excel_rows_exist = (
+            # IMPORTANT
+            # clear AI batch only
+            self.ai_response = False
 
-            (
-                self.excel_parse_index or 0
+            # continue parser batching
+            self.state = 'excel_parsing'
+
+            _logger.warning(
+
+                "[EXCEL FLOW] "
+
+                f"NEXT PARSE INDEX="
+
+                f"{self.excel_parse_index}"
             )
 
-            <
-
-            (
-                self.excel_total_rows or 0
-            )
-
-        )
-
-
-        if all_groups_done:
-
-            if more_excel_rows_exist:
-
-                _logger.warning(
-
-                    "[EXCEL FLOW] "
-
-                    "MORE EXCEL ROWS REMAIN "
-
-                    "→ RETURN TO PARSE"
-                )
-
-                # reset AI/create cycle
-                self.ai_response = False
-                self.excel_ai_index = 0
-                self.excel_created_index = 0
-
-                self.state = 'excel_parsing'
-
-            else:
-
-                _logger.warning(
-                    "[EXCEL FLOW] COMPLETE"
-                )
-
-                self.state = 'done'
 
         else:
 
@@ -5169,6 +5148,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+    
 
 
     #-----URL API FLOW-------------------------------------------
