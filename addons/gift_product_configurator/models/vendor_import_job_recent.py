@@ -112,7 +112,7 @@ class VendorImportJob(models.Model):
       
 
 
-    #------excel processing methof---------------
+    #------excel processing method---------------
     
     def parse_excel(self):
 
@@ -230,6 +230,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"EXCEL DONE → TOTAL ROWS: {len(pages)}")
 
+
     #---------------- MAIN FLOW ----------------
    
     def process_import(self):
@@ -329,6 +330,7 @@ class VendorImportJob(models.Model):
             _logger.error(f"PROCESS FAILED → {str(e)}")
             self.state = "failed"
    
+
     # ---------------- PDF ----------------
 
     def extract_pdf(self):
@@ -851,6 +853,8 @@ class VendorImportJob(models.Model):
                         "name": "",
                         "description": "",
                         "category": "",
+                         "price": "",
+                        "stock": "",
                         "variants": [
                             {{
                                 "attributes": {{
@@ -863,11 +867,18 @@ class VendorImportJob(models.Model):
                     }}
                 ]
 
-                =====================================
+                  =====================================
                 ROW DATA
                 =====================================
 
+                ROW TEXT:
                 {row_text}
+
+                DETECTED PRICE:
+                {row_price}
+
+                DETECTED STOCK:
+                {row_stock}
                 """
 
 
@@ -1181,6 +1192,8 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
+    
+    
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
 

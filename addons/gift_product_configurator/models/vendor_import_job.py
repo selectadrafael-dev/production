@@ -502,22 +502,99 @@ class VendorImportJob(models.Model):
 
                 try:
 
+                    import re
+
                     ai_data = json.loads(
                         self.ai_response or "[]"
                     )
 
-                    total_products = len(
+                    raw_products = (
 
                         ai_data[0].get(
                             "products",
                             []
                         )
 
-                    ) if ai_data else 0
+                        if ai_data else []
 
-                except Exception:
+                    )
 
-                    total_products = 0
+
+                    grouped_keys = set()
+
+
+                    for p in raw_products:
+
+                        raw_name = (
+                            p.get("name") or ""
+                        ).strip()
+
+
+                        variant_group = (
+                            p.get("variant_group")
+                        )
+
+
+                        if variant_group:
+
+                            group_id = str(
+                                variant_group
+                            ).strip().upper()
+
+                        else:
+
+                            match = re.search(
+
+                                r'(?:Product\s*)?([A-Z]*\d+)',
+
+                                raw_name,
+
+                                re.I
+                            )
+
+
+                            if match:
+
+                                group_id = (
+                                    match.group(1)
+                                    .upper()
+                                )
+
+                            else:
+
+                                group_id = (
+                                    raw_name.upper()
+                                )
+
+
+                        grouped_keys.add(
+                            group_id
+                        )
+
+
+                    total_groups = len(
+                        grouped_keys
+                    )
+
+
+                    _logger.warning(
+
+                        f"[EXCEL GROUP TOTAL] "
+
+                        f"{total_groups}"
+                    )
+
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"[EXCEL GROUP COUNT ERROR] "
+
+                        f"{str(e)}"
+                    )
+
+                    total_groups = 0
 
 
                 if (
@@ -526,9 +603,11 @@ class VendorImportJob(models.Model):
 
                     <
 
-                    total_products
+                    total_groups
 
                 ):
+                
+
 
                     _logger.warning(
 
@@ -1568,8 +1647,14 @@ class VendorImportJob(models.Model):
             ] = item
 
 
-        combined = list(
-            existing_map.values()
+        combined = sorted(
+
+            existing_map.values(),
+
+            key=lambda x: x.get(
+                "row_index",
+                0
+            )
         )
     
 
@@ -3040,7 +3125,6 @@ class VendorImportJob(models.Model):
         return
 
     #===========Excel Open AI================================
-
     def send_to_openai_excel(self):
 
         import json
@@ -3092,15 +3176,10 @@ class VendorImportJob(models.Model):
             return
 
 
-        # =====================================================
-        # SAFETY
-        # =====================================================
-
         if not pages:
 
             _logger.error(
-                "[EXCEL AI] "
-                "NO ROWS TO PROCESS"
+                "[EXCEL AI] NO ROWS TO PROCESS"
             )
 
             return
@@ -3137,11 +3216,9 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"[EXCEL AI] "
+            f"[EXCEL AI BATCH] "
 
-            f"PROCESSING ROWS "
-
-            f"{start} to {end}"
+            f"{start} → {end}"
         )
 
 
@@ -3156,21 +3233,31 @@ class VendorImportJob(models.Model):
 
             try:
 
-                data = json.loads(
+                existing_ai = json.loads(
                     self.ai_response
                 )
 
                 if (
-                    isinstance(data, list)
-                    and data
+                    isinstance(existing_ai, list)
+                    and existing_ai
                 ):
 
                     existing_products = (
-                        data[0].get(
+                        existing_ai[0].get(
                             "products",
                             []
                         )
                     )
+
+
+                _logger.warning(
+
+                    f"[EXCEL AI] "
+
+                    f"EXISTING PRODUCTS="
+
+                    f"{len(existing_products)}"
+                )
 
             except Exception as e:
 
@@ -3178,7 +3265,7 @@ class VendorImportJob(models.Model):
 
                     f"[EXCEL AI] "
 
-                    f"LOAD FAILED "
+                    f"FAILED LOAD EXISTING "
 
                     f"| {str(e)}"
                 )
@@ -3190,7 +3277,7 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # LOOP ROWS
+        # PROCESS ROWS
         # =====================================================
 
         for idx, row in enumerate(
@@ -3201,41 +3288,40 @@ class VendorImportJob(models.Model):
 
         ):
 
-            row_text = row.get(
-                "text",
-                ""
-            )
+            try:
 
-            row_price = row.get(
-                "price",
-                ""
-            )
+                row_text = row.get(
+                    "text",
+                    ""
+                )
 
-            row_stock = row.get(
-                "stock",
-                ""
-            )
+                row_price = row.get(
+                    "price",
+                    ""
+                )
 
-            images = row.get(
-                "images",
-                []
-            )
+                row_stock = row.get(
+                    "stock",
+                    ""
+                )
 
-
-            _logger.warning(
-
-                f"[EXCEL AI INPUT] "
-
-                f"ROW={idx} "
-
-                f"| PRICE={row_price} "
-
-                f"| STOCK={row_stock}"
-            )
+                images = row.get(
+                    "images",
+                    []
+                )
 
 
-                
-            prompt = f"""
+                _logger.warning(
+
+                    f"[EXCEL AI ROW] "
+
+                    f"idx={idx} "
+
+                    f"| images={len(images)}"
+                )
+
+
+                prompt = f"""
                 You are a structured Excel product parser.
 
                 Each input represents EXACTLY ONE ROW = ONE PRODUCT.
@@ -3262,69 +3348,40 @@ class VendorImportJob(models.Model):
                 2. IDENTIFY PRODUCT NAME
                 - MUST NOT be:
                     - pure numbers
-                    - ranges (e.g. 2-66)
+                    - ranges
                     - links
                     - dates
-                    - column headers like FOTO
+                    - headers
 
-                - If no clear name:
-                    → GENERATE NAME like:
-                    "Product <ID>"
-
-                3. DESCRIPTION:
-                - Short summary from row
-
-                4. CATEGORY:
-                - Guess intelligently (e.g. bottle → Drinkware)
+                - If unclear:
+                    → generate:
+                    Product <ID>
 
                 =====================================
-                VARIANT DETECTION (VERY IMPORTANT)
+                VARIANT GROUPING
                 =====================================
 
-                - If multiple rows share SAME ID
-                → they are VARIANTS of same product
-                - ALSO extract variant attributes from the row:
-    
-                Examples:
-                - Colors → Black, Blue, Red
-                - Sizes → S, M, L
-                - Range values (e.g. 2-66) → treat as Size or Option
-
-                - If row contains variation info:
-                    → put inside "variants"
-
-                - If no clear attribute:
-                    → create:
-                       "attributes": {{
-                            "Variant": "<value from row>"
-                        }}
-
-               =====================================
-                VARIANT GROUPING (MANDATORY - STRICT)
-                =====================================
-
-                - Every product MUST have "variant_group"
-
-                - Extract product ID from the row:
-                    (examples: 94601, 92070, ANT021)
-
-                - That ID MUST be used as variant_group
-
-                - RULES:
-                    - SAME ID → SAME variant_group
-                    - DIFFERENT ID → DIFFERENT product
-                    - NEVER leave variant_group empty
-                    - NEVER return null
-
-                - If ID exists → use it
-                - If ID is a mixture of numerical data and string → use it, but never use date or range
-                - If ID unclear → use first numeric value in row
+                - SAME ID = SAME variant_group
+                - DIFFERENT ID = DIFFERENT PRODUCT
+                - NEVER leave variant_group empty
 
                 =====================================
-                OUTPUT FORMAT (STRICT)
+                VARIANT DETECTION
                 =====================================
 
-                 [
+                If rows share same ID:
+
+                → they are variants
+
+                Put differences into:
+
+                "attributes"
+
+                =====================================
+                OUTPUT FORMAT
+                =====================================
+
+                [
                     {{
                         "name": "",
                         "description": "",
@@ -3335,7 +3392,7 @@ class VendorImportJob(models.Model):
                         "variants": [
                             {{
                                 "attributes": {{
-                                    "Color": ""
+                                    "Variant": ""
                                 }},
                                 "image_index": 0,
                                 "stock": null
@@ -3343,10 +3400,6 @@ class VendorImportJob(models.Model):
                         ]
                     }}
                 ]
-
-                =====================================
-                ROW DATA
-                =====================================
 
                 ROW TEXT:
                 {row_text}
@@ -3358,8 +3411,6 @@ class VendorImportJob(models.Model):
                 {row_stock}
                 """
 
-
-            try:
 
                 response = client.responses.create(
 
@@ -3375,10 +3426,6 @@ class VendorImportJob(models.Model):
                     response.output_text or ""
                 ).strip()
 
-
-                # =================================================
-                # CLEAN MARKDOWN
-                # =================================================
 
                 result = result.replace(
                     "```json",
@@ -3398,24 +3445,9 @@ class VendorImportJob(models.Model):
                     )
 
 
-                try:
-
-                    parsed = json.loads(
-                        result
-                    )
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"[EXCEL AI] "
-
-                        f"INVALID JSON "
-
-                        f"| {result[:500]}"
-                    )
-
-                    raise e
+                parsed = json.loads(
+                    result
+                )
 
 
                 if (
@@ -3429,8 +3461,25 @@ class VendorImportJob(models.Model):
                     parsed = parsed[0]
 
 
+                if not isinstance(
+                    parsed,
+                    dict
+                ):
+
+                    _logger.warning(
+
+                        f"[EXCEL AI] "
+
+                        f"INVALID STRUCTURE "
+
+                        f"| idx={idx}"
+                    )
+
+                    continue
+
+
                 # =================================================
-                # ATTACH IMAGE
+                # IMAGE
                 # =================================================
 
                 if images:
@@ -3440,15 +3489,17 @@ class VendorImportJob(models.Model):
                     )
 
 
+                # =================================================
+                # DEBUG
+                # =================================================
+
                 _logger.warning(
 
-                    f"[EXCEL AI OUTPUT] "
+                    f"[EXCEL AI PRODUCT] "
 
-                    f"NAME={parsed.get('name')} "
+                    f"name={parsed.get('name')} "
 
-                    f"| PRICE={parsed.get('price')} "
-
-                    f"| STOCK={parsed.get('stock')}"
+                    f"| group={parsed.get('variant_group')}"
                 )
 
 
@@ -3459,73 +3510,48 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
 
-                _logger.warning(
+                _logger.exception(
 
-                    f"[EXCEL AI] "
+                    f"[EXCEL AI ERROR] "
 
-                    f"ROW {idx} FAILED "
+                    f"idx={idx} "
 
                     f"| {str(e)}"
                 )
 
 
         # =====================================================
-        # MERGE PRODUCTS
+        # MERGE PRODUCTS SAFELY
         # =====================================================
 
-        combined_map = {}
+        combined_products = (
+            existing_products
+            +
+            new_products
+        )
 
 
-        for item in existing_products:
+        _logger.warning(
 
-            key = (
+            f"[EXCEL AI MERGE] "
 
-                f"{item.get('variant_group','')}"
+            f"existing={len(existing_products)} "
 
-                f"__"
+            f"| new={len(new_products)} "
 
-                f"{item.get('name','')}"
-
-                f"__"
-
-                f"{len(combined_map)}"
-            )
-
-            combined_map[key] = item
-
-
-        for item in new_products:
-
-            key = (
-
-                f"{item.get('variant_group','')}"
-
-                f"__"
-
-                f"{item.get('name','')}"
-
-                f"__"
-
-                f"{len(combined_map)}"
-            )
-
-            combined_map[key] = item
-
-
-        combined = list(
-            combined_map.values()
+            f"| total={len(combined_products)}"
         )
 
 
         # =====================================================
-        # SAVE AI RESPONSE
+        # SAVE
         # =====================================================
 
         self.ai_response = json.dumps([{
 
             "page": 1,
 
-            "products": combined
+            "products": combined_products
 
         }])
 
@@ -3535,9 +3561,11 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"[EXCEL AI PROGRESS] "
+            f"[EXCEL AI SAVE] "
 
-            f"{end}/{len(pages)}"
+            f"{self.excel_ai_index}/"
+
+            f"{len(pages)}"
         )
 
 
@@ -3552,7 +3580,7 @@ class VendorImportJob(models.Model):
         else:
 
             _logger.warning(
-                "[EXCEL AI] COMPLETE ✅"
+                "[EXCEL AI COMPLETE]"
             )
 
             self.state = (
@@ -3565,7 +3593,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-
+    
 
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
@@ -3715,7 +3743,7 @@ class VendorImportJob(models.Model):
         return None
 
 
-    # ---------------- PRODUCT CREATION URL----------------
+    # ================= PRODUCT CREATION URL ================
 
     def create_products_url(self):
 
@@ -5432,7 +5460,7 @@ class VendorImportJob(models.Model):
             # SAFER CHAIN
             # =============================================
 
-            MAX_CHAIN = 2
+            MAX_CHAIN = 1
 
 
             for step in range(MAX_CHAIN):
