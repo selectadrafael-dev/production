@@ -5105,9 +5105,9 @@ class VendorImportJob(models.Model):
         )
 
 
-        # =====================================================
+        # ======================================================
         # NEXT STATE
-        # =====================================================
+        # ======================================================
 
         if self.excel_created_index >= len(grouped_keys):
 
@@ -5118,7 +5118,7 @@ class VendorImportJob(models.Model):
                 "GROUP BATCH COMPLETE "
                 "→ RETURN TO excel_parsing"
             )
-            
+
             # reset AI/create cycle
             self.excel_created_index = 0
             self.excel_ai_index = 0
