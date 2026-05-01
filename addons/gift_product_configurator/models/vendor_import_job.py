@@ -3777,20 +3777,6 @@ class VendorImportJob(models.Model):
         import re
         import time
 
-        # if not self.ai_response or not self.extracted_text:
-        #     _logger.warning("NO AI OR EXTRACTED DATA → STOP")
-        #     return
-
-        # product_obj = self.env['product.template']
-        # category_obj = self.env['product.category']
-
-        # try:
-        #     pages = json.loads(self.extracted_text)
-        #     ai_pages = json.loads(self.ai_response)
-        # except Exception:
-        #     _logger.error("INVALID JSON → STOP")
-        #     return
-
        
         # =====================================================
         # LOAD AI DATA
@@ -3924,9 +3910,33 @@ class VendorImportJob(models.Model):
 
         _logger.warning("CREATING PRODUCTS (FINAL STABLE VERSION WITH FIXED PDF)")
 
+        # created_count = 0
+
         created_count = 0
 
+
+        # =====================================================
+        # SHARED MODELS
+        # =====================================================
+
+        product_obj = self.env[
+            'product.template'
+        ]
+
+        category_obj = self.env[
+            'product.category'
+        ]
+
+
+        _logger.warning(
+            "[CREATE INIT] "
+            "product_obj + category_obj ready"
+        )
+        
+
+
         BATCH_SIZE = 5
+        
         start = self.excel_created_index or 0
         end = min(start + BATCH_SIZE, len(pages))
 
@@ -4704,6 +4714,7 @@ class VendorImportJob(models.Model):
             )
 
         _logger.warning(f"[PDF CREATE] TOTAL PRODUCTS CREATED: {created_count}")
+
 
 
     #-----URL API FLOW-------------------------------------------
