@@ -4764,7 +4764,7 @@ class VendorImportJob(models.Model):
                             vendor_id,
 
                         'list_price':
-                            self.safe_float(
+                            self._safe_float(
                                 main_product.get("price")
                             ),
                     }
