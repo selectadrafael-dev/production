@@ -15,36 +15,65 @@ class VendorProductsController(http.Controller):
     # =====================================================
 
     @http.route(
-    ['/vendor/products'],
-    type='json',
-    auth='user',
-    website=True
+        ['/vendor/products'],
+        type='json',
+        auth='user',
+        website=True
     )
-    
     def vendor_products(
+
         self,
+
+        page=1,
+
+        limit=50,
+
+        search="",
+
         **kwargs
     ):
 
         partner = request.env.user.partner_id
 
         # =========================================
-        # SAFE JSON PAYLOAD EXTRACTION
+        # SAFE PARAM EXTRACTION
         # =========================================
 
-        data = request.jsonrequest or {}
+        params = kwargs.get('params', {})
 
-        page = int(
-            data.get('page', 1)
-        )
+        if params:
 
-        limit = int(
-            data.get('limit', 50)
-        )
+            page = params.get(
+                'page',
+                page
+            )
+
+            limit = params.get(
+                'limit',
+                limit
+            )
+
+            search = params.get(
+                'search',
+                search
+            )
+
+        # =========================================
+        # SAFE TYPE CAST
+        # =========================================
+
+        try:
+            page = int(page)
+        except Exception:
+            page = 1
+
+        try:
+            limit = int(limit)
+        except Exception:
+            limit = 50
 
         search = (
-            data.get('search', '')
-            or ''
+            search or ''
         ).strip()
 
         offset = (page - 1) * limit
@@ -62,7 +91,7 @@ class VendorProductsController(http.Controller):
         ]
 
         # =========================================
-        # SEARCH FILTER
+        # SEARCH
         # =========================================
 
         if search:
@@ -72,15 +101,15 @@ class VendorProductsController(http.Controller):
             )
 
         _logger.warning(
-            f"VENDOR PRODUCT SEARCH → {search}"
+            f"VENDOR SEARCH → {search}"
         )
 
         _logger.warning(
-            f"PRODUCT DOMAIN → {domain}"
+            f"DOMAIN → {domain}"
         )
 
         # =========================================
-        # TOTAL COUNT
+        # TOTAL
         # =========================================
 
         total = Product.search_count(
@@ -88,7 +117,7 @@ class VendorProductsController(http.Controller):
         )
 
         # =========================================
-        # PAGINATED PRODUCTS
+        # PRODUCTS
         # =========================================
 
         products = Product.search(
@@ -106,10 +135,6 @@ class VendorProductsController(http.Controller):
             f"FOUND PRODUCTS → "
             f"{len(products)}"
         )
-
-        # =========================================
-        # RESPONSE BUILD
-        # =========================================
 
         result = []
 
@@ -132,7 +157,7 @@ class VendorProductsController(http.Controller):
             })
 
         # =========================================
-        # FINAL RESPONSE
+        # RESPONSE
         # =========================================
 
         return {
