@@ -844,17 +844,30 @@ if (vendorPrevBtn) {
             return;
         }
 
+        // =====================================
+        // OPEN DETAILS MODAL
+        // =====================================
 
-        if (
+        const BootstrapModal = (
 
-            typeof bootstrap ===
-                'undefined'
+            window.bootstrap
 
-            ||
+            &&
 
-            !bootstrap.Modal
+            window.bootstrap.Modal
 
-        ) {
+        )
+
+            ?
+
+            window.bootstrap.Modal
+
+            :
+
+            null;
+
+
+        if (!BootstrapModal) {
 
             console.error(
                 'Bootstrap modal unavailable'
@@ -865,18 +878,18 @@ if (vendorPrevBtn) {
 
 
         // =====================================
-        // DESTROY OLD INSTANCE
+        // CLEAN OLD INSTANCE
         // =====================================
 
-        const existingModal =
-            bootstrap.Modal.getInstance(
+        let modal =
+            BootstrapModal.getInstance(
                 modalEl
             );
 
 
-        if (existingModal) {
+        if (modal) {
 
-            existingModal.dispose();
+            modal.dispose();
         }
 
 
@@ -884,28 +897,26 @@ if (vendorPrevBtn) {
         // CREATE CLEAN MODAL
         // =====================================
 
-        const modal =
-            new bootstrap.Modal(
+        modal = new BootstrapModal(
 
-                modalEl,
+            modalEl,
 
-                {
+            {
 
-                    backdrop: false,
+                backdrop: false,
 
-                    keyboard: true,
+                keyboard: true,
 
-                    focus: false
-                }
-            );
+                focus: false
+            }
+        );
 
 
         // =====================================
         // STACKED MODAL FIX
         // =====================================
 
-        modalEl.style.zIndex =
-            '1065';
+        modalEl.style.zIndex = '1065';
 
 
         document.body.classList.add(
@@ -914,7 +925,7 @@ if (vendorPrevBtn) {
 
 
         // =====================================
-        // OPEN MODAL
+        // SHOW MODAL
         // =====================================
 
         modal.show();
