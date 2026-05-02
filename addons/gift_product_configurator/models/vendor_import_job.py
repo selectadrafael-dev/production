@@ -76,7 +76,7 @@ class VendorImportJob(models.Model):
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
     processed_group_ids = fields.Text(default="[]")
-    
+
     url_total_batches = fields.Integer(default=0)
     url_batch_index = fields.Integer(default=0)
     data_url = fields.Char()
@@ -84,6 +84,11 @@ class VendorImportJob(models.Model):
         string="URL Parse Index",
         default=0
     )
+    url_blocks_json = fields.Text(
+        string="URL Blocks JSON"
+    )
+    
+
     
     excel_parse_index = fields.Integer(
         default=0
@@ -250,6 +255,27 @@ class VendorImportJob(models.Model):
             # =============================================
 
             if self.state == 'url_scraping':
+
+                # =========================================
+                # RECOVERY
+                # =========================================
+
+                if self.url_blocks_json:
+
+                    _logger.warning(
+
+                        "[URL RECOVERY] "
+
+                        "USING SAVED BLOCKS"
+                    )
+
+                    self.state = 'url_ai'
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    return
+
 
                 _logger.warning(
 
@@ -1241,10 +1267,30 @@ class VendorImportJob(models.Model):
         # STORE SAFELY
         # =====================================================
 
-        payload = json.dumps(normalized)
+        #payload = json.dumps(normalized)
 
         # 🔥 LIMIT STORAGE SIZE
+        #self.extracted_text = payload[:50000]
+
+        payload = json.dumps(normalized)
+
+        # ============================================
+        # PERSIST URL BLOCKS
+        # ============================================
+
+        self.url_blocks_json = payload
+
+        # compatibility
         self.extracted_text = payload[:50000]
+
+
+        _logger.warning(
+
+            f"[URL STORE] "
+
+            f"saved_blocks={len(normalized)}"
+        )
+
 
         _logger.warning(
             f"APIFY DONE → {len(normalized)} ITEMS"
@@ -2461,7 +2507,21 @@ class VendorImportJob(models.Model):
 
         # ================= LOAD PAGES =================
         try:
-            pages = json.loads(self.extracted_text or "[]")
+            # pages = json.loads(self.extracted_text or "[]")
+
+            pages = json.loads(
+
+                self.url_blocks_json
+
+                or
+
+                self.extracted_text
+
+                or
+
+                "[]"
+            )
+
         except Exception:
             _logger.error("INVALID extracted_text JSON")
             return
