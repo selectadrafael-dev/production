@@ -622,8 +622,7 @@ if (vendorPrevBtn) {
 // VENDOR PRODUCT DETAILS
 // =====================================================
 
-
-async function loadVendorProductDetails(
+    async function loadVendorProductDetails(
     productId
 ) {
 
@@ -668,7 +667,6 @@ async function loadVendorProductDetails(
         );
 
 
-        // const product = data.result;
         const product = (
 
             data.result
@@ -690,14 +688,21 @@ async function loadVendorProductDetails(
         ) {
 
             alert(
+
                 product?.error
+
                 ||
+
                 'Failed to load product details'
             );
 
             return;
         }
 
+
+        // =====================================
+        // SAFE INPUT SETTER
+        // =====================================
 
         const setValue = function (
 
@@ -707,7 +712,8 @@ async function loadVendorProductDetails(
 
         ) {
 
-            const el = document.getElementById(id);
+            const el =
+                document.getElementById(id);
 
             if (!el) {
 
@@ -722,6 +728,10 @@ async function loadVendorProductDetails(
             el.value = value || '';
         };
 
+
+        // =====================================
+        // FILL FORM
+        // =====================================
 
         setValue(
             'vendorProductId',
@@ -765,9 +775,14 @@ async function loadVendorProductDetails(
         );
 
 
-        const preview = document.getElementById(
-            'vendorProductPreview'
-        );
+        // =====================================
+        // PRODUCT IMAGE
+        // =====================================
+
+        const preview =
+            document.getElementById(
+                'vendorProductPreview'
+            );
 
 
         if (preview) {
@@ -783,6 +798,9 @@ async function loadVendorProductDetails(
         }
 
 
+        // =====================================
+        // WARNING BOX
+        // =====================================
 
         const warningBox =
             document.getElementById(
@@ -807,66 +825,99 @@ async function loadVendorProductDetails(
         }
 
 
-const modalEl = document.getElementById(
-    'vendorProductDetailsModal'
-);
+        // =====================================
+        // DETAILS MODAL
+        // =====================================
+
+        const modalEl =
+            document.getElementById(
+                'vendorProductDetailsModal'
+            );
 
 
-if (!modalEl) {
+        if (!modalEl) {
 
-    console.error(
-        'DETAIL MODAL NOT FOUND'
-    );
+            console.error(
+                'DETAIL MODAL NOT FOUND'
+            );
 
-    return;
-}
+            return;
+        }
 
 
-if (
+        if (
 
-    typeof bootstrap !== 'undefined'
+            typeof bootstrap ===
+                'undefined'
 
-    &&
+            ||
 
-    bootstrap.Modal
+            !bootstrap.Modal
 
-) {
+        ) {
 
-    // const modal = new bootstrap.Modal(
-    //     modalEl
-    // );
+            console.error(
+                'Bootstrap modal unavailable'
+            );
 
-    // modal.show();
+            return;
+        }
 
-    let modal = bootstrap.Modal.getInstance(
-        modalEl
-    );
 
-    if (!modal) {
+        // =====================================
+        // DESTROY OLD INSTANCE
+        // =====================================
 
-        modal = new bootstrap.Modal(
-            modalEl
+        const existingModal =
+            bootstrap.Modal.getInstance(
+                modalEl
+            );
+
+
+        if (existingModal) {
+
+            existingModal.dispose();
+        }
+
+
+        // =====================================
+        // CREATE CLEAN MODAL
+        // =====================================
+
+        const modal =
+            new bootstrap.Modal(
+
+                modalEl,
+
+                {
+
+                    backdrop: false,
+
+                    keyboard: true,
+
+                    focus: false
+                }
+            );
+
+
+        // =====================================
+        // STACKED MODAL FIX
+        // =====================================
+
+        modalEl.style.zIndex =
+            '1065';
+
+
+        document.body.classList.add(
+            'modal-open'
         );
-    }
-
-    modal.show();
-
-} else {
-
-    // console.error(
-    //     'Bootstrap modal not available'
-    // );
-
-    // modalEl.classList.add('show');
-
-    // modalEl.style.display = 'block';
-
-    // modalEl.removeAttribute(
-    //     'aria-hidden'
-    // );
-}
 
 
+        // =====================================
+        // OPEN MODAL
+        // =====================================
+
+        modal.show();
 
     } catch (err) {
 
@@ -885,45 +936,7 @@ if (
 // Close Detail Modal
 //=======================================================
 
-// document.addEventListener(
 
-//     'click',
-
-//     function (e) {
-
-//         const closeBtn = e.target.closest(
-
-//             '#vendorProductDetailsModal .btn-close'
-//         );
-
-
-//         if (!closeBtn) {
-
-//             return;
-//         }
-
-
-//         const modal = document.getElementById(
-//             'vendorProductDetailsModal'
-//         );
-
-
-//         if (!modal) {
-
-//             return;
-//         }
-
-
-//         modal.classList.remove('show');
-
-//         modal.style.display = 'none';
-
-//         modal.setAttribute(
-//             'aria-hidden',
-//             'true'
-//         );
-//     }
-// );
 
 
 // =====================================================

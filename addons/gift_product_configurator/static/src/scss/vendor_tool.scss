@@ -202,3 +202,17 @@
 
     border-radius: 12px;
 }
+
+
+/* stacked modal support */
+
+#vendorProductDetailsModal {
+
+    z-index: 1065;
+}
+
+
+#vendorProductDetailsModal .modal-dialog {
+
+    z-index: 1066;
+}
