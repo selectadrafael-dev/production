@@ -1194,7 +1194,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
     
-    
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
 
