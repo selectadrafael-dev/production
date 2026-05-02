@@ -20,11 +20,13 @@ class VendorProductsController(http.Controller):
         auth='user',
         website=True
     )
+
     def vendor_products(
         self,
         page=1,
         limit=50,
-        search=""
+        search="",
+        **kwargs
     ):
 
         partner = request.env.user.partner_id
@@ -89,17 +91,6 @@ class VendorProductsController(http.Controller):
                 f"{bool(p.product_variant_id.image_1920)}"
             )
 
-
-            # result.append({
-
-            #     'id': p.id,
-
-            #     'name': p.name,
-            #     'image': (
-            #         f'/vendor/product/image/{p.id}'
-            #     ),
- 
-            # })
 
             result.append({
 
@@ -172,6 +163,14 @@ class VendorProductsController(http.Controller):
     
 
         partner = request.env.user.partner_id
+        params = kwargs.get('params', {})
+
+        page = params.get('page', page)
+
+        limit = params.get('limit', limit)
+
+        search = params.get('search', search)
+
         import logging
 
         _logger.warning(

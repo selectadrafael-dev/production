@@ -258,18 +258,18 @@ async function loadVendorProducts(
                 'Content-Type': 'application/json',
             },
 
-            // body: JSON.stringify({
-            //     page: page,
-            //     limit: 50,
-            // })
 
             body: JSON.stringify({
 
-                page: page,
+                params: {
 
-                limit: 50,
+                    page: page,
 
-                search: search,
+                    limit: 50,
+
+                    search: search,
+                }
+
             })
 
         });
