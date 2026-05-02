@@ -261,15 +261,11 @@ async function loadVendorProducts(
 
             body: JSON.stringify({
 
-                params: {
+                page: page,
 
-                    page: page,
+                limit: 50,
 
-                    limit: 50,
-
-                    search: search,
-                }
-
+                search: search,
             })
 
         });
@@ -503,7 +499,59 @@ if (vendorStatusBtn) {
 
             setTimeout(function () {
 
+                 console.log(
+                     'SEARCH TERM',
+                     vendorProductSearch
+                );
+
                 loadVendorProducts(1);
+
+                const searchInput =
+                    document.getElementById(
+                        'vendorProductSearch'
+                    );
+
+                if (
+                    searchInput &&
+                    !searchInput.dataset.bound
+                ) {
+
+                    searchInput.dataset.bound =
+                        'true';
+
+                    let searchTimeout;
+
+                    searchInput.addEventListener(
+                        'input',
+                        function () {
+
+                            clearTimeout(
+                                searchTimeout
+                            );
+
+                            searchTimeout =
+                                setTimeout(
+                                    function () {
+
+                                        vendorProductSearch =
+                                            searchInput.value.trim();
+
+                                        console.log(
+                                            'SEARCH TERM',
+                                            vendorProductSearch
+                                        );
+
+                                        loadVendorProducts(
+                                            1,
+                                            vendorProductSearch
+                                        );
+
+                                    },
+                                    300
+                                );
+                        }
+                    );
+                }
 
             }, 300);
         }
@@ -532,50 +580,6 @@ if (vendorNextBtn) {
 }
 
 
-//====================================================
-// PRODUCT SEARCH
-//====================================================
-
-const vendorSearchInput = document.getElementById(
-    'vendorProductSearch'
-);
-
-
-if (vendorSearchInput) {
-
-    let vendorSearchTimeout;
-
-    vendorSearchInput.addEventListener(
-
-        'input',
-
-        function () {
-
-            clearTimeout(
-                vendorSearchTimeout
-            );
-
-            vendorSearchTimeout = setTimeout(
-
-                function () {
-
-                    vendorProductSearch =
-                        vendorSearchInput.value.trim();
-
-                    loadVendorProducts(
-                        1,
-                        vendorProductSearch
-                    );
-
-                },
-
-                300
-            );
-        }
-    );
-}
-
-
 //========================previous btn========================
 const vendorPrevBtn = document.getElementById(
     'vendorPrevPage'
@@ -597,7 +601,7 @@ if (vendorPrevBtn) {
 }
 
 
-//vendor product form view
+//vendor product form view and seacrh bar
 // =====================================================
 // VENDOR PRODUCT DETAILS
 // =====================================================

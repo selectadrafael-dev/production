@@ -48,6 +48,10 @@ class VendorProductsController(http.Controller):
         # SEARCH
         # =========================================
 
+        _logger.warning(
+            f"SEARCH VALUE → {search}"
+        )
+
         if search:
 
             domain.append(
@@ -163,13 +167,13 @@ class VendorProductsController(http.Controller):
     
 
         partner = request.env.user.partner_id
-        params = kwargs.get('params', {})
+        # params = kwargs.get('params', {})
 
-        page = params.get('page', page)
+        # page = params.get('page', page)
 
-        limit = params.get('limit', limit)
+        # limit = params.get('limit', limit)
 
-        search = params.get('search', search)
+        # search = params.get('search', search)
 
         import logging
 
