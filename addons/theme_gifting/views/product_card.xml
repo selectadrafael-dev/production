@@ -20,12 +20,12 @@
           <span class="product-name"
                 t-esc="product.name"/>
 
-            <div>
-              As low as
+         
+            
               <span class="product-price pl-2">
                 <t t-esc="product.list_price"/>
               </span>
-           </div>
+          
 
         </div>
 

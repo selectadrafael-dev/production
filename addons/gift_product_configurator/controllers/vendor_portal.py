@@ -21,22 +21,70 @@ class VendorProductsController(http.Controller):
         website=True
     )
     def vendor_products(
+
         self,
+
         page=1,
+
         limit=50,
-        search=""
+
+        search="",
+
+        **kwargs
     ):
 
         partner = request.env.user.partner_id
 
-        page = int(page)
-        limit = int(limit)
+        # =========================================
+        # SAFE PARAM EXTRACTION
+        # =========================================
+
+        params = kwargs.get('params', {})
+
+        if params:
+
+            page = params.get(
+                'page',
+                page
+            )
+
+            limit = params.get(
+                'limit',
+                limit
+            )
+
+            search = params.get(
+                'search',
+                search
+            )
+
+        # =========================================
+        # SAFE TYPE CAST
+        # =========================================
+
+        try:
+            page = int(page)
+        except Exception:
+            page = 1
+
+        try:
+            limit = int(limit)
+        except Exception:
+            limit = 50
+
+        search = (
+            search or ''
+        ).strip()
 
         offset = (page - 1) * limit
 
         Product = request.env[
             'product.template'
         ].sudo()
+
+        # =========================================
+        # BASE DOMAIN
+        # =========================================
 
         domain = [
             ('vendor_id', '=', partner.id)
@@ -52,17 +100,34 @@ class VendorProductsController(http.Controller):
                 ('name', 'ilike', search)
             )
 
-        total = Product.search_count(domain)
+        _logger.warning(
+            f"VENDOR SEARCH → {search}"
+        )
 
         _logger.warning(
-            f"PRODUCT DOMAIN → {domain}"
+            f"DOMAIN → {domain}"
         )
-    
+
+        # =========================================
+        # TOTAL
+        # =========================================
+
+        total = Product.search_count(
+            domain
+        )
+
+        # =========================================
+        # PRODUCTS
+        # =========================================
 
         products = Product.search(
+
             domain,
+
             limit=limit,
+
             offset=offset,
+
             order='id desc'
         )
 
@@ -71,35 +136,29 @@ class VendorProductsController(http.Controller):
             f"{len(products)}"
         )
 
-
         result = []
 
         for p in products:
-
-            _logger.warning(
-
-                f"PRODUCT {p.id} | "
-
-                f"TEMPLATE IMAGE → "
-
-                f"{bool(p.image_1920)} | "
-
-                f"VARIANT IMAGE → "
-
-                f"{bool(p.product_variant_id.image_1920)}"
-            )
-
 
             result.append({
 
                 'id': p.id,
 
                 'name': p.name,
+
                 'image': (
                     f'/vendor/product/image/{p.id}'
                 ),
- 
+
+                'variant_count': len(
+                    p.product_variant_ids
+                ),
+
             })
+
+        # =========================================
+        # RESPONSE
+        # =========================================
 
         return {
 
@@ -118,7 +177,6 @@ class VendorProductsController(http.Controller):
                 page > 1,
         }
 
-
     # =====================================================
     # PRODUCT DETAILS
     # =====================================================
@@ -129,11 +187,6 @@ class VendorProductsController(http.Controller):
         auth='user',
         website=True
     )
-    # def vendor_product_details(
-    #     self,
-    #     product_id
-    # ):
-
 
     def vendor_product_details(
 
@@ -156,6 +209,7 @@ class VendorProductsController(http.Controller):
     
 
         partner = request.env.user.partner_id
+       
         import logging
 
         _logger.warning(
@@ -228,8 +282,14 @@ class VendorProductsController(http.Controller):
             'price':
                 product.list_price or 0,
 
+            # 'category':
+            #     product.categ_id.name or '',
+
             'category':
                 product.categ_id.name or '',
+
+            'category_id':
+                product.categ_id.id or False,
 
             'published':
                 product.website_published,
@@ -237,14 +297,6 @@ class VendorProductsController(http.Controller):
             'create_date':
                 str(product.create_date),
 
-            # 'image': (
-
-            #     f'/web/image?model=product.template'
-            #     f'&id={p.id}'
-            #     f'&field=image_128'
-            # ),
-
-        
             'image': (
                 f'/vendor/product/image/{product.id}'
             ),
@@ -253,7 +305,36 @@ class VendorProductsController(http.Controller):
                 warning,
         }
 
- 
+    
+    @http.route(
+        '/vendor/product/categories',
+        type='json',
+        auth='user',
+        website=True
+    )
+    def vendor_product_categories(
+        self,
+        **kwargs
+    ):
+
+        categories = request.env[
+            'product.public.category'
+        ].sudo().search([])
+
+
+        return [
+
+            {
+
+                'id': cat.id,
+
+                'name': cat.complete_name
+
+            }
+
+            for cat in categories
+        ]
+
     # =======================================================
     # UPDATE PRODUCT
     # =======================================================

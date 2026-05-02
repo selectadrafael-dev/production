@@ -145,6 +145,30 @@ class VendorImportJob(models.Model):
             self.state = "failed"
 
 
+    #=============Safe commit======================================================
+    def _safe_commit_progress(self):
+
+        try:
+
+            self.flush_recordset()
+
+        except Exception as flush_error:
+
+            _logger.warning(
+                f"FLUSH FAILED → {flush_error}"
+            )
+
+        try:
+
+            self.env.cr.commit()
+
+        except Exception as commit_error:
+
+            _logger.warning(
+                f"COMMIT FAILED → {commit_error}"
+            )
+
+
     #============Processing Jobs===================================================
 
     def _process_step(self):
@@ -244,8 +268,7 @@ class VendorImportJob(models.Model):
 
                 self.state = 'url_scraping'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -271,8 +294,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'url_ai'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -336,8 +358,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'url_ai'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -352,8 +373,7 @@ class VendorImportJob(models.Model):
                         "[URL SCRAPE FAILED]"
                     )
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -364,8 +384,7 @@ class VendorImportJob(models.Model):
 
                 self.state = 'failed'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -402,8 +421,8 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -440,8 +459,7 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -460,8 +478,8 @@ class VendorImportJob(models.Model):
                         "URL CREATE FAILED → NO AI RESPONSE"
                     )
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -492,8 +510,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -557,8 +574,7 @@ class VendorImportJob(models.Model):
                     self.state = 'failed'
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -2754,7 +2770,17 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         # 🔥 IMPORTANT: COMMIT FOR CRON CONTINUITY
-        self.env.cr.commit()
+        # self.env.cr.commit()
+
+        try:
+
+            self.env.cr.commit()
+
+        except Exception as commit_error:
+
+            _logger.warning(
+                f"COMMIT SKIPPED → {commit_error}"
+            )
 
         return
 

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+
+    <template id="popular_category_card"
+              name="Popular Category Card">
+
+        <t t-if="category">
+
+            <div class="popular-category-item">
+
+                <a t-att-href="'/shop/category/%s' % category.id"
+
+                   class="popular-category-link">
+
+                    <!-- CARD -->
+
+                    <div class="popular-category-card">
+
+                        <!-- IMAGE -->
+
+                        <div class="popular-category-image-wrap">
+
+                            <img
+
+                                t-att-src="'/web/image/product.public.category/%s/image_1024' % category.id"
+
+                                t-att-alt="category.name"/>
+
+                        </div>
+
+
+                        <!-- CONTENT -->
+
+                        <div class="popular-category-content">
+
+                            <h3 t-esc="category.name"/>
+
+
+                            <!-- sub categories -->
+
+                            <ul>
+
+                                <t t-foreach="category.child_id[:3]"
+
+                                   t-as="child">
+
+                                    <li t-esc="child.name"/>
+
+                                </t>
+
+                            </ul>
+
+
+                            <span class="popular-category-shop">
+
+                                Shop all
+
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </a>
+
+            </div>
+
+        </t>
+
+    </template>
+
+</odoo>

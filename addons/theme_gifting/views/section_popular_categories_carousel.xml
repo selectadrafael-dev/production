@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<odoo>
+
+    <data>
+
+        <template id="section_popular_categories_carousel"
+
+                  name="Popular Categories Carousel">
+
+
+            <section class="popular-category-section">
+
+                <div class="container-fluid">
+
+
+                    <!-- heading -->
+
+                    <div class="text-center fw-bold mb-5">
+
+                        <h3 class="popular-category-title">
+
+                            Shop Our Most Popular Categories
+
+                        </h3>
+
+                        <p class="popular-category-subtitle">
+
+                            Discover best-selling promotional products
+
+                        </p>
+
+                    </div>
+
+
+                    <!-- categories -->
+
+                    <t t-set="cats"
+
+                       t-value="request.env['product.public.category'].search([
+
+                           ('name', 'in', [
+
+                               'Writing',
+
+                               'Bags',
+
+                               'Drinkaware',
+
+                               'Clothing',
+
+                               'Office',
+
+                               'Eco-Friendly',
+
+                               'Trade Shows',
+
+                               'Keyrings',
+
+                               'Outdoor',
+
+                               'USB &amp; Tech',
+                               'Football Fever'
+
+                           ])
+
+                       ])"/>
+
+
+                    <!-- bootstrap carousel -->
+
+                    <div id="popularCategoryCarousel"
+
+                         class="carousel slide"
+
+                         data-bs-ride="carousel"
+
+                         data-bs-interval="3500">
+
+
+                        <!-- inner -->
+
+                        <div class="carousel-inner">
+
+
+                            <!-- slide 1 -->
+
+                            <div class="carousel-item active">
+
+                                <div class="row g-4 justify-content-center">
+
+
+                                    <t t-foreach="cats[:5]"
+
+                                       t-as="category">
+
+
+                                        <div class="col-lg-custom-5
+
+                                                    col-md-4
+
+                                                    col-12">
+
+
+                                            <t t-call="theme_gifting.popular_category_card">
+
+                                                <t t-set="category"
+
+                                                   t-value="category"/>
+
+                                            </t>
+
+                                        </div>
+
+                                    </t>
+
+                                </div>
+
+                            </div>
+
+
+                            <!-- slide 2 -->
+
+                            <t t-if="len(cats) > 5">
+
+                                <div class="carousel-item">
+
+                                    <div class="row g-4 justify-content-center">
+
+
+                                        <t t-foreach="cats[5:10]"
+
+                                           t-as="category">
+
+
+                                            <div class="col-lg-custom-5
+
+                                                        col-md-4
+
+                                                        col-12">
+
+
+                                                <t t-call="theme_gifting.popular_category_card">
+
+                                                    <t t-set="category"
+
+                                                       t-value="category"/>
+
+                                                </t>
+
+                                            </div>
+
+                                        </t>
+
+                                    </div>
+
+                                </div>
+
+                            </t>
+
+                        </div>
+
+
+                        <!-- prev -->
+
+                        <button
+
+                            class="carousel-control-prev"
+
+                            type="button"
+
+                            data-bs-target="#popularCategoryCarousel"
+
+                            data-bs-slide="prev">
+
+
+                            <span class="carousel-control-prev-icon"/>
+
+                        </button>
+
+
+                        <!-- next -->
+
+                        <button
+
+                            class="carousel-control-next"
+
+                            type="button"
+
+                            data-bs-target="#popularCategoryCarousel"
+
+                            data-bs-slide="next">
+
+
+                            <span class="carousel-control-next-icon"/>
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </template>
+
+    </data>
+
+</odoo>

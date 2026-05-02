@@ -238,9 +238,15 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 /*vendor portal*/
+
 let vendorCurrentPage = 1;
 
-async function loadVendorProducts(page = 1) {
+let vendorProductSearch = '';
+
+async function loadVendorProducts(
+    page = 1,
+    search = vendorProductSearch
+) {
 
     try {
 
@@ -252,9 +258,18 @@ async function loadVendorProducts(page = 1) {
                 'Content-Type': 'application/json',
             },
 
+
             body: JSON.stringify({
-                page: page,
-                limit: 50,
+
+                params: {
+
+                    page: page,
+
+                    limit: 50,
+
+                    search: search,
+                }
+
             })
 
         });
@@ -340,22 +355,42 @@ products.forEach(product => {
 
                 <div class="vendor-product-content">
 
-                    <h6 class="vendor-product-title">
+                   <h6 class="vendor-product-title">
 
-                        ${product.name}
+                            ${product.name}
 
-                    </h6>
+                        </h6>
 
-                    <button
+                        ${
+                            product.variant_count > 1
 
-                        class="btn btn-dark w-100 manage-product-btn"
+                            ?
 
-                        data-product-id="${product.id}"
-                    >
+                            `
 
-                        Manage Product
+                            <div class="vendor-product-variants">
 
-                    </button>
+                                ${product.variant_count} Variants
+
+                            </div>
+
+                            `
+
+                            :
+
+                            ''
+                        }
+
+                        <button
+
+                            class="btn btn-dark w-100 manage-product-btn"
+
+                            data-product-id="${product.id}"
+                        >
+
+                            Manage Product
+
+                        </button>
 
                 </div>
 
@@ -406,7 +441,19 @@ if (!products.length) {
             );
 
 
-        vendorCurrentPage = data.page;
+        // vendorCurrentPage = data.page;
+        vendorCurrentPage = (
+
+            data.page
+
+            ||
+
+            data.result?.page
+
+            ||
+
+            1
+        );
 
     } catch (err) {
 
@@ -468,7 +515,59 @@ if (vendorStatusBtn) {
 
             setTimeout(function () {
 
+                 console.log(
+                     'SEARCH TERM',
+                     vendorProductSearch
+                );
+
                 loadVendorProducts(1);
+
+                const searchInput =
+                    document.getElementById(
+                        'vendorProductSearch'
+                    );
+
+                if (
+                    searchInput &&
+                    !searchInput.dataset.bound
+                ) {
+
+                    searchInput.dataset.bound =
+                        'true';
+
+                    let searchTimeout;
+
+                    searchInput.addEventListener(
+                        'input',
+                        function () {
+
+                            clearTimeout(
+                                searchTimeout
+                            );
+
+                            searchTimeout =
+                                setTimeout(
+                                    function () {
+
+                                        vendorProductSearch =
+                                            searchInput.value.trim();
+
+                                        console.log(
+                                            'SEARCH TERM',
+                                            vendorProductSearch
+                                        );
+
+                                        loadVendorProducts(
+                                            1,
+                                            vendorProductSearch
+                                        );
+
+                                    },
+                                    300
+                                );
+                        }
+                    );
+                }
 
             }, 300);
         }
@@ -497,7 +596,7 @@ if (vendorNextBtn) {
 }
 
 
-// previous btn
+//========================previous btn========================
 const vendorPrevBtn = document.getElementById(
     'vendorPrevPage'
 );
@@ -518,13 +617,139 @@ if (vendorPrevBtn) {
 }
 
 
-//vendor product form view
+// =====================================================
+// LOAD PRODUCT CATEGORIES
+// =====================================================
+
+
+async function loadVendorCategories(
+
+    selectedCategory = ''
+
+) {
+
+    try {
+
+        console.log(
+            'LOADING CATEGORIES'
+        );
+
+
+        const response = await fetch(
+
+            '/vendor/product/categories',
+
+            {
+
+                method: 'POST',
+
+                headers: {
+
+                    'Content-Type':
+                        'application/json'
+                },
+
+                body: JSON.stringify({})
+            }
+        );
+
+
+        const data =
+            await response.json();
+
+
+        console.log(
+            'CATEGORY RESPONSE',
+            data
+        );
+
+
+        const categories = (
+
+            data.result
+
+            ||
+
+            data
+
+            ||
+
+            []
+        );
+
+
+        const select =
+            document.getElementById(
+                'vendorProductCategory'
+            );
+
+
+        if (!select) {
+
+            console.error(
+                'CATEGORY SELECT NOT FOUND'
+            );
+
+            return;
+        }
+
+
+        select.innerHTML = `
+
+            <option value="">
+                Select Category
+            </option>
+        `;
+
+
+        categories.forEach(cat => {
+
+            const option =
+                document.createElement(
+                    'option'
+                );
+
+            option.value = cat.id;
+
+            option.textContent =
+                cat.name;
+
+
+            select.appendChild(
+                option
+            );
+        });
+
+
+        if (selectedCategory) {
+
+            select.value =
+                String(selectedCategory);
+        }
+
+
+        console.log(
+            'CATEGORIES LOADED'
+        );
+
+    } catch (err) {
+
+        console.error(
+
+            'CATEGORY LOAD FAILED',
+
+            err
+        );
+    }
+}
+
+//vendor product form view and seacrh bar
 // =====================================================
 // VENDOR PRODUCT DETAILS
 // =====================================================
 
 
-async function loadVendorProductDetails(
+    async function loadVendorProductDetails(
     productId
 ) {
 
@@ -569,7 +794,14 @@ async function loadVendorProductDetails(
         );
 
 
-        const product = data.result;
+        const product = (
+
+            data.result
+
+            ||
+
+            data
+        );
 
 
         if (
@@ -583,14 +815,21 @@ async function loadVendorProductDetails(
         ) {
 
             alert(
+
                 product?.error
+
                 ||
+
                 'Failed to load product details'
             );
 
             return;
         }
 
+
+        // =====================================
+        // SAFE INPUT SETTER
+        // =====================================
 
         const setValue = function (
 
@@ -600,7 +839,8 @@ async function loadVendorProductDetails(
 
         ) {
 
-            const el = document.getElementById(id);
+            const el =
+                document.getElementById(id);
 
             if (!el) {
 
@@ -615,6 +855,10 @@ async function loadVendorProductDetails(
             el.value = value || '';
         };
 
+
+        // =====================================
+        // FILL FORM
+        // =====================================
 
         setValue(
             'vendorProductId',
@@ -631,9 +875,8 @@ async function loadVendorProductDetails(
             product.description
         );
 
-        setValue(
-            'vendorProductCategory',
-            product.category
+        await loadVendorCategories(
+            product.category_id
         );
 
         setValue(
@@ -658,9 +901,14 @@ async function loadVendorProductDetails(
         );
 
 
-        const preview = document.getElementById(
-            'vendorProductPreview'
-        );
+        // =====================================
+        // PRODUCT IMAGE
+        // =====================================
+
+        const preview =
+            document.getElementById(
+                'vendorProductPreview'
+            );
 
 
         if (preview) {
@@ -676,6 +924,9 @@ async function loadVendorProductDetails(
         }
 
 
+        // =====================================
+        // WARNING BOX
+        // =====================================
 
         const warningBox =
             document.getElementById(
@@ -700,54 +951,118 @@ async function loadVendorProductDetails(
         }
 
 
-const modalEl = document.getElementById(
-    'vendorProductDetailsModal'
-);
+        // =====================================
+        // DETAILS MODAL
+        // =====================================
+
+        const modalEl =
+            document.getElementById(
+                'vendorProductDetailsModal'
+            );
 
 
-if (!modalEl) {
+        if (!modalEl) {
 
-    console.error(
-        'DETAIL MODAL NOT FOUND'
+            console.error(
+                'DETAIL MODAL NOT FOUND'
+            );
+
+            return;
+        }
+
+        // =====================================
+        // OPEN DETAILS MODAL
+        // =====================================
+
+        modalEl.classList.add('show');
+
+        modalEl.style.display = 'block';
+
+        modalEl.removeAttribute(
+            'aria-hidden'
+        );
+
+        modalEl.setAttribute(
+            'aria-modal',
+            'true'
+        );
+
+        modalEl.setAttribute(
+            'role',
+            'dialog'
+        );
+
+        // =====================================
+        // PREVENT PARENT MODAL FOCUS TRAP
+        // =====================================
+
+    const parentModal = document.getElementById(
+        'vendorProductsModal'
     );
 
-    return;
-}
+    if (parentModal) {
+
+        parentModal.setAttribute(
+            'inert',
+            'true'
+        );
+    }
 
 
-if (
+        // =====================================
+        // STACKED MODAL FIX
+        // =====================================
 
-    typeof bootstrap !== 'undefined'
+    // detail modal layer
+    modalEl.style.zIndex = '2000';
 
-    &&
+    modalEl.style.pointerEvents = 'auto';
 
-    bootstrap.Modal
 
-) {
-
-    const modal = new bootstrap.Modal(
-        modalEl
+    // detail dialog
+    const dialog = modalEl.querySelector(
+        '.modal-dialog'
     );
 
-    modal.show();
+    if (dialog) {
 
-} else {
+        dialog.style.zIndex = '2001';
 
-    console.error(
-        'Bootstrap modal not available'
+        dialog.style.position = 'relative';
+
+        dialog.style.pointerEvents =
+            'auto';
+    }
+
+
+    // detail content
+    const content = modalEl.querySelector(
+        '.modal-content'
     );
 
-    modalEl.classList.add('show');
+    if (content) {
 
-    modalEl.style.display = 'block';
+        content.style.zIndex = '2002';
 
-    modalEl.removeAttribute(
-        'aria-hidden'
-    );
-}
+        content.style.position =
+            'relative';
+
+        content.style.pointerEvents =
+            'auto';
+    }
 
 
+    // =====================================
+    // DISABLE PARENT MODAL INTERCEPTION
+    // =====================================
 
+    // allow detail modal interaction
+    modalEl.style.pointerEvents =
+        'auto';
+
+
+    // preserve scroll lock
+   
     } catch (err) {
 
         console.error(
@@ -760,50 +1075,6 @@ if (
         );
     }
 }
-
-//=======================================================
-// Close Detail Modal
-//=======================================================
-
-document.addEventListener(
-
-    'click',
-
-    function (e) {
-
-        const closeBtn = e.target.closest(
-
-            '#vendorProductDetailsModal .btn-close'
-        );
-
-
-        if (!closeBtn) {
-
-            return;
-        }
-
-
-        const modal = document.getElementById(
-            'vendorProductDetailsModal'
-        );
-
-
-        if (!modal) {
-
-            return;
-        }
-
-
-        modal.classList.remove('show');
-
-        modal.style.display = 'none';
-
-        modal.setAttribute(
-            'aria-hidden',
-            'true'
-        );
-    }
-);
 
 
 // =====================================================
@@ -849,12 +1120,64 @@ document.addEventListener(
     }
 );
 
+//=====================================================
+// CLOSE PRODUCT DETAILS MODAL
+//=====================================================
 
-// =====================================================
-// SAVE PRODUCT
-// =====================================================
+document.addEventListener(
+
+    'click',
+
+    function (e) {
+
+        const closeBtn = e.target.closest(
+
+            '#vendorProductDetailsModal .btn-close'
+        );
+
+        if (!closeBtn) {
+
+            return;
+        }
+
+        const modal = document.getElementById(
+            'vendorProductDetailsModal'
+        );
+
+        if (!modal) {
+
+            return;
+        }
 
 
+        // hide modal
+        modal.classList.remove('show');
+
+        modal.style.display = 'none';
+
+        modal.setAttribute(
+            'aria-hidden',
+            'true'
+        );
+
+        // restore parent modal focus
+
+        const parentModal = document.getElementById(
+            'vendorProductsModal'
+        );
+
+        if (parentModal) {
+
+            parentModal.removeAttribute(
+                'inert'
+            );
+        }
+
+
+        // restore parent modal interaction
+        
+    }
+);
 
 // =====================================================
 // DELETE PRODUCT
@@ -880,36 +1203,6 @@ document.addEventListener(
 
 
         try {
-
-            // const payload = {
-
-            //     product_id:
-
-            //         document.getElementById(
-            //             'vendorProductId'
-            //         ).value,
-
-
-            //     name:
-
-            //         document.getElementById(
-            //             'vendorProductName'
-            //         ).value,
-
-
-            //     description:
-
-            //         document.getElementById(
-            //             'vendorProductDescription'
-            //         ).value,
-
-
-            //     price:
-
-            //         document.getElementById(
-            //             'vendorProductPrice'
-            //         ).value
-            // };
 
             const imageInput = document.getElementById(
                 'vendorProductImage'

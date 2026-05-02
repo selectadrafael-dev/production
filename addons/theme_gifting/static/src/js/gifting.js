@@ -16,4 +16,67 @@
     });
 
   });
+
+// =====================================================
+// POPULAR CATEGORY CAROUSEL
+// =====================================================
+
+document.addEventListener(
+
+    'DOMContentLoaded',
+
+    function () {
+
+        const carousel =
+            document.getElementById(
+                'popularCategoryCarousel'
+            );
+
+        if (!carousel) {
+
+            return;
+        }
+
+
+        carousel.addEventListener(
+
+            'slid.bs.carousel',
+
+            function () {
+
+                const active =
+                    carousel.querySelector(
+                        '.carousel-item.active'
+                    );
+
+                const items =
+                    carousel.querySelectorAll(
+                        '.carousel-item'
+                    );
+
+
+                const last =
+                    items[
+                        items.length - 1
+                    ];
+
+
+                if (active === last) {
+
+                    setTimeout(function () {
+
+                        bootstrap.Carousel
+                            .getInstance(
+                                carousel
+                            )
+                            .to(0);
+
+                    }, 250);
+                }
+            }
+        );
+
+    }
+);
+
 })();

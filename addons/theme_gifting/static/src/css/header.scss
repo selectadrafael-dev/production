@@ -547,6 +547,11 @@
   color: #14a66a;
 }
 
+.gifting-contact .fa-headphones{
+  font-size: 30px;
+}
+
+
 /*=====================mobile category================*/
 /* drawer container */
 @media (max-width: 768px) {
@@ -837,10 +842,6 @@
   .gifting-navbar + * {
     margin-top: 0;
   }
-
-  // .gifting-categories:hover .cat-mega-global {
-  //   display: none !important;
-  // }
 }
 
 /* ================= MOBILE (FIGMA) ================= */
@@ -951,5 +952,9 @@
 
   .contact-trigger i {
     font-size: 15px;
+  }
+
+  .gifting-contact .fa-headphones{
+    font-size: 20px;
   }
 }

@@ -208,7 +208,9 @@
                   <!-- LEFT -->
                   <div class="mega-left">
                     <t t-foreach="categories" t-as="cat" t-key="cat.id">
-                      <div class="mega-left-item" t-att-data-cat-id="cat.id">
+                      <div class="mega-left-item"
+                        t-att-data-cat-id="cat.id"
+                        t-att-data-cat-url="'/shop/category/%s' % cat.id">
                         <span t-esc="cat.name"/>
                         <span class="arrow">›</span>
                       </div>

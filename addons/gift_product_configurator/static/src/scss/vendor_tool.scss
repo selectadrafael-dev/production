@@ -107,6 +107,50 @@
     margin-bottom: 15px;
 }
 
+.vendor-product-search-wrap {
+
+    width: 320px;
+
+    max-width: 100%;
+}
+
+
+.vendor-product-search {
+
+    border-radius: 12px;
+
+    height: 44px;
+
+    border: 1px solid #dcdfe4;
+
+    box-shadow: none;
+}
+
+
+.vendor-product-search:focus {
+
+    border-color: #5c8567;
+
+    box-shadow: 0 0 0 0.15rem rgba(
+        92,
+        133,
+        103,
+        0.15
+    );
+}
+
+
+.vendor-product-variants {
+
+    font-size: 13px;
+
+    color: #6c757d;
+
+    margin-bottom: 14px;
+
+    font-weight: 500;
+}
+
 /*product detail form view*/
 .vendor-details-modal {
 
@@ -157,4 +201,73 @@
     background: white;
 
     border-radius: 12px;
+}
+
+
+/* ========================================
+   STACKED MODAL SUPPORT
+======================================== */
+
+#vendorProductDetailsModal {
+
+    z-index: 2000 !important;
+
+    pointer-events: auto;
+}
+
+
+#vendorProductDetailsModal .modal-dialog {
+
+    position: relative;
+
+    z-index: 2001 !important;
+
+    pointer-events: auto;
+}
+
+
+#vendorProductDetailsModal .modal-content {
+
+    position: relative;
+
+    z-index: 2002 !important;
+
+    pointer-events: auto;
+
+    border-radius: 22px;
+
+    border: none;
+}
+
+
+/* keep products modal visually behind */
+
+#vendorProductsModal {
+
+    z-index: 1055;
+}
+
+/* ========================================
+   FIX TEXT INPUT INTERACTION
+======================================== */
+
+#vendorProductDetailsModal input,
+
+#vendorProductDetailsModal textarea,
+
+#vendorProductDetailsModal select {
+
+    pointer-events: auto !important;
+
+    position: relative;
+
+    z-index: 3000 !important;
+
+    user-select: text !important;
+}
+
+
+#vendorProductDetailsModal textarea {
+
+    resize: vertical;
 }
