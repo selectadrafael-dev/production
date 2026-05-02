@@ -90,15 +90,31 @@ class VendorProductsController(http.Controller):
             )
 
 
+            # result.append({
+
+            #     'id': p.id,
+
+            #     'name': p.name,
+            #     'image': (
+            #         f'/vendor/product/image/{p.id}'
+            #     ),
+ 
+            # })
+
             result.append({
 
                 'id': p.id,
 
                 'name': p.name,
+
                 'image': (
                     f'/vendor/product/image/{p.id}'
                 ),
- 
+
+                'variant_count': len(
+                    p.product_variant_ids
+                ),
+
             })
 
         return {

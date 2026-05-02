@@ -107,6 +107,50 @@
     margin-bottom: 15px;
 }
 
+.vendor-product-search-wrap {
+
+    width: 320px;
+
+    max-width: 100%;
+}
+
+
+.vendor-product-search {
+
+    border-radius: 12px;
+
+    height: 44px;
+
+    border: 1px solid #dcdfe4;
+
+    box-shadow: none;
+}
+
+
+.vendor-product-search:focus {
+
+    border-color: #5c8567;
+
+    box-shadow: 0 0 0 0.15rem rgba(
+        92,
+        133,
+        103,
+        0.15
+    );
+}
+
+
+.vendor-product-variants {
+
+    font-size: 13px;
+
+    color: #6c757d;
+
+    margin-bottom: 14px;
+
+    font-weight: 500;
+}
+
 /*product detail form view*/
 .vendor-details-modal {
 

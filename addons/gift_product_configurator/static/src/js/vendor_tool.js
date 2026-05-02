@@ -238,9 +238,15 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 /*vendor portal*/
+
 let vendorCurrentPage = 1;
 
-async function loadVendorProducts(page = 1) {
+let vendorProductSearch = '';
+
+async function loadVendorProducts(
+    page = 1,
+    search = vendorProductSearch
+) {
 
     try {
 
@@ -252,9 +258,18 @@ async function loadVendorProducts(page = 1) {
                 'Content-Type': 'application/json',
             },
 
+            // body: JSON.stringify({
+            //     page: page,
+            //     limit: 50,
+            // })
+
             body: JSON.stringify({
+
                 page: page,
+
                 limit: 50,
+
+                search: search,
             })
 
         });
@@ -340,22 +355,42 @@ products.forEach(product => {
 
                 <div class="vendor-product-content">
 
-                    <h6 class="vendor-product-title">
+                   <h6 class="vendor-product-title">
 
-                        ${product.name}
+                            ${product.name}
 
-                    </h6>
+                        </h6>
 
-                    <button
+                        ${
+                            product.variant_count > 1
 
-                        class="btn btn-dark w-100 manage-product-btn"
+                            ?
 
-                        data-product-id="${product.id}"
-                    >
+                            `
 
-                        Manage Product
+                            <div class="vendor-product-variants">
 
-                    </button>
+                                ${product.variant_count} Variants
+
+                            </div>
+
+                            `
+
+                            :
+
+                            ''
+                        }
+
+                        <button
+
+                            class="btn btn-dark w-100 manage-product-btn"
+
+                            data-product-id="${product.id}"
+                        >
+
+                            Manage Product
+
+                        </button>
 
                 </div>
 
@@ -497,7 +532,51 @@ if (vendorNextBtn) {
 }
 
 
-// previous btn
+//====================================================
+// PRODUCT SEARCH
+//====================================================
+
+const vendorSearchInput = document.getElementById(
+    'vendorProductSearch'
+);
+
+
+if (vendorSearchInput) {
+
+    let vendorSearchTimeout;
+
+    vendorSearchInput.addEventListener(
+
+        'input',
+
+        function () {
+
+            clearTimeout(
+                vendorSearchTimeout
+            );
+
+            vendorSearchTimeout = setTimeout(
+
+                function () {
+
+                    vendorProductSearch =
+                        vendorSearchInput.value.trim();
+
+                    loadVendorProducts(
+                        1,
+                        vendorProductSearch
+                    );
+
+                },
+
+                300
+            );
+        }
+    );
+}
+
+
+//========================previous btn========================
 const vendorPrevBtn = document.getElementById(
     'vendorPrevPage'
 );
@@ -851,12 +930,6 @@ document.addEventListener(
 
 
 // =====================================================
-// SAVE PRODUCT
-// =====================================================
-
-
-
-// =====================================================
 // DELETE PRODUCT
 // =====================================================
 
@@ -880,36 +953,6 @@ document.addEventListener(
 
 
         try {
-
-            // const payload = {
-
-            //     product_id:
-
-            //         document.getElementById(
-            //             'vendorProductId'
-            //         ).value,
-
-
-            //     name:
-
-            //         document.getElementById(
-            //             'vendorProductName'
-            //         ).value,
-
-
-            //     description:
-
-            //         document.getElementById(
-            //             'vendorProductDescription'
-            //         ).value,
-
-
-            //     price:
-
-            //         document.getElementById(
-            //             'vendorProductPrice'
-            //         ).value
-            // };
 
             const imageInput = document.getElementById(
                 'vendorProductImage'
