@@ -441,7 +441,19 @@ if (!products.length) {
             );
 
 
-        vendorCurrentPage = data.page;
+        // vendorCurrentPage = data.page;
+        vendorCurrentPage = (
+
+            data.page
+
+            ||
+
+            data.result?.page
+
+            ||
+
+            1
+        );
 
     } catch (err) {
 
@@ -656,7 +668,15 @@ async function loadVendorProductDetails(
         );
 
 
-        const product = data.result;
+        // const product = data.result;
+        const product = (
+
+            data.result
+
+            ||
+
+            data
+        );
 
 
         if (
@@ -812,25 +832,38 @@ if (
 
 ) {
 
-    const modal = new bootstrap.Modal(
+    // const modal = new bootstrap.Modal(
+    //     modalEl
+    // );
+
+    // modal.show();
+
+    let modal = bootstrap.Modal.getInstance(
         modalEl
     );
+
+    if (!modal) {
+
+        modal = new bootstrap.Modal(
+            modalEl
+        );
+    }
 
     modal.show();
 
 } else {
 
-    console.error(
-        'Bootstrap modal not available'
-    );
+    // console.error(
+    //     'Bootstrap modal not available'
+    // );
 
-    modalEl.classList.add('show');
+    // modalEl.classList.add('show');
 
-    modalEl.style.display = 'block';
+    // modalEl.style.display = 'block';
 
-    modalEl.removeAttribute(
-        'aria-hidden'
-    );
+    // modalEl.removeAttribute(
+    //     'aria-hidden'
+    // );
 }
 
 
@@ -852,45 +885,45 @@ if (
 // Close Detail Modal
 //=======================================================
 
-document.addEventListener(
+// document.addEventListener(
 
-    'click',
+//     'click',
 
-    function (e) {
+//     function (e) {
 
-        const closeBtn = e.target.closest(
+//         const closeBtn = e.target.closest(
 
-            '#vendorProductDetailsModal .btn-close'
-        );
-
-
-        if (!closeBtn) {
-
-            return;
-        }
+//             '#vendorProductDetailsModal .btn-close'
+//         );
 
 
-        const modal = document.getElementById(
-            'vendorProductDetailsModal'
-        );
+//         if (!closeBtn) {
+
+//             return;
+//         }
 
 
-        if (!modal) {
+//         const modal = document.getElementById(
+//             'vendorProductDetailsModal'
+//         );
 
-            return;
-        }
+
+//         if (!modal) {
+
+//             return;
+//         }
 
 
-        modal.classList.remove('show');
+//         modal.classList.remove('show');
 
-        modal.style.display = 'none';
+//         modal.style.display = 'none';
 
-        modal.setAttribute(
-            'aria-hidden',
-            'true'
-        );
-    }
-);
+//         modal.setAttribute(
+//             'aria-hidden',
+//             'true'
+//         );
+//     }
+// );
 
 
 // =====================================================
