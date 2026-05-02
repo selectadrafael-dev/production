@@ -489,6 +489,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning("PDF EXTRACTION BATCH COMPLETED")
 
+
     # ---------------- OPENAI ----------------
     def send_to_openai_url(self):
 
@@ -711,8 +712,8 @@ class VendorImportJob(models.Model):
         _logger.warning("CRON EXIT → CONTINUE NEXT RUN")
         return
 
+    
     #===========pdf and excel open ai OPENAI=========================
-
 
     def send_to_openai_pdf_excel(self):
 
