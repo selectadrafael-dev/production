@@ -46,9 +46,6 @@ class VendorImportJob(models.Model):
     partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
     name = fields.Char(default="Vendor Data Import")
-
-    data_url = fields.Char()
-    #data_url = fields.Char(string="Vendor URL")
     extra_info = fields.Text()
 
     pdf_file = fields.Binary()
@@ -71,7 +68,7 @@ class VendorImportJob(models.Model):
 
     apify_run_id = fields.Char()
     apify_dataset_id = fields.Char()
-    url_batch_index = fields.Integer(default=0)
+   
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
@@ -79,7 +76,19 @@ class VendorImportJob(models.Model):
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
     processed_group_ids = fields.Text(default="[]")
+
     url_total_batches = fields.Integer(default=0)
+    url_batch_index = fields.Integer(default=0)
+    data_url = fields.Char()
+    url_parse_index = fields.Integer(
+        string="URL Parse Index",
+        default=0
+    )
+    url_blocks_json = fields.Text(
+        string="URL Blocks JSON"
+    )
+    
+
     
     excel_parse_index = fields.Integer(
         default=0
@@ -214,6 +223,7 @@ class VendorImportJob(models.Model):
         # =================================================
         # URL FLOW
         # =================================================
+        
 
         if self.data_url:
 
@@ -227,6 +237,10 @@ class VendorImportJob(models.Model):
             # =============================================
 
             if self.state == 'draft':
+
+                _logger.warning(
+                    "[URL FLOW] START"
+                )
 
                 self.state = 'url_scraping'
 
@@ -242,35 +256,116 @@ class VendorImportJob(models.Model):
 
             if self.state == 'url_scraping':
 
-                result = self.parse_url()
+                # =========================================
+                # RECOVERY
+                # =========================================
 
-                if result is True:
+                if self.url_blocks_json:
 
                     _logger.warning(
-                        "APIFY STILL RUNNING → WAIT NEXT CRON"
+
+                        "[URL RECOVERY] "
+
+                        "USING SAVED BLOCKS"
                     )
-
-                    return
-
-
-                if self.extracted_text:
 
                     self.state = 'url_ai'
 
                     self.flush_recordset()
                     self.env.cr.commit()
 
+                    return
+
+
+                _logger.warning(
+
+                    f"[URL SCRAPE] "
+
+                    f"SENDING TO APIFY "
+
+                    f"| {self.data_url}"
+                )
+
+
+                previous_extract = bool(
+                    self.extracted_text
+                )
+
+
+                result = self.parse_url()
+
+
+                # =========================================
+                # APIFY STILL PROCESSING
+                # =========================================
+
+                if result is True:
+
                     _logger.warning(
-                        "STATE → url_ai"
+
+                        "[APIFY STATUS] "
+
+                        "WAITING FOR RESPONSE"
                     )
 
-                else:
+                    return
 
-                    self.state = 'failed'
+
+                # =========================================
+                # APIFY RESPONSE READY
+                # =========================================
+
+                _logger.warning(
+                    "[APIFY STATUS] RESPONSE RECEIVED"
+                )
+
+
+                if (
+
+                    self.extracted_text
+
+                    and
+
+                    not previous_extract
+
+                ):
 
                     _logger.warning(
-                        "URL EXTRACTION FAILED"
+                        "URL EXTRACTION SUCCESS → url_ai"
                     )
+
+                    self.state = 'url_ai'
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    return
+
+
+                # =========================================
+                # FAILED
+                # =========================================
+
+                if self.state == 'failed':
+
+                    _logger.warning(
+                        "[URL SCRAPE FAILED]"
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    return
+
+
+                _logger.warning(
+                    "[URL SCRAPE] NO DATA EXTRACTED"
+                )
+
+                self.state = 'failed'
+
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -281,7 +376,72 @@ class VendorImportJob(models.Model):
 
             if self.state == 'url_ai':
 
-                self.send_to_openai_url()
+                previous_batch = (
+                    self.url_batch_index or 0
+                )
+
+
+                _logger.warning(
+
+                    f"[URL AI START] "
+
+                    f"batch={previous_batch}"
+                )
+
+
+                try:
+
+                    self.send_to_openai_url()
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"URL AI FAILED → {str(e)}"
+                    )
+
+                    self.state = 'failed'
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    return
+
+
+                new_batch = (
+                    self.url_batch_index or 0
+                )
+
+
+                _logger.warning(
+
+                    f"[URL AI CHECK] "
+
+                    f"{previous_batch} -> {new_batch}"
+                )
+
+
+                # =========================================
+                # PROGRESS DETECTED
+                # =========================================
+
+                if new_batch > previous_batch:
+
+                    _logger.warning(
+                        "[URL AI] PROGRESS SAVED"
+                    )
+
+                elif self.state != 'url_creating':
+
+                    _logger.warning(
+                        "[URL AI] NO PROGRESS DETECTED"
+                    )
+
+                    self.state = 'failed'
+
+
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -300,10 +460,55 @@ class VendorImportJob(models.Model):
                         "URL CREATE FAILED → NO AI RESPONSE"
                     )
 
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
                     return
 
 
-                self.create_products_url()
+                previous_index = (
+                    self.last_processed_product_index or 0
+                )
+
+
+                _logger.warning(
+
+                    f"[URL CREATE START] "
+
+                    f"{previous_index}"
+                )
+
+
+                try:
+
+                    self.create_products_url()
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"URL CREATE FAILED → {str(e)}"
+                    )
+
+                    self.state = 'failed'
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    return
+
+
+                new_index = (
+                    self.last_processed_product_index or 0
+                )
+
+
+                _logger.warning(
+
+                    f"[URL CREATE CHECK] "
+
+                    f"{previous_index} -> {new_index}"
+                )
 
 
                 try:
@@ -321,24 +526,35 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(
 
-                    f"[URL CREATE CHECK] → "
+                    f"[URL TOTAL PRODUCTS] "
 
-                    f"{self.last_processed_product_index}/{total}"
+                    f"{total}"
                 )
 
 
-                if (
-
-                    self.last_processed_product_index
-                    >= total
-
-                ):
+                if new_index >= total:
 
                     self.state = 'done'
 
                     _logger.warning(
                         "URL COMPLETE ✅"
                     )
+
+                elif new_index > previous_index:
+
+                    self.state = 'url_creating'
+
+                    _logger.warning(
+                        "[URL CREATE] CONTINUE"
+                    )
+
+                else:
+
+                    _logger.warning(
+                        "[URL CREATE] NO PROGRESS"
+                    )
+
+                    self.state = 'failed'
 
 
                 self.flush_recordset()
@@ -979,7 +1195,40 @@ class VendorImportJob(models.Model):
         # LIMIT SIZE (VERY IMPORTANT)
         # =====================================================
 
-        structured_data = structured_data[:40]
+        # structured_data = structured_data[:40]
+
+        # ============================================
+        # URL BATCHING
+        # ============================================
+
+        BATCH_SIZE = 40
+
+        start = (
+            self.url_parse_index or 0
+        )
+
+        end = min(
+
+            start + BATCH_SIZE,
+
+            len(structured_data)
+        )
+
+
+        structured_data = structured_data[
+            start:end
+        ]
+
+
+        _logger.warning(
+
+            f"[URL PARSE BATCH] "
+
+            f"{start} -> {end} "
+
+            f"| total={len(normalized if 'normalized' in locals() else structured_data)}"
+        )
+
 
         # =====================================================
         # NORMALIZE
@@ -988,6 +1237,21 @@ class VendorImportJob(models.Model):
         normalized = self._normalize_url_data(
             structured_data
         )
+
+        # ============================================
+        # SAVE URL PARSE PROGRESS
+        # ============================================
+
+        self.url_parse_index = end
+
+
+        _logger.warning(
+
+            f"[URL PARSE SAVE] "
+
+            f"{self.url_parse_index}"
+        )
+
 
         if not normalized:
 
@@ -1003,10 +1267,30 @@ class VendorImportJob(models.Model):
         # STORE SAFELY
         # =====================================================
 
-        payload = json.dumps(normalized)
+        #payload = json.dumps(normalized)
 
         # 🔥 LIMIT STORAGE SIZE
+        #self.extracted_text = payload[:50000]
+
+        payload = json.dumps(normalized)
+
+        # ============================================
+        # PERSIST URL BLOCKS
+        # ============================================
+
+        self.url_blocks_json = payload
+
+        # compatibility
         self.extracted_text = payload[:50000]
+
+
+        _logger.warning(
+
+            f"[URL STORE] "
+
+            f"saved_blocks={len(normalized)}"
+        )
+
 
         _logger.warning(
             f"APIFY DONE → {len(normalized)} ITEMS"
@@ -1016,8 +1300,21 @@ class VendorImportJob(models.Model):
         # MOVE TO NEXT STEP
         # =====================================================
 
-        self.state = "url_ai"
+        # self.state = "url_ai"
+        if self.url_parse_index >= len(raw_data):
 
+            _logger.warning(
+                "[URL PARSE] FINAL BATCH READY"
+            )
+
+        else:
+
+            _logger.warning(
+                "[URL PARSE] MORE BATCHES REMAIN"
+            )
+
+
+        self.state = "url_ai"
 
     #------excel parsing method---------------
     
@@ -2210,7 +2507,21 @@ class VendorImportJob(models.Model):
 
         # ================= LOAD PAGES =================
         try:
-            pages = json.loads(self.extracted_text or "[]")
+            # pages = json.loads(self.extracted_text or "[]")
+
+            pages = json.loads(
+
+                self.url_blocks_json
+
+                or
+
+                self.extracted_text
+
+                or
+
+                "[]"
+            )
+
         except Exception:
             _logger.error("INVALID extracted_text JSON")
             return
@@ -3767,10 +4078,6 @@ class VendorImportJob(models.Model):
                 })
 
             # ================= DUPLICATE CHECK =================
-            # existing = product_obj.search([
-            #     ('name', 'ilike', name.strip())
-            # ], limit=1)
-
             existing = product_obj.search([
                 ('name', 'ilike', name.strip()),
                 ('vendor_id', '=', vendor_id)
@@ -4895,24 +5202,77 @@ class VendorImportJob(models.Model):
                 # FIND PARENT PRODUCT
                 # =================================================
 
-                vendor_id = self.partner_id.id if self.partner_id else False
+                vendor_id = (
+                    self.partner_id.id
+                    if self.partner_id
+                    else False
+                )
 
 
-                product = product_obj.search([
+                # ================================================
+                # FIND BY PRODUCT CODE FIRST
+                # ================================================
+
+                existing_products = product_obj.search([
 
                     (
                         'default_code',
                         '=',
                         group_id
-                    ),
-
-                    (
-                        'vendor_id',
-                        '=',
-                        vendor_id
                     )
 
-                ], limit=1)
+                ])
+
+
+                product = False
+
+
+                for existing in existing_products:
+
+                    existing_vendor = (
+
+                        existing.vendor_id.id
+
+                        if existing.vendor_id
+
+                        else False
+                    )
+
+
+                    _logger.warning(
+
+                        f"[EXCEL CHECK] "
+
+                        f"group={group_id} "
+
+                        f"| existing_product={existing.id} "
+
+                        f"| existing_vendor={existing_vendor} "
+
+                        f"| current_vendor={vendor_id}"
+                    )
+
+
+                    # ============================================
+                    # SAME PRODUCT + SAME VENDOR
+                    # ============================================
+
+                    if existing_vendor == vendor_id:
+
+                        product = existing
+
+                        _logger.warning(
+
+                            f"[EXCEL DUPLICATE FOUND] "
+
+                            f"{group_id} "
+
+                            f"| vendor={vendor_id} "
+
+                            f"| product_id={existing.id}"
+                        )
+
+                        break
 
 
                 # =================================================
@@ -4940,8 +5300,7 @@ class VendorImportJob(models.Model):
                             False,
 
                         # =====================================
-                        # IMPORTANT
-                        # RESTORE VENDOR LINK
+                        # SAVE VENDOR LINK
                         # =====================================
 
                         'vendor_id':
@@ -4998,8 +5357,7 @@ class VendorImportJob(models.Model):
 
                         f"| product_id={product.id}"
                     )
-
-
+              
 
                 # =================================================
                 # VARIANTS
@@ -5280,7 +5638,6 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
     
-
 
     #-----URL API FLOW-------------------------------------------
 
@@ -5703,6 +6060,15 @@ class VendorImportJob(models.Model):
                     job.excel_created_index or 0
                 )
 
+            
+                previous_url_batch = (
+                    job.url_batch_index or 0
+                )
+
+                previous_url_created = (
+                    job.last_processed_product_index or 0
+                )
+             
 
                 _logger.warning(
 
@@ -5942,6 +6308,77 @@ class VendorImportJob(models.Model):
 
                         f"{job.excel_created_index}"
                     )
+
+             
+                # =========================================
+                # URL AI progress
+                # =========================================
+
+                if (
+
+                    (job.url_batch_index or 0)
+
+                    >
+
+                    previous_url_batch
+
+                ):
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        f"[PROGRESS] URL AI "
+
+                        f"{previous_url_batch}"
+
+                        f" → "
+
+                        f"{job.url_batch_index}"
+                    )
+
+
+                # =========================================
+                # URL create progress
+                # =========================================
+
+                if (
+
+                    (job.last_processed_product_index or 0)
+
+                    >
+
+                    previous_url_created
+
+                ):
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        f"[PROGRESS] URL CREATE "
+
+                        f"{previous_url_created}"
+
+                        f" → "
+
+                        f"{job.last_processed_product_index}"
+                    )
+
+
+                # =========================================
+                # APIFY WAIT STATE
+                # =========================================
+
+                if job.state == 'url_scraping':
+
+                    progress_detected = True
+
+                    _logger.warning(
+
+                        "[PROGRESS] APIFY WAITING"
+                    )
+              
 
 
                 # state transition
