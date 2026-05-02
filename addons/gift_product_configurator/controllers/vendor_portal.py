@@ -15,24 +15,37 @@ class VendorProductsController(http.Controller):
     # =====================================================
 
     @http.route(
-        ['/vendor/products'],
-        type='json',
-        auth='user',
-        website=True
+    ['/vendor/products'],
+    type='json',
+    auth='user',
+    website=True
     )
-
+    
     def vendor_products(
         self,
-        page=1,
-        limit=50,
-        search="",
         **kwargs
     ):
 
         partner = request.env.user.partner_id
 
-        page = int(page)
-        limit = int(limit)
+        # =========================================
+        # SAFE JSON PAYLOAD EXTRACTION
+        # =========================================
+
+        data = request.jsonrequest or {}
+
+        page = int(
+            data.get('page', 1)
+        )
+
+        limit = int(
+            data.get('limit', 50)
+        )
+
+        search = (
+            data.get('search', '')
+            or ''
+        ).strip()
 
         offset = (page - 1) * limit
 
@@ -40,17 +53,17 @@ class VendorProductsController(http.Controller):
             'product.template'
         ].sudo()
 
+        # =========================================
+        # BASE DOMAIN
+        # =========================================
+
         domain = [
             ('vendor_id', '=', partner.id)
         ]
 
         # =========================================
-        # SEARCH
+        # SEARCH FILTER
         # =========================================
-
-        _logger.warning(
-            f"SEARCH VALUE → {search}"
-        )
 
         if search:
 
@@ -58,17 +71,34 @@ class VendorProductsController(http.Controller):
                 ('name', 'ilike', search)
             )
 
-        total = Product.search_count(domain)
+        _logger.warning(
+            f"VENDOR PRODUCT SEARCH → {search}"
+        )
 
         _logger.warning(
             f"PRODUCT DOMAIN → {domain}"
         )
-    
+
+        # =========================================
+        # TOTAL COUNT
+        # =========================================
+
+        total = Product.search_count(
+            domain
+        )
+
+        # =========================================
+        # PAGINATED PRODUCTS
+        # =========================================
 
         products = Product.search(
+
             domain,
+
             limit=limit,
+
             offset=offset,
+
             order='id desc'
         )
 
@@ -77,24 +107,13 @@ class VendorProductsController(http.Controller):
             f"{len(products)}"
         )
 
+        # =========================================
+        # RESPONSE BUILD
+        # =========================================
 
         result = []
 
         for p in products:
-
-            _logger.warning(
-
-                f"PRODUCT {p.id} | "
-
-                f"TEMPLATE IMAGE → "
-
-                f"{bool(p.image_1920)} | "
-
-                f"VARIANT IMAGE → "
-
-                f"{bool(p.product_variant_id.image_1920)}"
-            )
-
 
             result.append({
 
@@ -112,6 +131,10 @@ class VendorProductsController(http.Controller):
 
             })
 
+        # =========================================
+        # FINAL RESPONSE
+        # =========================================
+
         return {
 
             'products': result,
@@ -128,7 +151,6 @@ class VendorProductsController(http.Controller):
             'has_prev':
                 page > 1,
         }
-
 
     # =====================================================
     # PRODUCT DETAILS
