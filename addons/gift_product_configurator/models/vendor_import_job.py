@@ -46,9 +46,6 @@ class VendorImportJob(models.Model):
     partner_id = fields.Many2one("res.partner", string="Vendor")  # ✅ LINK instead
 
     name = fields.Char(default="Vendor Data Import")
-
-    data_url = fields.Char()
-    #data_url = fields.Char(string="Vendor URL")
     extra_info = fields.Text()
 
     pdf_file = fields.Binary()
@@ -71,7 +68,7 @@ class VendorImportJob(models.Model):
 
     apify_run_id = fields.Char()
     apify_dataset_id = fields.Char()
-    url_batch_index = fields.Integer(default=0)
+   
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
@@ -79,7 +76,14 @@ class VendorImportJob(models.Model):
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
     processed_group_ids = fields.Text(default="[]")
+    
     url_total_batches = fields.Integer(default=0)
+    url_batch_index = fields.Integer(default=0)
+    data_url = fields.Char()
+    url_parse_index = fields.Integer(
+        string="URL Parse Index",
+        default=0
+    )
     
     excel_parse_index = fields.Integer(
         default=0
