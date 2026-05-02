@@ -112,7 +112,7 @@ class VendorImportJob(models.Model):
       
 
 
-    #------excel processing methof---------------
+    #------excel processing method---------------
     
     def parse_excel(self):
 
@@ -230,6 +230,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"EXCEL DONE → TOTAL ROWS: {len(pages)}")
 
+
     #---------------- MAIN FLOW ----------------
    
     def process_import(self):
@@ -329,6 +330,7 @@ class VendorImportJob(models.Model):
             _logger.error(f"PROCESS FAILED → {str(e)}")
             self.state = "failed"
    
+
     # ---------------- PDF ----------------
 
     def extract_pdf(self):
@@ -486,6 +488,7 @@ class VendorImportJob(models.Model):
             self.state = "done"
 
         _logger.warning("PDF EXTRACTION BATCH COMPLETED")
+
 
     # ---------------- OPENAI ----------------
     def send_to_openai_url(self):
@@ -709,8 +712,8 @@ class VendorImportJob(models.Model):
         _logger.warning("CRON EXIT → CONTINUE NEXT RUN")
         return
 
+    
     #===========pdf and excel open ai OPENAI=========================
-
 
     def send_to_openai_pdf_excel(self):
 
@@ -756,6 +759,7 @@ class VendorImportJob(models.Model):
                 _logger.warning(f"ROW {idx} → PROCESSING")
                 _logger.warning(f"ROW {idx} → IMAGES: {len(images)}")
 
+                
                 prompt = f"""
                 You are a structured Excel product parser.
 
@@ -850,6 +854,8 @@ class VendorImportJob(models.Model):
                         "name": "",
                         "description": "",
                         "category": "",
+                         "price": "",
+                        "stock": "",
                         "variants": [
                             {{
                                 "attributes": {{
@@ -862,12 +868,20 @@ class VendorImportJob(models.Model):
                     }}
                 ]
 
-                =====================================
+                  =====================================
                 ROW DATA
                 =====================================
 
+                ROW TEXT:
                 {row_text}
+
+                DETECTED PRICE:
+                {row_price}
+
+                DETECTED STOCK:
+                {row_stock}
                 """
+
 
                 try:
                     response = client.responses.create(
@@ -933,6 +947,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(f"AI → PROCESSING PAGE {page_no}")
 
+            
             prompt = f""" You are an advanced product extraction and interpretation engine for catalog PDFs.
 
             =====================
@@ -1094,6 +1109,9 @@ class VendorImportJob(models.Model):
                     "name": "",
                     "description": "",
                     "category": "",
+                    "price": "",
+                    "stock": "",
+                    "variant_group": "",
                     "variants": [
                         {{
                             "attributes": {{
@@ -1110,8 +1128,17 @@ class VendorImportJob(models.Model):
             - This page contains product images
 
             TEXT TO ANALYZE:
+            PAGE TEXT:
             {page_text}
+
+            DETECTED PRICE:
+            {page_price}
+
+            DETECTED STOCK:
+            {page_stock}
             """
+
+
 
             try:
                 image_inputs = [
@@ -1166,6 +1193,8 @@ class VendorImportJob(models.Model):
 
         _logger.warning(f"AI TOTAL PAGES STORED: {len(page_products)}")
 
+    
+    
     #-----------scoring image before picking best/quality image (inage logic)-------------
     def pick_best_image(self, images):
 

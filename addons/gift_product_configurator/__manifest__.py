@@ -14,7 +14,6 @@
     "views/product_page.xml",
     'views/bestsellers_page.xml',
     'views/shop_category_hero.xml',
-    #"views/product_components.xml",
     'views/shop_category_hero.xml',
     'views/product_public_category_form.xml',
     'data/sequence.xml',

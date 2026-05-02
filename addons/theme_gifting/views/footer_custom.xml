@@ -61,9 +61,11 @@
                   <li><a href="#">
                  Terms of Use
                   </a></li>
-                  <li><a href="#">
+                  <li>
+                  <a href="#">
                  Frequently Asked Questions
-                  </a></li>
+                  </a>
+                  </li>
                 </ul>
 
               </div>
@@ -78,6 +80,7 @@
                   <li><a href="#">Customer Service</a></li>
                   <li><a href="#">Our Company</a></li>
                   <li><a href="#">Contact</a></li>
+                  <li><a href="/web/login">Be a Vendor</a></li>
                 </ul>
 
               </div>
