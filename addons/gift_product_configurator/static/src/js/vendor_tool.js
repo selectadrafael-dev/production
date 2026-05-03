@@ -866,6 +866,22 @@ if (vendorPrevBtn) {
             'dialog'
         );
 
+        // =====================================
+        // PREVENT PARENT MODAL FOCUS TRAP
+        // =====================================
+
+    const parentModal = document.getElementById(
+        'vendorProductsModal'
+    );
+
+    if (parentModal) {
+
+        parentModal.setAttribute(
+            'inert',
+            'true'
+        );
+    }
+
 
         // =====================================
         // STACKED MODAL FIX
@@ -914,26 +930,13 @@ if (vendorPrevBtn) {
     // DISABLE PARENT MODAL INTERCEPTION
     // =====================================
 
-    // const parentModal = document.getElementById(
-    //     'vendorProductsModal'
-    // );
-
-    // if (parentModal) {
-
-    //     parentModal.style.pointerEvents =
-    //         'none';
-    // }
-
-
     // allow detail modal interaction
     modalEl.style.pointerEvents =
         'auto';
 
 
     // preserve scroll lock
-    document.body.classList.add(
-        'modal-open'
-    );
+   
     } catch (err) {
 
         console.error(
@@ -1036,6 +1039,19 @@ document.addEventListener(
             'aria-hidden',
             'true'
         );
+
+        // restore parent modal focus
+
+        const parentModal = document.getElementById(
+            'vendorProductsModal'
+        );
+
+        if (parentModal) {
+
+            parentModal.removeAttribute(
+                'inert'
+            );
+        }
 
 
         // restore parent modal interaction
