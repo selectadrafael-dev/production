@@ -17,10 +17,6 @@
 
   });
 
-  /*most populous categories */
-  // =====================================================
-// POPULAR CATEGORY CAROUSEL
-// =====================================================
 // =====================================================
 // POPULAR CATEGORY CAROUSEL
 // =====================================================
@@ -31,141 +27,56 @@ document.addEventListener(
 
     function () {
 
-        const track = document.getElementById(
-            'popularCategoryTrack'
-        );
+        const carousel =
+            document.getElementById(
+                'popularCategoryCarousel'
+            );
 
-        if (!track) {
+        if (!carousel) {
 
             return;
         }
 
-        const items = track.querySelectorAll(
-            '.popular-category-item'
-        );
 
-        const nextBtn = document.getElementById(
-            'popularCategoryNext'
-        );
+        carousel.addEventListener(
 
-        const prevBtn = document.getElementById(
-            'popularCategoryPrev'
-        );
+            'slid.bs.carousel',
 
-        let currentIndex = 0;
+            function () {
 
-
-        function visibleItems() {
-
-            if (window.innerWidth <= 768) {
-
-                return 1;
-            }
-
-            if (window.innerWidth <= 1200) {
-
-                return 3;
-            }
-
-            return 5;
-        }
-
-
-        function slideTo(
-
-            index,
-
-            speed = '0.55s'
-
-        ) {
-
-            const item = items[0];
-
-            if (!item) {
-
-                return;
-            }
-
-            const gap = 20;
-
-            const width =
-                item.offsetWidth + gap;
-
-            track.style.transition =
-                `transform ${speed} ease`;
-
-            track.style.transform =
-                `translateX(-${index * width}px)`;
-        }
-
-
-        function nextSlide() {
-
-            const visible =
-                visibleItems();
-
-            const max =
-                items.length - visible;
-
-            currentIndex++;
-
-            if (currentIndex > max) {
-
-                slideTo(
-                    currentIndex,
-                    '0.35s'
-                );
-
-                setTimeout(function () {
-
-                    currentIndex = 0;
-
-                    slideTo(
-                        0,
-                        '0.05s'
+                const active =
+                    carousel.querySelector(
+                        '.carousel-item.active'
                     );
 
-                }, 350);
+                const items =
+                    carousel.querySelectorAll(
+                        '.carousel-item'
+                    );
 
-                return;
+
+                const last =
+                    items[
+                        items.length - 1
+                    ];
+
+
+                if (active === last) {
+
+                    setTimeout(function () {
+
+                        bootstrap.Carousel
+                            .getInstance(
+                                carousel
+                            )
+                            .to(0);
+
+                    }, 250);
+                }
             }
-
-            slideTo(currentIndex);
-        }
-
-
-        function prevSlide() {
-
-            currentIndex--;
-
-            if (currentIndex < 0) {
-
-                currentIndex = 0;
-            }
-
-            slideTo(currentIndex);
-        }
-
-
-        nextBtn.addEventListener(
-            'click',
-            nextSlide
         );
-
-        prevBtn.addEventListener(
-            'click',
-            prevSlide
-        );
-
-
-        setInterval(function () {
-
-            nextSlide();
-
-        }, 3500);
 
     }
 );
-
 
 })();

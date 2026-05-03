@@ -66,66 +66,132 @@
                        ])"/>
 
 
-                    <!-- carousel -->
+                    <!-- bootstrap carousel -->
 
-                    <div class="popular-category-carousel-wrap">
+                    <div id="popularCategoryCarousel"
+
+                         class="carousel slide"
+
+                         data-bs-ride="carousel"
+
+                         data-bs-interval="3500">
+
+
+                        <!-- inner -->
+
+                        <div class="carousel-inner">
+
+
+                            <!-- slide 1 -->
+
+                            <div class="carousel-item active">
+
+                                <div class="row g-4 justify-content-center">
+
+
+                                    <t t-foreach="cats[:5]"
+
+                                       t-as="category">
+
+
+                                        <div class="col-lg-custom-5
+
+                                                    col-md-4
+
+                                                    col-12">
+
+
+                                            <t t-call="theme_gifting.popular_category_card">
+
+                                                <t t-set="category"
+
+                                                   t-value="category"/>
+
+                                            </t>
+
+                                        </div>
+
+                                    </t>
+
+                                </div>
+
+                            </div>
+
+
+                            <!-- slide 2 -->
+
+                            <t t-if="len(cats) > 5">
+
+                                <div class="carousel-item">
+
+                                    <div class="row g-4 justify-content-center">
+
+
+                                        <t t-foreach="cats[5:10]"
+
+                                           t-as="category">
+
+
+                                            <div class="col-lg-custom-5
+
+                                                        col-md-4
+
+                                                        col-12">
+
+
+                                                <t t-call="theme_gifting.popular_category_card">
+
+                                                    <t t-set="category"
+
+                                                       t-value="category"/>
+
+                                                </t>
+
+                                            </div>
+
+                                        </t>
+
+                                    </div>
+
+                                </div>
+
+                            </t>
+
+                        </div>
 
 
                         <!-- prev -->
 
                         <button
 
-                            class="popular-category-nav prev"
+                            class="carousel-control-prev"
 
-                            id="popularCategoryPrev">
+                            type="button"
 
-                            &#10094;
+                            data-bs-target="#popularCategoryCarousel"
+
+                            data-bs-slide="prev">
+
+
+                            <span class="carousel-control-prev-icon"/>
 
                         </button>
-
-
-                        <!-- viewport -->
-
-                        <div class="popular-category-viewport">
-
-
-                            <!-- track -->
-
-                            <div
-
-                                class="popular-category-track"
-
-                                id="popularCategoryTrack">
-
-
-                                <t t-foreach="cats"
-
-                                   t-as="category">
-
-                                    <t t-call="theme_gifting.popular_category_card">
-
-                                        <t t-set="category"
-
-                                           t-value="category"/>
-
-                                    </t>
-
-                                </t>
-
-                            </div>
-
-                        </div>
 
 
                         <!-- next -->
 
                         <button
 
-                            class="popular-category-nav next"
+                            class="carousel-control-next"
 
-                            id="popularCategoryNext">
+                            type="button"
 
-                            &#10095;
+                            data-bs-target="#popularCategoryCarousel"
+
+                            data-bs-slide="next">
+
+
+                            <span class="carousel-control-next-icon"/>
 
                         </button>
 
