@@ -187,11 +187,6 @@ class VendorProductsController(http.Controller):
         auth='user',
         website=True
     )
-    # def vendor_product_details(
-    #     self,
-    #     product_id
-    # ):
-
 
     def vendor_product_details(
 
@@ -214,14 +209,7 @@ class VendorProductsController(http.Controller):
     
 
         partner = request.env.user.partner_id
-        # params = kwargs.get('params', {})
-
-        # page = params.get('page', page)
-
-        # limit = params.get('limit', limit)
-
-        # search = params.get('search', search)
-
+       
         import logging
 
         _logger.warning(
@@ -303,14 +291,6 @@ class VendorProductsController(http.Controller):
             'create_date':
                 str(product.create_date),
 
-            # 'image': (
-
-            #     f'/web/image?model=product.template'
-            #     f'&id={p.id}'
-            #     f'&field=image_128'
-            # ),
-
-        
             'image': (
                 f'/vendor/product/image/{product.id}'
             ),
@@ -319,7 +299,37 @@ class VendorProductsController(http.Controller):
                 warning,
         }
 
- 
+    
+    @http.route(
+        ['/vendor/product/categories'],
+        type='json',
+        auth='user',
+        website=True
+    )
+    def vendor_product_categories(
+        self,
+        **kwargs
+    ):
+
+        categories = request.env[
+            'product.public.category'
+        ].sudo().search([])
+
+        result = []
+
+        for cat in categories:
+
+            result.append({
+
+                'id': cat.id,
+
+                'name': cat.complete_name,
+            })
+
+        return {
+            'categories': result
+        }
+
     # =======================================================
     # UPDATE PRODUCT
     # =======================================================

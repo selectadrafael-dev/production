@@ -220,6 +220,41 @@ function initMegaHover(menu) {
     showPanel(menu, item.dataset.catId);
   };
 }
+
+/* =========================
+   CATEGORY CLICK REDIRECT
+========================= */
+
+document.addEventListener(
+
+    'click',
+
+    function (e) {
+
+        const item = safeClosest(
+
+            e.target,
+
+            '.mega-left-item'
+        );
+
+        if (!item) {
+
+            return;
+        }
+
+        const url =
+            item.dataset.catUrl;
+
+        if (!url) {
+
+            return;
+        }
+
+        window.location.href =
+            url;
+    }
+);
  
 
   /* =========================

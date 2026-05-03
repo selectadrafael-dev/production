@@ -617,10 +617,102 @@ if (vendorPrevBtn) {
 }
 
 
+// =====================================================
+// LOAD PRODUCT CATEGORIES
+// =====================================================
+
+async function loadVendorCategories(
+
+    selectedCategory = ''
+
+) {
+
+    try {
+
+        const response = await fetch(
+
+            '/vendor/product/categories',
+
+            {
+
+                method: 'POST',
+
+                headers: {
+                    'Content-Type':
+                        'application/json'
+                },
+
+                body: JSON.stringify({})
+            }
+        );
+
+        const data =
+            await response.json();
+
+        const categories = (
+
+            data.categories
+
+            ||
+
+            data.result?.categories
+
+            ||
+
+            []
+        );
+
+        const select =
+            document.getElementById(
+                'vendorProductCategory'
+            );
+
+        if (!select) {
+
+            return;
+        }
+
+        select.innerHTML = `
+
+            <option value="">
+                Select Category
+            </option>
+        `;
+
+        categories.forEach(cat => {
+
+            select.innerHTML += `
+
+                <option
+                    value="${cat.id}"
+                >
+
+                    ${cat.name}
+
+                </option>
+            `;
+        });
+
+        if (selectedCategory) {
+
+            select.value =
+                selectedCategory;
+        }
+
+    } catch (err) {
+
+        console.error(
+            'CATEGORY LOAD FAILED',
+            err
+        );
+    }
+}
+
 //vendor product form view and seacrh bar
 // =====================================================
 // VENDOR PRODUCT DETAILS
 // =====================================================
+
 
     async function loadVendorProductDetails(
     productId
@@ -748,9 +840,8 @@ if (vendorPrevBtn) {
             product.description
         );
 
-        setValue(
-            'vendorProductCategory',
-            product.category
+        await loadVendorCategories(
+            product.category_id
         );
 
         setValue(
@@ -949,12 +1040,6 @@ if (vendorPrevBtn) {
         );
     }
 }
-
-//=======================================================
-// Close Detail Modal
-//=======================================================
-
-
 
 
 // =====================================================

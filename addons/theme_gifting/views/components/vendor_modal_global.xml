@@ -273,9 +273,15 @@
                                               Category
                                           </label>
 
-                                          <input type="text"
+                                                <select
                                                 id="vendorProductCategory"
-                                                class="form-control" />
+                                                class="form-select">
+
+                                                <option value="">
+                                                    Select Category
+                                                </option>
+
+                                            </select>
 
                                       </div>
 
