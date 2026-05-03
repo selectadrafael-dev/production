@@ -914,15 +914,15 @@ if (vendorPrevBtn) {
     // DISABLE PARENT MODAL INTERCEPTION
     // =====================================
 
-    const parentModal = document.getElementById(
-        'vendorProductsModal'
-    );
+    // const parentModal = document.getElementById(
+    //     'vendorProductsModal'
+    // );
 
-    if (parentModal) {
+    // if (parentModal) {
 
-        parentModal.style.pointerEvents =
-            'none';
-    }
+    //     parentModal.style.pointerEvents =
+    //         'none';
+    // }
 
 
     // allow detail modal interaction
@@ -1039,16 +1039,7 @@ document.addEventListener(
 
 
         // restore parent modal interaction
-        const parentModal =
-            document.getElementById(
-                'vendorProductsModal'
-            );
-
-        if (parentModal) {
-
-            parentModal.style.pointerEvents =
-                'auto';
-        }
+        
     }
 );
 

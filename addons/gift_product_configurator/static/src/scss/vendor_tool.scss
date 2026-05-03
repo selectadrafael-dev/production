@@ -246,3 +246,28 @@
 
     z-index: 1055;
 }
+
+/* ========================================
+   FIX TEXT INPUT INTERACTION
+======================================== */
+
+#vendorProductDetailsModal input,
+
+#vendorProductDetailsModal textarea,
+
+#vendorProductDetailsModal select {
+
+    pointer-events: auto !important;
+
+    position: relative;
+
+    z-index: 3000 !important;
+
+    user-select: text !important;
+}
+
+
+#vendorProductDetailsModal textarea {
+
+    resize: vertical;
+}
