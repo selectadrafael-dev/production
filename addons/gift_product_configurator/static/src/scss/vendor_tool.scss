@@ -204,15 +204,45 @@
 }
 
 
-/* stacked modal support */
+/* ========================================
+   STACKED MODAL SUPPORT
+======================================== */
 
 #vendorProductDetailsModal {
 
-    z-index: 1065;
+    z-index: 2000 !important;
+
+    pointer-events: auto;
 }
 
 
 #vendorProductDetailsModal .modal-dialog {
 
-    z-index: 1066;
+    position: relative;
+
+    z-index: 2001 !important;
+
+    pointer-events: auto;
+}
+
+
+#vendorProductDetailsModal .modal-content {
+
+    position: relative;
+
+    z-index: 2002 !important;
+
+    pointer-events: auto;
+
+    border-radius: 22px;
+
+    border: none;
+}
+
+
+/* keep products modal visually behind */
+
+#vendorProductsModal {
+
+    z-index: 1055;
 }

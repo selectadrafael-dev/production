@@ -868,14 +868,72 @@ if (vendorPrevBtn) {
 
 
         // =====================================
-        // STACKED MODAL SUPPORT
+        // STACKED MODAL FIX
         // =====================================
 
-        modalEl.style.zIndex = '1065';
+    // detail modal layer
+    modalEl.style.zIndex = '2000';
 
-        document.body.classList.add(
-            'modal-open'
-        );
+    modalEl.style.pointerEvents = 'auto';
+
+
+    // detail dialog
+    const dialog = modalEl.querySelector(
+        '.modal-dialog'
+    );
+
+    if (dialog) {
+
+        dialog.style.zIndex = '2001';
+
+        dialog.style.position = 'relative';
+
+        dialog.style.pointerEvents =
+            'auto';
+    }
+
+
+    // detail content
+    const content = modalEl.querySelector(
+        '.modal-content'
+    );
+
+    if (content) {
+
+        content.style.zIndex = '2002';
+
+        content.style.position =
+            'relative';
+
+        content.style.pointerEvents =
+            'auto';
+    }
+
+
+    // =====================================
+    // DISABLE PARENT MODAL INTERCEPTION
+    // =====================================
+
+    const parentModal = document.getElementById(
+        'vendorProductsModal'
+    );
+
+    if (parentModal) {
+
+        parentModal.style.pointerEvents =
+            'none';
+    }
+
+
+    // allow detail modal interaction
+    modalEl.style.pointerEvents =
+        'auto';
+
+
+    // preserve scroll lock
+    document.body.classList.add(
+        'modal-open'
+    );
     } catch (err) {
 
         console.error(
@@ -968,6 +1026,8 @@ document.addEventListener(
             return;
         }
 
+
+        // hide modal
         modal.classList.remove('show');
 
         modal.style.display = 'none';
@@ -976,6 +1036,19 @@ document.addEventListener(
             'aria-hidden',
             'true'
         );
+
+
+        // restore parent modal interaction
+        const parentModal =
+            document.getElementById(
+                'vendorProductsModal'
+            );
+
+        if (parentModal) {
+
+            parentModal.style.pointerEvents =
+                'auto';
+        }
     }
 );
 
