@@ -848,88 +848,34 @@ if (vendorPrevBtn) {
         // OPEN DETAILS MODAL
         // =====================================
 
-        const BootstrapModal = (
+        modalEl.classList.add('show');
 
-            window.bootstrap
+        modalEl.style.display = 'block';
 
-            &&
+        modalEl.removeAttribute(
+            'aria-hidden'
+        );
 
-            window.bootstrap.Modal
+        modalEl.setAttribute(
+            'aria-modal',
+            'true'
+        );
 
-        )
-
-            ?
-
-            window.bootstrap.Modal
-
-            :
-
-            null;
-
-
-        if (!BootstrapModal) {
-
-            console.error(
-                'Bootstrap modal unavailable'
-            );
-
-            return;
-        }
-
-
-        // =====================================
-        // CLEAN OLD INSTANCE
-        // =====================================
-
-        let modal =
-            BootstrapModal.getInstance(
-                modalEl
-            );
-
-
-        if (modal) {
-
-            modal.dispose();
-        }
-
-
-        // =====================================
-        // CREATE CLEAN MODAL
-        // =====================================
-
-        modal = new BootstrapModal(
-
-            modalEl,
-
-            {
-
-                backdrop: false,
-
-                keyboard: true,
-
-                focus: false
-            }
+        modalEl.setAttribute(
+            'role',
+            'dialog'
         );
 
 
         // =====================================
-        // STACKED MODAL FIX
+        // STACKED MODAL SUPPORT
         // =====================================
 
         modalEl.style.zIndex = '1065';
 
-
         document.body.classList.add(
             'modal-open'
         );
-
-
-        // =====================================
-        // SHOW MODAL
-        // =====================================
-
-        modal.show();
-
     } catch (err) {
 
         console.error(
@@ -993,6 +939,45 @@ document.addEventListener(
     }
 );
 
+//=====================================================
+// CLOSE PRODUCT DETAILS MODAL
+//=====================================================
+
+document.addEventListener(
+
+    'click',
+
+    function (e) {
+
+        const closeBtn = e.target.closest(
+
+            '#vendorProductDetailsModal .btn-close'
+        );
+
+        if (!closeBtn) {
+
+            return;
+        }
+
+        const modal = document.getElementById(
+            'vendorProductDetailsModal'
+        );
+
+        if (!modal) {
+
+            return;
+        }
+
+        modal.classList.remove('show');
+
+        modal.style.display = 'none';
+
+        modal.setAttribute(
+            'aria-hidden',
+            'true'
+        );
+    }
+);
 
 // =====================================================
 // DELETE PRODUCT
