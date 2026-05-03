@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<odoo>
+
+    <data>
+
+        <template id="section_popular_categories_carousel"
+
+                  name="Popular Categories Carousel">
+
+
+            <section class="popular-category-section">
+
+                <div class="container-fluid">
+
+
+                    <!-- heading -->
+
+                    <div class="text-center mb-5">
+
+                        <h3 class="popular-category-title">
+
+                            Shop Our Most Popular Categories
+
+                        </h3>
+
+                        <p class="popular-category-subtitle">
+
+                            Discover best-selling promotional products
+
+                        </p>
+
+                    </div>
+
+
+                    <!-- categories -->
+
+                    <t t-set="cats"
+
+                       t-value="request.env['product.public.category'].search([
+
+                           ('name', 'in', [
+
+                               'Writing',
+
+                               'Bags',
+
+                               'Drinkaware',
+
+                               'Clothing',
+
+                               'Office',
+
+                               'Eco-Friendly',
+
+                               'Trade Shows',
+
+                               'Keyrings',
+
+                               'Outdoor',
+
+                               'USB & Tech'
+
+                           ])
+
+                       ])"/>
+
+
+                    <!-- carousel -->
+
+                    <div class="popular-category-carousel-wrap">
+
+
+                        <!-- prev -->
+
+                        <button
+
+                            class="popular-category-nav prev"
+
+                            id="popularCategoryPrev">
+
+                            &#10094;
+
+                        </button>
+
+
+                        <!-- viewport -->
+
+                        <div class="popular-category-viewport">
+
+
+                            <!-- track -->
+
+                            <div
+
+                                class="popular-category-track"
+
+                                id="popularCategoryTrack">
+
+
+                                <t t-foreach="cats"
+
+                                   t-as="category">
+
+                                    <t t-call="theme_gifting.popular_category_card">
+
+                                        <t t-set="category"
+
+                                           t-value="category"/>
+
+                                    </t>
+
+                                </t>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- next -->
+
+                        <button
+
+                            class="popular-category-nav next"
+
+                            id="popularCategoryNext">
+
+                            &#10095;
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </template>
+
+    </data>
+
+</odoo>

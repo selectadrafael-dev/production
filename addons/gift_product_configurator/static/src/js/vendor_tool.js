@@ -621,6 +621,7 @@ if (vendorPrevBtn) {
 // LOAD PRODUCT CATEGORIES
 // =====================================================
 
+
 async function loadVendorCategories(
 
     selectedCategory = ''
@@ -628,6 +629,11 @@ async function loadVendorCategories(
 ) {
 
     try {
+
+        console.log(
+            'LOADING CATEGORIES'
+        );
+
 
         const response = await fetch(
 
@@ -638,6 +644,7 @@ async function loadVendorCategories(
                 method: 'POST',
 
                 headers: {
+
                     'Content-Type':
                         'application/json'
                 },
@@ -646,31 +653,46 @@ async function loadVendorCategories(
             }
         );
 
+
         const data =
             await response.json();
 
+
+        console.log(
+            'CATEGORY RESPONSE',
+            data
+        );
+
+
         const categories = (
 
-            data.categories
+            data.result
 
             ||
 
-            data.result?.categories
+            data
 
             ||
 
             []
         );
 
+
         const select =
             document.getElementById(
                 'vendorProductCategory'
             );
 
+
         if (!select) {
+
+            console.error(
+                'CATEGORY SELECT NOT FOUND'
+            );
 
             return;
         }
+
 
         select.innerHTML = `
 
@@ -679,30 +701,43 @@ async function loadVendorCategories(
             </option>
         `;
 
+
         categories.forEach(cat => {
 
-            select.innerHTML += `
+            const option =
+                document.createElement(
+                    'option'
+                );
 
-                <option
-                    value="${cat.id}"
-                >
+            option.value = cat.id;
 
-                    ${cat.name}
+            option.textContent =
+                cat.name;
 
-                </option>
-            `;
+
+            select.appendChild(
+                option
+            );
         });
+
 
         if (selectedCategory) {
 
             select.value =
-                selectedCategory;
+                String(selectedCategory);
         }
+
+
+        console.log(
+            'CATEGORIES LOADED'
+        );
 
     } catch (err) {
 
         console.error(
+
             'CATEGORY LOAD FAILED',
+
             err
         );
     }

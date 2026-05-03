@@ -35,6 +35,8 @@
         "views/section_promotional_products.xml",
         "views/footer_custom.xml",
         "views/components/vendor_modal_global.xml",
+        'views/product_card_popular_category.xml',
+        'views/section_popular_categories_carousel.xml',
     ],
     "assets": {
         "web.assets_frontend": [

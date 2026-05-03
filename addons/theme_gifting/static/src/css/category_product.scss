@@ -55,3 +55,179 @@
 .carousel-control-next-icon {
   filter: invert(1);
 }
+
+/*most popular cayegories*/
+/* =========================================
+   POPULAR CATEGORY CAROUSEL
+========================================= */
+
+.popular-category-section {
+
+    padding: 80px 0;
+
+    background: #f8f8f8;
+
+    overflow: hidden;
+}
+
+
+.popular-category-carousel-wrap {
+
+    position: relative;
+}
+
+
+.popular-category-viewport {
+
+    overflow: hidden;
+}
+
+
+.popular-category-track {
+
+    display: flex;
+
+    gap: 20px;
+
+    transition: transform 0.55s ease;
+}
+
+
+.popular-category-item {
+
+    min-width: calc((100% - 80px) / 5);
+
+    flex-shrink: 0;
+}
+
+
+.popular-category-card {
+
+    background: white;
+
+    border-radius: 22px;
+
+    overflow: hidden;
+
+    height: 100%;
+
+    border: 1px solid #ececec;
+}
+
+
+.popular-category-image-wrap {
+
+    height: 220px;
+
+    background: white;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    padding: 20px;
+}
+
+
+.popular-category-image-wrap img {
+
+    max-width: 100%;
+
+    max-height: 100%;
+
+    object-fit: contain;
+}
+
+
+.popular-category-content {
+
+    padding: 24px;
+}
+
+
+.popular-category-content h3 {
+
+    font-size: 28px;
+
+    font-weight: 800;
+
+    margin-bottom: 18px;
+}
+
+
+.popular-category-content ul {
+
+    list-style: none;
+
+    padding: 0;
+
+    margin: 0 0 20px;
+}
+
+
+.popular-category-content li {
+
+    margin-bottom: 10px;
+}
+
+
+.popular-category-shop {
+
+    color: #4866d6;
+
+    font-weight: 600;
+}
+
+
+.popular-category-nav {
+
+    position: absolute;
+
+    top: 50%;
+
+    transform: translateY(-50%);
+
+    width: 52px;
+
+    height: 52px;
+
+    border-radius: 50%;
+
+    border: 1px solid #ddd;
+
+    background: white;
+
+    z-index: 10;
+}
+
+
+.popular-category-nav.prev {
+
+    left: -10px;
+}
+
+
+.popular-category-nav.next {
+
+    right: -10px;
+}
+
+
+@media (max-width: 1200px) {
+
+    .popular-category-item {
+
+        min-width: calc((100% - 40px) / 3);
+    }
+}
+
+
+@media (max-width: 768px) {
+
+    .popular-category-item {
+
+        min-width: 100%;
+    }
+}

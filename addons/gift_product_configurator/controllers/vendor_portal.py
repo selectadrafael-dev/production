@@ -282,8 +282,14 @@ class VendorProductsController(http.Controller):
             'price':
                 product.list_price or 0,
 
+            # 'category':
+            #     product.categ_id.name or '',
+
             'category':
                 product.categ_id.name or '',
+
+            'category_id':
+                product.categ_id.id or False,
 
             'published':
                 product.website_published,
@@ -301,7 +307,7 @@ class VendorProductsController(http.Controller):
 
     
     @http.route(
-        ['/vendor/product/categories'],
+        '/vendor/product/categories',
         type='json',
         auth='user',
         website=True
@@ -315,20 +321,19 @@ class VendorProductsController(http.Controller):
             'product.public.category'
         ].sudo().search([])
 
-        result = []
 
-        for cat in categories:
+        return [
 
-            result.append({
+            {
 
                 'id': cat.id,
 
-                'name': cat.complete_name,
-            })
+                'name': cat.complete_name
 
-        return {
-            'categories': result
-        }
+            }
+
+            for cat in categories
+        ]
 
     # =======================================================
     # UPDATE PRODUCT

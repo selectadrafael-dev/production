@@ -94,9 +94,6 @@
       <!--⭐ categpry products -->
       <t t-call="theme_gifting.section_main_category"/>
      
-      <!--⭐ section_cta_banner -->
-      <!--t t-call="theme_gifting.section_cta_banner"/-->
-      
       <!--⭐ new_arrivals -->
       <t t-call="theme_gifting.section_new_arrivals"/>
 
@@ -111,6 +108,12 @@
 
       <!-- ⭐ PROMOTIONAL PRODUCTS -->
       <t t-call="theme_gifting.section_promotional_products"/>
+
+       <!--⭐ section_cta_banner -->
+      <t t-call="theme_gifting.section_cta_banner"/>
+
+      <!-- popular categories carousel -->
+      <t t-call="theme_gifting.section_popular_categories_carousel"/>
 
        <!--⭐ section_cta_banner -->
       <t t-call="theme_gifting.section_cta_banner"/>
