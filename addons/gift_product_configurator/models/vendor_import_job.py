@@ -4027,31 +4027,47 @@ class VendorImportJob(models.Model):
             return text
 
     #=========Translation new logic===================================
+
     def _apply_product_translation(self, product):
 
         if not product:
-            _logger.warning("[TRANSLATION SKIPPED] NO PRODUCT")
             return
-
-        _logger.warning(f"[TRANSLATION START] product_id={product.id}")
 
         name = product.name or ''
         desc = product.description_sale or ''
 
-        _logger.warning(f"[TRANSLATION INPUT] name={name} | desc_len={len(desc)}")
+        # ----------------------------
+        # DEBUG
+        # ----------------------------
+        _logger.warning(
+            f"[TRANSLATION INPUT] product={product.id} | name={name} | desc_len={len(desc)}"
+        )
 
-        # NAME
+        # ----------------------------
+        # ALWAYS TRANSLATE NAME (cheap)
+        # ----------------------------
         ru_name = self._force_translate(name, "ru")
         az_name = self._force_translate(name, "az")
 
-        # DESC
-        if desc:
+        # ----------------------------
+        # ONLY TRANSLATE DESCRIPTION IF EXISTS
+        # ----------------------------
+        if desc and len(desc.strip()) > 10:
+
             ru_desc = self._smart_translate(desc, "ru")
             az_desc = self._smart_translate(desc, "az")
+
         else:
             ru_desc = ''
             az_desc = ''
 
+            _logger.warning(
+                f"[TRANSLATION SKIPPED DESC] product={product.id}"
+            )
+
+        # ----------------------------
+        # SAVE
+        # ----------------------------
         product.with_context(lang='ru_RU').write({
             'name': ru_name,
             'description_sale': ru_desc
@@ -4062,7 +4078,7 @@ class VendorImportJob(models.Model):
             'description_sale': az_desc
         })
 
-        _logger.warning(f"[TRANSLATION DONE] product_id={product.id}")
+        _logger.warning(f"[TRANSLATION DONE] product={product.id}")
 
     #============product translation extended================
     def _smart_translate(self, text, lang):
