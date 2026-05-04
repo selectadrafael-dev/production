@@ -5414,9 +5414,9 @@ class VendorImportJob(models.Model):
                         break
 
 
-                # =================================================
+                # ================================================
                 # CREATE PARENT
-                # =================================================
+                # ================================================
 
                 if not product:
 
@@ -5433,8 +5433,13 @@ class VendorImportJob(models.Model):
                         'default_code':
                             group_id,
 
-                        'description_sale':
-                            description,
+                        'description_sale': translations.get(
+                            'en_US',
+                            {}
+                        ).get(
+                            'description',
+                            description
+                        ),
 
                         'categ_id':
                             category.id,
