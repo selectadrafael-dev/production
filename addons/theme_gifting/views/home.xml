@@ -39,8 +39,16 @@
 
       <!-- ✅ SLIDE 2 (FULL WIDTH BG) -->
 
-     <div class="carousel-item hero-bg-slide hero-bg-one"
-     t-attf-style="background-image:url('/theme_gifting/static/src/img/banners/hero2-#{(request.env.lang or 'en_US')[:2]}.png');">
+      <t t-set="hero2_lang"
+   t-value="(request.env.lang or 'en_US')[:2]"/>
+
+    <t t-set="hero2_image"
+      t-value="'/theme_gifting/static/src/img/banners/hero2-%s.png' % hero2_lang"/>
+
+
+    <div class="carousel-item hero-bg-slide hero-bg-one active"
+        t-att-style="'background-image: url(&quot;%s&quot;); min-height:540px;' % hero2_image">
+
 
         <div class="gifting-container">
           <div class="hero-overlay-text">
