@@ -5463,108 +5463,134 @@ class VendorImportJob(models.Model):
                     )
 
 
-                    # ================================================
-                    # SAVE TRANSLATIONS
-                    # ================================================
+                # ================================================
+                # SAVE TRANSLATIONS
+                # ================================================
 
-                    try:
+                try:
 
-                        # RUSSIAN
+                    _logger.warning(
+                        f"[TRANSLATION DEBUG] "
+                        f"PRODUCT={product.id}"
+                    )
 
-                        ru = translations.get(
-                            'ru_RU',
-                            {}
-                        )
+                    _logger.warning(
+                        f"[TRANSLATION DEBUG] "
+                        f"RAW={translations}"
+                    )
 
-                        if ru:
+                    # =================================================
+                    # RUSSIAN
+                    # =================================================
 
-                            product.with_context(
-                                lang='ru_RU'
-                            ).write({
+                    ru = translations.get(
+                        'ru_RU',
+                        {}
+                    )
 
-                                'name': ru.get(
-                                    'name',
-                                    name
-                                ),
+                    _logger.warning(
+                        f"[RU TRANSLATION] {ru}"
+                    )
 
-                                'description_sale': ru.get(
-                                    'description',
-                                    description
-                                )
-                            })
+                    if ru:
 
+                        product.with_context(
+                            lang='ru_RU'
+                        ).write({
 
-                        # AZERBAIJANI
+                            'name': ru.get(
+                                'name',
+                                name
+                            ),
 
-                        az = translations.get(
-                            'az_AZ',
-                            {}
-                        )
+                            'description_sale': ru.get(
+                                'description',
+                                description
+                            )
+                        })
 
-                        if az:
-
-                            product.with_context(
-                                lang='az_AZ'
-                            ).write({
-
-                                'name': az.get(
-                                    'name',
-                                    name
-                                ),
-
-                                'description_sale': az.get(
-                                    'description',
-                                    description
-                                )
-                            })
-
+                        self.env.cr.commit()
 
                         _logger.warning(
 
-                            f"[TRANSLATIONS SAVED] "
+                            f"[RU SAVED] "
 
-                            f"{product.id}"
+                            f"{product.with_context(lang='ru_RU').name}"
                         )
 
+                    # =================================================
+                    # AZERBAIJANI
+                    # =================================================
 
-                    except Exception as e:
-
-                        _logger.exception(
-
-                            f"[TRANSLATION SAVE ERROR] "
-
-                            f"{str(e)}"
-                        )
-
-
-                    created_count += 1
-
-
-                    _logger.warning(
-
-                        f"[EXCEL CREATED] "
-
-                        f"{group_id} "
-
-                        f"| vendor={vendor_id}"
+                    az = translations.get(
+                        'az_AZ',
+                        {}
                     )
 
+                    _logger.warning(
+                        f"[AZ TRANSLATION] {az}"
+                    )
 
-                else:
+                    if az:
 
-                    merged_count += 1
+                        product.with_context(
+                            lang='az_AZ'
+                        ).write({
 
+                            'name': az.get(
+                                'name',
+                                name
+                            ),
+
+                            'description_sale': az.get(
+                                'description',
+                                description
+                            )
+                        })
+
+                        self.env.cr.commit()
+
+                        _logger.warning(
+
+                            f"[AZ SAVED] "
+
+                            f"{product.with_context(lang='az_AZ').name}"
+                        )
+
+                    # =================================================
+                    # FINAL CHECK
+                    # =================================================
 
                     _logger.warning(
 
-                        f"[EXCEL EXISTING PRODUCT] "
+                        f"[FINAL EN] "
 
-                        f"{group_id} "
+                        f"{product.with_context(lang='en_US').name}"
+                    )
 
-                        f"| vendor={vendor_id} "
+                    _logger.warning(
 
-                        f"| product_id={product.id}"
-                    )              
+                        f"[FINAL RU] "
+
+                        f"{product.with_context(lang='ru_RU').name}"
+                    )
+
+                    _logger.warning(
+
+                        f"[FINAL AZ] "
+
+                        f"{product.with_context(lang='az_AZ').name}"
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"[TRANSLATION SAVE ERROR] "
+
+                        f"{str(e)}"
+                    )
+                            
 
                 # =================================================
                 # VARIANTS
