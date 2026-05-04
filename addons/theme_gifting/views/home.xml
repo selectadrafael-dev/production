@@ -38,12 +38,11 @@
       </div>
 
       <!-- ✅ SLIDE 2 (FULL WIDTH BG) -->
-      <!--div class="carousel-item hero-bg-slide hero-bg-one"-->
 
       <div class="carousel-item hero-bg-one"
         t-attf-style="
             background-image:url(
-            '/theme_gifting/static/src/img/banners/hero2-#{(request.env.lang or 'en_US')[:2]}.jpg'
+            '/theme_gifting/static/src/img/banners/hero2-#{(request.env.lang or 'en_US')[:2]}.png'
             );
         ">
 
@@ -56,11 +55,10 @@
       </div>
 
       <!-- ✅ SLIDE 3 -->
-      <!--div class="carousel-item hero-bg-slide hero-bg-two"-->
       <div class="carousel-item hero-bg-slide hero-bg-two"
         t-attf-style="
             background-image:url(
-            '/theme_gifting/static/src/img/banners/hero3-#{(request.env.lang or 'en_US')[:2]}.jpg'
+            '/theme_gifting/static/src/img/banners/hero3-#{(request.env.lang or 'en_US')[:2]}.png'
             );
         ">
 
