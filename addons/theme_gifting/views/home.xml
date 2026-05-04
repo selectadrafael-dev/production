@@ -38,7 +38,14 @@
       </div>
 
       <!-- ✅ SLIDE 2 (FULL WIDTH BG) -->
-      <div class="carousel-item hero-bg-slide hero-bg-one">
+      <!--div class="carousel-item hero-bg-slide hero-bg-one"-->
+
+      <div class="carousel-item hero-bg-slide hero-bg-one"
+        t-attf-style="
+            background-image:url(
+            '/theme_gifting/static/src/img/banners/banner_1_#{request.env.lang[:2]}.png'
+            );
+        ">
 
         <div class="gifting-container">
           <div class="hero-overlay-text">
@@ -49,7 +56,13 @@
       </div>
 
       <!-- ✅ SLIDE 3 -->
-      <div class="carousel-item hero-bg-slide hero-bg-two">
+      <!--div class="carousel-item hero-bg-slide hero-bg-two"-->
+      <div class="carousel-item hero-bg-slide hero-bg-two"
+        t-attf-style="
+            background-image:url(
+            '/theme_gifting/static/src/img/banners/banner_2_#{request.env.lang[:2]}.png'
+            );
+        ">
 
         <div class="gifting-container">
           <div class="hero-overlay-text">

@@ -48,20 +48,11 @@
 }
 
 /* ================= BG SLIDES ================= */
-  .hero-bg-one{
-    background-image:url('/theme_gifting/static/src/img/banners/banner_1a.png');
-   }
-
-.hero-bg-two{
-     background-image:url('/theme_gifting/static/src/img/banners/banner_2a.png');
-}
-
 .hero-bg-slide {
   height: 520px;
   background-size: cover;
   background-repeat: no-repeat;
  background-position: center center;
-/*background-position: center top; /* 🔥 shift focus */
   display: flex;
    position: relative;
   align-items: center;
