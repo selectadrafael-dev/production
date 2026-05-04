@@ -5281,10 +5281,38 @@ class VendorImportJob(models.Model):
                 # TRANSLATIONS
                 # =================================================
 
-                translations = self._translate_product_fields(
-                    name=name,
-                    description=description
-                )
+                translations = {}
+
+                try:
+
+                    _logger.warning(
+                        f"[TRANSLATION START] "
+                        f"name={name}"
+                    )
+
+                    translations = self._translate_product_fields(
+                        name=name,
+                        description=description
+                    )
+
+                    _logger.warning(
+                        f"[TRANSLATION RESULT] "
+                        f"{translations}"
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+                        f"[TRANSLATION FAILED] "
+                        f"{str(e)}"
+                    )
+
+                    translations = {
+                        'en_US': {
+                            'name': name,
+                            'description': description,
+                        }
+                    }
 
 
                 raw_category = (
@@ -5351,49 +5379,23 @@ class VendorImportJob(models.Model):
 
 
                 # ================================================
-                # STRICT DUPLICATE CHECK
-                # SAME VENDOR CANNOT CREATE SAME PRODUCT TWICE
+                # STRICT DUPLICATE CHECK (FINAL CORRECT)
                 # ================================================
 
                 product = product_obj.search([
-
-                    (
-                        'default_code',
-                        '=',
-                        group_id
-                    ),
-
-                    (
-                        'vendor_id',
-                        '=',
-                        vendor_id
-                    )
-
+                    ('default_code', '=', group_id),
+                    ('vendor_id', '=', vendor_id)
                 ], limit=1)
 
-
                 if product:
-
                     _logger.warning(
-
                         f"[EXCEL DUPLICATE FOUND] "
-
-                        f"group={group_id} "
-
-                        f"| vendor={vendor_id} "
-
-                        f"| product_id={product.id}"
+                        f"group={group_id} | vendor={vendor_id}"
                     )
-
                 else:
-
                     _logger.warning(
-
                         f"[EXCEL NEW PRODUCT] "
-
-                        f"group={group_id} "
-
-                        f"| vendor={vendor_id}"
+                        f"group={group_id} | vendor={vendor_id}"
                     )
 
 
@@ -5469,118 +5471,77 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    _logger.warning(
-                        f"[TRANSLATION DEBUG] "
-                        f"PRODUCT={product.id}"
-                    )
+                   # =========================
+                    # TRANSLATION BLOCK (FINAL CLEAN)
+                    # =========================
 
-                    _logger.warning(
-                        f"[TRANSLATION DEBUG] "
-                        f"RAW={translations}"
-                    )
+                    _logger.warning(f"[TRANSLATION DEBUG] PRODUCT={product.id}")
+                    _logger.warning(f"[TRANSLATION DEBUG] RAW={translations}")
 
-                    # =================================================
+                    # -------------------------
+                    # FAIL-SAFE (AI fallback)
+                    # -------------------------
+                    if translations.get('ru_RU', {}).get('name') == translations.get('en_US', {}).get('name'):
+                        translations['ru_RU']['name'] = f"RU {translations['en_US']['name']}"
+
+                    if translations.get('az_AZ', {}).get('name') == translations.get('en_US', {}).get('name'):
+                        translations['az_AZ']['name'] = f"AZ {translations['en_US']['name']}"
+
+                    # -------------------------
+                    # ENGLISH (BASE)
+                    # -------------------------
+                    product.with_context(lang='en_US').write({
+                        'name': translations.get('en_US', {}).get('name') or name,
+                        'description_sale': translations.get('en_US', {}).get('description') or description,
+                    })
+
+                    self.env.cr.commit()
+
+                    # -------------------------
                     # RUSSIAN
-                    # =================================================
+                    # -------------------------
+                    ru_vals = {
+                        'name': translations.get('ru_RU', {}).get('name') or name,
+                        'description_sale': translations.get('ru_RU', {}).get('description') or description,
+                    }
 
-                    ru = translations.get(
-                        'ru_RU',
-                        {}
-                    )
+                    _logger.warning(f"[RU TRANSLATION] {ru_vals}")
 
-                    _logger.warning(
-                        f"[RU TRANSLATION] {ru}"
-                    )
+                    product.with_context(lang='ru_RU').write(ru_vals)
 
-                    if ru:
+                    self.env.cr.commit()
 
-                        product.with_context(
-                            lang='ru_RU'
-                        ).write({
-
-                            'name': ru.get(
-                                'name',
-                                name
-                            ),
-
-                            'description_sale': ru.get(
-                                'description',
-                                description
-                            )
-                        })
-
-                        self.env.cr.commit()
-
-                        _logger.warning(
-
-                            f"[RU SAVED] "
-
-                            f"{product.with_context(lang='ru_RU').name}"
-                        )
-
-                    # =================================================
+                    # -------------------------
                     # AZERBAIJANI
-                    # =================================================
+                    # -------------------------
+                    az_vals = {
+                        'name': translations.get('az_AZ', {}).get('name') or name,
+                        'description_sale': translations.get('az_AZ', {}).get('description') or description,
+                    }
 
-                    az = translations.get(
-                        'az_AZ',
-                        {}
-                    )
+                    _logger.warning(f"[AZ TRANSLATION] {az_vals}")
 
-                    _logger.warning(
-                        f"[AZ TRANSLATION] {az}"
-                    )
+                    product.with_context(lang='az_AZ').write(az_vals)
 
-                    if az:
+                    self.env.cr.commit()
 
-                        product.with_context(
-                            lang='az_AZ'
-                        ).write({
+                    # -------------------------
+                    # VERIFY (VERY IMPORTANT)
+                    # -------------------------
+                    _logger.warning(f"[FINAL EN] {product.with_context(lang='en_US').name}")
+                    _logger.warning(f"[FINAL RU] {product.with_context(lang='ru_RU').name}")
+                    _logger.warning(f"[FINAL AZ] {product.with_context(lang='az_AZ').name}")
 
-                            'name': az.get(
-                                'name',
-                                name
-                            ),
+                    self.env.cr.execute("""
+                        SELECT lang, value
+                        FROM ir_translation
+                        WHERE name = 'product.template,name'
+                        AND res_id = %s
+                    """, (product.id,))
 
-                            'description_sale': az.get(
-                                'description',
-                                description
-                            )
-                        })
+                    rows = self.env.cr.fetchall()
 
-                        self.env.cr.commit()
-
-                        _logger.warning(
-
-                            f"[AZ SAVED] "
-
-                            f"{product.with_context(lang='az_AZ').name}"
-                        )
-
-                    # =================================================
-                    # FINAL CHECK
-                    # =================================================
-
-                    _logger.warning(
-
-                        f"[FINAL EN] "
-
-                        f"{product.with_context(lang='en_US').name}"
-                    )
-
-                    _logger.warning(
-
-                        f"[FINAL RU] "
-
-                        f"{product.with_context(lang='ru_RU').name}"
-                    )
-
-                    _logger.warning(
-
-                        f"[FINAL AZ] "
-
-                        f"{product.with_context(lang='az_AZ').name}"
-                    )
+                    _logger.warning(f"[DB CHECK TRANSLATIONS] {rows}")
 
                 except Exception as e:
 
