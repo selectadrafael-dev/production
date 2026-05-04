@@ -10,7 +10,7 @@ _logger = logging.getLogger(__name__)
 
 class VendorDataController(http.Controller):
 
-    @http.route('/vendor-data/submit', type='http', auth='public', website=True, csrf=False)
+    @http.route('/vendor-data/submit', type='http', auth='user', website=True, csrf=False)
     def submit_vendor_data(self, **post):
 
         try:
@@ -97,7 +97,11 @@ class VendorDataController(http.Controller):
             # =====================================================
             # 🔥 CREATE JOB
             # =====================================================
-            job = request.env['vendor.import.job'].sudo().create(job_vals)
+            
+            job = request.env['vendor.import.job']\
+                .sudo()\
+                .with_context(lang='en_US')\
+                .create(job_vals)
 
             if not job:
                 raise Exception("JOB CREATION FAILED")

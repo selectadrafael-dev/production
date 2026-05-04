@@ -4002,6 +4002,106 @@ class VendorImportJob(models.Model):
             _logger.warning(f"AI IMAGE MATCH FAILED → {str(e)}")
 
         return None
+    
+    #============enforce translation=================================
+    def _force_translate(self, text, target_lang):
+        import requests
+
+        try:
+            response = requests.post(
+                "https://translate.googleapis.com/translate_a/single",
+                params={
+                    "client": "gtx",
+                    "sl": "en",
+                    "tl": target_lang,
+                    "dt": "t",
+                    "q": text,
+                },
+            )
+
+            result = response.json()
+            return result[0][0][0]
+
+        except Exception as e:
+            _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
+            return text
+
+    #=========Translation new logic===================================
+
+    def _apply_product_translation(self, product):
+
+        if not product:
+            return
+
+        name = product.name or ''
+        desc = product.description_sale or ''
+
+        # ----------------------------
+        # DEBUG
+        # ----------------------------
+        _logger.warning(
+            f"[TRANSLATION INPUT] product={product.id} | name={name} | desc_len={len(desc)}"
+        )
+
+        # ----------------------------
+        # ALWAYS TRANSLATE NAME (cheap)
+        # ----------------------------
+        ru_name = self._force_translate(name, "ru")
+        az_name = self._force_translate(name, "az")
+
+        # ----------------------------
+        # ONLY TRANSLATE DESCRIPTION IF EXISTS
+        # ----------------------------
+        if desc and len(desc.strip()) > 10:
+
+            ru_desc = self._smart_translate(desc, "ru")
+            az_desc = self._smart_translate(desc, "az")
+
+        else:
+            ru_desc = ''
+            az_desc = ''
+
+            _logger.warning(
+                f"[TRANSLATION SKIPPED DESC] product={product.id}"
+            )
+
+        # ----------------------------
+        # SAVE
+        # ----------------------------
+        product.with_context(lang='ru_RU').write({
+            'name': ru_name,
+            'description_sale': ru_desc
+        })
+
+        product.with_context(lang='az_AZ').write({
+            'name': az_name,
+            'description_sale': az_desc
+        })
+
+        _logger.warning(f"[TRANSLATION DONE] product={product.id}")
+
+    #============product translation extended================
+    def _smart_translate(self, text, lang):
+
+        # fallback if needed
+        if len(text) < 5:
+            return self._force_translate(text, lang)
+
+        try:
+            api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+            client = OpenAI(api_key=api_key)
+
+            prompt = f"Translate to {lang} and improve clarity:\n{text}"
+
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=prompt
+            )
+
+            return response.output_text.strip()
+
+        except:
+            return self._force_translate(text, lang)
 
 
     # ================= PRODUCT CREATION URL ================
@@ -4172,6 +4272,8 @@ class VendorImportJob(models.Model):
                     mail_notify_force_send=False,
                     tracking_disable=True
                 ).create(vals)
+
+                self._apply_product_translation(product)
                 created_count += 1
 
             except Exception as e:
@@ -4199,7 +4301,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
 
-    #==========create pdf product==========================
+    #==========create pdf product====================================
   
     def create_products_pdf(self):
 
@@ -4585,6 +4687,9 @@ class VendorImportJob(models.Model):
 
                         ).create(vals)
 
+                        #=====Product Translation========
+                        self._apply_product_translation(product)
+                        
 
                         created_count += 1
 
@@ -5224,88 +5329,35 @@ class VendorImportJob(models.Model):
                     })
 
 
-                # =================================================
-                # FIND PARENT PRODUCT
-                # =================================================
-
-                vendor_id = (
-                    self.partner_id.id
-                    if self.partner_id
-                    else False
-                )
-
-
                 # ================================================
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                existing_products = product_obj.search([
+                vendor_id = self.partner_id.id if self.partner_id else False
 
-                    (
-                        'default_code',
-                        '=',
-                        group_id
-                    )
+                product = product_obj.search([
+                    ('default_code', '=', group_id),
+                    ('vendor_id', '=', vendor_id)
+                ], limit=1)
 
-                ])
+                is_new_product = False
 
-
-                product = False
-
-
-                for existing in existing_products:
-
-                    existing_vendor = (
-
-                        existing.vendor_id.id
-
-                        if existing.vendor_id
-
-                        else False
-                    )
-
+                if product:
+                    merged_count += 1
 
                     _logger.warning(
-
-                        f"[EXCEL CHECK] "
-
-                        f"group={group_id} "
-
-                        f"| existing_product={existing.id} "
-
-                        f"| existing_vendor={existing_vendor} "
-
-                        f"| current_vendor={vendor_id}"
+                        f"[EXCEL DUPLICATE FOUND] "
+                        f"{group_id} | vendor={vendor_id} | product_id={product.id}"
                     )
 
-
-                    # ============================================
-                    # SAME PRODUCT + SAME VENDOR
-                    # ============================================
-
-                    if existing_vendor == vendor_id:
-
-                        product = existing
-
-                        _logger.warning(
-
-                            f"[EXCEL DUPLICATE FOUND] "
-
-                            f"{group_id} "
-
-                            f"| vendor={vendor_id} "
-
-                            f"| product_id={existing.id}"
-                        )
-
-                        break
-
+                else:
+                    is_new_product = True
 
                 # =================================================
                 # CREATE PARENT
                 # =================================================
 
-                if not product:
+                if is_new_product:
 
                     vals = {
 
@@ -5355,7 +5407,8 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
-
+                    # ✅ SAFE TRANSLATION CALL (PLUG-IN)
+                    self._apply_product_translation(product)
                     created_count += 1
 
 
@@ -5580,7 +5633,7 @@ class VendorImportJob(models.Model):
                 self.flush_recordset()
 
                 self.env.cr.commit()
-
+                
 
                 _logger.warning(
 
@@ -5663,7 +5716,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
-    
+
 
     #-----URL API FLOW-------------------------------------------
 
