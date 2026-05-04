@@ -49,13 +49,15 @@
 
 /* ================= BG SLIDES ================= */
 .hero-bg-slide {
-  min-height: 520px;
-  background-size: cover;
-  background-repeat: no-repeat;
- background-position: center center;
-  display: flex;
-   position: relative;
-  align-items: center;
+    min-height: 520px;
+    background-size: cover !important;
+    background-position: center center !important;
+    background-repeat: no-repeat !important;
+
+    display: flex;
+    align-items: center;
+
+    width: 100%;
 }
 
 @media (max-width: 992px) {
