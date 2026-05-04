@@ -4002,6 +4002,87 @@ class VendorImportJob(models.Model):
             _logger.warning(f"AI IMAGE MATCH FAILED → {str(e)}")
 
         return None
+    
+    #============enforce translation=================================
+    def _force_translate(self, text, target_lang):
+        import requests
+
+        try:
+            response = requests.post(
+                "https://translate.googleapis.com/translate_a/single",
+                params={
+                    "client": "gtx",
+                    "sl": "en",
+                    "tl": target_lang,
+                    "dt": "t",
+                    "q": text,
+                },
+            )
+
+            result = response.json()
+            return result[0][0][0]
+
+        except Exception as e:
+            _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
+            return text
+
+    #=========Translation new logic===================================
+    
+    def _apply_product_translation(self, product):
+
+        name = product.name or ''
+        desc = product.description_sale or ''
+
+        # ----------------------------
+        # NAME → Google (fast)
+        # ----------------------------
+        ru_name = self._force_translate(name, "ru")
+        az_name = self._force_translate(name, "az")
+
+        # ----------------------------
+        # DESCRIPTION → Smart (optional)
+        # ----------------------------
+        if desc:
+            ru_desc = self._smart_translate(desc, "ru")
+            az_desc = self._smart_translate(desc, "az")
+        else:
+            ru_desc = ''
+            az_desc = ''
+
+        # ----------------------------
+        # SAVE
+        # ----------------------------
+        product.with_context(lang='ru_RU').write({
+            'name': ru_name,
+            'description_sale': ru_desc
+        })
+
+        product.with_context(lang='az_AZ').write({
+            'name': az_name,
+            'description_sale': az_desc
+        })
+
+    #============product translation extended================
+    def _smart_translate(self, text, lang):
+
+        # fallback if needed
+        if len(text) < 5:
+            return self._force_translate(text, lang)
+
+        try:
+            client = OpenAI(api_key=...)
+
+            prompt = f"Translate to {lang} and improve clarity:\n{text}"
+
+            response = client.responses.create(
+                model="gpt-4.1-mini",
+                input=prompt
+            )
+
+            return response.output_text.strip()
+
+        except:
+            return self._force_translate(text, lang)
 
 
     # ================= PRODUCT CREATION URL ================
@@ -4172,6 +4253,8 @@ class VendorImportJob(models.Model):
                     mail_notify_force_send=False,
                     tracking_disable=True
                 ).create(vals)
+
+                self._apply_product_translation(product)
                 created_count += 1
 
             except Exception as e:
@@ -4588,6 +4671,8 @@ class VendorImportJob(models.Model):
 
                         ).create(vals)
 
+                        #=====Product Translation========
+                        self._apply_product_translation(product)
 
                         created_count += 1
 
@@ -4880,74 +4965,7 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
-    #============enforce translation=================================
-    def _force_translate(self, text, target_lang):
-        import requests
 
-        try:
-            response = requests.post(
-                "https://translate.googleapis.com/translate_a/single",
-                params={
-                    "client": "gtx",
-                    "sl": "en",
-                    "tl": target_lang,
-                    "dt": "t",
-                    "q": text,
-                },
-            )
-
-            result = response.json()
-            return result[0][0][0]
-
-        except Exception as e:
-            _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
-            return text
-
-    #=========Translation new logic===================================
-    def _apply_product_translation(self, product):
-
-        try:
-            if not product:
-                return
-
-            _logger.warning(f"[TRANSLATION START] product={product.id}")
-
-            base_name = product.name or ''
-            base_desc = product.description_sale or ''
-
-            # 🔥 ADD THIS EXACTLY HERE
-            _logger.warning(
-                f"[TRANSLATION INPUT] product={product.id} | name={base_name} | desc_len={len(base_desc)}"
-            )
-
-            # ---------- RU ----------
-            ru_name = self._force_translate(base_name, 'ru')
-            ru_desc = self._force_translate(base_desc, 'ru')
-
-            product.with_context(lang='ru_RU').write({
-                'name': ru_name,
-                'description_sale': ru_desc,
-            })
-
-            _logger.warning(f"[RU SAVED] {ru_name}")
-
-            # ---------- AZ ----------
-            az_name = self._force_translate(base_name, 'az')
-            az_desc = self._force_translate(base_desc, 'az')
-
-            product.with_context(lang='az_AZ').write({
-                'name': az_name,
-                'description_sale': az_desc,
-            })
-
-            _logger.warning(f"[AZ SAVED] {az_name}")
-
-            _logger.warning(f"[TRANSLATION DONE] product={product.id}")
-
-        except Exception as e:
-            _logger.warning(f"[TRANSLATION ERROR] {str(e)}")
-
-    
     #==========create excel product==========================
     def create_products_excel(self):
 
