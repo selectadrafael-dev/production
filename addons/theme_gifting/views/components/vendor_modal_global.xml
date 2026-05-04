@@ -10,10 +10,7 @@
               <div class="modal-content vendor-modal">
 
                 <div class="modal-header">
-                  <h5 class="modal-title">
-                  
-                  <t t-esc="_('Upload Vendor Product Data')"/>                          
-                  </h5>
+                  <h5 class="modal-title">Upload Vendor Product Data</h5>
                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
 
@@ -47,27 +44,19 @@
                     t-att-value="request.csrf_token()"/>
                   
                     <div class="mb-4">
-                      <label class="form-label fw-semibold">
-                      
-                      <t t-esc="_('Vendor Website / Data URL')"/>                          
-                      </label>
+                      <label class="form-label fw-semibold">Vendor Website / Data URL</label>
                       <input type="url" class="form-control"
                             placeholder="https://vendor-site.com/catalog" name="data_url" />
                     </div>
 
-                     <div class="text-center mb-3 text-muted">
-                     
-                        <t t-esc="_('— OR —')"/>                          
-                     </div>
+                     <div class="text-center mb-3 text-muted">— OR —</div>
+
                 
                     <div class="row g-3">
 
                       <div class="col-md-6">
                         <div class="upload-card">
-                          <label class="upload-label">
-                            
-                            <t t-esc="_('Upload PDF Catalog')"/>                          
-                          </label>
+                          <label class="upload-label">Upload PDF Catalog</label>
                           <input type="file" accept=".pdf" name="pdf_file" class="form-control"/>
                         </div>
                       </div>
@@ -75,9 +64,7 @@
                     
                       <div class="col-md-6">
                         <div class="upload-card">
-                          <label class="upload-label">
-                            <t t-esc="_('Upload Excel / CSV')"/>                          
-                          </label>
+                          <label class="upload-label">Upload Excel / CSV</label>
                           <input type="file" name="excel_file" accept=".xls,.xlsx,.csv" class="form-control"/>
                         </div>
                       </div>
@@ -85,9 +72,7 @@
                     
                       <div class="col-md-12 vendor_logo">
                         <div class="upload-card">
-                          <label class="upload-label">
-                                <t t-esc="_('Vendor Logo (optional)')"/>                          
-                          </label>
+                          <label class="upload-label">Vendor Logo (optional)</label>
                           <input type="file" name="logo_file" accept="image/*" class="form-control"/>
                         </div>
                       </div>
@@ -96,7 +81,7 @@
 
                     <div class="mt-4">
                       <label class="form-label fw-semibold">
-                        <t t-esc="_('Additional Information (Optional)')"/>
+                        Additional Information (Optional)
                       </label>
                       <textarea name="extra_info" class="form-control" rows="4"
                         placeholder="Provide pricing notes, MOQ, printing methods, special instructions, etc."></textarea>
@@ -104,11 +89,9 @@
 
                     <div class="modal-footer">
                       <button type="submit" class="btn btn-outline-secondary"
-                              data-bs-dismiss="modal">
-                                <t t-esc="_('Cancel')"/>
-                              </button>
+                              data-bs-dismiss="modal">Cancel</button>
                       <button class="btn btn-primary px-4">
-                         <t t-esc="_('Submit Data')"/>
+                        Submit Data
                       </button>
                     </div>
 
@@ -135,7 +118,7 @@
                         <div class="d-flex align-items-center justify-content-between w-100 gap-3 flex-wrap">
 
                             <h5 class="modal-title mb-0">
-                                <t t-esc="_('My Uploaded Products')"/>
+                                My Uploaded Products
                             </h5>
 
                             <div class="vendor-product-search-wrap">
@@ -176,16 +159,16 @@
 
                         <button class="btn btn-secondary"
                                 id="vendorPrevPage">
-                            <t t-esc="_('Previous')"/>
+                            Previous
                         </button>
 
                         <span id="vendorPageInfo">
-                            <t t-esc="_('Page 1')"/>
+                            Page 1
                         </span>
 
                         <button class="btn btn-primary"
                                 id="vendorNextPage">
-                                 <t t-esc="_('Next')"/>
+                            Next
                         </button>
 
                     </div>
@@ -213,7 +196,7 @@
                   <div class="modal-header">
 
                       <h5 class="modal-title">
-                          <t t-esc="_('Product Details')"/>
+                          Product Details
                       </h5>
 
                       <button type="button"
@@ -272,7 +255,7 @@
                                       <div class="col-md-6">
 
                                           <label class="form-label">
-                                              <t t-esc="_('Product Name')"/>                      
+                                              Product Name
                                           </label>
 
                                           <input type="text"
@@ -287,7 +270,7 @@
                                       <div class="col-md-6">
 
                                           <label class="form-label">
-                                              <t t-esc="_('Category')"/>                      
+                                              Category
                                           </label>
 
                                                 <select
@@ -295,7 +278,7 @@
                                                 class="form-select">
 
                                                 <option value="">
-                                                    <t t-esc="_('Select Category')"/>
+                                                    Select Category
                                                 </option>
 
                                             </select>
@@ -308,7 +291,7 @@
                                       <div class="col-md-6">
 
                                           <label class="form-label">
-                                              <t t-esc="_('Price')"/>
+                                              Price
                                           </label>
 
                                           <input type="number"
@@ -324,8 +307,7 @@
                                       <div class="col-md-6">
 
                                           <label class="form-label">
-                                             
-                                              <t t-esc="_('Status')"/>
+                                              Status
                                           </label>
 
                                           <input type="text"
@@ -341,8 +323,7 @@
                                       <div class="col-md-6">
 
                                           <label class="form-label">
-                                              
-                                               <t t-esc="_('Date Created')"/>
+                                              Date Created
                                           </label>
 
                                           <input type="text"
@@ -358,7 +339,7 @@
                                       <div class="col-12">
 
                                           <label class="form-label">
-                                               <t t-esc="_('Description')"/>
+                                              Description
                                           </label>
 
                                           <textarea id="vendorProductDescription"
@@ -388,7 +369,8 @@
                       <button class="btn btn-danger"
                               id="deleteVendorProductBtn">
 
-                        <t t-esc="_('Delete Product')"/>
+                          Delete Product
+
                       </button>
 
 
@@ -396,7 +378,9 @@
 
                       <button class="btn btn-dark"
                               id="saveVendorProductBtn">
-                            <t t-esc="_('Save Changes')"/>
+
+                          Save Changes
+
                       </button>
 
                   </div>
