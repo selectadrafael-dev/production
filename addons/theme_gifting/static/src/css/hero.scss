@@ -48,16 +48,57 @@
 }
 
 /* ================= BG SLIDES ================= */
+ 
+/* =====================================================
+   HERO LANGUAGE BACKGROUNDS
+===================================================== */
+
+/* ENGLISH */
+
+html[lang="en-US"] .hero-bg-one {
+    background-image: url('/theme_gifting/static/src/img/banners/hero2-en.png');
+}
+
+html[lang="en-US"] .hero-bg-two {
+    background-image: url('/theme_gifting/static/src/img/banners/hero3-en.png');
+}
+
+
+/* RUSSIAN */
+
+html[lang="ru-RU"] .hero-bg-one {
+    background-image: url('/theme_gifting/static/src/img/banners/hero2-ru.png');
+}
+
+html[lang="ru-RU"] .hero-bg-two {
+    background-image: url('/theme_gifting/static/src/img/banners/hero3-ru.png');
+}
+
+
+/* AZERBAIJANI */
+
+html[lang="az_AZ"] .hero-bg-one {
+    background-image: url('/theme_gifting/static/src/img/banners/hero2-az.png');
+}
+
+html[lang="az_AZ"] .hero-bg-two {
+    background-image: url('/theme_gifting/static/src/img/banners/hero3-az.png');
+}
+
+
+/* SHARED */
+
 .hero-bg-slide {
-    min-height: 520px;
-    background-size: cover !important;
-    background-position: center center !important;
-    background-repeat: no-repeat !important;
+    min-height: 540px;
+
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+
+    width: 100%;
 
     display: flex;
     align-items: center;
-
-    width: 100%;
 }
 
 @media (max-width: 992px) {

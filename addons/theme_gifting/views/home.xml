@@ -39,12 +39,7 @@
 
       <!-- ✅ SLIDE 2 (FULL WIDTH BG) -->
 
-   <div class="carousel-item hero-bg-slide hero-bg-one"
-     style="background-image:url('/theme_gifting/static/src/img/banners/hero2-en.png');
-            min-height:540px;
-            background-size:cover;
-            background-position:center;">
-
+   <div class="carousel-item hero-bg-slide hero-bg-one">
 
         <div class="gifting-container">
           <div class="hero-overlay-text">
@@ -55,8 +50,7 @@
       </div>
 
       <!-- ✅ SLIDE 3 -->
-     <div class="carousel-item hero-bg-slide hero-bg-two"
-     t-attf-style="background-image:url('/theme_gifting/static/src/img/banners/hero3-#{(request.env.lang or 'en_US')[:2]}.png');">
+     <div class="carousel-item hero-bg-slide hero-bg-two">
 
         <div class="gifting-container">
           <div class="hero-overlay-text">
