@@ -4533,6 +4533,9 @@ class VendorImportJob(models.Model):
 
                     ], limit=1)
 
+                    #===========trnslation=======================
+                    self._apply_product_translation(product)
+
 
                     # =========================================
                     # CREATE PRODUCT
@@ -5320,6 +5323,8 @@ class VendorImportJob(models.Model):
                 # =================================================
 
                 if is_new_product:
+                    # SAFE TRANSLATION CALL (PLUG-IN)
+                    self._apply_product_translation(product)
 
                     vals = {
 
@@ -5595,9 +5600,6 @@ class VendorImportJob(models.Model):
 
                 self.env.cr.commit()
                 
-                # SAFE TRANSLATION CALL (PLUG-IN)
-                self._apply_product_translation(product)
-
 
                 _logger.warning(
 
