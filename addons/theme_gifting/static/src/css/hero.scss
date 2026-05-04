@@ -76,12 +76,11 @@ html[lang="ru-RU"] .hero-bg-two {
 
 
 /* AZERBAIJANI */
-
-html[lang="az_AZ"] .hero-bg-one {
+html[lang^="az"] .hero-bg-one {
     background-image: url('/theme_gifting/static/src/img/banners/hero2-az.webp');
 }
 
-html[lang="az_AZ"] .hero-bg-two {
+html[lang^="az"] .hero-bg-two {
     background-image: url('/theme_gifting/static/src/img/banners/hero3-az.webp');
 }
 
