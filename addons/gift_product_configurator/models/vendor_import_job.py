@@ -5172,9 +5172,11 @@ class VendorImportJob(models.Model):
 
                 else:
 
-                    group_id = (
+                    group_id = re.sub(
+                        r'[^A-Z0-9]',
+                        '',
                         raw_name.upper()
-                    )
+                    )[:40]
 
 
             grouped_products.setdefault(
@@ -5349,69 +5351,50 @@ class VendorImportJob(models.Model):
 
 
                 # ================================================
-                # FIND BY PRODUCT CODE FIRST
+                # STRICT DUPLICATE CHECK
+                # SAME VENDOR CANNOT CREATE SAME PRODUCT TWICE
                 # ================================================
 
-                existing_products = product_obj.search([
+                product = product_obj.search([
 
                     (
                         'default_code',
                         '=',
                         group_id
+                    ),
+
+                    (
+                        'vendor_id',
+                        '=',
+                        vendor_id
                     )
 
-                ])
+                ], limit=1)
 
 
-                product = False
-
-
-                for existing in existing_products:
-
-                    existing_vendor = (
-
-                        existing.vendor_id.id
-
-                        if existing.vendor_id
-
-                        else False
-                    )
-
+                if product:
 
                     _logger.warning(
 
-                        f"[EXCEL CHECK] "
+                        f"[EXCEL DUPLICATE FOUND] "
 
                         f"group={group_id} "
 
-                        f"| existing_product={existing.id} "
+                        f"| vendor={vendor_id} "
 
-                        f"| existing_vendor={existing_vendor} "
-
-                        f"| current_vendor={vendor_id}"
+                        f"| product_id={product.id}"
                     )
 
+                else:
 
-                    # ============================================
-                    # SAME PRODUCT + SAME VENDOR
-                    # ============================================
+                    _logger.warning(
 
-                    if existing_vendor == vendor_id:
+                        f"[EXCEL NEW PRODUCT] "
 
-                        product = existing
+                        f"group={group_id} "
 
-                        _logger.warning(
-
-                            f"[EXCEL DUPLICATE FOUND] "
-
-                            f"{group_id} "
-
-                            f"| vendor={vendor_id} "
-
-                            f"| product_id={existing.id}"
-                        )
-
-                        break
+                        f"| vendor={vendor_id}"
+                    )
 
 
                 # ================================================
