@@ -4877,6 +4877,112 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
+  
+    # =====================================================
+    # TRANSLATION HELPER
+    # =====================================================
+
+    def _translate_product_fields(
+        self,
+        name,
+        description=""
+    ):
+
+        from openai import OpenAI
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+
+            return {
+                "en_US": {
+                    "name": name,
+                    "description": description,
+                }
+            }
+
+        try:
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            prompt = f"""
+            Translate this product content.
+
+            RULES:
+            - Keep branding unchanged
+            - Keep SKU unchanged
+            - Keep technical values unchanged
+            - Return JSON ONLY
+
+            OUTPUT:
+
+            {{
+                "en_US": {{
+                    "name": "",
+                    "description": ""
+                }},
+                "ru_RU": {{
+                    "name": "",
+                    "description": ""
+                }},
+                "az_AZ": {{
+                    "name": "",
+                    "description": ""
+                }}
+            }}
+
+            PRODUCT NAME:
+            {name}
+
+            DESCRIPTION:
+            {description}
+            """
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt,
+
+                timeout=40
+            )
+
+            result = (
+                response.output_text or ""
+            ).strip()
+
+            result = result.replace(
+                "```json",
+                ""
+            )
+
+            result = result.replace(
+                "```",
+                ""
+            ).strip()
+
+            translated = json.loads(result)
+
+            return translated
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[TRANSLATION ERROR] {str(e)}"
+            )
+
+            return {
+                "en_US": {
+                    "name": name,
+                    "description": description,
+                }
+            }
 
     #==========create excel product==========================
     def create_products_excel(self):
@@ -5156,19 +5262,26 @@ class VendorImportJob(models.Model):
 
 
                 name = (
-
                     main_product.get(
                         "name"
                     ) or ""
-
                 ).strip()
 
 
                 description = (
-
                     main_product.get(
                         "description"
                     ) or ""
+                )
+
+
+                # =================================================
+                # TRANSLATIONS
+                # =================================================
+
+                translations = self._translate_product_fields(
+                    name=name,
+                    description=description
                 )
 
 
@@ -5309,7 +5422,13 @@ class VendorImportJob(models.Model):
 
                     vals = {
 
-                        'name': name,
+                        'name': translations.get(
+                            'en_US',
+                            {}
+                        ).get(
+                            'name',
+                            name
+                        ),
 
                         'default_code':
                             group_id,
@@ -5356,6 +5475,80 @@ class VendorImportJob(models.Model):
                     )
 
 
+                    # =================================================
+                    # SAVE TRANSLATIONS
+                    # =================================================
+
+                    try:
+
+                        # RUSSIAN
+
+                        ru = translations.get(
+                            'ru_RU',
+                            {}
+                        )
+
+                        if ru:
+
+                            product.with_context(
+                                lang='ru_RU'
+                            ).write({
+
+                                'name': ru.get(
+                                    'name',
+                                    name
+                                ),
+
+                                'description_sale': ru.get(
+                                    'description',
+                                    description
+                                )
+                            })
+
+
+                        # AZERBAIJANI
+
+                        az = translations.get(
+                            'az_AZ',
+                            {}
+                        )
+
+                        if az:
+
+                            product.with_context(
+                                lang='az_AZ'
+                            ).write({
+
+                                'name': az.get(
+                                    'name',
+                                    name
+                                ),
+
+                                'description_sale': az.get(
+                                    'description',
+                                    description
+                                )
+                            })
+
+
+                        _logger.warning(
+
+                            f"[TRANSLATIONS SAVED] "
+
+                            f"{product.id}"
+                        )
+
+
+                    except Exception as e:
+
+                        _logger.exception(
+
+                            f"[TRANSLATION SAVE ERROR] "
+
+                            f"{str(e)}"
+                        )
+
+
                     created_count += 1
 
 
@@ -5367,6 +5560,7 @@ class VendorImportJob(models.Model):
 
                         f"| vendor={vendor_id}"
                     )
+
 
                 else:
 
@@ -5382,8 +5576,7 @@ class VendorImportJob(models.Model):
                         f"| vendor={vendor_id} "
 
                         f"| product_id={product.id}"
-                    )
-              
+                    )              
 
                 # =================================================
                 # VARIANTS

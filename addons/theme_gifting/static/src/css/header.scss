@@ -340,6 +340,11 @@
   justify-content: end;
 }
 
+.js_language_selector .dropdown-menu.show, .show.o_dropdown_menu
+ {
+    z-index: 9999999999!important;
+}
+
 /* ================= ACCOUNT DROPDOWN ================= */
 
 .account-dropdown {
