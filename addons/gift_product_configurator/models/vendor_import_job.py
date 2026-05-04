@@ -4199,7 +4199,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
 
-    #==========create pdf product==========================
+    #==========create pdf product====================================
   
     def create_products_pdf(self):
 
@@ -4877,115 +4877,7 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
-  
-    # =====================================================
-    # TRANSLATION HELPER
-    # =====================================================
-
-    def _translate_product_fields(
-        self,
-        name,
-        description=""
-    ):
-
-        from openai import OpenAI
-
-        api_key = self.env[
-            'ir.config_parameter'
-        ].sudo().get_param(
-            'openai.api.key'
-        )
-
-        if not api_key:
-
-            return {
-                "en_US": {
-                    "name": name,
-                    "description": description,
-                }
-            }
-
-        try:
-
-            client = OpenAI(
-                api_key=api_key
-            )
-
-            prompt = f"""
-            Translate this product content.
-
-            RULES:
-            - Keep branding unchanged
-            - Keep SKU unchanged
-            - Keep technical values unchanged
-            - Return JSON ONLY
-
-            OUTPUT:
-
-            {{
-                "en_US": {{
-                    "name": "",
-                    "description": ""
-                }},
-                "ru_RU": {{
-                    "name": "",
-                    "description": ""
-                }},
-                "az_AZ": {{
-                    "name": "",
-                    "description": ""
-                }}
-            }}
-
-            PRODUCT NAME:
-            {name}
-
-            DESCRIPTION:
-            {description}
-            """
-
-            response = client.responses.create(
-
-                model="gpt-4.1-mini",
-
-                input=prompt,
-
-                timeout=40
-            )
-
-            result = (
-                response.output_text or ""
-            ).strip()
-
-            result = result.replace(
-                "```json",
-                ""
-            )
-
-            result = result.replace(
-                "```",
-                ""
-            ).strip()
-
-            translated = json.loads(result)
-
-            return translated
-
-        except Exception as e:
-
-            _logger.exception(
-                f"[TRANSLATION ERROR] {str(e)}"
-            )
-
-            return {
-                "en_US": {
-                    "name": name,
-                    "description": description,
-                }
-            }
-
-
-    #============enforce translation===========================
+    #============enforce translation=================================
     def _force_translate(self, text, target_lang):
         import requests
 
@@ -5008,7 +4900,7 @@ class VendorImportJob(models.Model):
             _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
             return text
 
-
+    #=========Translation new logic===================================
     def _apply_product_translation(self, product):
 
         try:
@@ -5019,6 +4911,11 @@ class VendorImportJob(models.Model):
 
             base_name = product.name or ''
             base_desc = product.description_sale or ''
+
+            # 🔥 ADD THIS EXACTLY HERE
+            _logger.warning(
+                f"[TRANSLATION INPUT] product={product.id} | name={base_name} | desc_len={len(base_desc)}"
+            )
 
             # ---------- RU ----------
             ru_name = self._force_translate(base_name, 'ru')
@@ -5048,7 +4945,7 @@ class VendorImportJob(models.Model):
             _logger.warning(f"[TRANSLATION ERROR] {str(e)}")
 
     
-     #==========create excel product==========================
+    #==========create excel product==========================
     def create_products_excel(self):
 
         import json
@@ -5394,88 +5291,35 @@ class VendorImportJob(models.Model):
                     })
 
 
-                # =================================================
-                # FIND PARENT PRODUCT
-                # =================================================
-
-                vendor_id = (
-                    self.partner_id.id
-                    if self.partner_id
-                    else False
-                )
-
-
                 # ================================================
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                existing_products = product_obj.search([
+                vendor_id = self.partner_id.id if self.partner_id else False
 
-                    (
-                        'default_code',
-                        '=',
-                        group_id
-                    )
+                product = product_obj.search([
+                    ('default_code', '=', group_id),
+                    ('vendor_id', '=', vendor_id)
+                ], limit=1)
 
-                ])
+                is_new_product = False
 
-
-                product = False
-
-
-                for existing in existing_products:
-
-                    existing_vendor = (
-
-                        existing.vendor_id.id
-
-                        if existing.vendor_id
-
-                        else False
-                    )
-
+                if product:
+                    merged_count += 1
 
                     _logger.warning(
-
-                        f"[EXCEL CHECK] "
-
-                        f"group={group_id} "
-
-                        f"| existing_product={existing.id} "
-
-                        f"| existing_vendor={existing_vendor} "
-
-                        f"| current_vendor={vendor_id}"
+                        f"[EXCEL DUPLICATE FOUND] "
+                        f"{group_id} | vendor={vendor_id} | product_id={product.id}"
                     )
 
-
-                    # ============================================
-                    # SAME PRODUCT + SAME VENDOR
-                    # ============================================
-
-                    if existing_vendor == vendor_id:
-
-                        product = existing
-
-                        _logger.warning(
-
-                            f"[EXCEL DUPLICATE FOUND] "
-
-                            f"{group_id} "
-
-                            f"| vendor={vendor_id} "
-
-                            f"| product_id={existing.id}"
-                        )
-
-                        break
-
+                else:
+                    is_new_product = True
 
                 # =================================================
                 # CREATE PARENT
                 # =================================================
 
-                if not product:
+                if is_new_product:
 
                     vals = {
 
@@ -5749,10 +5593,10 @@ class VendorImportJob(models.Model):
 
                 self.flush_recordset()
 
-
+                self.env.cr.commit()
+                
                 # SAFE TRANSLATION CALL (PLUG-IN)
                 self._apply_product_translation(product)
-                self.env.cr.commit()
 
 
                 _logger.warning(
@@ -5836,6 +5680,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
 
     #-----URL API FLOW-------------------------------------------
 

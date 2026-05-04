@@ -1,4 +1,4 @@
-#====modified==============
+#====Last Modified==============
 from odoo import models, fields
 import base64
 import logging
@@ -4878,7 +4878,177 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
+  
+    # =====================================================
+    # TRANSLATION HELPER
+    # =====================================================
 
+    def _translate_product_fields(
+        self,
+        name,
+        description=""
+    ):
+
+        from openai import OpenAI
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+
+            return {
+                "en_US": {
+                    "name": name,
+                    "description": description,
+                }
+            }
+
+        try:
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            prompt = f"""
+            Translate this product content.
+
+            RULES:
+            - Keep branding unchanged
+            - Keep SKU unchanged
+            - Keep technical values unchanged
+            - Return JSON ONLY
+
+            OUTPUT:
+
+            {{
+                "en_US": {{
+                    "name": "",
+                    "description": ""
+                }},
+                "ru_RU": {{
+                    "name": "",
+                    "description": ""
+                }},
+                "az_AZ": {{
+                    "name": "",
+                    "description": ""
+                }}
+            }}
+
+            PRODUCT NAME:
+            {name}
+
+            DESCRIPTION:
+            {description}
+            """
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt,
+
+                timeout=40
+            )
+
+            result = (
+                response.output_text or ""
+            ).strip()
+
+            result = result.replace(
+                "```json",
+                ""
+            )
+
+            result = result.replace(
+                "```",
+                ""
+            ).strip()
+
+            translated = json.loads(result)
+
+            return translated
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[TRANSLATION ERROR] {str(e)}"
+            )
+
+            return {
+                "en_US": {
+                    "name": name,
+                    "description": description,
+                }
+            }
+
+
+    #============enforce translation===========================
+    def _force_translate(self, text, target_lang):
+        import requests
+
+        try:
+            response = requests.post(
+                "https://translate.googleapis.com/translate_a/single",
+                params={
+                    "client": "gtx",
+                    "sl": "en",
+                    "tl": target_lang,
+                    "dt": "t",
+                    "q": text,
+                },
+            )
+
+            result = response.json()
+            return result[0][0][0]
+
+        except Exception as e:
+            _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
+            return text
+
+
+    def _apply_product_translation(self, product):
+
+        try:
+            if not product:
+                return
+
+            _logger.warning(f"[TRANSLATION START] product={product.id}")
+
+            base_name = product.name or ''
+            base_desc = product.description_sale or ''
+
+            # ---------- RU ----------
+            ru_name = self._force_translate(base_name, 'ru')
+            ru_desc = self._force_translate(base_desc, 'ru')
+
+            product.with_context(lang='ru_RU').write({
+                'name': ru_name,
+                'description_sale': ru_desc,
+            })
+
+            _logger.warning(f"[RU SAVED] {ru_name}")
+
+            # ---------- AZ ----------
+            az_name = self._force_translate(base_name, 'az')
+            az_desc = self._force_translate(base_desc, 'az')
+
+            product.with_context(lang='az_AZ').write({
+                'name': az_name,
+                'description_sale': az_desc,
+            })
+
+            _logger.warning(f"[AZ SAVED] {az_name}")
+
+            _logger.warning(f"[TRANSLATION DONE] product={product.id}")
+
+        except Exception as e:
+            _logger.warning(f"[TRANSLATION ERROR] {str(e)}")
+
+    
     #==========create excel product==========================
     def create_products_excel(self):
 
@@ -5580,6 +5750,9 @@ class VendorImportJob(models.Model):
 
                 self.flush_recordset()
 
+
+                # SAFE TRANSLATION CALL (PLUG-IN)
+                self._apply_product_translation(product)
                 self.env.cr.commit()
 
 
@@ -5664,7 +5837,6 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
-    
 
     #-----URL API FLOW-------------------------------------------
 
