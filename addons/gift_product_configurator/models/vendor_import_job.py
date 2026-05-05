@@ -6913,17 +6913,32 @@ class VendorImportJob(models.Model):
     def auto_translate_terms(self, target_lang='ru_RU'):
 
         from openai import OpenAI
-        import json
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+
+        if not api_key:
+            _logger.warning("❌ Missing OpenAI API key")
+            return
+
+        try:
+            Translation = self.env['ir.translation']
+        except Exception:
+            _logger.warning("❌ ir.translation not accessible")
+            return
+
         client = OpenAI(api_key=api_key)
 
-        # GET untranslated terms
-        terms = self.env['ir.translation'].sudo().search([
+        terms = Translation.sudo().search([
             ('lang', '=', target_lang),
+            '|',
             ('value', '=', False),
+            ('value', '=', ''),
             ('src', '!=', False),
-        ], limit=100)
+            ('type', 'in', ['view', 'model']),
+        ], limit=20)
+
+        _logger.warning(f"🌍 GLOBAL TRANSLATION START → {target_lang}")
+        _logger.warning(f"🔍 Terms found → {len(terms)}")
 
         for term in terms:
 
@@ -6946,9 +6961,22 @@ class VendorImportJob(models.Model):
                     input=prompt
                 )
 
-                translated = response.output_text.strip()
+                translated = ""
 
-                term.write({'value': translated})
+                if response.output:
+                    for item in response.output:
+                        if hasattr(item, "content"):
+                            for c in item.content:
+                                if c.get("type") == "output_text":
+                                    translated += c.get("text", "")
+
+                translated = translated.strip()
+
+                if translated:
+                    term.write({'value': translated})
+                    _logger.warning(f"✅ {term.src} → {translated}")
+                else:
+                    _logger.warning(f"⚠️ Empty translation for: {term.src}")
 
             except Exception as e:
-                _logger.warning(f"Translation failed: {e}")
+                _logger.warning(f"❌ Translation failed: {term.src} → {str(e)}")
