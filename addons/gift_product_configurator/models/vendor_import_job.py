@@ -6908,3 +6908,47 @@ class VendorImportJob(models.Model):
 
         except:
             return 0.0
+
+    #===========translate site==========================
+    def auto_translate_terms(self, target_lang='ru_RU'):
+
+        from openai import OpenAI
+        import json
+
+        api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+        client = OpenAI(api_key=api_key)
+
+        # GET untranslated terms
+        terms = self.env['ir.translation'].sudo().search([
+            ('lang', '=', target_lang),
+            ('value', '=', False),
+            ('src', '!=', False),
+        ], limit=100)
+
+        for term in terms:
+
+            try:
+                prompt = f"""
+                Translate to {target_lang}.
+
+                Rules:
+                - Keep brand names unchanged
+                - Keep technical terms accurate
+                - Use natural eCommerce language
+                - Do not translate URLs or codes
+
+                TEXT:
+                {term.src}
+                """
+
+                response = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=prompt
+                )
+
+                translated = response.output_text.strip()
+
+                term.write({'value': translated})
+
+            except Exception as e:
+                _logger.warning(f"Translation failed: {e}")
