@@ -80,7 +80,7 @@ class VendorProductsController(http.Controller):
 
         Product = request.env[
             'product.template'
-        ].sudo()
+        ].sudo().with_context(lang='en_US')
 
         # =========================================
         # BASE DOMAIN
@@ -95,10 +95,11 @@ class VendorProductsController(http.Controller):
         # =========================================
 
         if search:
-
-            domain.append(
-                ('name', 'ilike', search)
-            )
+            domain += ['|', '|',
+                ('name', 'ilike', search),
+                ('default_code', 'ilike', search),
+                ('id', 'ilike', search)
+            ]
 
         _logger.warning(
             f"VENDOR SEARCH → {search}"
@@ -219,16 +220,15 @@ class VendorProductsController(http.Controller):
 
 
 
-        product = request.env[
-            'product.template'
-        ].sudo().search([
+        product = request.env['product.template']\
+            .sudo()\
+            .with_context(lang='en_US')\
+            .search([
+                ('id', '=', int(product_id)),
+                ('vendor_id', '=', partner.id)
+            ], limit=1)
 
-            ('id', '=', int(product_id)),
-
-            ('vendor_id', '=', partner.id)
-
-        ], limit=1)
-
+        
         _logger.warning(
             f"FOUND PRODUCT → {product}"
         )
@@ -374,15 +374,13 @@ class VendorProductsController(http.Controller):
             }
 
 
-        product = request.env[
-            'product.template'
-        ].sudo().search([
-
-            ('id', '=', product_id),
-
-            ('vendor_id', '=', partner.id)
-
-        ], limit=1)
+        product = request.env['product.template']\
+            .sudo()\
+            .with_context(lang='en_US')\
+            .search([
+                ('id', '=', int(product_id)),
+                ('vendor_id', '=', partner.id)
+            ], limit=1)
 
 
         if not product:
@@ -449,15 +447,13 @@ class VendorProductsController(http.Controller):
             }
 
 
-        product = request.env[
-            'product.template'
-        ].sudo().search([
-
-            ('id', '=', product_id),
-
-            ('vendor_id', '=', partner.id)
-
-        ], limit=1)
+        product = request.env['product.template']\
+            .sudo()\
+            .with_context(lang='en_US')\
+            .search([
+                ('id', '=', int(product_id)),
+                ('vendor_id', '=', partner.id)
+            ], limit=1)
 
 
         if not product:
@@ -497,16 +493,13 @@ class VendorProductsController(http.Controller):
 
         partner = request.env.user.partner_id
 
-
-        product = request.env[
-            'product.template'
-        ].sudo().search([
-
-            ('id', '=', product_id),
-
-            ('vendor_id', '=', partner.id)
-
-        ], limit=1)
+        product = request.env['product.template']\
+            .sudo()\
+            .with_context(lang='en_US')\
+            .search([
+                ('id', '=', int(product_id)),
+                ('vendor_id', '=', partner.id)
+            ], limit=1)
         
 
         if not product.exists():
