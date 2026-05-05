@@ -6909,8 +6909,7 @@ class VendorImportJob(models.Model):
         except:
             return 0.0
 
-    #===========translate site==========================
-    def auto_translate_terms(self, target_lang='ru_RU'):
+   
 
         from openai import OpenAI
 
@@ -6920,40 +6919,27 @@ class VendorImportJob(models.Model):
             _logger.warning("❌ Missing OpenAI API key")
             return
 
-        try:
-            Translation = self.env['ir.translation']
-        except Exception:
-            _logger.warning("❌ ir.translation not accessible")
-            return
-
         client = OpenAI(api_key=api_key)
 
-        terms = Translation.sudo().search([
-            ('lang', '=', target_lang),
-            '|',
-            ('value', '=', False),
-            ('value', '=', ''),
-            ('src', '!=', False),
-            ('type', 'in', ['view', 'model']),
+        # 🔥 FETCH SOURCE STRINGS FROM VIEWS (SAFE WAY)
+        views = self.env['ir.ui.view'].sudo().search([
+            ('arch_db', '!=', False)
         ], limit=20)
 
-        _logger.warning(f"🌍 GLOBAL TRANSLATION START → {target_lang}")
-        _logger.warning(f"🔍 Terms found → {len(terms)}")
+        _logger.warning(f"🌍 GLOBAL VIEW TRANSLATION START → {target_lang}")
+        _logger.warning(f"🔍 Views found → {len(views)}")
 
-        for term in terms:
+        for view in views:
 
             try:
+                text = view.name or ''
+                if not text:
+                    continue
+
                 prompt = f"""
-                Translate to {target_lang}.
+                Translate to {target_lang}:
 
-                Rules:
-                - Keep brand names unchanged
-                - Keep technical terms accurate
-                - Use natural eCommerce language
-                - Do not translate URLs or codes
-
-                TEXT:
-                {term.src}
+                {text}
                 """
 
                 response = client.responses.create(
@@ -6961,22 +6947,14 @@ class VendorImportJob(models.Model):
                     input=prompt
                 )
 
-                translated = ""
-
-                if response.output:
-                    for item in response.output:
-                        if hasattr(item, "content"):
-                            for c in item.content:
-                                if c.get("type") == "output_text":
-                                    translated += c.get("text", "")
-
-                translated = translated.strip()
+                translated = response.output_text.strip()
 
                 if translated:
-                    term.write({'value': translated})
-                    _logger.warning(f"✅ {term.src} → {translated}")
-                else:
-                    _logger.warning(f"⚠️ Empty translation for: {term.src}")
+                    view.with_context(lang=target_lang).write({
+                        'name': translated
+                    })
+
+                    _logger.warning(f"✅ VIEW {view.name} → {translated}")
 
             except Exception as e:
-                _logger.warning(f"❌ Translation failed: {term.src} → {str(e)}")
+                _logger.warning(f"❌ Failed: {str(e)}")
