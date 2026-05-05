@@ -5,13 +5,13 @@
     <template id="section_new_arrivals"
               name="New Arrivals Section">
 
-  <!-- Fetch latest 12 products from New Arrivals category -->
-  <t t-set="products"
+      <!-- Fetch latest 12 products from New Arrivals category -->
+      <t t-set="products"
    t-value="request.env['gifting.product.helper']
-            .with_context(lang=request.lang)
+            .with_context(lang=request.env.context.get('lang') or 'en_US')
             .get_latest_products(
             'theme_gifting.category_new_arrivals', 12)"/>
-
+            
       <section class="new-arrivals-section py-5">
 
         <div class="container">
