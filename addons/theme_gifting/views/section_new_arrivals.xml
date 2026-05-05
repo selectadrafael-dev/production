@@ -18,7 +18,7 @@
           <!-- Header -->
           <div class="d-flex justify-content-between align-items-center mb-4">
             <h3 class="fw-bold">
-              <t t-esc="_('New arrivals')"/>
+              New arrivals
           </h3>
 
             <a href="/shop"
@@ -56,8 +56,6 @@
                     <div class="arrival-price">
                         $ <t t-esc="product.list_price"/>
                       </div>
-                    
-
                     </div>
 
                   </a>
@@ -71,7 +69,7 @@
             <!-- Empty fallback -->
             <t t-if="not products">
               <div class="col-12 text-center text-muted">
-                  <t t-esc="_('No new arrivals yet.')"/>
+                  No new arrivals yet
               </div>
             </t>
 

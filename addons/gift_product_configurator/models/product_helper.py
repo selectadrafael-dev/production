@@ -7,11 +7,23 @@ class GiftingProductHelper(models.AbstractModel):
 
     def get_latest_products(self, xml_id, limit):
 
-        category = self.env.ref(xml_id, raise_if_not_found=False)
-        if not category:
-            return self.env['product.template']
+        # ✅ FORCE WEBSITE LANGUAGE CONTEXT (CRITICAL)
+        lang = self.env.context.get('lang')
 
-        products = self.env['product.template'].search(
+        Product = self.env['product.template'].with_context(lang=lang)
+
+        # =========================================
+        # CATEGORY FETCH
+        # =========================================
+        category = self.env.ref(xml_id, raise_if_not_found=False)
+
+        if not category:
+            return Product.browse([])
+
+        # =========================================
+        # PRODUCTS SEARCH
+        # =========================================
+        products = Product.search(
             [
                 ('public_categ_ids', 'in', category.id),
                 ('website_published', '=', True),
