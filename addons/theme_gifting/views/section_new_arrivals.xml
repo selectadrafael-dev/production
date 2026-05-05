@@ -5,7 +5,7 @@
     <template id="section_new_arrivals"
               name="New Arrivals Section">
 
-  <!-- Fetch latest 12 products from New Arrivals category -->
+  <!--== Fetch latest 12 products from New Arrivals category ===-->
   <t t-set="products"
    t-value="request.env['gifting.product.helper']
             .with_context(lang=request.lang)
