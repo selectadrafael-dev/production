@@ -49,65 +49,115 @@
                       else '#6E8FC6'"/>
 
           <!-- ⭐ HERO SECTION -->
-          <section class="category-hero"
-                   t-att-style="'background:%s;' % hero_color">
+          <!-- ========================= -->
 
-            <div class="container">
+          <!-- SAFE LAYOUT SWITCH -->
+          <!-- ========================= -->
 
-              <div class="row">
+          <t t-set="layout"
+            t-value="cat.hero_layout if 'hero_layout' in cat._fields else 'split'"/>
 
-                <!-- LEFT SPACE (FOR FILTER SIDEBAR ALIGNMENT) -->
-                <div class="col-lg-3 d-none d-lg-block"></div>
+          <!-- CENTER LAYOUT -->
+          <t t-if="layout == 'center'">
 
-                  <!-- HERO CONTENT -->
-                 <t t-if="cat.hero_layout == 'center'">
+            <section class="category-hero layout-center"
+                    t-att-style="'background:%s;' % hero_color">
 
-                    <section class="category-hero layout-center"
-                            t-att-style="'background:%s;' % hero_color">
+              <div class="container">
+                <div class="row py-5">
 
-                      <div class="container">
+                  <div class="col-lg-6">
+                    <nav class="mb-2 text-muted">
+                      Home / <t t-esc="cat.name"/>
+                    </nav>
 
-                        <div class="row py-5 align-items-start">
+                    <h1 class="fw-bold mb-3">
+                      <t t-esc="hero_title"/>
+                    </h1>
 
-                          <!-- LEFT COLUMN -->
-                          <div class="col-lg-6">
+                    <h5>
+                      <t t-esc="hero_subtitle"/>
+                    </h5>
+                  </div>
 
-                            <nav class="mb-2 text-muted">
-                              Home / <t t-esc="cat.name"/>
-                            </nav>
+                  <div class="col-lg-6">
+                    <p>
+                      <t t-esc="hero_description"/>
+                    </p>
+                  </div>
 
-                            <h1 class="fw-bold mb-3">
-                              <t t-esc="hero_title"/>
-                            </h1>
+                </div>
+              </div>
 
-                            <h5 class="mb-3">
-                              <t t-esc="hero_subtitle"/>
-                            </h5>
+            </section>
+
+          </t>
+
+          <!-- SPLIT LAYOUT -->
+          <t t-elif="layout == 'split'">
+
+            <section class="category-hero layout-split"
+                    t-att-style="'background:%s;' % hero_color">
+
+              <div class="container">
+
+                <div class="row">
+
+                  <!-- LEFT SIDEBAR -->
+                  <t t-set="children" t-value="cat.child_id"/>
+
+                    <t t-if="children">
+
+                      <div class="col-lg-3 category-sidebar">
+
+                        <h5 class="fw-bold mb-3">Shop by</h5>
+
+                        <t t-foreach="children" t-as="child">
+
+                          <div class="mb-3">
+
+                            <strong>
+                              <t t-esc="child.name"/>
+                            </strong>
+
+                            <div>
+                              <a t-att-href="'/shop/category/%s' % child.id">
+                                View All
+                              </a>
+                            </div>
 
                           </div>
 
-                          <!-- RIGHT COLUMN -->
-                          <div class="col-lg-6">
-
-                            <p class="mb-0">
-                              <t t-esc="hero_description"/>
-                            </p>
-
-                          </div>
-
-                        </div>
+                        </t>
 
                       </div>
 
-                    </section>
+                    </t>
 
-                  </t>
+                  <!-- RIGHT HERO CONTENT -->
+                  <div class="col-lg-9 py-5">
+
+                    <nav class="mb-2 text-muted">
+                      Home / <t t-esc="cat.name"/>
+                    </nav>
+
+                    <h1 class="fw-bold mb-3">
+                      <t t-esc="hero_title"/>
+                    </h1>
+
+                    <p>
+                      <t t-esc="hero_description"/>
+                    </p>
+
+                  </div>
+
+                </div>
 
               </div>
 
-            </div>
+            </section>
 
-          </section>
+          </t>
 
         </t>
 
