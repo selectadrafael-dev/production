@@ -241,6 +241,29 @@
 }
 
 /* ========================= */
+/* EDITORIAL HERO FIX */
+/* ========================= */
+
+.layout-editorial {
+  padding: 30px 0;
+}
+
+.layout-editorial .hero-inner {
+  max-width: 1200px;
+  margin: auto;
+}
+
+.layout-editorial h1 {
+  font-size: 36px;
+}
+
+.layout-editorial p {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+}
+
+/* ========================= */
 /* MOBILE */
 /* ========================= */
 

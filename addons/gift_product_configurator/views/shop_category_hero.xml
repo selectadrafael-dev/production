@@ -175,22 +175,22 @@
                 <section class="category-hero layout-editorial"
                         t-att-style="'background:%s;' % hero_color">
 
-                  <div class="container py-4">
+                  <div class="container hero-inner">
 
                     <div class="row align-items-center">
 
                       <div class="col-lg-6">
-                        <h1 class="fw-bold">
+                        <h1 class="fw-bold mb-2">
                           <t t-esc="hero_title"/>
                         </h1>
 
-                        <h5>
+                        <h5 class="mb-2">
                           <t t-esc="hero_subtitle"/>
                         </h5>
                       </div>
 
                       <div class="col-lg-6">
-                        <p>
+                        <p class="mb-0">
                           <t t-esc="hero_description"/>
                         </p>
                       </div>
