@@ -86,7 +86,8 @@
 
 .floating-sidebar {
   position: relative;
-  margin-top: -80px;
+  /*margin-top: -80px;*/
+  margin-top: -300px;
   padding-left: 60px;
   z-index: 10;
 }
@@ -97,36 +98,64 @@
   padding: 25px;
   border-radius: 10px;
   box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+
+    max-height: 300px;
+    overflow-y: auto;
 }
 
+@media (min-width: 1200px) {
+
+  .floating-sidebar {
+    position: relative;
+    margin-top: -80px;
+    padding-left: 60px;
+  }
+
+}
 
 /* ========================= */
 /* TABLET MODE (IMPORTANT) */
 /* ========================= */
 
-@media (max-width: 1199px) {
+/*@media (max-width: 1199px) {
 
-  /* ❗ STOP OVERLAP */
   .floating-sidebar {
-    position: absolute;
     margin-top: 0;
     left: 20px;
-    top: 40px;
+    top: 230px;
   }
 
-  /* ❗ SHRINK SIDEBAR */
   .category-sidebar-box {
     width: 200px;
     padding: 18px;
   }
 
-  /* ❗ PUSH TEXT RIGHT */
   .hero-content {
-    margin-left: 220px;
+    margin-left: 70px;
   }
 
 }
+*/
 
+@media (max-width: 1199px) {
+
+  .floating-sidebar {
+    position: relative;   /* ✅ back to flow */
+    margin-top: -60px;    /* slight overlap only */
+    margin-bottom: 20px;  /* push content down */
+    left: auto;
+    top: auto;
+  }
+
+  .category-sidebar-box {
+    width: 220px;
+  }
+
+  .hero-content {
+    margin-left: 0;
+  }
+
+}
 
 /* ========================= */
 /* MOBILE MODE */
