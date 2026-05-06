@@ -94,77 +94,78 @@
           </t>
 
           <!-- SPLIT LAYOUT -->
-            <t t-elif="layout == 'split'">
+           <t t-elif="layout == 'split'">
 
-            <section class="category-hero layout-split"
-                    t-att-style="'background:%s;' % hero_color">
+  <section class="category-hero layout-split"
+           t-att-style="'background:%s;' % hero_color">
 
-              <div class="container-fluid px-4">
+    <!-- FULL WIDTH WRAPPER -->
+    <div class="container-fluid">
 
-                <div class="row align-items-start">
+      <div class="row align-items-center">
 
-                  <!-- LEFT SIDEBAR -->
-                  <t t-set="children" t-value="cat.child_id"/>
+        <!-- SIDEBAR -->
+        <t t-set="children" t-value="cat.child_id"/>
 
-                  <t t-if="children">
+        <t t-if="children">
 
-                    <div class="col-lg-3">
+          <div class="col-lg-3 ps-lg-5">
 
-                      <div class="category-sidebar-box">
+            <div class="category-sidebar-box">
 
-                        <h5 class="fw-bold mb-3">Shop by</h5>
+              <h5 class="fw-bold mb-3">Shop by</h5>
 
-                        <t t-foreach="children" t-as="child">
+              <t t-foreach="children" t-as="child">
 
-                          <div class="category-item">
+                <div class="category-item">
 
-                            <div class="category-name">
-                              <t t-esc="child.name"/>
-                            </div>
-
-                            <a t-att-href="'/shop/category/%s' % child.id"
-                              class="view-all">
-                              View All
-                            </a>
-
-                          </div>
-
-                        </t>
-
-                      </div>
-
-                    </div>
-
-                  </t>
-
-                  <!-- RIGHT HERO CONTENT -->
-                  <div class="col-lg-9">
-
-                    <div class="hero-content py-5">
-
-                      <nav class="mb-2 text-muted">
-                        Home / <t t-esc="cat.name"/>
-                      </nav>
-
-                      <h1 class="fw-bold mb-3">
-                        <t t-esc="hero_title"/>
-                      </h1>
-
-                      <p class="hero-description">
-                        <t t-esc="hero_description"/>
-                      </p>
-
-                    </div>
-
+                  <div class="category-name">
+                    <t t-esc="child.name"/>
                   </div>
+
+                  <a t-att-href="'/shop/category/%s' % child.id"
+                     class="view-all">
+                     View All
+                  </a>
 
                 </div>
 
-              </div>
+              </t>
 
-            </section>
+            </div>
 
-          </t>
+          </div>
+
+        </t>
+
+        <!-- HERO TEXT -->
+        <div class="col-lg-6 offset-lg-1">
+
+          <div class="hero-content">
+
+            <nav class="mb-2 text-light">
+              Home / <t t-esc="cat.name"/>
+            </nav>
+
+            <h1 class="fw-bold mb-3 text-dark">
+              <t t-esc="hero_title"/>
+            </h1>
+
+            <p class="hero-description text-dark">
+              <t t-esc="hero_description"/>
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+</t>
 
         </t>
 
