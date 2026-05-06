@@ -309,35 +309,6 @@
     max-width: 760px;
 }
 
-/* ========================================= */
-/* PULL REAL ODOO SIDEBAR UP */
-/* ========================================= */
-
-/*#products_grid_before {
-
-    margin-top: -270px;
-
-    position: relative;
-    z-index: 10;
-
-    background: white;
-
-    max-height: 700px;
-    overflow-y: auto;
-
-    padding-right: 15px;
-}
-
-#products_grid_before::-webkit-scrollbar {
-    width: 6px;
-}
-
-#products_grid_before::-webkit-scrollbar-thumb {
-    background: #162447;
-    border-radius: 20px;
-}
-*/
-
 
 /* ========================================= */
 /* ONLY FOR SIDEBAR HERO LAYOUT */
@@ -345,7 +316,8 @@
 
 .layout-sidebar-hero + .o_wsale_products_main_row #products_grid_before {
 
-    margin-top: -270px;
+    margin-top: -350px;
+    margin-left: 40px;
 
     position: relative;
     z-index: 10;
