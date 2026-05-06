@@ -58,26 +58,39 @@
 }
 
 /*==========football fever=============*/
-/* HERO = SHORT STRIP */
+/* ========================= */
+/* BASE HERO */
+/* ========================= */
+
 .category-hero.layout-split {
   width: 100%;
-  padding: 60px 0;   /* 👈 reduce height */
+  padding: 70px 0;
 }
 
-/* HERO TEXT */
 .hero-content {
-  max-width: 600px;
+  max-width: 620px;
 }
 
-/* FLOATING SIDEBAR */
+.hero-content h1 {
+  font-size: 40px;
+}
+
+.hero-description {
+  line-height: 1.6;
+}
+
+
+/* ========================= */
+/* FLOATING SIDEBAR (DESKTOP) */
+/* ========================= */
+
 .floating-sidebar {
   position: relative;
-  margin-top: -310px;
+  margin-top: -80px;
   padding-left: 60px;
   z-index: 10;
 }
 
-/* SIDEBAR CARD */
 .category-sidebar-box {
   width: 260px;
   background: #f5f5f5;
@@ -86,57 +99,56 @@
   box-shadow: 0 8px 25px rgba(0,0,0,0.08);
 }
 
-/* ITEMS */
-.category-item {
-  margin-bottom: 15px;
-}
-
-.category-name {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.view-all {
-  font-size: 13px;
-  color: #007bff;
-}
 
 /* ========================= */
-/* RESPONSIVE FIX */
+/* TABLET MODE (IMPORTANT) */
 /* ========================= */
 
-/* TABLET & BELOW */
-/* ========================= */
-/* RESPONSIVE FIX */
-/* ========================= */
-
-/* TABLET & SMALL DESKTOP */
 @media (max-width: 1199px) {
 
+  /* ❗ STOP OVERLAP */
   .floating-sidebar {
-    position: static;
-    margin-top: 20px;
-    padding-left: 15px;
-    padding-right: 15px;
+    position: absolute;
+    margin-top: 0;
+    left: 20px;
+    top: 40px;
   }
 
+  /* ❗ SHRINK SIDEBAR */
   .category-sidebar-box {
-    width: 100%;
-    max-width: 100%;
+    width: 200px;
+    padding: 18px;
   }
 
+  /* ❗ PUSH TEXT RIGHT */
+  .hero-content {
+    margin-left: 220px;
+  }
+
+}
+
+
+/* ========================= */
+/* MOBILE MODE */
+/* ========================= */
+
+@media (max-width: 768px) {
+
+  /* ❗ REMOVE SIDEBAR COMPLETELY */
+  .floating-sidebar {
+    display: none;
+  }
+
+  /* ❗ CENTER HERO */
   .category-hero.layout-split {
-    padding: 40px 0;
+    padding: 50px 20px;
+    text-align: center;
   }
 
   .hero-content {
-    padding: 0 15px;
+    margin: 0 auto;
+    max-width: 100%;
   }
-
-}
-
-/* MOBILE */
-@media (max-width: 767px) {
 
   .hero-content h1 {
     font-size: 26px;
