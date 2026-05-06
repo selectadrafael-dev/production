@@ -1,44 +1,74 @@
-.category-hero-full {
+/* =========================
+   BASE HERO
+========================= */
+.category-hero {
   width: 100%;
-  padding-bottom: 40px;
   margin-bottom: 30px;
 }
 
-/* Match product column width visually */
-.category-hero-full .col-lg-9 {
+/* MATCH GRID WIDTH */
+.category-hero .col-lg-9 {
   max-width: 75%;
 }
 
-.category-hero-full h1 {
+/* TITLE */
+.category-hero h1 {
   font-size: 44px;
   font-weight: 700;
 }
 
-
-/*store category*/
-/*.o_wsale_products_main_row #products_grid_before{*/
-  #products_grid_before{
-    /* bottom: 100px; */
-    position: relative !important;
-    top: -250px!important;
-    background: white;
+/* =========================
+   LAYOUT: SPLIT (OVERLAP)
+========================= */
+.category-hero.layout-split {
+  padding-bottom: 120px;
 }
 
-
-#products_grid h1{
-  display: none;
+/* ONLY APPLY OVERLAP HERE */
+.category-hero.layout-split + .o_wsale_products_main_row #products_grid_before {
+  position: relative;
+  top: -180px;
+  background: white;
+  z-index: 5;
+  border-radius: 8px;
+  padding: 15px;
 }
 
+/* =========================
+   LAYOUT: CENTER
+========================= */
+.category-hero.layout-center {
+  text-align: center;
+}
+
+/* =========================
+   LAYOUT: COMPACT
+========================= */
+.category-hero.layout-compact {
+  padding: 20px 0;
+}
+
+/* =========================
+   CLEAN DEFAULT (IMPORTANT)
+========================= */
+.o_wsale_products_main_row #products_grid_before {
+  position: static;
+  top: auto;
+  background: transparent;
+}
+
+/* =========================
+   MOBILE FIX
+========================= */
 @media (max-width: 768px) {
-  /*.o_wsale_products_main_row #products_grid_before{*/
-   #products_grid_before{
-    position: sticky !important;
-   top: 0!important;
-    background: white;
-   }
 
-   .group-category-banner{
-      padding: 35px 50px;
-    }
+  .category-hero.layout-split + .o_wsale_products_main_row #products_grid_before {
+    position: static;
+    top: auto;
+    background: transparent;
+  }
 
+  .group-category-banner {
+    padding: 35px 20px;
+  }
 }

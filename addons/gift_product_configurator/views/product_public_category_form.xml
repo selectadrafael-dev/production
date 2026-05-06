@@ -7,7 +7,7 @@
       <field name="name">product.public.category.hero.form</field>
       <field name="model">product.public.category</field>
 
-      <!-- IMPORTANT: Correct parent view -->
+      <!-- Parent view -->
       <field name="inherit_id"
              ref="website_sale.product_public_category_form_view"/>
 
@@ -16,12 +16,20 @@
         <!-- Insert inside main sheet -->
         <xpath expr="//sheet" position="inside">
 
-          <group string="Hero Banner">
+          <group string="Hero Banner" colspan="2">
 
-            <field name="hero_title"/>
-            <field name="hero_subtitle"/>
-            <field name="hero_description"/>
-            <field name="hero_bg_color"/>
+            <!-- 🔹 Layout Selection -->
+            <group>
+              <field name="hero_layout"/>
+              <field name="hero_bg_color" widget="color"/>
+            </group>
+
+            <!-- 🔹 Content -->
+            <group>
+              <field name="hero_title"/>
+              <field name="hero_subtitle"/>
+              <field name="hero_description"/>
+            </group>
 
           </group>
 

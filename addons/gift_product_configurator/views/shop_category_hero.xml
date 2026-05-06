@@ -59,37 +59,41 @@
                 <!-- LEFT SPACE (FOR FILTER SIDEBAR ALIGNMENT) -->
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
-                <!-- HERO CONTENT -->
-                <div class="col-lg-9 text-dark py-5 group-category-banner">
+                <!--center content-->
+                    <t t-if="hero_layout == 'center'">
 
-                  <nav class="mb-2 text-light">
-                    Home /
-                    <t t-esc="cat.name"/>
-                  </nav>
+                      <div class="row py-5 align-items-center">
 
-                  <h1 class="fw-bold mb-3">
-                    <t t-esc="hero_title"/>
-                  </h1>
+                        <!-- LEFT -->
+                        <div class="col-lg-6">
 
-                  <h4 class="mb-3">
-                    <t t-esc="hero_subtitle"/>
-                  </h4>
+                          <nav class="mb-2 text-muted">
+                            Home / <t t-esc="cat.name"/>
+                          </nav>
 
-                  <p class="mb-4">
-                    <t t-esc="hero_description"/>
-                  </p>
+                          <h1 class="fw-bold mb-3">
+                            <t t-esc="hero_title"/>
+                          </h1>
 
-                  <a href="/contactus"
-                     class="btn btn-dark me-3">
-                    Get An Express Quote
-                  </a>
+                          <h5 class="mb-3" t-if="hero_subtitle">
+                            <t t-esc="hero_subtitle"/>
+                          </h5>
 
-                  <a href="/contactus"
-                     class="btn btn-light">
-                    Contact Us
-                  </a>
+                        </div>
 
-                </div>
+                        <!-- RIGHT -->
+                        <div class="col-lg-6">
+
+                          <p t-if="hero_description">
+                            <t t-esc="hero_description"/>
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                    </t>
+                <!--center-->
 
               </div>
 
