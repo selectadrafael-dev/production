@@ -6908,3 +6908,53 @@ class VendorImportJob(models.Model):
 
         except:
             return 0.0
+
+   
+
+        from openai import OpenAI
+
+        api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+
+        if not api_key:
+            _logger.warning("❌ Missing OpenAI API key")
+            return
+
+        client = OpenAI(api_key=api_key)
+
+        # 🔥 FETCH SOURCE STRINGS FROM VIEWS (SAFE WAY)
+        views = self.env['ir.ui.view'].sudo().search([
+            ('arch_db', '!=', False)
+        ], limit=20)
+
+        _logger.warning(f"🌍 GLOBAL VIEW TRANSLATION START → {target_lang}")
+        _logger.warning(f"🔍 Views found → {len(views)}")
+
+        for view in views:
+
+            try:
+                text = view.name or ''
+                if not text:
+                    continue
+
+                prompt = f"""
+                Translate to {target_lang}:
+
+                {text}
+                """
+
+                response = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=prompt
+                )
+
+                translated = response.output_text.strip()
+
+                if translated:
+                    view.with_context(lang=target_lang).write({
+                        'name': translated
+                    })
+
+                    _logger.warning(f"✅ VIEW {view.name} → {translated}")
+
+            except Exception as e:
+                _logger.warning(f"❌ Failed: {str(e)}")
