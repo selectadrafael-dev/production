@@ -72,7 +72,7 @@
 /* FLOATING SIDEBAR */
 .floating-sidebar {
   position: relative;
-  margin-top: -80px;   /* 👈 pulls sidebar upward */
+  margin-top: -310px;
   padding-left: 60px;
   z-index: 10;
 }
@@ -99,6 +99,48 @@
 .view-all {
   font-size: 13px;
   color: #007bff;
+}
+
+/* ========================= */
+/* RESPONSIVE FIX */
+/* ========================= */
+
+/* TABLET & BELOW */
+@media (max-width: 991px) {
+
+  .floating-sidebar {
+    position: static;     /* ❗ stop floating */
+    // margin-top: 20px;     /* reset overlap */
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .category-sidebar-box {
+    width: 100%;          /* full width */
+    max-width: 100%;
+  }
+
+  .category-hero.layout-split {
+    padding: 40px 0;      /* reduce hero height */
+  }
+
+  .hero-content {
+    padding: 0 15px;
+  }
+
+}
+
+/* MOBILE */
+@media (max-width: 767px) {
+
+  .hero-content h1 {
+    font-size: 26px;
+  }
+
+  .hero-description {
+    font-size: 14px;
+  }
+
 }
 
 /* =========================
