@@ -107,57 +107,60 @@
         <!-- SIDEBAR -->
         <t t-set="children" t-value="cat.child_id"/>
 
-        <t t-if="children">
+      <div class="row align-items-center g-0">
 
-          <div class="col-lg-3 ps-lg-5">
+  <!-- SIDEBAR -->
+  <t t-if="children">
 
-            <div class="category-sidebar-box">
+    <div class="col-lg-3 category-sidebar-wrapper">
 
-              <h5 class="fw-bold mb-3">Shop by</h5>
+      <div class="category-sidebar-box">
+        <h5 class="fw-bold mb-3">Shop by</h5>
 
-              <t t-foreach="children" t-as="child">
+        <t t-foreach="children" t-as="child">
 
-                <div class="category-item">
-
-                  <div class="category-name">
-                    <t t-esc="child.name"/>
-                  </div>
-
-                  <a t-att-href="'/shop/category/%s' % child.id"
-                     class="view-all">
-                     View All
-                  </a>
-
-                </div>
-
-              </t>
-
+          <div class="category-item">
+            <div class="category-name">
+              <t t-esc="child.name"/>
             </div>
 
+            <a t-att-href="'/shop/category/%s' % child.id"
+               class="view-all">
+              View All
+            </a>
           </div>
 
         </t>
 
-        <!-- HERO TEXT -->
-        <div class="col-lg-6 offset-lg-1">
+      </div>
 
-          <div class="hero-content">
+    </div>
 
-            <nav class="mb-2 text-light">
-              Home / <t t-esc="cat.name"/>
-            </nav>
+  </t>
 
-            <h1 class="fw-bold mb-3 text-dark">
-              <t t-esc="hero_title"/>
-            </h1>
+  <!-- HERO TEXT -->
+  <div class="col-lg-6 offset-lg-1 hero-text-wrapper">
 
-            <p class="hero-description text-dark">
-              <t t-esc="hero_description"/>
-            </p>
+    <div class="hero-content">
 
-          </div>
+      <nav class="mb-2 text-light">
+        Home / <t t-esc="cat.name"/>
+      </nav>
 
-        </div>
+      <h1 class="fw-bold mb-3 text-dark">
+        <t t-esc="hero_title"/>
+      </h1>
+
+      <p class="hero-description text-dark">
+        <t t-esc="hero_description"/>
+      </p>
+
+    </div>
+
+  </div>
+
+</div>
+
 
       </div>
 
