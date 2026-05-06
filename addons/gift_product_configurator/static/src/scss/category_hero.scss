@@ -58,23 +58,37 @@
 }
 
 /*==========football fever=============*/
-/* FULL WIDTH HERO */
+/* HERO = SHORT STRIP */
 .category-hero.layout-split {
   width: 100%;
-  padding: 80px 0;
+  padding: 60px 0;   /* 👈 reduce height */
 }
 
-/* SIDEBAR */
+/* HERO TEXT */
+.hero-content {
+  max-width: 600px;
+}
+
+/* FLOATING SIDEBAR */
+.floating-sidebar {
+  position: relative;
+  margin-top: -80px;   /* 👈 pulls sidebar upward */
+  padding-left: 60px;
+  z-index: 10;
+}
+
+/* SIDEBAR CARD */
 .category-sidebar-box {
+  width: 260px;
   background: #f5f5f5;
   padding: 25px;
-  border-radius: 8px;
-  max-width: 260px;
+  border-radius: 10px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.08);
 }
 
 /* ITEMS */
 .category-item {
-  margin-bottom: 18px;
+  margin-bottom: 15px;
 }
 
 .category-name {
@@ -82,75 +96,9 @@
   font-size: 14px;
 }
 
-/* LINKS */
 .view-all {
   font-size: 13px;
   color: #007bff;
-}
-
-/* HERO TEXT */
-.hero-content {
-  max-width: 650px;
-}
-
-.hero-content h1 {
-  font-size: 42px;
-  font-weight: 700;
-}
-
-.hero-description {
-  font-size: 15px;
-  line-height: 1.6;
-}
-
-/* ALIGNMENT FIX */
-.category-hero .row {
-  min-height: 260px;
-  align-items: center;
-}
-
-/* REMOVE ALL SIDE PADDING FROM HERO */
-.category-hero.layout-split .container-fluid {
-  padding-left: 0;
-  padding-right: 0;
-}
-
-/* REMOVE ROW GAP */
-.category-hero .row {
-  margin: 0;
-}
-
-/* PUSH SIDEBAR TO EDGE */
-.category-sidebar-wrapper {
-  padding-left: 40px;
-}
-
-/* SIDEBAR CARD */
-.category-sidebar-box {
-  background: #f5f5f5;
-  padding: 25px;
-  border-radius: 8px;
-  max-width: 260px;
-}
-
-/* HERO TEXT POSITION */
-.hero-text-wrapper {
-  padding-left: 60px;
-}
-
-/* HERO HEIGHT + ALIGNMENT */
-.category-hero.layout-split {
-  padding: 90px 0;
-}
-
-/* TYPOGRAPHY */
-.hero-content h1 {
-  font-size: 42px;
-}
-
-.hero-description {
-  max-width: 600px;
-  line-height: 1.6;
 }
 
 /* =========================
