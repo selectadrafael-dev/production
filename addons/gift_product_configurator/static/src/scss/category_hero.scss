@@ -106,22 +106,27 @@
 /* ========================= */
 
 /* TABLET & BELOW */
-@media (max-width: 991px) {
+/* ========================= */
+/* RESPONSIVE FIX */
+/* ========================= */
+
+/* TABLET & SMALL DESKTOP */
+@media (max-width: 1199px) {
 
   .floating-sidebar {
-    position: static;     /* ❗ stop floating */
-    // margin-top: 20px;     /* reset overlap */
+    position: static;
+    margin-top: 20px;
     padding-left: 15px;
     padding-right: 15px;
   }
 
   .category-sidebar-box {
-    width: 100%;          /* full width */
+    width: 100%;
     max-width: 100%;
   }
 
   .category-hero.layout-split {
-    padding: 40px 0;      /* reduce hero height */
+    padding: 40px 0;
   }
 
   .hero-content {
