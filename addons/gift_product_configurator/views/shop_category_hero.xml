@@ -94,37 +94,38 @@
           </t>
 
           <!-- SPLIT LAYOUT -->
-          <t t-elif="layout == 'split'">
+            <t t-elif="layout == 'split'">
 
             <section class="category-hero layout-split"
                     t-att-style="'background:%s;' % hero_color">
 
-              <div class="container">
+              <div class="container-fluid px-4">
 
-                <div class="row">
+                <div class="row align-items-start">
 
                   <!-- LEFT SIDEBAR -->
                   <t t-set="children" t-value="cat.child_id"/>
 
-                    <t t-if="children">
+                  <t t-if="children">
 
-                      <div class="col-lg-3 category-sidebar">
+                    <div class="col-lg-3">
+
+                      <div class="category-sidebar-box">
 
                         <h5 class="fw-bold mb-3">Shop by</h5>
 
                         <t t-foreach="children" t-as="child">
 
-                          <div class="mb-3">
+                          <div class="category-item">
 
-                            <strong>
+                            <div class="category-name">
                               <t t-esc="child.name"/>
-                            </strong>
-
-                            <div>
-                              <a t-att-href="'/shop/category/%s' % child.id">
-                                View All
-                              </a>
                             </div>
+
+                            <a t-att-href="'/shop/category/%s' % child.id"
+                              class="view-all">
+                              View All
+                            </a>
 
                           </div>
 
@@ -132,22 +133,28 @@
 
                       </div>
 
-                    </t>
+                    </div>
+
+                  </t>
 
                   <!-- RIGHT HERO CONTENT -->
-                  <div class="col-lg-9 py-5">
+                  <div class="col-lg-9">
 
-                    <nav class="mb-2 text-muted">
-                      Home / <t t-esc="cat.name"/>
-                    </nav>
+                    <div class="hero-content py-5">
 
-                    <h1 class="fw-bold mb-3">
-                      <t t-esc="hero_title"/>
-                    </h1>
+                      <nav class="mb-2 text-muted">
+                        Home / <t t-esc="cat.name"/>
+                      </nav>
 
-                    <p>
-                      <t t-esc="hero_description"/>
-                    </p>
+                      <h1 class="fw-bold mb-3">
+                        <t t-esc="hero_title"/>
+                      </h1>
+
+                      <p class="hero-description">
+                        <t t-esc="hero_description"/>
+                      </p>
+
+                    </div>
 
                   </div>
 
