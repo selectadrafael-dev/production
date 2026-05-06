@@ -313,7 +313,37 @@
 /* PULL REAL ODOO SIDEBAR UP */
 /* ========================================= */
 
-#products_grid_before {
+/*#products_grid_before {
+
+    margin-top: -270px;
+
+    position: relative;
+    z-index: 10;
+
+    background: white;
+
+    max-height: 700px;
+    overflow-y: auto;
+
+    padding-right: 15px;
+}
+
+#products_grid_before::-webkit-scrollbar {
+    width: 6px;
+}
+
+#products_grid_before::-webkit-scrollbar-thumb {
+    background: #162447;
+    border-radius: 20px;
+}
+*/
+
+
+/* ========================================= */
+/* ONLY FOR SIDEBAR HERO LAYOUT */
+/* ========================================= */
+
+.layout-sidebar-hero + .o_wsale_products_main_row #products_grid_before {
 
     margin-top: -270px;
 
@@ -329,11 +359,11 @@
 }
 
 /* SCROLLBAR */
-#products_grid_before::-webkit-scrollbar {
+.layout-sidebar-hero + .o_wsale_products_main_row #products_grid_before::-webkit-scrollbar {
     width: 6px;
 }
 
-#products_grid_before::-webkit-scrollbar-thumb {
+.layout-sidebar-hero + .o_wsale_products_main_row #products_grid_before::-webkit-scrollbar-thumb {
     background: #162447;
     border-radius: 20px;
 }
@@ -356,7 +386,7 @@
         font-size: 42px;
     }
 
-    #products_grid_before {
+   .layout-sidebar-hero + .o_wsale_products_main_row #products_grid_before {
         margin-top: -240px;
     }
 }
@@ -386,7 +416,7 @@
     }
 
     /* RESET SIDEBAR */
-    #products_grid_before {
+    .layout-sidebar-hero + .o_wsale_products_main_row #products_grid_before {
 
         margin-top: 0 !important;
 
