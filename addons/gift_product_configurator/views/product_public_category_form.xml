@@ -29,6 +29,7 @@
               <field name="hero_title"/>
               <field name="hero_subtitle"/>
               <field name="hero_description"/>
+               <field name="show_favourites"/>
             </group>
 
           </group>
