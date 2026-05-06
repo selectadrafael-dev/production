@@ -60,8 +60,8 @@
                 <div class="col-lg-3 d-none d-lg-block"></div>
 
                   <!-- HERO CONTENT -->
-                  <t t-if="True">
-                  
+                 <t t-if="cat.hero_layout == 'center'">
+
                     <section class="category-hero layout-center"
                             t-att-style="'background:%s;' % hero_color">
 
