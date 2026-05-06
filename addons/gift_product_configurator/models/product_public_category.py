@@ -9,6 +9,7 @@ class ProductPublicCategory(models.Model):
     hero_title = fields.Char("Hero Title", translate=True)
     hero_subtitle = fields.Char("Hero Subtitle", translate=True)
     hero_description = fields.Text("Hero Description", translate=True)
+    show_favourites = fields.Boolean("Show Favourites Section")
 
     # =========================
     # HERO DESIGN
@@ -22,6 +23,7 @@ class ProductPublicCategory(models.Model):
         ('split', 'Split (Sidebar Overlap)'),
         ('center', 'Center (Keyrings Style)'),
         ('compact', 'Compact'),
+        ('editorial', 'Editorial (Drinkware Style)'),
     ], default='split')
 
     # =========================

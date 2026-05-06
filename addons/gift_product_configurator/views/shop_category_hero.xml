@@ -48,81 +48,80 @@
                       if 'hero_bg_color' in cat._fields and cat.hero_bg_color
                       else '#6E8FC6'"/>
 
-          <!-- ⭐ HERO SECTION -->
+          <!-- ⭐ HERO SECTION (SAFE LAYOUT SWITCH) -->
           <!-- ========================= -->
 
-          <!-- SAFE LAYOUT SWITCH -->
-          <!-- ========================= -->
-
-          <t t-set="layout"
+        <t t-set="layout"
             t-value="cat.hero_layout if 'hero_layout' in cat._fields else 'split'"/>
 
-          <!-- CENTER LAYOUT -->
-          <t t-if="layout == 'center'">
+            <!-- CENTER LAYOUT -->
+            <t t-if="layout == 'center'">
 
-            <section class="category-hero layout-center"
-                    t-att-style="'background:%s;' % hero_color">
+              <section class="category-hero layout-center"
+                      t-att-style="'background:%s;' % hero_color">
 
-              <div class="container">
-                <div class="row py-5">
+                <div class="container">
+                  <div class="row py-5">
 
-                  <div class="col-lg-6">
-                    <nav class="mb-2 text-muted">
-                      Home / <t t-esc="cat.name"/>
-                    </nav>
-
-                    <h1 class="fw-bold mb-3">
-                      <t t-esc="hero_title"/>
-                    </h1>
-
-                    <h5>
-                      <t t-esc="hero_subtitle"/>
-                    </h5>
-                  </div>
-
-                  <div class="col-lg-6">
-                    <p>
-                      <t t-esc="hero_description"/>
-                    </p>
-                  </div>
-
-                </div>
-              </div>
-
-            </section>
-
-          </t>
-
-          <!--= SPLIT LAYOUT =-->
-          <t t-elif="layout == 'split'">
-
-            <!-- HERO (SHORT STRIP) -->
-            <section class="category-hero layout-split"
-                    t-att-style="'background:%s;' % hero_color">
-
-              <div class="container-fluid">
-
-                <div class="row">
-
-                  <!-- EMPTY SPACE FOR SIDEBAR -->
-                  <div class="col-lg-3"></div>
-
-                  <!-- HERO TEXT -->
-                 <div class="col-lg-7 col-12">
-
-                    <div class="hero-content">
-
-                      <nav class="mb-2 text-light">
+                    <div class="col-lg-6">
+                      <nav class="mb-2 text-muted">
                         Home / <t t-esc="cat.name"/>
                       </nav>
 
-                      <h1 class="fw-bold mb-2 text-dark">
+                      <h1 class="fw-bold mb-3">
                         <t t-esc="hero_title"/>
                       </h1>
 
-                      <p class="hero-description text-dark">
+                      <h5>
+                        <t t-esc="hero_subtitle"/>
+                      </h5>
+                    </div>
+
+                    <div class="col-lg-6">
+                      <p>
                         <t t-esc="hero_description"/>
                       </p>
+                    </div>
+
+                  </div>
+                </div>
+
+              </section>
+
+            </t>
+
+            <!--= SPLIT LAYOUT =-->
+            <t t-elif="layout == 'split'">
+
+              <!-- HERO (SHORT STRIP) -->
+              <section class="category-hero layout-split"
+                      t-att-style="'background:%s;' % hero_color">
+
+                <div class="container-fluid">
+
+                  <div class="row">
+
+                    <!-- EMPTY SPACE FOR SIDEBAR -->
+                    <div class="col-lg-3"></div>
+
+                    <!-- HERO TEXT -->
+                  <div class="col-lg-7 col-12">
+
+                      <div class="hero-content">
+
+                        <nav class="mb-2 text-light">
+                          Home / <t t-esc="cat.name"/>
+                        </nav>
+
+                        <h1 class="fw-bold mb-2 text-dark">
+                          <t t-esc="hero_title"/>
+                        </h1>
+
+                        <p class="hero-description text-dark">
+                          <t t-esc="hero_description"/>
+                        </p>
+
+                      </div>
 
                     </div>
 
@@ -130,46 +129,102 @@
 
                 </div>
 
-              </div>
-
-            </section>
+              </section>
 
 
-            <!-- FLOATING SIDEBAR (OUTSIDE HERO) -->
-            <t t-set="children" t-value="cat.child_id"/>
+              <!-- FLOATING SIDEBAR (OUTSIDE HERO) -->
+              <t t-set="children" t-value="cat.child_id"/>
 
-            <t t-if="children">
+              <t t-if="children">
 
-              <div class="floating-sidebar">
+                <div class="floating-sidebar">
 
-                <div class="category-sidebar-box">
+                  <div class="category-sidebar-box">
 
-                  <h5 class="fw-bold mb-3">Shop by</h5>
+                    <h5 class="fw-bold mb-3">Shop by</h5>
 
-                  <t t-foreach="children" t-as="child">
+                    <t t-foreach="children" t-as="child">
 
-                    <div class="category-item">
+                      <div class="category-item">
 
-                      <div class="category-name">
-                        <t t-esc="child.name"/>
+                        <div class="category-name">
+                          <t t-esc="child.name"/>
+                        </div>
+
+                        <a t-att-href="'/shop/category/%s' % child.id"
+                          class="view-all">
+                          View All
+                        </a>
+
                       </div>
 
-                      <a t-att-href="'/shop/category/%s' % child.id"
-                        class="view-all">
-                        View All
-                      </a>
+                    </t>
 
-                    </div>
-
-                  </t>
+                  </div>
 
                 </div>
 
-              </div>
+              </t>
 
             </t>
 
-          </t>
+            <!--editorial-->
+              <t t-elif="layout == 'editorial'">
+
+                <!-- HERO -->
+                <section class="category-hero layout-editorial"
+                        t-att-style="'background:%s;' % hero_color">
+
+                  <div class="container py-4">
+
+                    <div class="row align-items-center">
+
+                      <div class="col-lg-6">
+                        <h1 class="fw-bold">
+                          <t t-esc="hero_title"/>
+                        </h1>
+
+                        <h5>
+                          <t t-esc="hero_subtitle"/>
+                        </h5>
+                      </div>
+
+                      <div class="col-lg-6">
+                        <p>
+                          <t t-esc="hero_description"/>
+                        </p>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </section>
+
+                <!-- ⭐ FAVOURITES BLOCK -->
+                <t t-if="cat.show_favourites">
+                      <section class="category-favourites text-center py-5">
+
+                        <div class="container">
+
+                          <div class="mb-2">
+                            <span class="stars">★★★★★</span>
+                          </div>
+
+                          <h3 class="fw-bold">
+                            Shop Our Favourites
+                          </h3>
+
+                          <p class="text-muted">
+                            Choose promotional products online from our favourites.
+                          </p>
+
+                        </div>
+
+                      </section>
+
+                </t>
+              </t>
 
         </t>
 
