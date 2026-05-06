@@ -226,6 +226,48 @@
                 </t>
               </t>
 
+              <!--arrival/variant filter-->
+              <!-- ========================= -->
+              <!-- SIDEBAR HERO LAYOUT -->
+              <!-- ========================= -->
+
+               <t t-elif="layout == 'sidebar_hero'">
+
+                  <section class="category-hero layout-sidebar-hero"
+                          t-att-style="'background:%s;' % hero_color">
+
+                      <div class="container">
+
+                          <div class="sidebar-hero-inner">
+
+                              <!-- LEFT EMPTY SPACE -->
+                              <div class="sidebar-placeholder"></div>
+
+                              <!-- HERO CONTENT -->
+                              <div class="sidebar-hero-content">
+
+                                  <nav class="mb-3 text-muted">
+                                      Home / <t t-esc="cat.name"/>
+                                  </nav>
+
+                                  <h1 class="fw-bold mb-4">
+                                      <t t-esc="hero_title"/>
+                                  </h1>
+
+                                  <p class="mb-0">
+                                      <t t-esc="hero_description"/>
+                                  </p>
+
+                              </div>
+
+                          </div>
+
+                      </div>
+
+                  </section>
+
+              </t>
+
         </t>
 
       </xpath>

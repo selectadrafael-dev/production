@@ -259,6 +259,144 @@
   color: #333;
 }
 
+/*new arrival & side bar filter*/
+/* ========================================= */
+/* SIDEBAR HERO LAYOUT */
+/* ========================================= */
+
+.layout-sidebar-hero {
+    padding: 35px 0 0;
+}
+
+/* HERO WRAPPER */
+.sidebar-hero-inner {
+    display: flex;
+    align-items: stretch;
+    gap: 30px;
+}
+
+/* EMPTY LEFT SPACE FOR FILTER */
+.sidebar-placeholder {
+    width: 290px;
+    flex-shrink: 0;
+}
+
+/* HERO CONTENT */
+.sidebar-hero-content {
+    flex: 1;
+    background: #efefef;
+
+    min-height: 320px;
+
+    padding: 70px 60px;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* TITLE */
+.sidebar-hero-content h1 {
+    font-size: 56px;
+    line-height: 1.1;
+    color: #162447;
+}
+
+/* DESCRIPTION */
+.sidebar-hero-content p {
+    font-size: 17px;
+    line-height: 1.8;
+    max-width: 760px;
+}
+
+/* ========================================= */
+/* PULL REAL ODOO SIDEBAR UP */
+/* ========================================= */
+
+#products_grid_before {
+
+    margin-top: -270px;
+
+    position: relative;
+    z-index: 10;
+
+    background: white;
+
+    max-height: 700px;
+    overflow-y: auto;
+
+    padding-right: 15px;
+}
+
+/* SCROLLBAR */
+#products_grid_before::-webkit-scrollbar {
+    width: 6px;
+}
+
+#products_grid_before::-webkit-scrollbar-thumb {
+    background: #162447;
+    border-radius: 20px;
+}
+
+/* ========================================= */
+/* TABLET */
+/* ========================================= */
+
+@media (max-width: 1024px) {
+
+    .sidebar-placeholder {
+        width: 230px;
+    }
+
+    .sidebar-hero-content {
+        padding: 50px 40px;
+    }
+
+    .sidebar-hero-content h1 {
+        font-size: 42px;
+    }
+
+    #products_grid_before {
+        margin-top: -240px;
+    }
+}
+
+/* ========================================= */
+/* MOBILE */
+/* ========================================= */
+
+@media (max-width: 768px) {
+
+    .sidebar-placeholder {
+        display: none;
+    }
+
+    .sidebar-hero-content {
+        min-height: auto;
+        padding: 40px 25px;
+        text-align: center;
+    }
+
+    .sidebar-hero-content h1 {
+        font-size: 36px;
+    }
+
+    .sidebar-hero-content p {
+        font-size: 15px;
+    }
+
+    /* RESET SIDEBAR */
+    #products_grid_before {
+
+        margin-top: 0 !important;
+
+        max-height: none;
+        overflow: visible;
+
+        position: static;
+    }
+}
+
 /* ========================= */
 /* MOBILE */
 /* ========================= */

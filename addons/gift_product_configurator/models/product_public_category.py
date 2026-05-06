@@ -24,6 +24,7 @@ class ProductPublicCategory(models.Model):
         ('center', 'Center (Keyrings Style)'),
         ('compact', 'Compact'),
         ('editorial', 'Editorial (Drinkware Style)'),
+        ('sidebar_hero', 'Sidebar Hero (New Arrivals Style)'),
     ], default='split')
 
     # =========================
