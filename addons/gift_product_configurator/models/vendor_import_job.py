@@ -87,11 +87,14 @@ class VendorImportJob(models.Model):
     url_blocks_json = fields.Text(
         string="URL Blocks JSON"
     )
-    
-
-    
+        
     excel_parse_index = fields.Integer(
         default=0
+    )
+
+    vendor_fingerprint = fields.Char(
+        index=True,
+        copy=False
     )
 
     source_type = fields.Selection([
@@ -4982,6 +4985,43 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
+    #=========product duplicate helper=======================
+
+    def _build_vendor_fingerprint(self, product_data):
+
+        import re
+        import hashlib
+
+        name = (
+            product_data.get("name") or ""
+        ).strip().lower()
+
+        sku = (
+            product_data.get("sku")
+            or product_data.get("code")
+            or product_data.get("product_code")
+            or ""
+        ).strip().lower()
+
+        url = (
+            product_data.get("url")
+            or product_data.get("link")
+            or ""
+        ).strip().lower()
+
+        # normalize
+        def clean(v):
+            return re.sub(r'[^a-z0-9]', '', v or '')
+
+        base = "|".join([
+            clean(name),
+            clean(sku),
+            clean(url),
+        ])
+
+        return hashlib.md5(
+            base.encode("utf-8")
+        ).hexdigest()
 
     #==========create excel product==========================
     def create_products_excel(self):
@@ -5259,6 +5299,10 @@ class VendorImportJob(models.Model):
                     group_items[0]
                 )
 
+                fingerprint = self._build_vendor_fingerprint(
+                    main_product
+                )
+
 
                 name = (
 
@@ -5336,8 +5380,7 @@ class VendorImportJob(models.Model):
                 vendor_id = self.partner_id.id if self.partner_id else False
 
                 product = product_obj.search([
-                    ('default_code', '=', group_id),
-                    ('vendor_id', '=', vendor_id)
+                    ('vendor_fingerprint', '=', fingerprint),
                 ], limit=1)
 
                 is_new_product = False
@@ -5377,9 +5420,9 @@ class VendorImportJob(models.Model):
                         'website_published':
                             False,
 
-                        # =====================================
+                        # ======================================
                         # SAVE VENDOR LINK
-                        # =====================================
+                        # ======================================
 
                         'vendor_id':
                             vendor_id,
@@ -5388,6 +5431,8 @@ class VendorImportJob(models.Model):
                             self._safe_float(
                                 main_product.get("price")
                             ),
+
+                        'vendor_fingerprint': fingerprint,
                     }
 
 
