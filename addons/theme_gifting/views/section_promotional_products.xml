@@ -18,14 +18,11 @@
 
           <!--Fetch specific promotional categories -->
           <t t-set="cats"
-                t-value="request.env['product.public.category'].search([
-                    ('name', 'in', [
-                        'Fresh and Finds',
-                        'Tested and Loved',
-                        'Big Savings',
-                        'Record Time'
-                    ])
-                ])"/>
+            t-value="request.env['product.public.category']
+                      .sudo()
+                      .search([
+                          ('show_home_promo', '=', True)
+                      ], order='sequence asc')"/>
 
           <div class="row g-4">
 
