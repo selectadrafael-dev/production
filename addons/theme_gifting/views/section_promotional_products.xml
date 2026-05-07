@@ -27,11 +27,8 @@
           <div class="row g-4">
 
             <t t-foreach="cats" t-as="cat">
-                <!--div class="col-lg-3 col-md-6 col-6"-->
                 <div class="col-12 col-sm-6 col-md-6 col-lg-3">
 
-                    <!--a t-att-href="'/shop/category/%s' % cat.id"
-                            class="promo-category-card text-decoration-none"-->
                      <a t-att-href="'/shop/category/%s' % cat.id"
                         class="promo-category-card text-decoration-none">
 

@@ -37,34 +37,11 @@
 
                     <t t-set="cats"
 
-                       t-value="request.env['product.public.category'].search([
-
-                           ('name', 'in', [
-
-                               'Writing',
-
-                               'Bags',
-
-                               'Drinkaware',
-
-                               'Clothing',
-
-                               'Office',
-
-                               'Eco-Friendly',
-
-                               'Trade Shows',
-
-                               'Keyrings',
-
-                               'Outdoor',
-
-                               'USB &amp; Tech',
-                               'Football Fever'
-
-                           ])
-
-                       ])"/>
+                    t-value="request.env['product.public.category']
+                                .sudo()
+                                .search([
+                                    ('show_popular_carousel', '=', True)
+                                ], order='sequence asc')"/>
 
 
                     <!-- bootstrap carousel -->
