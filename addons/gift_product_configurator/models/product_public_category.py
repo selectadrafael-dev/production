@@ -12,6 +12,9 @@ class ProductPublicCategory(models.Model):
     show_favourites = fields.Boolean("Show Favourites Section")
     show_home_promo = fields.Boolean(
     "Show On Home Promotional Section")
+    show_popular_carousel = fields.Boolean(
+        "Show In Popular Categories Carousel"
+    )
 
     # =========================
     # HERO DESIGN

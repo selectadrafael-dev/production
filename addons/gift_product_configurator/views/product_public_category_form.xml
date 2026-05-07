@@ -31,6 +31,7 @@
               <field name="hero_description"/>
                <field name="show_favourites"/>
               <field name="show_home_promo"/>
+              <field name="show_popular_carousel"/>
             </group>
 
           </group>
