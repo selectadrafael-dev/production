@@ -10,7 +10,7 @@
 
       <footer class="selectad-footer">
 
-        <!-- ===== TOP ===== -->
+        <!-- ======= TOP ======= -->
         <div class="footer-main">
 
           <div class="container">
@@ -41,7 +41,7 @@
                     Cart
                   </a></li>
                   <li><a href="#">
-                  Favorites
+                   Favorites
                   </a></li>
                 </ul>
 

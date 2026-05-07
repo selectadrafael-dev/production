@@ -10,6 +10,8 @@ class ProductPublicCategory(models.Model):
     hero_subtitle = fields.Char("Hero Subtitle", translate=True)
     hero_description = fields.Text("Hero Description", translate=True)
     show_favourites = fields.Boolean("Show Favourites Section")
+    show_home_promo = fields.Boolean(
+    "Show On Home Promotional Section")
 
     # =========================
     # HERO DESIGN
