@@ -41,7 +41,7 @@
                         <!-- Trigger -->
                         <span class="contact-trigger">
                           <i class="fa fa-headphones"></i>
-                           <span class="contact-text">Help &amp; Contact</span>
+                           <span class="contact-text" t-translation="on">Help &amp; Contact</span>
                           <i class="fa fa-chevron-down"></i>
                         </span>
 
