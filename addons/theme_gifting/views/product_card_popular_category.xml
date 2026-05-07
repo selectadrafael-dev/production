@@ -51,7 +51,7 @@
                             </ul>
 
 
-                            <span class="popular-category-shop">
+                            <span class="popular-category-shop" t-translation="on">
 
                                 Shop all
 
