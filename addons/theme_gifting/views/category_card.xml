@@ -7,7 +7,7 @@
 
       <h5 class="fw-bold" t-esc="title"/>
 
-      <a t-att-href="url or '/shop'" class="text-primary small">
+      <a t-att-href="url or '/shop'" class="text-primary small" t-translation="on">
         Shop all
       </a>
 
