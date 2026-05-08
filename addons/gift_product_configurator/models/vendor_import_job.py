@@ -5352,11 +5352,9 @@ class VendorImportJob(models.Model):
 
                 self.write({
 
-                    'product_url':
-                        product_url,
+                    'data_url': product_url,
 
-                    'state':
-                        'url_parsing',
+                    'state': 'url_scraping',
                 })
 
                 # IMPORTANT:
@@ -5984,10 +5982,10 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # DETECT ATTRIBUTE VALUE
+                    # SMART VARIANT DETECTION
                     # =============================================
 
-                    attr_value = str(
+                    attr_value = (
 
                         item.get("color")
 
@@ -6003,12 +6001,41 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                        or f"Variant {idx+1}"
+                    )
 
-                    ).strip()
+
+                    # =============================================
+                    # FALLBACK IMAGE-BASED COLOR DETECTION
+                    # =============================================
 
                     if not attr_value:
-                        continue
+
+                        image_data = item.get("image")
+
+                        if image_data:
+
+                            detected_color = self._detect_basic_image_color(
+                                image_data
+                            )
+
+                            if detected_color:
+
+                                attr_value = detected_color
+
+                                variant_attribute_name = "Color"
+
+
+                    # =============================================
+                    # FINAL FALLBACK
+                    # =============================================
+
+                    if not attr_value:
+
+                        attr_value = f"Variant {idx+1}"
+
+
+                    attr_value = str(attr_value).strip()
+
 
                     _logger.warning(
 
@@ -6311,6 +6338,77 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
+
+    #====Excel variant mapping==================================
+    def _detect_basic_image_color(self, image_data):
+
+        try:
+
+            import base64
+            from io import BytesIO
+
+            from PIL import Image
+
+            img = Image.open(
+                BytesIO(
+                    base64.b64decode(image_data)
+                )
+            ).convert("RGB")
+
+            img = img.resize((50, 50))
+
+            colors = img.getcolors(
+                50 * 50
+            )
+
+            if not colors:
+                return False
+
+            dominant = max(
+                colors,
+                key=lambda x: x[0]
+            )[1]
+
+            r, g, b = dominant
+
+
+            # =====================================
+            # BASIC COLOR MAPPING
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "White"
+
+            if r < 60 and g < 60 and b < 60:
+                return "Black"
+
+            if r > 180 and g < 120 and b < 80:
+                return "Orange"
+
+            if r > 180 and g < 80 and b < 80:
+                return "Red"
+
+            if b > 150 and r < 120:
+                return "Blue"
+
+            if g > 140 and r < 120:
+                return "Green"
+
+            if r > 150 and g > 150 and b < 120:
+                return "Yellow"
+
+            return "Standard"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
 
 
     #-----URL API FLOW-------------------------------------------
