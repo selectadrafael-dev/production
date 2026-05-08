@@ -5352,6 +5352,11 @@ class VendorImportJob(models.Model):
             f"total={len(rows)}"
         )
 
+        vendor_id = (
+            self.partner_id.id
+            if self.partner_id
+            else False
+        )
 
         for idx in range(start, end):
 
@@ -5377,13 +5382,6 @@ class VendorImportJob(models.Model):
                 # ====================================
                 # CREATE ISOLATED URL JOB
                 # ====================================
-
-                vendor_id = (
-                    self.partner_id.id
-                    if self.partner_id
-                    else False
-                )
-
                 new_job = self.env[
                     'vendor.import.job'
                 ].create({
