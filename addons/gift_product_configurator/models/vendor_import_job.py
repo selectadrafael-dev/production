@@ -5359,8 +5359,7 @@ class VendorImportJob(models.Model):
 
                 # IMPORTANT:
                 # call your existing method
-                self.action_parse_url()
-
+               
                 self.excel_url_index = idx + 1
 
                 self.env.cr.commit()
