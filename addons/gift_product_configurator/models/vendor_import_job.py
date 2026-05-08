@@ -5465,43 +5465,44 @@ class VendorImportJob(models.Model):
 
             variant_group = (
                 p.get("variant_group")
-            )
+                or ""
+            ).strip()
 
 
             if variant_group:
 
-                group_id = str(
-                    variant_group
-                ).strip().upper()
+                group_id = variant_group.upper()
 
             else:
 
-                match = re.search(
+                product_id = (
 
-                    r'(?:Product\s*)?([A-Z]*\d+)',
+                    p.get("product_id")
 
-                    raw_name,
+                    or p.get("sku")
 
-                    re.I
-                )
+                    or p.get("code")
+
+                    or ""
+
+                ).strip()
 
 
-                if match:
+                if product_id:
 
-                    group_id = (
-                        match.group(1)
-                        .upper()
-                    )
+                    group_id = product_id.upper()
 
                 else:
 
-                    group_id = (
-                        raw_name.upper()
-                    )
+                    group_id = raw_name.upper()
+
 
             if not group_id:
 
-                group_id = f"UNKNOWN_{len(grouped_products)+1}"
+                group_id = (
+                    f"UNKNOWN_"
+                    f"{len(grouped_products)+1}"
+                )
 
             grouped_products.setdefault(
 
@@ -5835,7 +5836,7 @@ class VendorImportJob(models.Model):
 
                 else:
 
-                    merged_count += 1
+                    #merged_count += 1
 
 
                     _logger.warning(
@@ -6150,8 +6151,6 @@ class VendorImportJob(models.Model):
                 self.flush_recordset()
 
                 self.env.cr.commit()
-
-                self.env.invalidate_all()
                 
 
                 _logger.warning(
