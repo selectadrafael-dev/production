@@ -5288,6 +5288,7 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
     #==========create excel product==========================
+
     def create_products_excel(self):
 
         import json
@@ -5465,44 +5466,43 @@ class VendorImportJob(models.Model):
 
             variant_group = (
                 p.get("variant_group")
-                or ""
-            ).strip()
+            )
 
 
             if variant_group:
 
-                group_id = variant_group.upper()
+                group_id = str(
+                    variant_group
+                ).strip().upper()
 
             else:
 
-                product_id = (
+                match = re.search(
 
-                    p.get("product_id")
+                    r'(?:Product\s*)?([A-Z]*\d+)',
 
-                    or p.get("sku")
+                    raw_name,
 
-                    or p.get("code")
-
-                    or ""
-
-                ).strip()
+                    re.I
+                )
 
 
-                if product_id:
+                if match:
 
-                    group_id = product_id.upper()
+                    group_id = (
+                        match.group(1)
+                        .upper()
+                    )
 
                 else:
 
-                    group_id = raw_name.upper()
-
+                    group_id = (
+                        raw_name.upper()
+                    )
 
             if not group_id:
 
-                group_id = (
-                    f"UNKNOWN_"
-                    f"{len(grouped_products)+1}"
-                )
+                group_id = f"UNKNOWN_{len(grouped_products)+1}"
 
             grouped_products.setdefault(
 
@@ -5836,7 +5836,7 @@ class VendorImportJob(models.Model):
 
                 else:
 
-                    #merged_count += 1
+                    merged_count += 1
 
 
                     _logger.warning(
@@ -5884,10 +5884,10 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # SMART VARIANT DETECTION
+                    # DETECT ATTRIBUTE VALUE
                     # =============================================
 
-                    attr_value = (
+                    attr_value = str(
 
                         item.get("color")
 
@@ -5903,41 +5903,12 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                    )
+                        or f"Variant {idx+1}"
 
-
-                    # =============================================
-                    # FALLBACK IMAGE-BASED COLOR DETECTION
-                    # =============================================
+                    ).strip()
 
                     if not attr_value:
-
-                        image_data = item.get("image")
-
-                        if image_data:
-
-                            detected_color = self._detect_basic_image_color(
-                                image_data
-                            )
-
-                            if detected_color:
-
-                                attr_value = detected_color
-
-                                variant_attribute_name = "Color"
-
-
-                    # =============================================
-                    # FINAL FALLBACK
-                    # =============================================
-
-                    if not attr_value:
-
-                        attr_value = f"Variant {idx+1}"
-
-
-                    attr_value = str(attr_value).strip()
-
+                        continue
 
                     _logger.warning(
 
@@ -6151,6 +6122,8 @@ class VendorImportJob(models.Model):
                 self.flush_recordset()
 
                 self.env.cr.commit()
+
+                self.env.invalidate_all()
                 
 
                 _logger.warning(
