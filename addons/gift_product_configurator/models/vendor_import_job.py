@@ -3613,7 +3613,7 @@ class VendorImportJob(models.Model):
                     f"| images={len(images)}"
                 )
 
-                   prompt = f"""
+                prompt = f"""
                 You are a structured Excel product parser.
 
                 Each input represents EXACTLY ONE ROW = ONE PRODUCT.
@@ -3707,7 +3707,7 @@ class VendorImportJob(models.Model):
                 DETECTED STOCK:
                 {row_stock}
                 """
-                
+
                 response = client.responses.create(
 
                     model="gpt-4.1-mini",
