@@ -5289,6 +5289,8 @@ class VendorImportJob(models.Model):
 
     #==========create excel product==========================
 
+    
+    #==========create excel product==========================
     def create_products_excel(self):
 
         import json
@@ -5347,26 +5349,6 @@ class VendorImportJob(models.Model):
             "products",
             []
         )
-
-        # ============================================
-        # ROUTE URL PRODUCTS
-        # ============================================
-
-        routed = self._route_excel_rows(
-            products
-        )
-
-        products = routed["normal"]
-
-        self._queue_excel_urls(
-            routed["url"]
-        )
-
-        if self.excel_url_processing:
-
-            _logger.warning(
-                "[URL QUEUE DETECTED]"
-            )
 
 
         _logger.warning(
@@ -5500,9 +5482,6 @@ class VendorImportJob(models.Model):
                         raw_name.upper()
                     )
 
-            if not group_id:
-
-                group_id = f"UNKNOWN_{len(grouped_products)+1}"
 
             grouped_products.setdefault(
 
@@ -5587,10 +5566,6 @@ class VendorImportJob(models.Model):
                     group_items[0]
                 )
 
-                fingerprint = self._build_vendor_fingerprint(
-                    main_product
-                )
-
 
                 name = (
 
@@ -5600,8 +5575,6 @@ class VendorImportJob(models.Model):
 
                 ).strip()
 
-                if not name:
-                    name = f"Product {group_id}"
 
                 description = (
 
@@ -5667,94 +5640,17 @@ class VendorImportJob(models.Model):
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                vendor_id = (
-                    self.partner_id.id
-                    if self.partner_id
-                    else False
-                )
+                vendor_id = self.partner_id.id if self.partner_id else False
 
-                product = False
-
-
-                # =====================================================
-                # 1. STRICT FINGERPRINT MATCH
-                # =====================================================
-
-                if (
-                    'vendor_fingerprint' in product_obj._fields
-                    and vendor_id
-                ):
-
-                    product = product_obj.search([
-
-                        (
-                            'vendor_fingerprint',
-                            '=',
-                            fingerprint
-                        ),
-
-                        (
-                            'vendor_id',
-                            '=',
-                            vendor_id
-                        )
-
-                    ], limit=1)
-
-
-                    if product:
-
-                        _logger.warning(
-
-                            f"[FINGERPRINT MATCH] "
-
-                            f"{group_id} "
-
-                            f"| vendor={vendor_id} "
-
-                            f"| product_id={product.id}"
-                        )
-
-
-                # =====================================================
-                # 2. FALLBACK SKU MATCH
-                # =====================================================
-
-                if not product and vendor_id:
-
-                    product = product_obj.search([
-
-                        (
-                            'default_code',
-                            '=',
-                            group_id
-                        ),
-
-                        (
-                            'vendor_id',
-                            '=',
-                            vendor_id
-                        )
-
-                    ], limit=1)
-
-
-                    if product:
-
-                        _logger.warning(
-
-                            f"[SKU MATCH] "
-
-                            f"{group_id} "
-
-                            f"| vendor={vendor_id} "
-
-                            f"| product_id={product.id}"
-                        )
+                product = product_obj.search([
+                    ('default_code', '=', group_id),
+                    ('vendor_id', '=', vendor_id)
+                ], limit=1)
 
                 is_new_product = False
 
                 if product:
+                    merged_count += 1
 
                     _logger.warning(
                         f"[EXCEL DUPLICATE FOUND] "
@@ -5788,9 +5684,9 @@ class VendorImportJob(models.Model):
                         'website_published':
                             False,
 
-                        # ======================================
+                        # =====================================
                         # SAVE VENDOR LINK
-                        # ======================================
+                        # =====================================
 
                         'vendor_id':
                             vendor_id,
@@ -5799,8 +5695,6 @@ class VendorImportJob(models.Model):
                             self._safe_float(
                                 main_product.get("price")
                             ),
-
-                        'vendor_fingerprint': fingerprint,
                     }
 
 
@@ -5820,11 +5714,11 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
-                    created_count += 1
-
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
-                   
+                    created_count += 1
+
+
                     _logger.warning(
 
                         f"[EXCEL CREATED] "
@@ -5849,87 +5743,27 @@ class VendorImportJob(models.Model):
 
                         f"| product_id={product.id}"
                     )
-             
+              
+
                 # =================================================
                 # VARIANTS
                 # =================================================
 
-                for idx, item in enumerate(group_items):
+                for idx, item in enumerate(
+                    group_items
+                ):
 
-                    # =============================================
-                    # DETECT ATTRIBUTE TYPE
-                    # =============================================
-
-                    variant_attribute_name = "Variant"
-
-                    if item.get("color") or item.get("colour"):
-
-                        variant_attribute_name = "Color"
-
-                    elif item.get("material"):
-
-                        variant_attribute_name = "Material"
-
-                    elif item.get("size"):
-
-                        variant_attribute_name = "Size"
-
-                    elif item.get("capacity"):
-
-                        variant_attribute_name = "Capacity"
-
-                    elif item.get("style"):
-
-                        variant_attribute_name = "Style"
-
-
-                    # =============================================
-                    # DETECT ATTRIBUTE VALUE
-                    # =============================================
-
-                    attr_value = str(
-
-                        item.get("color")
-
-                        or item.get("colour")
-
-                        or item.get("material")
-
-                        or item.get("size")
-
-                        or item.get("variant")
-
-                        or item.get("capacity")
-
-                        or item.get("style")
-
-                        or f"Variant {idx+1}"
-
-                    ).strip()
-
-                    if not attr_value:
-                        continue
-
-                    _logger.warning(
-
-                        f"[VARIANT DETECTED] "
-
-                        f"{variant_attribute_name} "
-
-                        f"= {attr_value}"
+                    attr_value = (
+                        f"Variant {idx+1}"
                     )
 
-
-                    # =============================================
-                    # ATTRIBUTE
-                    # =============================================
 
                     attribute = attribute_obj.search([
 
                         (
                             'name',
                             '=',
-                            variant_attribute_name
+                            "Variant"
                         )
 
                     ], limit=1)
@@ -5937,63 +5771,47 @@ class VendorImportJob(models.Model):
 
                     if not attribute:
 
-                        attribute = attribute_obj.create({
+                        attribute = (
+                            attribute_obj.create({
 
-                            'name': variant_attribute_name
-
-                        })
-
-
-                        _logger.warning(
-
-                            f"[ATTRIBUTE CREATED] "
-
-                            f"{variant_attribute_name}"
+                                'name':
+                                    "Variant"
+                            })
                         )
 
 
-                    # =============================================
-                    # ATTRIBUTE VALUE
-                    # =============================================
+                    value = (
+                        attribute_value_obj.search([
 
-                    value = attribute_value_obj.search([
+                            (
+                                'name',
+                                '=',
+                                attr_value
+                            ),
 
-                        (
-                            'name',
-                            '=',
-                            attr_value
-                        ),
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
 
-                        (
-                            'attribute_id',
-                            '=',
-                            attribute.id
-                        )
-
-                    ], limit=1)
+                        ], limit=1)
+                    )
 
 
                     if not value:
 
-                        value = attribute_value_obj.create({
+                        value = (
+                            attribute_value_obj.create({
 
-                            'name': attr_value,
+                                'name':
+                                    attr_value,
 
-                            'attribute_id': attribute.id
-                        })
-
-
-                        _logger.warning(
-
-                            f"[ATTRIBUTE VALUE CREATED] "
-
-                            f"{attr_value}"
+                                'attribute_id':
+                                    attribute.id
+                            })
                         )
 
-
-                    # =============================================
-                    # TEMPLATE ATTRIBUTE LINE
-                    # =============================================
 
                     line = line_obj.search([
 
@@ -6014,11 +5832,13 @@ class VendorImportJob(models.Model):
 
                     if not line:
 
-                        line = line_obj.create({
+                        line_obj.create({
 
-                            'product_tmpl_id': product.id,
+                            'product_tmpl_id':
+                                product.id,
 
-                            'attribute_id': attribute.id,
+                            'attribute_id':
+                                attribute.id,
 
                             'value_ids': [
 
@@ -6062,7 +5882,7 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # FIND VARIANT RECORD
+                    # VARIANT IMAGE
                     # =============================================
 
                     variant_record = self.env[
@@ -6084,13 +5904,11 @@ class VendorImportJob(models.Model):
                     ], limit=1)
 
 
-                    # =============================================
-                    # VARIANT IMAGE
-                    # =============================================
-
                     if variant_record:
 
-                        variant_image = item.get("image")
+                        variant_image = item.get(
+                            "image"
+                        )
 
 
                         if variant_image:
@@ -6122,8 +5940,6 @@ class VendorImportJob(models.Model):
                 self.flush_recordset()
 
                 self.env.cr.commit()
-
-                self.env.invalidate_all()
                 
 
                 _logger.warning(
@@ -6171,26 +5987,23 @@ class VendorImportJob(models.Model):
         if self.excel_created_index >= len(grouped_keys):
 
             _logger.warning(
-                "[EXCEL IMPORT COMPLETE]"
+
+                "[EXCEL FLOW] "
+
+                "GROUP BATCH COMPLETE "
+                "→ RETURN TO excel_parsing"
             )
 
+            # reset AI/create cycle
             self.excel_created_index = 0
             self.excel_ai_index = 0
 
+            # IMPORTANT
+            # clear AI batch only
             self.ai_response = False
 
-            # =========================================
-            # RESET FLOW
-            # =========================================
-
-
-            if self.excel_url_processing:
-
-                self.state = 'url_scraping'
-
-            else:
-
-                self.state = 'done'
+            # continue parser batching
+            self.state = 'excel_parsing'
 
             _logger.warning(
 
@@ -6210,6 +6023,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
 
 
     #====Excel variant mapping==================================
