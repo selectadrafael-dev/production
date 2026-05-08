@@ -104,6 +104,16 @@ class VendorImportJob(models.Model):
     ])
 
 
+    excel_url_queue = fields.Text()
+
+    excel_url_index = fields.Integer(
+        default=0
+    )
+
+    excel_url_processing = fields.Boolean(
+        default=False
+    )
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -5023,6 +5033,153 @@ class VendorImportJob(models.Model):
             base.encode("utf-8")
         ).hexdigest()
 
+    #==========Excel url detect workflo=======================
+    def _extract_product_url(self, row):
+
+        possible_keys = [
+
+            "url",
+            "link",
+            "product_url",
+            "product link",
+            "website",
+            "href",
+
+        ]
+
+        for key in possible_keys:
+
+            value = row.get(key)
+
+            if not value:
+                continue
+
+            value = str(value).strip()
+
+            if value.startswith(
+                ("http://", "https://")
+            ):
+                return value
+
+        return False
+    
+    #======Excel url detection router=======================
+    def _route_excel_rows(self, products):
+
+        normal_products = []
+        url_products = []
+
+        for row in products:
+
+            url = self._extract_product_url(row)
+
+            if url:
+
+                row["detected_url"] = url
+
+                url_products.append(row)
+
+            else:
+
+                normal_products.append(row)
+
+        return {
+            "normal": normal_products,
+            "url": url_products,
+        }
+
+    
+    #==========Excel URl queue logic========================
+    def _queue_excel_urls(self, url_products):
+
+        import json
+
+        if not url_products:
+            return
+
+        self.excel_url_queue = json.dumps(
+            url_products
+        )
+
+        self.excel_url_processing = True
+
+        self.excel_url_index = 0
+
+    #============Excel URL processor==========================
+    def process_excel_url_queue(self):
+
+        import json
+
+        if not self.excel_url_queue:
+            return
+
+        rows = json.loads(
+            self.excel_url_queue
+        )
+
+        start = self.excel_url_index or 0
+
+        BATCH_SIZE = 5
+
+        end = min(
+            start + BATCH_SIZE,
+            len(rows)
+        )
+
+        for idx in range(start, end):
+
+            try:
+
+                row = rows[idx]
+
+                product_url = row.get(
+                    "detected_url"
+                )
+
+                if not product_url:
+                    continue
+
+                # ====================================
+                # EXISTING URL WORKFLOW
+                # ====================================
+
+                self.write({
+
+                    'product_url':
+                        product_url,
+
+                    'state':
+                        'url_parsing',
+                })
+
+                # IMPORTANT:
+                # call your existing method
+                self.action_parse_url()
+
+                self.excel_url_index = idx + 1
+
+                self.env.cr.commit()
+
+            except Exception as e:
+
+                _logger.exception(
+                    f"[EXCEL URL ERROR] {str(e)}"
+                )
+
+                self.env.cr.rollback()
+
+        # =========================================
+        # COMPLETE
+        # =========================================
+
+        if self.excel_url_index >= len(rows):
+
+            self.excel_url_queue = False
+
+            self.excel_url_processing = False
+
+            self.excel_url_index = 0
+
     #==========create excel product==========================
     def create_products_excel(self):
 
@@ -5081,6 +5238,20 @@ class VendorImportJob(models.Model):
         products = ai_page.get(
             "products",
             []
+        )
+
+        # ============================================
+        # ROUTE URL PRODUCTS
+        # ============================================
+
+        routed = self._route_excel_rows(
+            products
+        )
+
+        products = routed["normal"]
+
+        self._queue_excel_urls(
+            routed["url"]
         )
 
 
