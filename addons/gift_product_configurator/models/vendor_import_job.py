@@ -5378,6 +5378,12 @@ class VendorImportJob(models.Model):
                 # CREATE ISOLATED URL JOB
                 # ====================================
 
+                vendor_id = (
+                    self.partner_id.id
+                    if self.partner_id
+                    else False
+                )
+
                 new_job = self.env[
                     'vendor.import.job'
                 ].create({
@@ -5389,7 +5395,7 @@ class VendorImportJob(models.Model):
                         'url',
 
                     'vendor_id':
-                        self.vendor_id.id,
+                        vendor_id,
 
                     'data_url':
                         product_url,
