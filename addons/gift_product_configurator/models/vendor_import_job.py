@@ -19,6 +19,7 @@ import fitz
 _logger = logging.getLogger(__name__)
 
 class ProductTemplate(models.Model):
+
     _inherit = 'product.template'
 
     vendor_id = fields.Many2one(
@@ -26,6 +27,10 @@ class ProductTemplate(models.Model):
         string="Vendor"
     )
 
+    vendor_fingerprint = fields.Char(
+        index=True,
+        copy=False
+    )
 
 # ✅ Extend existing model
 class ResPartner(models.Model):
@@ -90,11 +95,6 @@ class VendorImportJob(models.Model):
         
     excel_parse_index = fields.Integer(
         default=0
-    )
-
-    vendor_fingerprint = fields.Char(
-        index=True,
-        copy=False
     )
 
     source_type = fields.Selection([
@@ -749,7 +749,6 @@ class VendorImportJob(models.Model):
 
                 return
 
-
             # =============================================
             # CREATE
             # =============================================
@@ -763,7 +762,6 @@ class VendorImportJob(models.Model):
                 except Exception as e:
 
                     _logger.exception(
-
                         f"EXCEL CREATE FAILED → {str(e)}"
                     )
 
@@ -774,7 +772,6 @@ class VendorImportJob(models.Model):
 
                     return
 
-
                 _logger.warning(
 
                     f"[EXCEL CREATE STATE] "
@@ -782,13 +779,40 @@ class VendorImportJob(models.Model):
                     f"{self.state}"
                 )
 
-
                 self.flush_recordset()
                 self.env.cr.commit()
 
+
+            # =============================================
+            # URL QUEUE PROCESSOR
+            # =============================================
+
+            if self.excel_url_processing:
+
+                try:
+
+                    _logger.warning(
+                        "[URL QUEUE PROCESSING]"
+                    )
+
+                    self.process_excel_url_queue()
+
+                except Exception as e:
+
+                    _logger.exception(
+                        f"[URL QUEUE ERROR] {str(e)}"
+                    )
+
+
+            # =============================================
+            # RETURN
+            # =============================================
+
+            if self.state == 'excel_creating' \
+                    or self.excel_url_processing:
+
                 return
-
-
+        
         # =================================================
         # PDF FLOW
         # =================================================
@@ -4206,7 +4230,7 @@ class VendorImportJob(models.Model):
                     break
 
             category = category_obj.search([
-                ('name', '=', mapped_category),
+                ('name', '=ilike', mapped_category),
                 ('parent_id', '=', parent_category.id)
             ], limit=1)
 
@@ -5097,6 +5121,25 @@ class VendorImportJob(models.Model):
         if not url_products:
             return
 
+        seen = set()
+        cleaned = []
+
+        for row in url_products:
+
+            url = row.get("detected_url")
+
+            if not url:
+                continue
+
+            if url in seen:
+                continue
+
+            seen.add(url)
+
+            cleaned.append(row)
+
+        url_products = cleaned
+
         self.excel_url_queue = json.dumps(
             url_products
         )
@@ -5253,6 +5296,12 @@ class VendorImportJob(models.Model):
         self._queue_excel_urls(
             routed["url"]
         )
+
+        if self.excel_url_processing:
+
+            _logger.warning(
+                "[URL QUEUE DETECTED]"
+            )
 
 
         _logger.warning(
@@ -5550,9 +5599,23 @@ class VendorImportJob(models.Model):
 
                 vendor_id = self.partner_id.id if self.partner_id else False
 
-                product = product_obj.search([
-                    ('vendor_fingerprint', '=', fingerprint),
-                ], limit=1)
+                if 'vendor_fingerprint' in product_obj._fields:
+
+                    product = product_obj.search([
+                        ('vendor_fingerprint', '=', fingerprint),
+                    ], limit=1)
+
+                else:
+
+                    _logger.warning(
+                        "[FINGERPRINT DISABLED] "
+                        "field missing → fallback mode"
+                    )
+
+                    product = product_obj.search([
+                        ('default_code', '=', group_id),
+                        ('vendor_id', '=', vendor_id)
+                    ], limit=1)
 
                 is_new_product = False
 
@@ -5625,9 +5688,7 @@ class VendorImportJob(models.Model):
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
-                    created_count += 1
-
-
+                   
                     _logger.warning(
 
                         f"[EXCEL CREATED] "
@@ -5652,27 +5713,85 @@ class VendorImportJob(models.Model):
 
                         f"| product_id={product.id}"
                     )
-              
-
+             
                 # =================================================
                 # VARIANTS
                 # =================================================
 
-                for idx, item in enumerate(
-                    group_items
-                ):
+                for idx, item in enumerate(group_items):
+
+                    # =============================================
+                    # DETECT ATTRIBUTE TYPE
+                    # =============================================
+
+                    variant_attribute_name = "Variant"
+
+                    if item.get("color") or item.get("colour"):
+
+                        variant_attribute_name = "Color"
+
+                    elif item.get("material"):
+
+                        variant_attribute_name = "Material"
+
+                    elif item.get("size"):
+
+                        variant_attribute_name = "Size"
+
+                    elif item.get("capacity"):
+
+                        variant_attribute_name = "Capacity"
+
+                    elif item.get("style"):
+
+                        variant_attribute_name = "Style"
+
+
+                    # =============================================
+                    # DETECT ATTRIBUTE VALUE
+                    # =============================================
 
                     attr_value = (
-                        f"Variant {idx+1}"
+
+                        item.get("color")
+
+                        or item.get("colour")
+
+                        or item.get("material")
+
+                        or item.get("size")
+
+                        or item.get("variant")
+
+                        or item.get("capacity")
+
+                        or item.get("style")
+
+                        or f"Variant {idx+1}"
+
+                    ).strip()
+
+
+                    _logger.warning(
+
+                        f"[VARIANT DETECTED] "
+
+                        f"{variant_attribute_name} "
+
+                        f"= {attr_value}"
                     )
 
+
+                    # =============================================
+                    # ATTRIBUTE
+                    # =============================================
 
                     attribute = attribute_obj.search([
 
                         (
                             'name',
                             '=',
-                            "Variant"
+                            variant_attribute_name
                         )
 
                     ], limit=1)
@@ -5680,47 +5799,63 @@ class VendorImportJob(models.Model):
 
                     if not attribute:
 
-                        attribute = (
-                            attribute_obj.create({
+                        attribute = attribute_obj.create({
 
-                                'name':
-                                    "Variant"
-                            })
+                            'name': variant_attribute_name
+
+                        })
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE CREATED] "
+
+                            f"{variant_attribute_name}"
                         )
 
 
-                    value = (
-                        attribute_value_obj.search([
+                    # =============================================
+                    # ATTRIBUTE VALUE
+                    # =============================================
 
-                            (
-                                'name',
-                                '=',
-                                attr_value
-                            ),
+                    value = attribute_value_obj.search([
 
-                            (
-                                'attribute_id',
-                                '=',
-                                attribute.id
-                            )
+                        (
+                            'name',
+                            '=',
+                            attr_value
+                        ),
 
-                        ], limit=1)
-                    )
+                        (
+                            'attribute_id',
+                            '=',
+                            attribute.id
+                        )
+
+                    ], limit=1)
 
 
                     if not value:
 
-                        value = (
-                            attribute_value_obj.create({
+                        value = attribute_value_obj.create({
 
-                                'name':
-                                    attr_value,
+                            'name': attr_value,
 
-                                'attribute_id':
-                                    attribute.id
-                            })
+                            'attribute_id': attribute.id
+                        })
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE VALUE CREATED] "
+
+                            f"{attr_value}"
                         )
 
+
+                    # =============================================
+                    # TEMPLATE ATTRIBUTE LINE
+                    # =============================================
 
                     line = line_obj.search([
 
@@ -5741,13 +5876,11 @@ class VendorImportJob(models.Model):
 
                     if not line:
 
-                        line_obj.create({
+                        line = line_obj.create({
 
-                            'product_tmpl_id':
-                                product.id,
+                            'product_tmpl_id': product.id,
 
-                            'attribute_id':
-                                attribute.id,
+                            'attribute_id': attribute.id,
 
                             'value_ids': [
 
@@ -5791,7 +5924,7 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # VARIANT IMAGE
+                    # FIND VARIANT RECORD
                     # =============================================
 
                     variant_record = self.env[
@@ -5813,11 +5946,13 @@ class VendorImportJob(models.Model):
                     ], limit=1)
 
 
+                    # =============================================
+                    # VARIANT IMAGE
+                    # =============================================
+
                     if variant_record:
 
-                        variant_image = item.get(
-                            "image"
-                        )
+                        variant_image = item.get("image")
 
 
                         if variant_image:
