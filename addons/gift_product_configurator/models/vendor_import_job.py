@@ -145,11 +145,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PROCESS START → Job {self.id}")
 
         try:
-            # if self.state == 'review':
-            #     self.state = 'processing'
-
-            # if self.state == 'draft':
-            #     self.state = 'processing'
 
             self._process_step()
 
@@ -5382,6 +5377,7 @@ class VendorImportJob(models.Model):
                 # ====================================
                 # CREATE ISOLATED URL JOB
                 # ====================================
+
                 new_job = self.env[
                     'vendor.import.job'
                 ].create({
@@ -5389,10 +5385,7 @@ class VendorImportJob(models.Model):
                     'name':
                         f"URL Import - {idx}",
 
-                    'import_type':
-                        'url',
-
-                    'vendor_id':
+                    'partner_id':
                         vendor_id,
 
                     'data_url':
