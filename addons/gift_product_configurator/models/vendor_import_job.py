@@ -5313,16 +5313,25 @@ class VendorImportJob(models.Model):
         self.excel_url_index = 0
 
     #============Excel URL processor==========================
+    
+    #============Excel URL processor==========================
     def process_excel_url_queue(self):
 
         import json
 
         if not self.excel_url_queue:
+
+            _logger.warning(
+                "[URL QUEUE] EMPTY"
+            )
+
             return
+
 
         rows = json.loads(
             self.excel_url_queue
         )
+
 
         start = self.excel_url_index or 0
 
@@ -5332,6 +5341,17 @@ class VendorImportJob(models.Model):
             start + BATCH_SIZE,
             len(rows)
         )
+
+
+        _logger.warning(
+
+            f"[URL QUEUE START] "
+
+            f"{start} -> {end} | "
+
+            f"total={len(rows)}"
+        )
+
 
         for idx in range(start, end):
 
@@ -5343,26 +5363,64 @@ class VendorImportJob(models.Model):
                     "detected_url"
                 )
 
+
                 if not product_url:
+
+                    _logger.warning(
+                        f"[URL QUEUE SKIP] "
+                        f"NO URL AT INDEX {idx}"
+                    )
+
                     continue
 
+
                 # ====================================
-                # EXISTING URL WORKFLOW
+                # CREATE ISOLATED URL JOB
                 # ====================================
 
-                self.write({
+                new_job = self.env[
+                    'vendor.import.job'
+                ].create({
 
-                    'data_url': product_url,
+                    'name':
+                        f"URL Import - {idx}",
 
-                    'state': 'url_scraping',
+                    'import_type':
+                        'url',
+
+                    'vendor_id':
+                        self.vendor_id.id,
+
+                    'data_url':
+                        product_url,
+
+                    'state':
+                        'url_scraping',
                 })
 
-                # IMPORTANT:
-                # call your existing method
-               
+
+                _logger.warning(
+
+                    f"[URL JOB CREATED] "
+
+                    f"job={new_job.id} | "
+
+                    f"url={product_url}"
+                )
+
+
+                # ====================================
+                # SAVE PROGRESS
+                # ====================================
+
                 self.excel_url_index = idx + 1
 
+                self.flush_recordset()
+
                 self.env.cr.commit()
+
+                self.env.invalidate_all()
+
 
             except Exception as e:
 
@@ -5372,11 +5430,16 @@ class VendorImportJob(models.Model):
 
                 self.env.cr.rollback()
 
+
         # =========================================
         # COMPLETE
         # =========================================
 
         if self.excel_url_index >= len(rows):
+
+            _logger.warning(
+                "[URL QUEUE COMPLETE]"
+            )
 
             self.excel_url_queue = False
 
@@ -5384,6 +5447,9 @@ class VendorImportJob(models.Model):
 
             self.excel_url_index = 0
 
+            self.flush_recordset()
+
+            self.env.cr.commit()
 
     #==========create excel product==========================
     def create_products_excel(self):
