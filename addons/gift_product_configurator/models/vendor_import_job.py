@@ -3622,7 +3622,7 @@ class VendorImportJob(models.Model):
                 COLUMN UNDERSTANDING (CRITICAL)
                 =====================================
 
-                The row may contains mixed values like:
+                The row could contain mixed values like:
 
                 - ID (e.g. 94601, 12345)
                 - Range (e.g. 2-66, 11-00)
@@ -3635,7 +3635,11 @@ class VendorImportJob(models.Model):
 
                 1. IDENTIFY PRODUCT ID
                 - Usually numeric (e.g. 94601)
-                - Column name may vary (KOD, SKU, ID, CODE)
+                - Column name may vary:
+                    - KOD
+                    - SKU
+                    - ID
+                    - CODE
 
                 2. IDENTIFY PRODUCT NAME
                 - MUST NOT be:
@@ -3645,29 +3649,175 @@ class VendorImportJob(models.Model):
                     - dates
                     - headers
 
-                - If unclear:
-                    → generate:
-                    Product <ID>
+                - Product names should describe the ACTUAL product type.
 
+               GOOD:
+                - Sports Bottle
+                - Metal Pen
+                - Travel Mug
+                - Drawstring Bag
+
+                If the Excel already contains a valid product name:
+                - preserve and use it
+
+                If the Excel does NOT contain a real product name:
+                - intelligently generate one using:
+                    - Product <ID>
+                    - category clues
+                    - image appearance
+                    - surrounding row data
+
+                Fallback naming is allowed when necessary.
+
+                GOOD fallback examples:
+                - Product 94601
+                - Bottle 94646
+                - Pen 92070
+
+                However:
+
+                If rows belong to the SAME variant_group,
+                you MUST still detect and extract the REAL variant difference.
+
+                Example:
+
+                Parent:
+                Product 94646
+
+                Variants:
+                - White
+                - Orange
+                - Black
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+
+                when a real difference can be visually or textually identified.
+                
                 =====================================
-                VARIANT GROUPING
+                VARIANT GROUPING (VERY IMPORTANT)
                 =====================================
 
                 - SAME ID = SAME variant_group
                 - DIFFERENT ID = DIFFERENT PRODUCT
                 - NEVER leave variant_group empty
 
+                Rows sharing the same:
+                - ID
+                - grouped code
+                - SKU group
+
+                should be treated as variants of ONE parent product.
+
                 =====================================
-                VARIANT DETECTION
+                VARIANT DETECTION (CRITICAL)
                 =====================================
 
-                If rows share same ID:
+                If rows share the same ID:
 
-                → they are variants
+                → they are variants of the SAME product.
 
-                Put differences into:
+                You MUST detect what makes them different.
 
-                "attributes"
+                Possible variant differences include:
+                - color
+                - material
+                - size
+                - capacity
+                - finish
+                - dimensions
+                - style
+                - packaging
+
+                =====================================
+                VISUAL DIFFERENCE DETECTION
+                =====================================
+
+                If product images exist:
+
+                You MUST visually inspect the images
+                to identify the distinguishing feature.
+
+                Example:
+
+                If grouped products show:
+                - white bottle
+                - orange bottle
+                - black bottle
+
+                Return:
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "White"
+                }}
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "Orange"
+                }}
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+                - Product 94601
+
+                =====================================
+                PARENT PRODUCT CONSISTENCY
+                =====================================
+
+                When multiple rows belong to the same
+                variant_group:
+
+                - The parent product name MUST remain consistent.
+                - ONLY the variant fields should change.
+
+                GOOD:
+
+                Sports Bottle
+                → White
+                → Orange
+                → Black
+
+                BAD:
+
+                White Bottle
+                Orange Bottle
+                Black Bottle
+
+                =====================================
+                ATTRIBUTE EXTRACTION
+                =====================================
+
+                Put distinguishing values into:
+
+                - color
+                - material
+                - size
+                - capacity
+                - style
+
+                Only use generic "Variant"
+                if absolutely no real difference can be detected.
+
+                =====================================
+                PRICE & STOCK
+                =====================================
+
+                - Extract numeric price carefully
+                - Extract stock carefully
+                - Ignore ranges like:
+                    - 2-66
+                    - 11-00
+
+                =====================================
+                LINKS
+                =====================================
+
+                If a row contains a product URL:
+                - preserve it
+                - never use URL as product name
 
                 =====================================
                 OUTPUT FORMAT
@@ -3685,7 +3835,8 @@ class VendorImportJob(models.Model):
                         "material": "",
                         "size": "",
                         "capacity": "",
-                        "style": ""
+                        "style": "",
+                        "url": "",
                         "variants": [
                             {{
                                 "attributes": {{
@@ -3697,6 +3848,16 @@ class VendorImportJob(models.Model):
                         ]
                     }}
                 ]
+
+                =====================================
+                IMPORTANT RULES
+                =====================================
+
+                - Return ONLY valid JSON
+                - No markdown
+                - No explanations
+                - No comments
+                - No trailing commas
 
                 ROW TEXT:
                 {row_text}
