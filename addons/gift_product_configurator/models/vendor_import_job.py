@@ -5290,7 +5290,7 @@ class VendorImportJob(models.Model):
     #==========create excel product==========================
 
     
-    #==========create excel product==========================
+    #==========create excel product===========================
     def create_products_excel(self):
 
         import json
