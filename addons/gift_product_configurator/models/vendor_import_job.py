@@ -3622,7 +3622,7 @@ class VendorImportJob(models.Model):
                 COLUMN UNDERSTANDING (CRITICAL)
                 =====================================
 
-                The row contains mixed values like:
+                The row may contains mixed values like:
 
                 - ID (e.g. 94601, 12345)
                 - Range (e.g. 2-66, 11-00)
@@ -5287,9 +5287,7 @@ class VendorImportJob(models.Model):
 
             self.env.cr.commit()
 
-    #==========create excel product==========================
 
-    
     #==========create excel product===========================
     def create_products_excel(self):
 
@@ -5318,6 +5316,10 @@ class VendorImportJob(models.Model):
 
             ai_pages = json.loads(
                 self.ai_response or "[]"
+            )
+
+            fingerprint = self._build_vendor_fingerprint(
+                main_product
             )
 
         except Exception as e:
@@ -5642,15 +5644,86 @@ class VendorImportJob(models.Model):
 
                 vendor_id = self.partner_id.id if self.partner_id else False
 
-                product = product_obj.search([
-                    ('default_code', '=', group_id),
-                    ('vendor_id', '=', vendor_id)
-                ], limit=1)
+                product = False
+
+                # =====================================================
+                # 1. STRICT FINGERPRINT MATCH
+                # =====================================================
+
+                if (
+                    'vendor_fingerprint' in product_obj._fields
+                    and vendor_id
+                ):
+
+                    product = product_obj.search([
+
+                        (
+                            'vendor_fingerprint',
+                            '=',
+                            fingerprint
+                        ),
+
+                        (
+                            'vendor_id',
+                            '=',
+                            vendor_id
+                        )
+
+                    ], limit=1)
+
+
+                    if product:
+
+                        _logger.warning(
+
+                            f"[FINGERPRINT MATCH] "
+
+                            f"{group_id} "
+
+                            f"| vendor={vendor_id} "
+
+                            f"| product_id={product.id}"
+                        )
+
+                 # =====================================================
+                # 2. FALLBACK SKU MATCH
+                # =====================================================
+
+                if not product and vendor_id:
+
+                    product = product_obj.search([
+
+                        (
+                            'default_code',
+                            '=',
+                            group_id
+                        ),
+
+                        (
+                            'vendor_id',
+                            '=',
+                            vendor_id
+                        )
+
+                    ], limit=1)
+
+
+                    if product:
+
+                        _logger.warning(
+
+                            f"[SKU MATCH] "
+
+                            f"{group_id} "
+
+                            f"| vendor={vendor_id} "
+
+                            f"| product_id={product.id}"
+                        )
 
                 is_new_product = False
 
                 if product:
-                    merged_count += 1
 
                     _logger.warning(
                         f"[EXCEL DUPLICATE FOUND] "
@@ -5659,6 +5732,7 @@ class VendorImportJob(models.Model):
 
                 else:
                     is_new_product = True
+
 
                 # =================================================
                 # CREATE PARENT
@@ -5695,6 +5769,8 @@ class VendorImportJob(models.Model):
                             self._safe_float(
                                 main_product.get("price")
                             ),
+
+                        'vendor_fingerprint': fingerprint,
                     }
 
 
