@@ -5318,10 +5318,6 @@ class VendorImportJob(models.Model):
                 self.ai_response or "[]"
             )
 
-            fingerprint = self._build_vendor_fingerprint(
-                main_product
-            )
-
         except Exception as e:
 
             _logger.exception(
@@ -5566,6 +5562,10 @@ class VendorImportJob(models.Model):
 
                 main_product = (
                     group_items[0]
+                )
+
+                fingerprint = self._build_vendor_fingerprint(
+                    main_product
                 )
 
 
