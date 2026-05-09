@@ -1489,6 +1489,89 @@ class VendorImportJob(models.Model):
                 if not row_text_parts:
                     continue
 
+                # =================================
+                # EARLY URL INTERCEPTION
+                # =================================
+
+                detected_url = None
+
+                for part in row_text_parts:
+
+                    part = str(part or "")
+
+                    urls = re.findall(
+
+                        r'https?://[^\s|]+',
+
+                        part
+                    )
+
+                    if urls:
+
+                        detected_url = urls[0].strip()
+
+                        break
+
+
+                if detected_url:
+
+                    _logger.warning(
+
+                        f"[URL ROW DETECTED] "
+
+                        f"{detected_url}"
+                    )
+
+
+                    existing_queue = []
+
+                    if self.excel_url_queue:
+
+                        try:
+
+                            existing_queue = json.loads(
+                                self.excel_url_queue
+                            )
+
+                        except Exception:
+
+                            existing_queue = []
+
+
+                    existing_queue.append({
+
+                        "detected_url": detected_url,
+
+                        "row_index": global_index + 1,
+
+                        "vendor_id": (
+                            self.partner_id.id
+                            if self.partner_id
+                            else False
+                        ),
+                    })
+
+
+                    self.excel_url_queue = json.dumps(
+                        existing_queue
+                    )
+
+                    self.excel_url_processing = True
+
+
+                    _logger.warning(
+
+                        f"[URL QUEUED] "
+
+                        f"total={len(existing_queue)}"
+                    )
+
+
+                    global_index += 1
+
+                    current_count += 1
+
+                    continue
 
                 # =================================
                 # GLOBAL INDEX TRACKING
@@ -1722,92 +1805,6 @@ class VendorImportJob(models.Model):
                 - THIS ROW MAY BE A VARIANT
                 - USE SIMILAR ID/SKU
                 """
-
-                # =================================
-                # URL DETECTION
-                # =================================
-
-                detected_url = None
-
-                for part in row_text_parts:
-
-                    part = str(part or "").strip()
-
-                    if (
-
-                        part.startswith("http://")
-
-                        or
-
-                        part.startswith("https://")
-
-                    ):
-
-                        detected_url = part
-
-                        break
-
-
-                # =================================
-                # URL QUEUE INTERCEPTION
-                # =================================
-
-                if detected_url:
-
-                    _logger.warning(
-
-                        f"[URL ROW DETECTED] "
-
-                        f"{detected_url}"
-                    )
-
-
-                    existing_queue = []
-
-                    if self.excel_url_queue:
-
-                        try:
-
-                            existing_queue = json.loads(
-                                self.excel_url_queue
-                            )
-
-                        except Exception:
-
-                            existing_queue = []
-
-
-                    existing_queue.append({
-
-                        "detected_url": detected_url,
-
-                        "row_index": global_index,
-
-                        "raw_text": row_text,
-
-                        "price": price,
-
-                        "stock": stock,
-                    })
-
-
-                    self.excel_url_queue = json.dumps(
-                        existing_queue
-                    )
-
-                    self.excel_url_processing = True
-
-
-                    _logger.warning(
-
-                        f"[URL QUEUED] "
-
-                        f"total={len(existing_queue)}"
-                    )
-
-
-                    continue
-
 
                 row_images = []
 
