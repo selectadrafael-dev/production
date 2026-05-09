@@ -658,11 +658,6 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NEW BATCH READY → excel_ai"
                     )
 
-                   # reset AI/create cycle
-                    self.excel_ai_index = 0
-                    self.excel_created_index = 0
-                    self.ai_response = False
-
                     self.state = 'excel_ai'
 
                 else:
@@ -6521,7 +6516,6 @@ class VendorImportJob(models.Model):
         )
 
 
-
         # ======================================================
         # NEXT STATE
         # ======================================================
@@ -6544,6 +6538,16 @@ class VendorImportJob(models.Model):
                 _logger.warning(
                     "[EXCEL IMPORT COMPLETE] ✅"
                 )
+
+                # =========================================
+                # FINAL RESET
+                # =========================================
+
+                self.excel_created_index = 0
+
+                self.excel_ai_index = 0
+
+                self.ai_response = False
 
                 self.state = 'done'
 
@@ -6568,7 +6572,8 @@ class VendorImportJob(models.Model):
                 )
 
                 # IMPORTANT:
-                # DO NOT reset AI/create lifecycle
+                # KEEP CURRENT AI STATE
+                # for next parse batch
 
                 self.state = 'excel_parsing'
 
