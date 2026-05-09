@@ -6479,6 +6479,7 @@ class VendorImportJob(models.Model):
         )
 
 
+
         # ======================================================
         # NEXT STATE
         # ======================================================
@@ -6489,30 +6490,54 @@ class VendorImportJob(models.Model):
 
                 "[EXCEL FLOW] "
 
-                "GROUP BATCH COMPLETE "
-                "→ RETURN TO excel_parsing"
+                "GROUP BATCH COMPLETE"
             )
 
-            # reset AI/create cycle
-            self.excel_created_index = 0
-            self.excel_ai_index = 0
+            # =========================================
+            # FULL IMPORT COMPLETED
+            # =========================================
 
-            # IMPORTANT
-            # clear AI batch only
-            self.ai_response = False
+            if self.is_excel_parsed:
 
-            # continue parser batching
-            self.state = 'excel_parsing'
+                _logger.warning(
+                    "[EXCEL IMPORT COMPLETE] ✅"
+                )
 
-            _logger.warning(
+                self.state = 'done'
 
-                "[EXCEL FLOW] "
+                # cleanup URL queue
+                self.excel_url_processing = False
 
-                f"NEXT PARSE INDEX="
+                self.excel_url_queue = False
 
-                f"{self.excel_parse_index}"
-            )
+                self.excel_url_index = 0
 
+            # =========================================
+            # MORE PARSE ROWS REMAIN
+            # =========================================
+
+            else:
+
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    "RETURN TO excel_parsing"
+                )
+
+                # IMPORTANT:
+                # DO NOT reset AI/create lifecycle
+
+                self.state = 'excel_parsing'
+
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    f"NEXT PARSE INDEX="
+
+                    f"{self.excel_parse_index}"
+                )
 
         else:
 
@@ -6522,7 +6547,6 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
-
 
 
     #====Excel variant mapping==================================
