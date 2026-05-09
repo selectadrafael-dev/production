@@ -717,10 +717,17 @@ class VendorImportJob(models.Model):
                     return
 
 
-                total_rows = (
-                    self.last_processed_product_index
-                    or 0
-                )
+                try:
+
+                    extracted_rows = json.loads(
+                        self.extracted_text or "[]"
+                    )
+
+                    total_rows = len(extracted_rows)
+
+                except Exception:
+
+                    total_rows = 0
 
 
                 _logger.warning(
@@ -4480,15 +4487,51 @@ class VendorImportJob(models.Model):
                     'parent_id': parent_category.id
                 })
 
+            # ================= FINGERPRINT=================
+
+            variant_group = (
+
+                product.get("variant_group")
+
+                or
+
+                name
+            )
+
+            variant_group = str(
+                variant_group
+            ).strip().upper()
+
+
+            vendor_fingerprint = (
+                f"{vendor_id}_{variant_group}"
+            )
+
+
             # ================= DUPLICATE CHECK =================
+
             existing = product_obj.search([
-                ('name', 'ilike', name.strip()),
-                ('vendor_id', '=', vendor_id)
+
+                (
+                    'vendor_fingerprint',
+                    '=',
+                    vendor_fingerprint
+                )
+
             ], limit=1)
 
+
             if existing:
-                _logger.warning(f"SKIPPED DUPLICATE → {name}")
+
+                _logger.warning(
+
+                    f"[URL DUPLICATE SKIP] "
+
+                    f"{vendor_fingerprint}"
+                )
+
                 skipped_count += 1
+
                 continue
 
             vals = {
@@ -4498,6 +4541,7 @@ class VendorImportJob(models.Model):
                 'sale_ok': True,
                 'website_published': False,
                 'vendor_id': vendor_id,
+                'vendor_fingerprint': vendor_fingerprint,
             }
 
             # ================= IMAGE =================
@@ -4892,6 +4936,15 @@ class VendorImportJob(models.Model):
                         })
 
 
+                   # =========================================
+                    # FINGERPRINT
+                    # =========================================
+
+                    vendor_fingerprint = (
+                        f"{vendor_id}_{variant_group}"
+                    )
+
+
                     # =========================================
                     # DUPLICATE CHECK
                     # =========================================
@@ -4899,19 +4952,12 @@ class VendorImportJob(models.Model):
                     product = product_obj.search([
 
                         (
-                            'default_code',
+                            'vendor_fingerprint',
                             '=',
-                            variant_group
-                        ),
-
-                        (
-                            'vendor_id',
-                            '=',
-                            vendor_id
+                            vendor_fingerprint
                         )
 
                     ], limit=1)
-
 
                     # =========================================
                     # CREATE PRODUCT
@@ -4939,6 +4985,9 @@ class VendorImportJob(models.Model):
 
                             'vendor_id':
                                 vendor_id,
+
+                            'vendor_fingerprint':
+                                vendor_fingerprint,
                         }
 
 
@@ -5473,6 +5522,16 @@ class VendorImportJob(models.Model):
                         f"{product_url}"
                     )
 
+                    # ====================================
+                    # ADVANCE QUEUE INDEX
+                    # ====================================
+
+                    self.excel_url_index = idx + 1
+
+                    self.flush_recordset()
+
+                    self.env.cr.commit()
+
                     continue
 
                 # ====================================
@@ -5520,7 +5579,7 @@ class VendorImportJob(models.Model):
 
                 self.env.cr.commit()
 
-                self.env.invalidate_all()
+                #self.env.invalidate_all()
 
 
             except Exception as e:
@@ -5531,7 +5590,7 @@ class VendorImportJob(models.Model):
 
                 self.env.cr.rollback()
 
-
+ 
         # =========================================
         # COMPLETE
         # =========================================
@@ -5551,6 +5610,8 @@ class VendorImportJob(models.Model):
             self.flush_recordset()
 
             self.env.cr.commit()
+
+            self.env.invalidate_all()
 
 
     #==========create excel product===========================
@@ -7603,7 +7664,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
