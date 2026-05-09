@@ -5986,21 +5986,82 @@ class VendorImportJob(models.Model):
                 # VARIANTS
                 # =================================================
 
-                for idx, item in enumerate(
-                    group_items
-                ):
+                for idx, item in enumerate(group_items):
 
-                    attr_value = (
-                        f"Variant {idx+1}"
+                    # =============================================
+                    # DETECT ATTRIBUTE TYPE
+                    # =============================================
+
+                    variant_attribute_name = "Variant"
+
+                    if item.get("color") or item.get("colour"):
+
+                        variant_attribute_name = "Color"
+
+                    elif item.get("material"):
+
+                        variant_attribute_name = "Material"
+
+                    elif item.get("size"):
+
+                        variant_attribute_name = "Size"
+
+                    elif item.get("capacity"):
+
+                        variant_attribute_name = "Capacity"
+
+                    elif item.get("style"):
+
+                        variant_attribute_name = "Style"
+
+
+                    # =============================================
+                    # DETECT ATTRIBUTE VALUE
+                    # =============================================
+
+                    attr_value = str(
+
+                        item.get("color")
+
+                        or item.get("colour")
+
+                        or item.get("material")
+
+                        or item.get("size")
+
+                        or item.get("variant")
+
+                        or item.get("capacity")
+
+                        or item.get("style")
+
+                        or f"Variant {idx+1}"
+
+                    ).strip()
+
+                    if not attr_value:
+                        continue
+
+                    _logger.warning(
+
+                        f"[VARIANT DETECTED] "
+
+                        f"{variant_attribute_name} "
+
+                        f"= {attr_value}"
                     )
 
+
+                    # =============================================
+                    # ATTRIBUTE
+                    # =============================================
 
                     attribute = attribute_obj.search([
 
                         (
                             'name',
                             '=',
-                            "Variant"
+                            variant_attribute_name
                         )
 
                     ], limit=1)
@@ -6008,47 +6069,63 @@ class VendorImportJob(models.Model):
 
                     if not attribute:
 
-                        attribute = (
-                            attribute_obj.create({
+                        attribute = attribute_obj.create({
 
-                                'name':
-                                    "Variant"
-                            })
+                            'name': variant_attribute_name
+
+                        })
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE CREATED] "
+
+                            f"{variant_attribute_name}"
                         )
 
 
-                    value = (
-                        attribute_value_obj.search([
+                    # =============================================
+                    # ATTRIBUTE VALUE
+                    # =============================================
 
-                            (
-                                'name',
-                                '=',
-                                attr_value
-                            ),
+                    value = attribute_value_obj.search([
 
-                            (
-                                'attribute_id',
-                                '=',
-                                attribute.id
-                            )
+                        (
+                            'name',
+                            '=',
+                            attr_value
+                        ),
 
-                        ], limit=1)
-                    )
+                        (
+                            'attribute_id',
+                            '=',
+                            attribute.id
+                        )
+
+                    ], limit=1)
 
 
                     if not value:
 
-                        value = (
-                            attribute_value_obj.create({
+                        value = attribute_value_obj.create({
 
-                                'name':
-                                    attr_value,
+                            'name': attr_value,
 
-                                'attribute_id':
-                                    attribute.id
-                            })
+                            'attribute_id': attribute.id
+                        })
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE VALUE CREATED] "
+
+                            f"{attr_value}"
                         )
 
+
+                    # =============================================
+                    # TEMPLATE ATTRIBUTE LINE
+                    # =============================================
 
                     line = line_obj.search([
 
@@ -6069,13 +6146,11 @@ class VendorImportJob(models.Model):
 
                     if not line:
 
-                        line_obj.create({
+                        line = line_obj.create({
 
-                            'product_tmpl_id':
-                                product.id,
+                            'product_tmpl_id': product.id,
 
-                            'attribute_id':
-                                attribute.id,
+                            'attribute_id': attribute.id,
 
                             'value_ids': [
 
@@ -6116,6 +6191,29 @@ class VendorImportJob(models.Model):
 
                                 f"| {attr_value}"
                             )
+
+
+                    # =============================================
+                    # FIND VARIANT RECORD
+                    # =============================================
+
+                    variant_record = self.env[
+                        'product.product'
+                    ].search([
+
+                        (
+                            'product_tmpl_id',
+                            '=',
+                            product.id
+                        ),
+
+                        (
+                            'product_template_attribute_value_ids.product_attribute_value_id',
+                            '=',
+                            value.id
+                        )
+
+                    ], limit=1)
 
 
                     # =============================================
