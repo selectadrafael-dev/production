@@ -6040,7 +6040,29 @@ class VendorImportJob(models.Model):
                     ).strip()
 
                     if not attr_value:
-                        continue
+
+                        detected_color = self._detect_basic_image_color(
+                            item.get("image")
+                        )
+
+                        if detected_color:
+
+                            variant_attribute_name = "Color"
+
+                            attr_value = detected_color
+
+                            _logger.warning(
+
+                                f"[IMAGE COLOR FALLBACK] "
+
+                                f"{detected_color}"
+                            )
+
+                        else:
+
+                            attr_value = (
+                                f"Variant {idx+1}"
+                            )
 
                     _logger.warning(
 
