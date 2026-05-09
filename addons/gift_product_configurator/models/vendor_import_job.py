@@ -7789,7 +7789,9 @@ class VendorImportJob(models.Model):
         except:
             return 0.0
 
-   
+    #======product translate ==========================
+    
+    def translate_global_views(self, target_lang):
 
         from openai import OpenAI
 
