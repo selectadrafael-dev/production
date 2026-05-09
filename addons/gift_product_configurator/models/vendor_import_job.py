@@ -748,6 +748,27 @@ class VendorImportJob(models.Model):
             # CREATE
             # =============================================
 
+           
+            #-----------EXCEL URL QUEUE PROCESSOR-------------
+          
+            if self.excel_url_processing:
+
+                try:
+
+                    _logger.warning(
+                        "[URL QUEUE PROCESSING]"
+                    )
+
+                    self.process_excel_url_queue()
+
+                except Exception as e:
+
+                    _logger.exception(
+                        f"[URL QUEUE ERROR] {str(e)}"
+                    )
+
+            #-----------EXCEL ROW PROCESSOR-------------
+
             if self.state == 'excel_creating':
 
                 try:
@@ -776,27 +797,6 @@ class VendorImportJob(models.Model):
 
                 self.flush_recordset()
                 self.env.cr.commit()
-
-
-            # =============================================
-            # URL QUEUE PROCESSOR
-            # =============================================
-
-            if self.excel_url_processing:
-
-                try:
-
-                    _logger.warning(
-                        "[URL QUEUE PROCESSING]"
-                    )
-
-                    self.process_excel_url_queue()
-
-                except Exception as e:
-
-                    _logger.exception(
-                        f"[URL QUEUE ERROR] {str(e)}"
-                    )
 
 
             # =============================================
@@ -1348,8 +1348,7 @@ class VendorImportJob(models.Model):
         # MOVE TO NEXT STEP
         # =====================================================
 
-        # self.state = "url_ai"
-        if self.url_parse_index >= len(raw_data):
+        if self.url_parse_index >= len(structured_data):
 
             _logger.warning(
                 "[URL PARSE] FINAL BATCH READY"
@@ -5307,7 +5306,6 @@ class VendorImportJob(models.Model):
 
         self.excel_url_index = 0
 
-    #============Excel URL processor==========================
     
     #============Excel URL processor==========================
     def process_excel_url_queue(self):
@@ -5373,6 +5371,27 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                existing_job = self.env[
+                    'vendor.import.job'
+                ].search([
+
+                    ('data_url', '=', product_url),
+
+                    ('state', '!=', 'failed')
+
+                ], limit=1)
+
+
+                if existing_job:
+
+                    _logger.warning(
+
+                        f"[URL JOB EXISTS] "
+
+                        f"{product_url}"
+                    )
+
+                    continue
 
                 # ====================================
                 # CREATE ISOLATED URL JOB
@@ -5387,6 +5406,9 @@ class VendorImportJob(models.Model):
 
                     'partner_id':
                         vendor_id,
+
+                    'source_type':
+                        'url',
 
                     'data_url':
                         product_url,
