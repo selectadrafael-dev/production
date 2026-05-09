@@ -5982,9 +5982,9 @@ class VendorImportJob(models.Model):
                     )
               
 
-                # =================================================
+                # ==================================================
                 # VARIANTS
-                # =================================================
+                # ==================================================
 
                 for idx, item in enumerate(group_items):
 
@@ -6191,29 +6191,6 @@ class VendorImportJob(models.Model):
 
                                 f"| {attr_value}"
                             )
-
-
-                    # =============================================
-                    # FIND VARIANT RECORD
-                    # =============================================
-
-                    variant_record = self.env[
-                        'product.product'
-                    ].search([
-
-                        (
-                            'product_tmpl_id',
-                            '=',
-                            product.id
-                        ),
-
-                        (
-                            'product_template_attribute_value_ids.product_attribute_value_id',
-                            '=',
-                            value.id
-                        )
-
-                    ], limit=1)
 
 
                     # =============================================
