@@ -658,7 +658,7 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NEW BATCH READY → excel_ai"
                     )
 
-                    # reset AI/create cycle
+                   # reset AI/create cycle
                     self.excel_ai_index = 0
                     self.excel_created_index = 0
                     self.ai_response = False
@@ -3798,25 +3798,67 @@ class VendorImportJob(models.Model):
 
                 should be treated as variants of ONE parent product.
 
+                 =====================================
+                VARIANT DETECTION
                 =====================================
-                VARIANT DETECTION (CRITICAL)
-                =====================================
 
-                If rows share the same ID:
+                If rows share same PRODUCT ID:
 
-                → they are variants of the SAME product.
+                → they belong to the SAME product family.
 
-                You MUST detect what makes them different.
+                IMPORTANT:
 
-                Possible variant differences include:
+                Use PRODUCT IMAGES as the PRIMARY
+                source for identifying variants.
+
+                Look for visual differences such as:
+
                 - color
                 - material
-                - size
-                - capacity
                 - finish
-                - dimensions
-                - style
+                - lid type
+                - texture
+                - shape
+                - capacity
                 - packaging
+
+                THEN use nearby codes/numbers
+                as supporting evidence.
+
+                Example:
+
+                Rows may contain:
+
+                106
+                103
+                128
+
+                These MAY represent:
+                - color codes
+                - material codes
+                - size codes
+
+                DO NOT assume globally.
+
+                Infer meaning from:
+                - image differences
+                - repeated patterns
+                - product appearance
+
+                If uncertain:
+
+                Use safe fallback:
+
+                "attributes": {{
+                    "Vendor Code": "106"
+                }}
+
+                NEVER return:
+                - Variant 1
+                - Variant 2
+                - Variant 3
+
+                ALWAYS return meaningful attributes.
 
                 =====================================
                 VISUAL DIFFERENCE DETECTION
