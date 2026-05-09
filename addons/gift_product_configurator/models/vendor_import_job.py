@@ -145,11 +145,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PROCESS START → Job {self.id}")
 
         try:
-            # if self.state == 'review':
-            #     self.state = 'processing'
-
-            # if self.state == 'draft':
-            #     self.state = 'processing'
 
             self._process_step()
 
@@ -722,10 +717,17 @@ class VendorImportJob(models.Model):
                     return
 
 
-                total_rows = (
-                    self.last_processed_product_index
-                    or 0
-                )
+                try:
+
+                    extracted_rows = json.loads(
+                        self.extracted_text or "[]"
+                    )
+
+                    total_rows = len(extracted_rows)
+
+                except Exception:
+
+                    total_rows = 0
 
 
                 _logger.warning(
@@ -752,6 +754,27 @@ class VendorImportJob(models.Model):
             # =============================================
             # CREATE
             # =============================================
+
+           
+            #-----------EXCEL URL QUEUE PROCESSOR-------------
+          
+            if self.excel_url_processing:
+
+                try:
+
+                    _logger.warning(
+                        "[URL QUEUE PROCESSING]"
+                    )
+
+                    self.process_excel_url_queue()
+
+                except Exception as e:
+
+                    _logger.exception(
+                        f"[URL QUEUE ERROR] {str(e)}"
+                    )
+
+            #-----------EXCEL ROW PROCESSOR-------------
 
             if self.state == 'excel_creating':
 
@@ -781,27 +804,6 @@ class VendorImportJob(models.Model):
 
                 self.flush_recordset()
                 self.env.cr.commit()
-
-
-            # =============================================
-            # URL QUEUE PROCESSOR
-            # =============================================
-
-            if self.excel_url_processing:
-
-                try:
-
-                    _logger.warning(
-                        "[URL QUEUE PROCESSING]"
-                    )
-
-                    self.process_excel_url_queue()
-
-                except Exception as e:
-
-                    _logger.exception(
-                        f"[URL QUEUE ERROR] {str(e)}"
-                    )
 
 
             # =============================================
@@ -1353,8 +1355,7 @@ class VendorImportJob(models.Model):
         # MOVE TO NEXT STEP
         # =====================================================
 
-        # self.state = "url_ai"
-        if self.url_parse_index >= len(raw_data):
+        if self.url_parse_index >= len(structured_data):
 
             _logger.warning(
                 "[URL PARSE] FINAL BATCH READY"
@@ -1495,6 +1496,89 @@ class VendorImportJob(models.Model):
                 if not row_text_parts:
                     continue
 
+                # =================================
+                # EARLY URL INTERCEPTION
+                # =================================
+
+                detected_url = None
+
+                for part in row_text_parts:
+
+                    part = str(part or "")
+
+                    urls = re.findall(
+
+                        r'https?://[^\s|]+',
+
+                        part
+                    )
+
+                    if urls:
+
+                        detected_url = urls[0].strip()
+
+                        break
+
+
+                if detected_url:
+
+                    _logger.warning(
+
+                        f"[URL ROW DETECTED] "
+
+                        f"{detected_url}"
+                    )
+
+
+                    existing_queue = []
+
+                    if self.excel_url_queue:
+
+                        try:
+
+                            existing_queue = json.loads(
+                                self.excel_url_queue
+                            )
+
+                        except Exception:
+
+                            existing_queue = []
+
+
+                    existing_queue.append({
+
+                        "detected_url": detected_url,
+
+                        "row_index": global_index + 1,
+
+                        "vendor_id": (
+                            self.partner_id.id
+                            if self.partner_id
+                            else False
+                        ),
+                    })
+
+
+                    self.excel_url_queue = json.dumps(
+                        existing_queue
+                    )
+
+                    self.excel_url_processing = True
+
+
+                    _logger.warning(
+
+                        f"[URL QUEUED] "
+
+                        f"total={len(existing_queue)}"
+                    )
+
+
+                    global_index += 1
+
+                    current_count += 1
+
+                    continue
 
                 # =================================
                 # GLOBAL INDEX TRACKING
@@ -1729,13 +1813,12 @@ class VendorImportJob(models.Model):
                 - USE SIMILAR ID/SKU
                 """
 
-
                 row_images = []
 
 
-                # =================================
+                # ==================================
                 # EMBEDDED IMAGE
-                # =================================
+                # ==================================
 
                 for cell in row:
 
@@ -4404,15 +4487,51 @@ class VendorImportJob(models.Model):
                     'parent_id': parent_category.id
                 })
 
+            # ================= FINGERPRINT=================
+
+            variant_group = (
+
+                product.get("variant_group")
+
+                or
+
+                name
+            )
+
+            variant_group = str(
+                variant_group
+            ).strip().upper()
+
+
+            vendor_fingerprint = (
+                f"{vendor_id}_{variant_group}"
+            )
+
+
             # ================= DUPLICATE CHECK =================
+
             existing = product_obj.search([
-                ('name', 'ilike', name.strip()),
-                ('vendor_id', '=', vendor_id)
+
+                (
+                    'vendor_fingerprint',
+                    '=',
+                    vendor_fingerprint
+                )
+
             ], limit=1)
 
+
             if existing:
-                _logger.warning(f"SKIPPED DUPLICATE → {name}")
+
+                _logger.warning(
+
+                    f"[URL DUPLICATE SKIP] "
+
+                    f"{vendor_fingerprint}"
+                )
+
                 skipped_count += 1
+
                 continue
 
             vals = {
@@ -4422,6 +4541,7 @@ class VendorImportJob(models.Model):
                 'sale_ok': True,
                 'website_published': False,
                 'vendor_id': vendor_id,
+                'vendor_fingerprint': vendor_fingerprint,
             }
 
             # ================= IMAGE =================
@@ -4816,6 +4936,15 @@ class VendorImportJob(models.Model):
                         })
 
 
+                   # =========================================
+                    # FINGERPRINT
+                    # =========================================
+
+                    vendor_fingerprint = (
+                        f"{vendor_id}_{variant_group}"
+                    )
+
+
                     # =========================================
                     # DUPLICATE CHECK
                     # =========================================
@@ -4823,19 +4952,12 @@ class VendorImportJob(models.Model):
                     product = product_obj.search([
 
                         (
-                            'default_code',
+                            'vendor_fingerprint',
                             '=',
-                            variant_group
-                        ),
-
-                        (
-                            'vendor_id',
-                            '=',
-                            vendor_id
+                            vendor_fingerprint
                         )
 
                     ], limit=1)
-
 
                     # =========================================
                     # CREATE PRODUCT
@@ -4863,6 +4985,9 @@ class VendorImportJob(models.Model):
 
                             'vendor_id':
                                 vendor_id,
+
+                            'vendor_fingerprint':
+                                vendor_fingerprint,
                         }
 
 
@@ -5312,17 +5437,25 @@ class VendorImportJob(models.Model):
 
         self.excel_url_index = 0
 
+    
     #============Excel URL processor==========================
     def process_excel_url_queue(self):
 
         import json
 
         if not self.excel_url_queue:
+
+            _logger.warning(
+                "[URL QUEUE] EMPTY"
+            )
+
             return
+
 
         rows = json.loads(
             self.excel_url_queue
         )
+
 
         start = self.excel_url_index or 0
 
@@ -5331,6 +5464,22 @@ class VendorImportJob(models.Model):
         end = min(
             start + BATCH_SIZE,
             len(rows)
+        )
+
+
+        _logger.warning(
+
+            f"[URL QUEUE START] "
+
+            f"{start} -> {end} | "
+
+            f"total={len(rows)}"
+        )
+
+        vendor_id = (
+            self.partner_id.id
+            if self.partner_id
+            else False
         )
 
         for idx in range(start, end):
@@ -5343,29 +5492,95 @@ class VendorImportJob(models.Model):
                     "detected_url"
                 )
 
+
                 if not product_url:
+
+                    _logger.warning(
+                        f"[URL QUEUE SKIP] "
+                        f"NO URL AT INDEX {idx}"
+                    )
+
+                    continue
+
+                existing_job = self.env[
+                    'vendor.import.job'
+                ].search([
+
+                    ('data_url', '=', product_url),
+
+                    ('state', '!=', 'failed')
+
+                ], limit=1)
+
+
+                if existing_job:
+
+                    _logger.warning(
+
+                        f"[URL JOB EXISTS] "
+
+                        f"{product_url}"
+                    )
+
+                    # ====================================
+                    # ADVANCE QUEUE INDEX
+                    # ====================================
+
+                    self.excel_url_index = idx + 1
+
+                    self.flush_recordset()
+
+                    self.env.cr.commit()
+
                     continue
 
                 # ====================================
-                # EXISTING URL WORKFLOW
+                # CREATE ISOLATED URL JOB
                 # ====================================
 
-                self.write({
+                new_job = self.env[
+                    'vendor.import.job'
+                ].create({
 
-                    'product_url':
+                    'name':
+                        f"URL Import - {idx}",
+
+                    'partner_id':
+                        vendor_id,
+
+                    'source_type':
+                        'url',
+
+                    'data_url':
                         product_url,
 
                     'state':
-                        'url_parsing',
+                        'url_scraping',
                 })
 
-                # IMPORTANT:
-                # call your existing method
-                self.action_parse_url()
+
+                _logger.warning(
+
+                    f"[URL JOB CREATED] "
+
+                    f"job={new_job.id} | "
+
+                    f"url={product_url}"
+                )
+
+
+                # ====================================
+                # SAVE PROGRESS
+                # ====================================
 
                 self.excel_url_index = idx + 1
 
+                self.flush_recordset()
+
                 self.env.cr.commit()
+
+                #self.env.invalidate_all()
+
 
             except Exception as e:
 
@@ -5375,11 +5590,16 @@ class VendorImportJob(models.Model):
 
                 self.env.cr.rollback()
 
+ 
         # =========================================
         # COMPLETE
         # =========================================
 
         if self.excel_url_index >= len(rows):
+
+            _logger.warning(
+                "[URL QUEUE COMPLETE]"
+            )
 
             self.excel_url_queue = False
 
@@ -5387,8 +5607,14 @@ class VendorImportJob(models.Model):
 
             self.excel_url_index = 0
 
+            self.flush_recordset()
 
-    #==========create excel product==========================
+            self.env.cr.commit()
+
+            self.env.invalidate_all()
+
+
+    #==========create excel product===========================
     def create_products_excel(self):
 
         import json
@@ -5447,26 +5673,6 @@ class VendorImportJob(models.Model):
             "products",
             []
         )
-
-        # ============================================
-        # ROUTE URL PRODUCTS
-        # ============================================
-
-        routed = self._route_excel_rows(
-            products
-        )
-
-        products = routed["normal"]
-
-        self._queue_excel_urls(
-            routed["url"]
-        )
-
-        if self.excel_url_processing:
-
-            _logger.warning(
-                "[URL QUEUE DETECTED]"
-            )
 
 
         _logger.warning(
@@ -5600,9 +5806,6 @@ class VendorImportJob(models.Model):
                         raw_name.upper()
                     )
 
-            if not group_id:
-
-                group_id = f"UNKNOWN_{len(grouped_products)+1}"
 
             grouped_products.setdefault(
 
@@ -5700,8 +5903,6 @@ class VendorImportJob(models.Model):
 
                 ).strip()
 
-                if not name:
-                    name = f"Product {group_id}"
 
                 description = (
 
@@ -5767,14 +5968,9 @@ class VendorImportJob(models.Model):
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                vendor_id = (
-                    self.partner_id.id
-                    if self.partner_id
-                    else False
-                )
+                vendor_id = self.partner_id.id if self.partner_id else False
 
                 product = False
-
 
                 # =====================================================
                 # 1. STRICT FINGERPRINT MATCH
@@ -5815,8 +6011,7 @@ class VendorImportJob(models.Model):
                             f"| product_id={product.id}"
                         )
 
-
-                # =====================================================
+                 # =====================================================
                 # 2. FALLBACK SKU MATCH
                 # =====================================================
 
@@ -5864,6 +6059,7 @@ class VendorImportJob(models.Model):
                 else:
                     is_new_product = True
 
+
                 # =================================================
                 # CREATE PARENT
                 # =================================================
@@ -5888,9 +6084,9 @@ class VendorImportJob(models.Model):
                         'website_published':
                             False,
 
-                        # ======================================
+                        # =====================================
                         # SAVE VENDOR LINK
-                        # ======================================
+                        # =====================================
 
                         'vendor_id':
                             vendor_id,
@@ -5920,11 +6116,11 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
-                    created_count += 1
-
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
-                   
+                    created_count += 1
+
+
                     _logger.warning(
 
                         f"[EXCEL CREATED] "
@@ -5949,10 +6145,11 @@ class VendorImportJob(models.Model):
 
                         f"| product_id={product.id}"
                     )
-             
-                # =================================================
+              
+
+                # ==================================================
                 # VARIANTS
-                # =================================================
+                # ==================================================
 
                 for idx, item in enumerate(group_items):
 
@@ -6008,7 +6205,29 @@ class VendorImportJob(models.Model):
                     ).strip()
 
                     if not attr_value:
-                        continue
+
+                        detected_color = self._detect_basic_image_color(
+                            item.get("image")
+                        )
+
+                        if detected_color:
+
+                            variant_attribute_name = "Color"
+
+                            attr_value = detected_color
+
+                            _logger.warning(
+
+                                f"[IMAGE COLOR FALLBACK] "
+
+                                f"{detected_color}"
+                            )
+
+                        else:
+
+                            attr_value = (
+                                f"Variant {idx+1}"
+                            )
 
                     _logger.warning(
 
@@ -6162,7 +6381,7 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # FIND VARIANT RECORD
+                    # VARIANT IMAGE
                     # =============================================
 
                     variant_record = self.env[
@@ -6184,13 +6403,11 @@ class VendorImportJob(models.Model):
                     ], limit=1)
 
 
-                    # =============================================
-                    # VARIANT IMAGE
-                    # =============================================
-
                     if variant_record:
 
-                        variant_image = item.get("image")
+                        variant_image = item.get(
+                            "image"
+                        )
 
 
                         if variant_image:
@@ -6222,8 +6439,6 @@ class VendorImportJob(models.Model):
                 self.flush_recordset()
 
                 self.env.cr.commit()
-
-                self.env.invalidate_all()
                 
 
                 _logger.warning(
@@ -6271,26 +6486,23 @@ class VendorImportJob(models.Model):
         if self.excel_created_index >= len(grouped_keys):
 
             _logger.warning(
-                "[EXCEL IMPORT COMPLETE]"
+
+                "[EXCEL FLOW] "
+
+                "GROUP BATCH COMPLETE "
+                "→ RETURN TO excel_parsing"
             )
 
+            # reset AI/create cycle
             self.excel_created_index = 0
             self.excel_ai_index = 0
 
+            # IMPORTANT
+            # clear AI batch only
             self.ai_response = False
 
-            # =========================================
-            # RESET FLOW
-            # =========================================
-
-
-            if self.excel_url_processing:
-
-                self.state = 'url_scraping'
-
-            else:
-
-                self.state = 'done'
+            # continue parser batching
+            self.state = 'excel_parsing'
 
             _logger.warning(
 
@@ -6311,6 +6523,78 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
+
+
+    #====Excel variant mapping==================================
+    def _detect_basic_image_color(self, image_data):
+
+        try:
+
+            import base64
+            from io import BytesIO
+
+            from PIL import Image
+
+            img = Image.open(
+                BytesIO(
+                    base64.b64decode(image_data)
+                )
+            ).convert("RGB")
+
+            img = img.resize((50, 50))
+
+            colors = img.getcolors(
+                50 * 50
+            )
+
+            if not colors:
+                return False
+
+            dominant = max(
+                colors,
+                key=lambda x: x[0]
+            )[1]
+
+            r, g, b = dominant
+
+
+            # =====================================
+            # BASIC COLOR MAPPING
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "White"
+
+            if r < 60 and g < 60 and b < 60:
+                return "Black"
+
+            if r > 180 and g < 120 and b < 80:
+                return "Orange"
+
+            if r > 180 and g < 80 and b < 80:
+                return "Red"
+
+            if b > 150 and r < 120:
+                return "Blue"
+
+            if g > 140 and r < 120:
+                return "Green"
+
+            if r > 150 and g > 150 and b < 120:
+                return "Yellow"
+
+            return "Standard"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
 
 
     #-----URL API FLOW-------------------------------------------
@@ -7371,7 +7655,7 @@ class VendorImportJob(models.Model):
         return pages
     
 
-    #======apify url fetch/scrapp products===============
+    #======apify url fetch/scrapp products==================
     
     def _run_apify_actor(self, url):
 
@@ -7380,7 +7664,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
