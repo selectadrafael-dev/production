@@ -1723,6 +1723,91 @@ class VendorImportJob(models.Model):
                 - USE SIMILAR ID/SKU
                 """
 
+                # =================================
+                # URL DETECTION
+                # =================================
+
+                detected_url = None
+
+                for part in row_text_parts:
+
+                    part = str(part or "").strip()
+
+                    if (
+
+                        part.startswith("http://")
+
+                        or
+
+                        part.startswith("https://")
+
+                    ):
+
+                        detected_url = part
+
+                        break
+
+
+                # =================================
+                # URL QUEUE INTERCEPTION
+                # =================================
+
+                if detected_url:
+
+                    _logger.warning(
+
+                        f"[URL ROW DETECTED] "
+
+                        f"{detected_url}"
+                    )
+
+
+                    existing_queue = []
+
+                    if self.excel_url_queue:
+
+                        try:
+
+                            existing_queue = json.loads(
+                                self.excel_url_queue
+                            )
+
+                        except Exception:
+
+                            existing_queue = []
+
+
+                    existing_queue.append({
+
+                        "detected_url": detected_url,
+
+                        "row_index": global_index,
+
+                        "raw_text": row_text,
+
+                        "price": price,
+
+                        "stock": stock,
+                    })
+
+
+                    self.excel_url_queue = json.dumps(
+                        existing_queue
+                    )
+
+                    self.excel_url_processing = True
+
+
+                    _logger.warning(
+
+                        f"[URL QUEUED] "
+
+                        f"total={len(existing_queue)}"
+                    )
+
+
+                    continue
+
 
                 row_images = []
 
