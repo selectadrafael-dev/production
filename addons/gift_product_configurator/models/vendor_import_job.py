@@ -4371,6 +4371,19 @@ class VendorImportJob(models.Model):
                 )
 
                 return text
+            
+
+            # =========================================
+            # RATE LIMIT DETECTED
+            # =========================================
+
+            if response.status_code == 429:
+
+                _logger.warning(
+                    "[GOOGLE RATE LIMIT HIT]"
+                )
+
+                return text
 
 
             # =========================================
@@ -4509,7 +4522,76 @@ class VendorImportJob(models.Model):
             'description_sale': az_desc
         })
 
-        _logger.warning(f"[TRANSLATION DONE] product={product.id}")
+
+        # =========================================
+        # DETECT REAL TRANSLATION
+        # =========================================
+
+        translation_changed = False
+
+        try:
+
+            translated_product = product.with_context(
+                lang='ar_001'
+            )
+
+            translated_name = translated_product.name or ''
+
+            original_name = product.name or ''
+
+            translated_desc = (
+                translated_product.description_sale or ''
+            )
+
+            original_desc = (
+                product.description_sale or ''
+            )
+
+            # =====================================
+            # NAME CHANGED
+            # =====================================
+
+            if translated_name != original_name:
+
+                translation_changed = True
+
+            # =====================================
+            # DESCRIPTION CHANGED
+            # =====================================
+
+            if translated_desc != original_desc:
+
+                translation_changed = True
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[TRANSLATION CHECK FAILED] "
+
+                f"{str(e)}"
+            )
+
+
+        if translation_changed:
+
+            _logger.warning(
+
+                f"[TRANSLATION SUCCESS] "
+
+                f"product={product.id}"
+            )
+
+        else:
+
+            _logger.warning(
+
+                f"[TRANSLATION NO-CHANGE] "
+
+                f"product={product.id}"
+            )
+
+
 
     #============product translation extended================
     def _smart_translate(self, text, lang):
