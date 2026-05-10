@@ -4327,123 +4327,68 @@ class VendorImportJob(models.Model):
     #============enforce translation=================================
 
     #============enforce translation=================================
+
+    #============enforce translation=================================
     def _force_translate(self, text, target_lang):
 
-        import requests
-        import json
+        from openai import OpenAI
 
         if not text:
             return text
 
         try:
 
-            response = requests.get(
-
-                "https://translate.googleapis.com/translate_a/single",
-
-                params={
-
-                    "client": "gtx",
-
-                    "sl": "en",
-
-                    "tl": target_lang,
-
-                    "dt": "t",
-
-                    "q": text,
-                },
-
-                timeout=20
+            api_key = self.env[
+                'ir.config_parameter'
+            ].sudo().get_param(
+                'openai.api.key'
             )
 
-            # =========================================
-            # STATUS CHECK
-            # =========================================
-
-            if response.status_code != 200:
+            if not api_key:
 
                 _logger.warning(
-
-                    f"[GOOGLE TRANSLATE STATUS FAILED] "
-
-                    f"status={response.status_code}"
-                )
-
-                return text
-            
-
-            # =========================================
-            # RATE LIMIT DETECTED
-            # =========================================
-
-            if response.status_code == 429:
-
-                _logger.warning(
-                    "[GOOGLE RATE LIMIT HIT]"
+                    "[OPENAI TRANSLATE] MISSING API KEY"
                 )
 
                 return text
 
 
-            # =========================================
-            # SAFE JSON
-            # =========================================
-
-            try:
-
-                result = response.json()
-
-            except Exception:
-
-                _logger.warning(
-
-                    f"[GOOGLE JSON FAILED] "
-
-                    f"response={response.text[:300]}"
-                )
-
-                return text
+            client = OpenAI(
+                api_key=api_key
+            )
 
 
-            # =========================================
-            # SAFE EXTRACTION
-            # =========================================
+            prompt = f"""
+            Translate the following text into {target_lang}.
 
-            translated = ""
+            Rules:
+            - Return ONLY the translated text
+            - Preserve formatting
+            - Preserve product terminology
+            - Do not explain anything
 
-            if (
-
-                isinstance(result, list)
-
-                and result
-
-                and isinstance(result[0], list)
-
-            ):
-
-                for item in result[0]:
-
-                    if (
-
-                        isinstance(item, list)
-
-                        and item
-
-                        and item[0]
-
-                    ):
-
-                        translated += str(item[0])
+            TEXT:
+            {text}
+            """
 
 
-            translated = translated.strip()
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt
+            )
+
+
+            translated = (
+                response.output_text or ''
+            ).strip()
 
 
             if not translated:
 
                 _logger.warning(
-                    "[GOOGLE EMPTY TRANSLATION]"
+                    "[OPENAI TRANSLATE EMPTY]"
                 )
 
                 return text
@@ -4451,7 +4396,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"[GOOGLE TRANSLATION SUCCESS] "
+                f"[OPENAI TRANSLATION SUCCESS] "
 
                 f"lang={target_lang}"
             )
@@ -4463,7 +4408,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"[GOOGLE FALLBACK FAILED] "
+                f"[OPENAI TRANSLATE FAILED] "
 
                 f"{str(e)}"
             )
