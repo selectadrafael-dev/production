@@ -4325,10 +4325,6 @@ class VendorImportJob(models.Model):
         return None
     
     #============enforce translation=================================
-
-    #============enforce translation=================================
-
-    #============enforce translation=================================
     def _force_translate(self, text, target_lang):
 
         from openai import OpenAI
@@ -4568,7 +4564,6 @@ class VendorImportJob(models.Model):
             )
 
 
-
     #============product translation extended================
     def _smart_translate(self, text, lang):
 
@@ -4664,15 +4659,15 @@ class VendorImportJob(models.Model):
 
         for idx in range(start_index, end_index):
 
-            product = products[idx]
+            product_data = products[idx]
 
-            name = product.get("name")
+            name = product_data.get("name")
             if not name:
                 skipped_count += 1
                 continue
 
-            description = product.get("description", "")
-            raw_category = (product.get("category") or "").lower()
+            description = product_data.get("description", "")
+            raw_category = (product_data.get("category") or "").lower()
 
             # ================= CATEGORY =================
             mapped_category = "General"
@@ -4696,7 +4691,7 @@ class VendorImportJob(models.Model):
 
             variant_group = (
 
-                product.get("variant_group")
+                product_data.get("variant_group")
 
                 or
 
@@ -4750,7 +4745,7 @@ class VendorImportJob(models.Model):
             }
 
             # ================= IMAGE =================
-            image_url = product.get("image")
+            image_url = product_data.get("image")
 
             if image_url and isinstance(image_url, str) and image_url.startswith("http"):
 
@@ -4800,6 +4795,26 @@ class VendorImportJob(models.Model):
                 ).create(vals)
 
                 self._apply_product_translation(product)
+                # =========================================
+                # URL VARIANTS
+                # =========================================
+
+                variants = product_data.get(
+                    "variants",
+                    []
+                )
+
+
+                if not variants:
+
+                    variants = [{
+
+                        "attributes": {
+
+                            "Variant": name
+                        }
+
+                    }]
                 created_count += 1
 
             except Exception as e:
@@ -5338,6 +5353,55 @@ class VendorImportJob(models.Model):
                                 })
 
 
+                                # =========================================
+                                # TRANSLATE VARIANT VALUE
+                                # =========================================
+
+                                try:
+
+                                    for lang_code in ['ru_RU', 'az_AZ']:
+
+                                        translated_variant = self._force_translate(
+
+                                            str(attr_value),
+
+                                            lang_code
+                                        )
+
+
+                                        if translated_variant:
+
+                                            value.with_context(
+                                                lang=lang_code
+                                            ).write({
+
+                                                'name': translated_variant
+                                            })
+
+
+                                            _logger.warning(
+
+                                                f"[PDF VARIANT TRANSLATED] "
+
+                                                f"{attr_value} "
+
+                                                f"-> "
+
+                                                f"{translated_variant} "
+
+                                                f"({lang_code})"
+                                            )
+
+                                except Exception as e:
+
+                                    _logger.warning(
+
+                                        f"[PDF VARIANT TRANSLATION ERROR] "
+
+                                        f"{str(e)}"
+                                    )
+
+
                             line = self.env[
                                 'product.template.attribute.line'
                             ].search([
@@ -5512,6 +5576,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
 
     #=========product duplicate helper=======================
 
@@ -6511,7 +6576,6 @@ class VendorImportJob(models.Model):
 
                     ], limit=1)
 
-
                     if not value:
 
                         value = attribute_value_obj.create({
@@ -6520,6 +6584,55 @@ class VendorImportJob(models.Model):
 
                             'attribute_id': attribute.id
                         })
+
+
+                        # =========================================
+                        # TRANSLATE VARIANT VALUE
+                        # =========================================
+
+                        try:
+
+                            for lang_code in ['ru_RU', 'az_AZ']:
+
+                                translated_variant = self._force_translate(
+
+                                    attr_value,
+
+                                    lang_code
+                                )
+
+
+                                if translated_variant:
+
+                                    value.with_context(
+                                        lang=lang_code
+                                    ).write({
+
+                                        'name': translated_variant
+                                    })
+
+
+                                    _logger.warning(
+
+                                        f"[VARIANT TRANSLATED] "
+
+                                        f"{attr_value} "
+
+                                        f"-> "
+
+                                        f"{translated_variant} "
+
+                                        f"({lang_code})"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[VARIANT TRANSLATION ERROR] "
+
+                                f"{str(e)}"
+                            )
 
 
                         _logger.warning(

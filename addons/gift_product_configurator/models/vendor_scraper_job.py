@@ -1,4 +1,4 @@
-#============old working logic==============
+#==================stable modified=================================
 from odoo import models, fields
 import base64
 import logging
@@ -20,6 +20,7 @@ import fitz
 _logger = logging.getLogger(__name__)
 
 class ProductTemplate(models.Model):
+
     _inherit = 'product.template'
 
     vendor_id = fields.Many2one(
@@ -27,6 +28,10 @@ class ProductTemplate(models.Model):
         string="Vendor"
     )
 
+    vendor_fingerprint = fields.Char(
+        index=True,
+        copy=False
+    )
 
 # ✅ Extend existing model
 class ResPartner(models.Model):
@@ -88,9 +93,7 @@ class VendorImportJob(models.Model):
     url_blocks_json = fields.Text(
         string="URL Blocks JSON"
     )
-    
-
-    
+        
     excel_parse_index = fields.Integer(
         default=0
     )
@@ -101,6 +104,16 @@ class VendorImportJob(models.Model):
         ("url", "URL"),
     ])
 
+
+    excel_url_queue = fields.Text()
+
+    excel_url_index = fields.Integer(
+        default=0
+    )
+
+    excel_url_processing = fields.Boolean(
+        default=False
+    )
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -133,11 +146,6 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PROCESS START → Job {self.id}")
 
         try:
-            # if self.state == 'review':
-            #     self.state = 'processing'
-
-            # if self.state == 'draft':
-            #     self.state = 'processing'
 
             self._process_step()
 
@@ -651,11 +659,6 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NEW BATCH READY → excel_ai"
                     )
 
-                    # reset AI/create cycle
-                    self.excel_ai_index = 0
-                    self.excel_created_index = 0
-                    self.ai_response = False
-
                     self.state = 'excel_ai'
 
                 else:
@@ -710,10 +713,17 @@ class VendorImportJob(models.Model):
                     return
 
 
-                total_rows = (
-                    self.last_processed_product_index
-                    or 0
-                )
+                try:
+
+                    extracted_rows = json.loads(
+                        self.extracted_text or "[]"
+                    )
+
+                    total_rows = len(extracted_rows)
+
+                except Exception:
+
+                    total_rows = 0
 
 
                 _logger.warning(
@@ -737,10 +747,30 @@ class VendorImportJob(models.Model):
 
                 return
 
-
             # =============================================
             # CREATE
             # =============================================
+
+           
+            #-----------EXCEL URL QUEUE PROCESSOR-------------
+          
+            if self.excel_url_processing:
+
+                try:
+
+                    _logger.warning(
+                        "[URL QUEUE PROCESSING]"
+                    )
+
+                    self.process_excel_url_queue()
+
+                except Exception as e:
+
+                    _logger.exception(
+                        f"[URL QUEUE ERROR] {str(e)}"
+                    )
+
+            #-----------EXCEL ROW PROCESSOR-------------
 
             if self.state == 'excel_creating':
 
@@ -751,7 +781,6 @@ class VendorImportJob(models.Model):
                 except Exception as e:
 
                     _logger.exception(
-
                         f"EXCEL CREATE FAILED → {str(e)}"
                     )
 
@@ -762,7 +791,6 @@ class VendorImportJob(models.Model):
 
                     return
 
-
                 _logger.warning(
 
                     f"[EXCEL CREATE STATE] "
@@ -770,13 +798,19 @@ class VendorImportJob(models.Model):
                     f"{self.state}"
                 )
 
-
                 self.flush_recordset()
                 self.env.cr.commit()
 
+
+            # =============================================
+            # RETURN
+            # =============================================
+
+            if self.state == 'excel_creating' \
+                    or self.excel_url_processing:
+
                 return
-
-
+        
         # =================================================
         # PDF FLOW
         # =================================================
@@ -1317,8 +1351,7 @@ class VendorImportJob(models.Model):
         # MOVE TO NEXT STEP
         # =====================================================
 
-        # self.state = "url_ai"
-        if self.url_parse_index >= len(raw_data):
+        if self.url_parse_index >= len(structured_data):
 
             _logger.warning(
                 "[URL PARSE] FINAL BATCH READY"
@@ -1459,6 +1492,89 @@ class VendorImportJob(models.Model):
                 if not row_text_parts:
                     continue
 
+                # =================================
+                # EARLY URL INTERCEPTION
+                # =================================
+
+                detected_url = None
+
+                for part in row_text_parts:
+
+                    part = str(part or "")
+
+                    urls = re.findall(
+
+                        r'https?://[^\s|]+',
+
+                        part
+                    )
+
+                    if urls:
+
+                        detected_url = urls[0].strip()
+
+                        break
+
+
+                if detected_url:
+
+                    _logger.warning(
+
+                        f"[URL ROW DETECTED] "
+
+                        f"{detected_url}"
+                    )
+
+
+                    existing_queue = []
+
+                    if self.excel_url_queue:
+
+                        try:
+
+                            existing_queue = json.loads(
+                                self.excel_url_queue
+                            )
+
+                        except Exception:
+
+                            existing_queue = []
+
+
+                    existing_queue.append({
+
+                        "detected_url": detected_url,
+
+                        "row_index": global_index + 1,
+
+                        "vendor_id": (
+                            self.partner_id.id
+                            if self.partner_id
+                            else False
+                        ),
+                    })
+
+
+                    self.excel_url_queue = json.dumps(
+                        existing_queue
+                    )
+
+                    self.excel_url_processing = True
+
+
+                    _logger.warning(
+
+                        f"[URL QUEUED] "
+
+                        f"total={len(existing_queue)}"
+                    )
+
+
+                    global_index += 1
+
+                    current_count += 1
+
+                    continue
 
                 # =================================
                 # GLOBAL INDEX TRACKING
@@ -1693,13 +1809,12 @@ class VendorImportJob(models.Model):
                 - USE SIMILAR ID/SKU
                 """
 
-
                 row_images = []
 
 
-                # =================================
+                # ==================================
                 # EMBEDDED IMAGE
-                # =================================
+                # ==================================
 
                 for cell in row:
 
@@ -3582,7 +3697,6 @@ class VendorImportJob(models.Model):
                     f"| images={len(images)}"
                 )
 
-
                 prompt = f"""
                 You are a structured Excel product parser.
 
@@ -3592,7 +3706,7 @@ class VendorImportJob(models.Model):
                 COLUMN UNDERSTANDING (CRITICAL)
                 =====================================
 
-                The row contains mixed values like:
+                The row could contain mixed values like:
 
                 - ID (e.g. 94601, 12345)
                 - Range (e.g. 2-66, 11-00)
@@ -3605,7 +3719,11 @@ class VendorImportJob(models.Model):
 
                 1. IDENTIFY PRODUCT ID
                 - Usually numeric (e.g. 94601)
-                - Column name may vary (KOD, SKU, ID, CODE)
+                - Column name may vary:
+                    - KOD
+                    - SKU
+                    - ID
+                    - CODE
 
                 2. IDENTIFY PRODUCT NAME
                 - MUST NOT be:
@@ -3615,29 +3733,217 @@ class VendorImportJob(models.Model):
                     - dates
                     - headers
 
-                - If unclear:
-                    → generate:
-                    Product <ID>
+                - Product names should describe the ACTUAL product type.
 
+               GOOD:
+                - Sports Bottle
+                - Metal Pen
+                - Travel Mug
+                - Drawstring Bag
+
+                If the Excel already contains a valid product name:
+                - preserve and use it
+
+                If the Excel does NOT contain a real product name:
+                - intelligently generate one using:
+                    - Product <ID>
+                    - category clues
+                    - image appearance
+                    - surrounding row data
+
+                Fallback naming is allowed when necessary.
+
+                GOOD fallback examples:
+                - Product 94601
+                - Bottle 94646
+                - Pen 92070
+
+                However:
+
+                If rows belong to the SAME variant_group,
+                you MUST still detect and extract the REAL variant difference.
+
+                Example:
+
+                Parent:
+                Product 94646
+
+                Variants:
+                - White
+                - Orange
+                - Black
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+
+                when a real difference can be visually or textually identified.
+                
                 =====================================
-                VARIANT GROUPING
+                VARIANT GROUPING (VERY IMPORTANT)
                 =====================================
 
                 - SAME ID = SAME variant_group
                 - DIFFERENT ID = DIFFERENT PRODUCT
                 - NEVER leave variant_group empty
 
-                =====================================
+                Rows sharing the same:
+                - ID
+                - grouped code
+                - SKU group
+
+                should be treated as variants of ONE parent product.
+
+                 =====================================
                 VARIANT DETECTION
                 =====================================
 
-                If rows share same ID:
+                If rows share same PRODUCT ID:
 
-                → they are variants
+                → they belong to the SAME product family.
 
-                Put differences into:
+                IMPORTANT:
 
-                "attributes"
+                Use PRODUCT IMAGES as the PRIMARY
+                source for identifying variants.
+
+                Look for visual differences such as:
+
+                - color
+                - material
+                - finish
+                - lid type
+                - texture
+                - shape
+                - capacity
+                - packaging
+
+                THEN use nearby codes/numbers
+                as supporting evidence.
+
+                Example:
+
+                Rows may contain:
+
+                106
+                103
+                128
+
+                These MAY represent:
+                - color codes
+                - material codes
+                - size codes
+
+                DO NOT assume globally.
+
+                Infer meaning from:
+                - image differences
+                - repeated patterns
+                - product appearance
+
+                If uncertain:
+
+                Use safe fallback:
+
+                "attributes": {{
+                    "Vendor Code": "106"
+                }}
+
+                NEVER return:
+                - Variant 1
+                - Variant 2
+                - Variant 3
+
+                ALWAYS return meaningful attributes.
+
+                =====================================
+                VISUAL DIFFERENCE DETECTION
+                =====================================
+
+                If product images exist:
+
+                You MUST visually inspect the images
+                to identify the distinguishing feature.
+
+                Example:
+
+                If grouped products show:
+                - white bottle
+                - orange bottle
+                - black bottle
+
+                Return:
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "White"
+                }}
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "Orange"
+                }}
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+                - Product 94601
+
+                =====================================
+                PARENT PRODUCT CONSISTENCY
+                =====================================
+
+                When multiple rows belong to the same
+                variant_group:
+
+                - The parent product name MUST remain consistent.
+                - ONLY the variant fields should change.
+
+                GOOD:
+
+                Sports Bottle
+                → White
+                → Orange
+                → Black
+
+                BAD:
+
+                White Bottle
+                Orange Bottle
+                Black Bottle
+
+                =====================================
+                ATTRIBUTE EXTRACTION
+                =====================================
+
+                Put distinguishing values into:
+
+                - color
+                - material
+                - size
+                - capacity
+                - style
+
+                Only use generic "Variant"
+                if absolutely no real difference can be detected.
+
+                =====================================
+                PRICE & STOCK
+                =====================================
+
+                - Extract numeric price carefully
+                - Extract stock carefully
+                - Ignore ranges like:
+                    - 2-66
+                    - 11-00
+
+                =====================================
+                LINKS
+                =====================================
+
+                If a row contains a product URL:
+                - preserve it
+                - never use URL as product name
 
                 =====================================
                 OUTPUT FORMAT
@@ -3651,6 +3957,12 @@ class VendorImportJob(models.Model):
                         "price": "",
                         "stock": "",
                         "variant_group": "",
+                        "color": "",
+                        "material": "",
+                        "size": "",
+                        "capacity": "",
+                        "style": "",
+                        "url": "",
                         "variants": [
                             {{
                                 "attributes": {{
@@ -3663,6 +3975,16 @@ class VendorImportJob(models.Model):
                     }}
                 ]
 
+                =====================================
+                IMPORTANT RULES
+                =====================================
+
+                - Return ONLY valid JSON
+                - No markdown
+                - No explanations
+                - No comments
+                - No trailing commas
+
                 ROW TEXT:
                 {row_text}
 
@@ -3672,7 +3994,6 @@ class VendorImportJob(models.Model):
                 DETECTED STOCK:
                 {row_stock}
                 """
-
 
                 response = client.responses.create(
 
@@ -3937,7 +4258,7 @@ class VendorImportJob(models.Model):
                 return best_img
 
 
-    #----marchin AI-----------------------------------
+    #============marchin AI=========================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -4005,54 +4326,138 @@ class VendorImportJob(models.Model):
         return None
     
     #============enforce translation=================================
+
+    #============enforce translation=================================
+
+    #============enforce translation=================================
     def _force_translate(self, text, target_lang):
-        import requests
+
+        from openai import OpenAI
+
+        if not text:
+            return text
 
         try:
-            response = requests.post(
-                "https://translate.googleapis.com/translate_a/single",
-                params={
-                    "client": "gtx",
-                    "sl": "en",
-                    "tl": target_lang,
-                    "dt": "t",
-                    "q": text,
-                },
+
+            api_key = self.env[
+                'ir.config_parameter'
+            ].sudo().get_param(
+                'openai.api.key'
             )
 
-            result = response.json()
-            return result[0][0][0]
+            if not api_key:
+
+                _logger.warning(
+                    "[OPENAI TRANSLATE] MISSING API KEY"
+                )
+
+                return text
+
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+
+            prompt = f"""
+            Translate the following text into {target_lang}.
+
+            Rules:
+            - Return ONLY the translated text
+            - Preserve formatting
+            - Preserve product terminology
+            - Do not explain anything
+
+            TEXT:
+            {text}
+            """
+
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt
+            )
+
+
+            translated = (
+                response.output_text or ''
+            ).strip()
+
+
+            if not translated:
+
+                _logger.warning(
+                    "[OPENAI TRANSLATE EMPTY]"
+                )
+
+                return text
+
+
+            _logger.warning(
+
+                f"[OPENAI TRANSLATION SUCCESS] "
+
+                f"lang={target_lang}"
+            )
+
+            return translated
+
 
         except Exception as e:
-            _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
+
+            _logger.warning(
+
+                f"[OPENAI TRANSLATE FAILED] "
+
+                f"{str(e)}"
+            )
+
             return text
 
     #=========Translation new logic===================================
+
     def _apply_product_translation(self, product):
 
         if not product:
-            _logger.warning("[TRANSLATION SKIPPED] NO PRODUCT")
             return
-
-        _logger.warning(f"[TRANSLATION START] product_id={product.id}")
 
         name = product.name or ''
         desc = product.description_sale or ''
 
-        _logger.warning(f"[TRANSLATION INPUT] name={name} | desc_len={len(desc)}")
+        # ----------------------------
+        # DEBUG
+        # ----------------------------
+        _logger.warning(
+            f"[TRANSLATION INPUT] product={product.id} | name={name} | desc_len={len(desc)}"
+        )
 
-        # NAME
+        # ----------------------------
+        # ALWAYS TRANSLATE NAME (cheap)
+        # ----------------------------
         ru_name = self._force_translate(name, "ru")
         az_name = self._force_translate(name, "az")
 
-        # DESC
-        if desc:
+        # ----------------------------
+        # ONLY TRANSLATE DESCRIPTION IF EXISTS
+        # ----------------------------
+        if desc and len(desc.strip()) > 10:
+
             ru_desc = self._smart_translate(desc, "ru")
             az_desc = self._smart_translate(desc, "az")
+
         else:
             ru_desc = ''
             az_desc = ''
 
+            _logger.warning(
+                f"[TRANSLATION SKIPPED DESC] product={product.id}"
+            )
+
+        # ----------------------------
+        # SAVE
+        # ----------------------------
         product.with_context(lang='ru_RU').write({
             'name': ru_name,
             'description_sale': ru_desc
@@ -4063,7 +4468,107 @@ class VendorImportJob(models.Model):
             'description_sale': az_desc
         })
 
-        _logger.warning(f"[TRANSLATION DONE] product_id={product.id}")
+
+        # =========================================
+        # DETECT REAL TRANSLATION
+        # =========================================
+
+        translation_changed = False
+
+        try:
+
+            # =====================================
+            # SAFE LANGUAGE
+            # =====================================
+
+            lang_code = 'ru_RU'
+
+            translated_product = product.with_context(
+                lang=lang_code
+            )
+
+            translated_name = translated_product.name or ''
+
+            original_name = product.name or ''
+
+            translated_desc = (
+                translated_product.description_sale or ''
+            )
+
+            original_desc = (
+                product.description_sale or ''
+            )
+
+            # =====================================
+            # NAME CHANGED
+            # =====================================
+
+            if translated_name != original_name:
+
+                translation_changed = True
+
+            # =====================================
+            # DESCRIPTION CHANGED
+            # =====================================
+
+            if translated_desc != original_desc:
+
+                translation_changed = True
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[TRANSLATION CHECK FAILED] "
+
+                f"{str(e)}"
+            )
+
+
+        if translation_changed:
+
+
+            # =========================================
+            # SHOW REAL TRANSLATED VALUES
+            # =========================================
+
+            try:
+
+                ru_name = product.with_context(
+                    lang='ru_RU'
+                ).name or ''
+
+                az_name = product.with_context(
+                    lang='az_AZ'
+                ).name or ''
+
+            except Exception:
+
+                ru_name = ''
+                az_name = ''
+
+
+            _logger.warning(
+
+                f"[TRANSLATION SUCCESS] "
+
+                f"product={product.id} | "
+
+                f"RU={ru_name[:120]} | "
+
+                f"AZ={az_name[:120]}"
+            )
+
+        else:
+
+            _logger.warning(
+
+                f"[TRANSLATION NO-CHANGE] "
+
+                f"product={product.id}"
+            )
+
+
 
     #============product translation extended================
     def _smart_translate(self, text, lang):
@@ -4178,7 +4683,7 @@ class VendorImportJob(models.Model):
                     break
 
             category = category_obj.search([
-                ('name', '=', mapped_category),
+                ('name', '=ilike', mapped_category),
                 ('parent_id', '=', parent_category.id)
             ], limit=1)
 
@@ -4188,15 +4693,51 @@ class VendorImportJob(models.Model):
                     'parent_id': parent_category.id
                 })
 
+            # ================= FINGERPRINT=================
+
+            variant_group = (
+
+                product.get("variant_group")
+
+                or
+
+                name
+            )
+
+            variant_group = str(
+                variant_group
+            ).strip().upper()
+
+
+            vendor_fingerprint = (
+                f"{vendor_id}_{variant_group}"
+            )
+
+
             # ================= DUPLICATE CHECK =================
+
             existing = product_obj.search([
-                ('name', 'ilike', name.strip()),
-                ('vendor_id', '=', vendor_id)
+
+                (
+                    'vendor_fingerprint',
+                    '=',
+                    vendor_fingerprint
+                )
+
             ], limit=1)
 
+
             if existing:
-                _logger.warning(f"SKIPPED DUPLICATE → {name}")
+
+                _logger.warning(
+
+                    f"[URL DUPLICATE SKIP] "
+
+                    f"{vendor_fingerprint}"
+                )
+
                 skipped_count += 1
+
                 continue
 
             vals = {
@@ -4206,6 +4747,7 @@ class VendorImportJob(models.Model):
                 'sale_ok': True,
                 'website_published': False,
                 'vendor_id': vendor_id,
+                'vendor_fingerprint': vendor_fingerprint,
             }
 
             # ================= IMAGE =================
@@ -4578,7 +5120,7 @@ class VendorImportJob(models.Model):
 
                     category = category_obj.search([
 
-                        ('name', '=', mapped_category),
+                        ('name', '=ilike', mapped_category),
 
                         (
                             'parent_id',
@@ -4600,6 +5142,15 @@ class VendorImportJob(models.Model):
                         })
 
 
+                   # =========================================
+                    # FINGERPRINT
+                    # =========================================
+
+                    vendor_fingerprint = (
+                        f"{vendor_id}_{variant_group}"
+                    )
+
+
                     # =========================================
                     # DUPLICATE CHECK
                     # =========================================
@@ -4607,19 +5158,12 @@ class VendorImportJob(models.Model):
                     product = product_obj.search([
 
                         (
-                            'default_code',
+                            'vendor_fingerprint',
                             '=',
-                            variant_group
-                        ),
-
-                        (
-                            'vendor_id',
-                            '=',
-                            vendor_id
+                            vendor_fingerprint
                         )
 
                     ], limit=1)
-
 
                     # =========================================
                     # CREATE PRODUCT
@@ -4647,6 +5191,9 @@ class VendorImportJob(models.Model):
 
                             'vendor_id':
                                 vendor_id,
+
+                            'vendor_fingerprint':
+                                vendor_fingerprint,
                         }
 
 
@@ -4967,8 +5514,313 @@ class VendorImportJob(models.Model):
 
         self.env.cr.commit()
 
+    #=========product duplicate helper=======================
 
-    #==========create excel product==========================
+    def _build_vendor_fingerprint(self, product_data):
+
+        import re
+        import hashlib
+
+        name = (
+            product_data.get("name") or ""
+        ).strip().lower()
+
+        sku = (
+            product_data.get("sku")
+            or product_data.get("code")
+            or product_data.get("product_code")
+            or ""
+        ).strip().lower()
+
+        url = (
+            product_data.get("url")
+            or product_data.get("link")
+            or ""
+        ).strip().lower()
+
+        # normalize
+        def clean(v):
+            return re.sub(r'[^a-z0-9]', '', v or '')
+
+        base = "|".join([
+            clean(name),
+            clean(sku),
+            clean(url),
+        ])
+
+        return hashlib.md5(
+            base.encode("utf-8")
+        ).hexdigest()
+
+    #==========Excel url detect workflo=======================
+    def _extract_product_url(self, row):
+
+        possible_keys = [
+
+            "url",
+            "link",
+            "product_url",
+            "product link",
+            "website",
+            "href",
+
+        ]
+
+        for key in possible_keys:
+
+            value = row.get(key)
+
+            if not value:
+                continue
+
+            value = str(value).strip()
+
+            if value.startswith(
+                ("http://", "https://")
+            ):
+                return value
+
+        return False
+    
+    #======Excel url detection router=======================
+    def _route_excel_rows(self, products):
+
+        normal_products = []
+        url_products = []
+
+        for row in products:
+
+            url = self._extract_product_url(row)
+
+            if url:
+
+                row["detected_url"] = url
+
+                url_products.append(row)
+
+            else:
+
+                normal_products.append(row)
+
+        return {
+            "normal": normal_products,
+            "url": url_products,
+        }
+
+    
+    #==========Excel URl queue logic========================
+    def _queue_excel_urls(self, url_products):
+
+        import json
+
+        if not url_products:
+            return
+
+        seen = set()
+        cleaned = []
+
+        for row in url_products:
+
+            url = row.get("detected_url")
+
+            if not url:
+                continue
+
+            if url in seen:
+                continue
+
+            seen.add(url)
+
+            cleaned.append(row)
+
+        url_products = cleaned
+
+        self.excel_url_queue = json.dumps(
+            url_products
+        )
+
+        self.excel_url_processing = True
+
+        self.excel_url_index = 0
+
+    
+    #============Excel URL processor==========================
+    def process_excel_url_queue(self):
+
+        import json
+
+        if not self.excel_url_queue:
+
+            _logger.warning(
+                "[URL QUEUE] EMPTY"
+            )
+
+            return
+
+
+        rows = json.loads(
+            self.excel_url_queue
+        )
+
+
+        start = self.excel_url_index or 0
+
+        BATCH_SIZE = 5
+
+        end = min(
+            start + BATCH_SIZE,
+            len(rows)
+        )
+
+
+        _logger.warning(
+
+            f"[URL QUEUE START] "
+
+            f"{start} -> {end} | "
+
+            f"total={len(rows)}"
+        )
+
+        vendor_id = (
+            self.partner_id.id
+            if self.partner_id
+            else False
+        )
+
+        for idx in range(start, end):
+
+            try:
+
+                row = rows[idx]
+
+                product_url = row.get(
+                    "detected_url"
+                )
+
+
+                if not product_url:
+
+                    _logger.warning(
+                        f"[URL QUEUE SKIP] "
+                        f"NO URL AT INDEX {idx}"
+                    )
+
+                    continue
+
+                existing_job = self.env[
+                    'vendor.import.job'
+                ].search([
+
+                    ('data_url', '=', product_url),
+
+                    ('state', '!=', 'failed')
+
+                ], limit=1)
+
+
+                if existing_job:
+
+                    _logger.warning(
+
+                        f"[URL JOB EXISTS] "
+
+                        f"{product_url}"
+                    )
+
+                    # ====================================
+                    # ADVANCE QUEUE INDEX
+                    # ====================================
+
+                    self.excel_url_index = idx + 1
+
+                    self.flush_recordset()
+
+                    self.env.cr.commit()
+
+                    continue
+
+                # ====================================
+                # CREATE ISOLATED URL JOB
+                # ====================================
+
+                new_job = self.env[
+                    'vendor.import.job'
+                ].create({
+
+                    'name':
+                        f"URL Import - {idx}",
+
+                    'partner_id':
+                        vendor_id,
+
+                    'source_type':
+                        'url',
+
+                    'data_url':
+                        product_url,
+
+                    'state':
+                        'url_scraping',
+                })
+
+
+                _logger.warning(
+
+                    f"[URL JOB CREATED] "
+
+                    f"job={new_job.id} | "
+
+                    f"url={product_url}"
+                )
+
+
+                # ====================================
+                # SAVE PROGRESS
+                # ====================================
+
+                self.excel_url_index = idx + 1
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
+
+                #self.env.invalidate_all()
+
+
+            except Exception as e:
+
+                _logger.exception(
+                    f"[EXCEL URL ERROR] {str(e)}"
+                )
+
+                self.env.cr.rollback()
+
+ 
+        # =========================================
+        # COMPLETE
+        # =========================================
+
+        if self.excel_url_index >= len(rows):
+
+            _logger.warning(
+                "[URL QUEUE COMPLETE]"
+            )
+
+            self.excel_url_queue = False
+
+            self.excel_url_processing = False
+
+            self.excel_url_index = 0
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            self.env.invalidate_all()
+
+
+    #==========create excel product===========================
     def create_products_excel(self):
 
         import json
@@ -5244,6 +6096,10 @@ class VendorImportJob(models.Model):
                     group_items[0]
                 )
 
+                fingerprint = self._build_vendor_fingerprint(
+                    main_product
+                )
+
 
                 name = (
 
@@ -5320,15 +6176,86 @@ class VendorImportJob(models.Model):
 
                 vendor_id = self.partner_id.id if self.partner_id else False
 
-                product = product_obj.search([
-                    ('default_code', '=', group_id),
-                    ('vendor_id', '=', vendor_id)
-                ], limit=1)
+                product = False
+
+                # =====================================================
+                # 1. STRICT FINGERPRINT MATCH
+                # =====================================================
+
+                if (
+                    'vendor_fingerprint' in product_obj._fields
+                    and vendor_id
+                ):
+
+                    product = product_obj.search([
+
+                        (
+                            'vendor_fingerprint',
+                            '=',
+                            fingerprint
+                        ),
+
+                        (
+                            'vendor_id',
+                            '=',
+                            vendor_id
+                        )
+
+                    ], limit=1)
+
+
+                    if product:
+
+                        _logger.warning(
+
+                            f"[FINGERPRINT MATCH] "
+
+                            f"{group_id} "
+
+                            f"| vendor={vendor_id} "
+
+                            f"| product_id={product.id}"
+                        )
+
+                 # =====================================================
+                # 2. FALLBACK SKU MATCH
+                # =====================================================
+
+                if not product and vendor_id:
+
+                    product = product_obj.search([
+
+                        (
+                            'default_code',
+                            '=',
+                            group_id
+                        ),
+
+                        (
+                            'vendor_id',
+                            '=',
+                            vendor_id
+                        )
+
+                    ], limit=1)
+
+
+                    if product:
+
+                        _logger.warning(
+
+                            f"[SKU MATCH] "
+
+                            f"{group_id} "
+
+                            f"| vendor={vendor_id} "
+
+                            f"| product_id={product.id}"
+                        )
 
                 is_new_product = False
 
                 if product:
-                    merged_count += 1
 
                     _logger.warning(
                         f"[EXCEL DUPLICATE FOUND] "
@@ -5337,6 +6264,7 @@ class VendorImportJob(models.Model):
 
                 else:
                     is_new_product = True
+
 
                 # =================================================
                 # CREATE PARENT
@@ -5373,6 +6301,8 @@ class VendorImportJob(models.Model):
                             self._safe_float(
                                 main_product.get("price")
                             ),
+
+                        'vendor_fingerprint': fingerprint,
                     }
 
 
@@ -5410,6 +6340,11 @@ class VendorImportJob(models.Model):
 
                     merged_count += 1
 
+                    # =====================================
+                    # TRANSLATE EXISTING PRODUCT TOO
+                    # =====================================
+
+                    self._apply_product_translation(product)
 
                     _logger.warning(
 
@@ -5423,25 +6358,118 @@ class VendorImportJob(models.Model):
                     )
               
 
-                # =================================================
+                # ==================================================
                 # VARIANTS
-                # =================================================
+                # ==================================================
 
-                for idx, item in enumerate(
-                    group_items
-                ):
+                for idx, item in enumerate(group_items):
 
-                    attr_value = (
-                        f"Variant {idx+1}"
+                    # =============================================
+                    # DETECT ATTRIBUTE TYPE
+                    # =============================================
+
+                    variant_attribute_name = "Variant"
+
+                    if item.get("color") or item.get("colour"):
+
+                        variant_attribute_name = "Color"
+
+                    elif item.get("material"):
+
+                        variant_attribute_name = "Material"
+
+                    elif item.get("size"):
+
+                        variant_attribute_name = "Size"
+
+                    elif item.get("capacity"):
+
+                        variant_attribute_name = "Capacity"
+
+                    elif item.get("style"):
+
+                        variant_attribute_name = "Style"
+
+
+                    # =============================================
+                    # DETECT ATTRIBUTE VALUE
+                    # =============================================
+
+                    attr_value = str(
+
+                        item.get("color")
+
+                        or item.get("colour")
+
+                        or item.get("material")
+
+                        or item.get("size")
+
+                        or item.get("variant")
+
+                        or item.get("capacity")
+
+                        or item.get("style")
+
+                        or f"Variant {idx+1}"
+
+                    ).strip()
+
+                    if not attr_value:
+
+                        detected_color = self._detect_basic_image_color(
+                            item.get("image")
+                        )
+
+                        if detected_color:
+
+                            variant_attribute_name = "Color"
+
+                            attr_value = detected_color
+
+                            _logger.warning(
+
+                                f"[IMAGE COLOR FALLBACK] "
+
+                                f"{detected_color}"
+                            )
+
+                        else:
+
+
+                            attr_value = (
+
+                                item.get("vendor_code")
+
+                                or
+
+                                item.get("primary_code")
+
+                                or
+
+                                f"Code {idx+1}"
+                            )
+
+                    _logger.warning(
+
+                        f"[VARIANT DETECTED] "
+
+                        f"{variant_attribute_name} "
+
+                        f"= {attr_value}"
                     )
 
+
+                    # =============================================
+                    # ATTRIBUTE
+                    # =============================================
 
                     attribute = attribute_obj.search([
 
                         (
                             'name',
                             '=',
-                            "Variant"
+                            variant_attribute_name
                         )
 
                     ], limit=1)
@@ -5449,47 +6477,63 @@ class VendorImportJob(models.Model):
 
                     if not attribute:
 
-                        attribute = (
-                            attribute_obj.create({
+                        attribute = attribute_obj.create({
 
-                                'name':
-                                    "Variant"
-                            })
+                            'name': variant_attribute_name
+
+                        })
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE CREATED] "
+
+                            f"{variant_attribute_name}"
                         )
 
 
-                    value = (
-                        attribute_value_obj.search([
+                    # =============================================
+                    # ATTRIBUTE VALUE
+                    # =============================================
 
-                            (
-                                'name',
-                                '=',
-                                attr_value
-                            ),
+                    value = attribute_value_obj.search([
 
-                            (
-                                'attribute_id',
-                                '=',
-                                attribute.id
-                            )
+                        (
+                            'name',
+                            '=',
+                            attr_value
+                        ),
 
-                        ], limit=1)
-                    )
+                        (
+                            'attribute_id',
+                            '=',
+                            attribute.id
+                        )
+
+                    ], limit=1)
 
 
                     if not value:
 
-                        value = (
-                            attribute_value_obj.create({
+                        value = attribute_value_obj.create({
 
-                                'name':
-                                    attr_value,
+                            'name': attr_value,
 
-                                'attribute_id':
-                                    attribute.id
-                            })
+                            'attribute_id': attribute.id
+                        })
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE VALUE CREATED] "
+
+                            f"{attr_value}"
                         )
 
+
+                    # =============================================
+                    # TEMPLATE ATTRIBUTE LINE
+                    # =============================================
 
                     line = line_obj.search([
 
@@ -5510,13 +6554,11 @@ class VendorImportJob(models.Model):
 
                     if not line:
 
-                        line_obj.create({
+                        line = line_obj.create({
 
-                            'product_tmpl_id':
-                                product.id,
+                            'product_tmpl_id': product.id,
 
-                            'attribute_id':
-                                attribute.id,
+                            'attribute_id': attribute.id,
 
                             'value_ids': [
 
@@ -5668,30 +6710,65 @@ class VendorImportJob(models.Model):
 
                 "[EXCEL FLOW] "
 
-                "GROUP BATCH COMPLETE "
-                "→ RETURN TO excel_parsing"
+                "GROUP BATCH COMPLETE"
             )
 
-            # reset AI/create cycle
-            self.excel_created_index = 0
-            self.excel_ai_index = 0
+            # =========================================
+            # FULL IMPORT COMPLETED
+            # =========================================
 
-            # IMPORTANT
-            # clear AI batch only
-            self.ai_response = False
+            if self.is_excel_parsed:
 
-            # continue parser batching
-            self.state = 'excel_parsing'
+                _logger.warning(
+                    "[EXCEL IMPORT COMPLETE] ✅"
+                )
 
-            _logger.warning(
+                # =========================================
+                # FINAL RESET
+                # =========================================
 
-                "[EXCEL FLOW] "
+                self.excel_created_index = 0
 
-                f"NEXT PARSE INDEX="
+                self.excel_ai_index = 0
 
-                f"{self.excel_parse_index}"
-            )
+                self.ai_response = False
 
+                self.state = 'done'
+
+                # cleanup URL queue
+                self.excel_url_processing = False
+
+                self.excel_url_queue = False
+
+                self.excel_url_index = 0
+
+            # =========================================
+            # MORE PARSE ROWS REMAIN
+            # =========================================
+
+            else:
+
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    "RETURN TO excel_parsing"
+                )
+
+                # IMPORTANT:
+                # KEEP CURRENT AI STATE
+                # for next parse batch
+
+                self.state = 'excel_parsing'
+
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    f"NEXT PARSE INDEX="
+
+                    f"{self.excel_parse_index}"
+                )
 
         else:
 
@@ -5701,6 +6778,78 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
+
+    #====Excel variant mapping==================================
+    def _detect_basic_image_color(self, image_data):
+
+        try:
+
+            import base64
+            from io import BytesIO
+
+            from PIL import Image
+
+            img = Image.open(
+                BytesIO(
+                    base64.b64decode(image_data)
+                )
+            ).convert("RGB")
+
+            img = img.resize((50, 50))
+
+            colors = img.getcolors(
+                50 * 50
+            )
+
+            if not colors:
+                return False
+
+            dominant = max(
+                colors,
+                key=lambda x: x[0]
+            )[1]
+
+            r, g, b = dominant
+
+
+            # =====================================
+            # BASIC COLOR MAPPING
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "White"
+
+            if r < 60 and g < 60 and b < 60:
+                return "Black"
+
+            if r > 180 and g < 120 and b < 80:
+                return "Orange"
+
+            if r > 180 and g < 80 and b < 80:
+                return "Red"
+
+            if b > 150 and r < 120:
+                return "Blue"
+
+            if g > 140 and r < 120:
+                return "Green"
+
+            if r > 150 and g > 150 and b < 120:
+                return "Yellow"
+
+            return "Standard"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
 
 
     #-----URL API FLOW-------------------------------------------
@@ -6761,7 +7910,7 @@ class VendorImportJob(models.Model):
         return pages
     
 
-    #======apify url fetch/scrapp products===============
+    #======apify url fetch/scrapp products==================
     
     def _run_apify_actor(self, url):
 
@@ -6770,7 +7919,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -6893,3 +8043,55 @@ class VendorImportJob(models.Model):
 
         except:
             return 0.0
+
+    #======product translate ==========================
+    
+    def translate_global_views(self, target_lang):
+
+        from openai import OpenAI
+
+        api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
+
+        if not api_key:
+            _logger.warning("❌ Missing OpenAI API key")
+            return
+
+        client = OpenAI(api_key=api_key)
+
+        # 🔥 FETCH SOURCE STRINGS FROM VIEWS (SAFE WAY)
+        views = self.env['ir.ui.view'].sudo().search([
+            ('arch_db', '!=', False)
+        ], limit=20)
+
+        _logger.warning(f"🌍 GLOBAL VIEW TRANSLATION START → {target_lang}")
+        _logger.warning(f"🔍 Views found → {len(views)}")
+
+        for view in views:
+
+            try:
+                text = view.name or ''
+                if not text:
+                    continue
+
+                prompt = f"""
+                Translate to {target_lang}:
+
+                {text}
+                """
+
+                response = client.responses.create(
+                    model="gpt-4.1-mini",
+                    input=prompt
+                )
+
+                translated = response.output_text.strip()
+
+                if translated:
+                    view.with_context(lang=target_lang).write({
+                        'name': translated
+                    })
+
+                    _logger.warning(f"✅ VIEW {view.name} → {translated}")
+
+            except Exception as e:
+                _logger.warning(f"❌ Failed: {str(e)}")
