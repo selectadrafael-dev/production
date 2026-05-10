@@ -5023,9 +5023,39 @@ class VendorImportJob(models.Model):
 
                     for attr_name, attr_value in attributes.items():
 
-                        if not attr_value:
 
+                        if not attr_value:
                             continue
+
+
+                        attr_value = str(attr_value).strip()
+
+
+                        # =====================================
+                        # NORMALIZE BAD VARIANTS
+                        # =====================================
+
+                        bad_variants = [
+
+                            'variant 1',
+
+                            'variant 2',
+
+                            'variant 3',
+
+                            'default',
+
+                            'option a',
+
+                            'option b'
+                        ]
+
+
+                        if attr_value.lower() in bad_variants:
+
+                            attr_name = "Design"
+
+                            attr_value = name
 
 
                         # =====================================
@@ -5039,6 +5069,59 @@ class VendorImportJob(models.Model):
                             ('name', '=', attr_name)
 
                         ], limit=1)
+
+                        # =====================================
+                        # TRANSLATE ATTRIBUTE NAME
+                        # =====================================
+
+                        try:
+
+                            for lang_code in [
+
+                                'ru_RU',
+
+                                'az_AZ'
+                            ]:
+
+                                translated_attr = self._force_translate(
+
+                                    str(attr_name),
+
+                                    lang_code
+                                )
+
+
+                                if translated_attr:
+
+                                    attribute.with_context(
+                                        lang=lang_code
+                                    ).write({
+
+                                        'name': translated_attr
+                                    })
+
+
+                                    _logger.warning(
+
+                                        f"[URL ATTRIBUTE TRANSLATED] "
+
+                                        f"{attr_name} "
+
+                                        f"-> "
+
+                                        f"{translated_attr} "
+
+                                        f"({lang_code})"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[URL ATTRIBUTE TRANSLATION ERROR] "
+
+                                f"{str(e)}"
+                            )
 
 
                         if not attribute:
@@ -5200,26 +5283,7 @@ class VendorImportJob(models.Model):
                                     (4, value.id)
 
                                 ]
-                # =========================================
-                # URL VARIANTS
-                # =========================================
-
-                variants = product_data.get(
-                    "variants",
-                    []
-                )
-
-
-                if not variants:
-
-                    variants = [{
-
-                        "attributes": {
-
-                            "Variant": name
-                        }
-
-                    }]
+               
                 created_count += 1
 
             except Exception as e:
