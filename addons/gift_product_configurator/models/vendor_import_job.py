@@ -4531,8 +4531,14 @@ class VendorImportJob(models.Model):
 
         try:
 
+            # =====================================
+            # SAFE LANGUAGE
+            # =====================================
+
+            lang_code = 'ru_RU'
+
             translated_product = product.with_context(
-                lang='ar_001'
+                lang=lang_code
             )
 
             translated_name = translated_product.name or ''
