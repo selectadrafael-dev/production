@@ -3849,9 +3849,9 @@ class VendorImportJob(models.Model):
 
                 Use safe fallback:
 
-                "attributes": {
+                "attributes": {{
                     "Vendor Code": "106"
-                }
+                }}
 
                 NEVER return:
                 - Variant 1
