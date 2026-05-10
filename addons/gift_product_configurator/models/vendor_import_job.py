@@ -658,8 +658,10 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NEW BATCH READY → excel_ai"
                     )
 
-                    # NEVER reset accumulated progress
-                    # old stable model preserved lifecycle continuity
+                    # reset AI/create cycle
+                    self.excel_ai_index = 0
+                    self.excel_created_index = 0
+                    self.ai_response = False
 
                     self.state = 'excel_ai'
 
@@ -674,13 +676,10 @@ class VendorImportJob(models.Model):
                     if self.is_excel_parsed:
 
                         _logger.warning(
-                            "[EXCEL PARSE] FULLY COMPLETE → WAIT AI/CREATE"
+                            "[EXCEL PARSE] FULLY COMPLETE"
                         )
 
-                        if self.ai_response:
-                            self.state = 'excel_creating'
-                        else:
-                            self.state = 'excel_ai'
+                        self.state = 'done'
 
                     else:
 
@@ -1408,10 +1407,7 @@ class VendorImportJob(models.Model):
 
         current_count = 0
 
-        parsed_rows_count = 0
-
         global_index = 0
-
 
         _logger.warning(
             f"EXCEL RESUME FROM INDEX "
@@ -1940,7 +1936,6 @@ class VendorImportJob(models.Model):
                     "stock": stock,
                 })
 
-                parsed_rows_count += 1
 
                 current_count += 1
 
@@ -2022,7 +2017,11 @@ class VendorImportJob(models.Model):
         # SAVE PROGRESS
         # =====================================
 
-        new_index = start_index + parsed_rows_count
+        new_index = (
+            start_index
+            +
+            current_count
+        )
 
         self.excel_parse_index = (
             new_index
@@ -3800,66 +3799,24 @@ class VendorImportJob(models.Model):
                 should be treated as variants of ONE parent product.
 
                 =====================================
-                VARIANT DETECTION
+                VARIANT DETECTION (CRITICAL)
                 =====================================
 
-                If rows share same PRODUCT ID:
+                If rows share the same ID:
 
-                → they belong to the SAME product family.
+                → they are variants of the SAME product.
 
-                IMPORTANT:
+                You MUST detect what makes them different.
 
-                Use PRODUCT IMAGES as the PRIMARY
-                source for identifying variants.
-
-                Look for visual differences such as:
-
+                Possible variant differences include:
                 - color
                 - material
-                - finish
-                - lid type
-                - texture
-                - shape
+                - size
                 - capacity
+                - finish
+                - dimensions
+                - style
                 - packaging
-
-                THEN use nearby codes/numbers
-                as supporting evidence.
-
-                Example:
-
-                Rows may contain:
-
-                106
-                103
-                128
-
-                These MAY represent:
-                - color codes
-                - material codes
-                - size codes
-
-                DO NOT assume globally.
-
-                Infer meaning from:
-                - image differences
-                - repeated patterns
-                - product appearance
-
-                If uncertain:
-
-                Use safe fallback:
-
-                "attributes": {
-                    "Vendor Code": "106"
-                }
-
-                NEVER return:
-                - Variant 1
-                - Variant 2
-                - Variant 3
-
-                ALWAYS return meaningful attributes.
 
                 =====================================
                 VISUAL DIFFERENCE DETECTION
@@ -6237,15 +6194,13 @@ class VendorImportJob(models.Model):
 
                         or item.get("size")
 
+                        or item.get("variant")
+
                         or item.get("capacity")
 
                         or item.get("style")
 
-                        or item.get("vendor_code")
-
-                        or item.get("primary_code")
-
-                        or ""
+                        or f"Variant {idx+1}"
 
                     ).strip()
 
@@ -6271,16 +6226,7 @@ class VendorImportJob(models.Model):
                         else:
 
                             attr_value = (
-
-                                item.get("vendor_code")
-
-                                or
-
-                                item.get("primary_code")
-
-                                or
-
-                                f"Code {idx+1}"
+                                f"Variant {idx+1}"
                             )
 
                     _logger.warning(
@@ -6540,65 +6486,33 @@ class VendorImportJob(models.Model):
         if self.excel_created_index >= len(grouped_keys):
 
             _logger.warning(
-                "[EXCEL CREATE BATCH COMPLETE]"
+
+                "[EXCEL FLOW] "
+
+                "GROUP BATCH COMPLETE "
+                "→ RETURN TO excel_parsing"
             )
 
-            # =========================================
-            # MORE ROWS STILL REMAIN
-            # =========================================
+            # reset AI/create cycle
+            self.excel_created_index = 0
+            self.excel_ai_index = 0
 
-            if not self.is_excel_parsed:
+            # IMPORTANT
+            # clear AI batch only
+            self.ai_response = False
 
-                _logger.warning(
+            # continue parser batching
+            self.state = 'excel_parsing'
 
-                    "[EXCEL FLOW] "
-                    "MORE PARSE ROWS REMAIN "
-                    f"| parse_index={self.excel_parse_index}"
-                )
+            _logger.warning(
 
-                # IMPORTANT:
-                # NEVER RESET AI/CREATE STATE
+                "[EXCEL FLOW] "
 
-                self.state = 'excel_parsing'
+                f"NEXT PARSE INDEX="
 
-            # =========================================
-            # FULL IMPORT COMPLETE
-            # =========================================
+                f"{self.excel_parse_index}"
+            )
 
-
-            else:
-
-                _logger.warning(
-                    "[EXCEL IMPORT COMPLETE] ✅"
-                )
-
-                self.state = 'done'
-
-                # =========================================
-                # RESET URL QUEUE
-                # =========================================
-
-                self.excel_url_processing = False
-
-                self.excel_url_queue = False
-
-                self.excel_url_index = 0
-
-                # =========================================
-                # RESET CREATE POINTERS
-                # =========================================
-
-                self.excel_created_index = 0
-
-                self.excel_ai_index = 0
-
-                self.excel_parse_index = 0
-
-                self.is_excel_parsed = False
-
-                _logger.warning(
-                    "[EXCEL FLOW RESET READY FOR NEXT IMPORT]"
-                )
 
         else:
 
@@ -6608,6 +6522,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
 
 
     #====Excel variant mapping==================================
@@ -6681,38 +6596,6 @@ class VendorImportJob(models.Model):
 
             return False
 
-
-    #=========excel variant normalization========================
-    def _normalize_variant_code_cell(self, value):
-
-        import re
-
-        text = str(value or "").strip()
-
-        if not text:
-            return {}
-
-        parts = [
-
-            p.strip()
-
-            for p in re.split(r'[\n\r]+', text)
-
-            if p.strip()
-        ]
-
-        result = {}
-
-        if len(parts) >= 1:
-
-            result["primary_code"] = parts[0]
-
-        if len(parts) >= 2:
-
-            result["secondary_code"] = parts[1]
-
-        return result
-    
 
     #-----URL API FLOW-------------------------------------------
 
@@ -7906,7 +7789,9 @@ class VendorImportJob(models.Model):
         except:
             return 0.0
 
-   
+    #======product translate ==========================
+    
+    def translate_global_views(self, target_lang):
 
         from openai import OpenAI
 
