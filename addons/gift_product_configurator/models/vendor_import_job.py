@@ -4257,7 +4257,7 @@ class VendorImportJob(models.Model):
                 return best_img
 
 
-    #----marchin AI-----------------------------------
+    #============marchin AI=========================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
