@@ -6262,8 +6262,21 @@ class VendorImportJob(models.Model):
 
                         else:
 
+                            # attr_value = (
+                            #     f"Variant {idx+1}"
+                            # )
+
                             attr_value = (
-                                f"Variant {idx+1}"
+
+                                item.get("vendor_code")
+
+                                or
+
+                                item.get("primary_code")
+
+                                or
+
+                                f"Code {idx+1}"
                             )
 
                     _logger.warning(
