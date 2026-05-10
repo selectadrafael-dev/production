@@ -4257,7 +4257,7 @@ class VendorImportJob(models.Model):
                 return best_img
 
 
-    #----marchin AI-----------------------------------
+    #============marchin AI=========================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -4325,26 +4325,94 @@ class VendorImportJob(models.Model):
         return None
     
     #============enforce translation=================================
+
+    #============enforce translation=================================
+
+    #============enforce translation=================================
     def _force_translate(self, text, target_lang):
-        import requests
+
+        from openai import OpenAI
+
+        if not text:
+            return text
 
         try:
-            response = requests.post(
-                "https://translate.googleapis.com/translate_a/single",
-                params={
-                    "client": "gtx",
-                    "sl": "en",
-                    "tl": target_lang,
-                    "dt": "t",
-                    "q": text,
-                },
+
+            api_key = self.env[
+                'ir.config_parameter'
+            ].sudo().get_param(
+                'openai.api.key'
             )
 
-            result = response.json()
-            return result[0][0][0]
+            if not api_key:
+
+                _logger.warning(
+                    "[OPENAI TRANSLATE] MISSING API KEY"
+                )
+
+                return text
+
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+
+            prompt = f"""
+            Translate the following text into {target_lang}.
+
+            Rules:
+            - Return ONLY the translated text
+            - Preserve formatting
+            - Preserve product terminology
+            - Do not explain anything
+
+            TEXT:
+            {text}
+            """
+
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt
+            )
+
+
+            translated = (
+                response.output_text or ''
+            ).strip()
+
+
+            if not translated:
+
+                _logger.warning(
+                    "[OPENAI TRANSLATE EMPTY]"
+                )
+
+                return text
+
+
+            _logger.warning(
+
+                f"[OPENAI TRANSLATION SUCCESS] "
+
+                f"lang={target_lang}"
+            )
+
+            return translated
+
 
         except Exception as e:
-            _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
+
+            _logger.warning(
+
+                f"[OPENAI TRANSLATE FAILED] "
+
+                f"{str(e)}"
+            )
+
             return text
 
     #=========Translation new logic===================================
@@ -4399,7 +4467,107 @@ class VendorImportJob(models.Model):
             'description_sale': az_desc
         })
 
-        _logger.warning(f"[TRANSLATION DONE] product={product.id}")
+
+        # =========================================
+        # DETECT REAL TRANSLATION
+        # =========================================
+
+        translation_changed = False
+
+        try:
+
+            # =====================================
+            # SAFE LANGUAGE
+            # =====================================
+
+            lang_code = 'ru_RU'
+
+            translated_product = product.with_context(
+                lang=lang_code
+            )
+
+            translated_name = translated_product.name or ''
+
+            original_name = product.name or ''
+
+            translated_desc = (
+                translated_product.description_sale or ''
+            )
+
+            original_desc = (
+                product.description_sale or ''
+            )
+
+            # =====================================
+            # NAME CHANGED
+            # =====================================
+
+            if translated_name != original_name:
+
+                translation_changed = True
+
+            # =====================================
+            # DESCRIPTION CHANGED
+            # =====================================
+
+            if translated_desc != original_desc:
+
+                translation_changed = True
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[TRANSLATION CHECK FAILED] "
+
+                f"{str(e)}"
+            )
+
+
+        if translation_changed:
+
+
+            # =========================================
+            # SHOW REAL TRANSLATED VALUES
+            # =========================================
+
+            try:
+
+                ru_name = product.with_context(
+                    lang='ru_RU'
+                ).name or ''
+
+                az_name = product.with_context(
+                    lang='az_AZ'
+                ).name or ''
+
+            except Exception:
+
+                ru_name = ''
+                az_name = ''
+
+
+            _logger.warning(
+
+                f"[TRANSLATION SUCCESS] "
+
+                f"product={product.id} | "
+
+                f"RU={ru_name[:120]} | "
+
+                f"AZ={az_name[:120]}"
+            )
+
+        else:
+
+            _logger.warning(
+
+                f"[TRANSLATION NO-CHANGE] "
+
+                f"product={product.id}"
+            )
+
+
 
     #============product translation extended================
     def _smart_translate(self, text, lang):
@@ -6171,6 +6339,11 @@ class VendorImportJob(models.Model):
 
                     merged_count += 1
 
+                    # =====================================
+                    # TRANSLATE EXISTING PRODUCT TOO
+                    # =====================================
+
+                    self._apply_product_translation(product)
 
                     _logger.warning(
 
@@ -6262,8 +6435,18 @@ class VendorImportJob(models.Model):
 
                         else:
 
+
                             attr_value = (
-                                f"Variant {idx+1}"
+
+                                item.get("vendor_code")
+
+                                or
+
+                                item.get("primary_code")
+
+                                or
+
+                                f"Code {idx+1}"
                             )
 
                     _logger.warning(
