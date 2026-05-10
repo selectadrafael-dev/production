@@ -4526,11 +4526,36 @@ class VendorImportJob(models.Model):
 
         if translation_changed:
 
+
+            # =========================================
+            # SHOW REAL TRANSLATED VALUES
+            # =========================================
+
+            try:
+
+                ru_name = product.with_context(
+                    lang='ru_RU'
+                ).name or ''
+
+                az_name = product.with_context(
+                    lang='az_AZ'
+                ).name or ''
+
+            except Exception:
+
+                ru_name = ''
+                az_name = ''
+
+
             _logger.warning(
 
                 f"[TRANSLATION SUCCESS] "
 
-                f"product={product.id}"
+                f"product={product.id} | "
+
+                f"RU={ru_name[:120]} | "
+
+                f"AZ={az_name[:120]}"
             )
 
         else:
