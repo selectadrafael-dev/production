@@ -4325,26 +4325,136 @@ class VendorImportJob(models.Model):
         return None
     
     #============enforce translation=================================
+
+    #============enforce translation=================================
     def _force_translate(self, text, target_lang):
+
         import requests
+        import json
+
+        if not text:
+            return text
 
         try:
-            response = requests.post(
+
+            response = requests.get(
+
                 "https://translate.googleapis.com/translate_a/single",
+
                 params={
+
                     "client": "gtx",
+
                     "sl": "en",
+
                     "tl": target_lang,
+
                     "dt": "t",
+
                     "q": text,
                 },
+
+                timeout=20
             )
 
-            result = response.json()
-            return result[0][0][0]
+            # =========================================
+            # STATUS CHECK
+            # =========================================
+
+            if response.status_code != 200:
+
+                _logger.warning(
+
+                    f"[GOOGLE TRANSLATE STATUS FAILED] "
+
+                    f"status={response.status_code}"
+                )
+
+                return text
+
+
+            # =========================================
+            # SAFE JSON
+            # =========================================
+
+            try:
+
+                result = response.json()
+
+            except Exception:
+
+                _logger.warning(
+
+                    f"[GOOGLE JSON FAILED] "
+
+                    f"response={response.text[:300]}"
+                )
+
+                return text
+
+
+            # =========================================
+            # SAFE EXTRACTION
+            # =========================================
+
+            translated = ""
+
+            if (
+
+                isinstance(result, list)
+
+                and result
+
+                and isinstance(result[0], list)
+
+            ):
+
+                for item in result[0]:
+
+                    if (
+
+                        isinstance(item, list)
+
+                        and item
+
+                        and item[0]
+
+                    ):
+
+                        translated += str(item[0])
+
+
+            translated = translated.strip()
+
+
+            if not translated:
+
+                _logger.warning(
+                    "[GOOGLE EMPTY TRANSLATION]"
+                )
+
+                return text
+
+
+            _logger.warning(
+
+                f"[GOOGLE TRANSLATION SUCCESS] "
+
+                f"lang={target_lang}"
+            )
+
+            return translated
+
 
         except Exception as e:
-            _logger.warning(f"[GOOGLE FALLBACK FAILED] {str(e)}")
+
+            _logger.warning(
+
+                f"[GOOGLE FALLBACK FAILED] "
+
+                f"{str(e)}"
+            )
+
             return text
 
     #=========Translation new logic===================================
@@ -6171,6 +6281,11 @@ class VendorImportJob(models.Model):
 
                     merged_count += 1
 
+                    # =====================================
+                    # TRANSLATE EXISTING PRODUCT TOO
+                    # =====================================
+
+                    self._apply_product_translation(product)
 
                     _logger.warning(
 
@@ -6262,9 +6377,6 @@ class VendorImportJob(models.Model):
 
                         else:
 
-                            # attr_value = (
-                            #     f"Variant {idx+1}"
-                            # )
 
                             attr_value = (
 
