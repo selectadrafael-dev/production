@@ -2799,19 +2799,206 @@ class VendorImportJob(models.Model):
             - categories only (no product info)
             - repeated headers
 
+           =====================================
+            VARIANT DETECTION
+            =====================================
+
+            IMPORTANT:
+
+            Use PRODUCT IMAGES as the PRIMARY
+            source for detecting variants.
+
+            Also use:
+            - product title
+            - description
+            - SKU
+            - repeated patterns
+            - packaging labels
+            - text printed on product
+            - visible size/capacity markings
+
+            Detect REAL differences such as:
+            - color
+            - material
+            - finish
+            - texture
+            - pattern
+            - lid type
+            - bottle type
+            - packaging
+            - shape
+            - capacity
+            - dimensions
+            - style
+            - design
+            - print variation
+
+            IMPORTANT RULES:
+
+            1. NEVER generate:
+            - Variant 1
+            - Variant 2
+            - Default
+            - Standard
+            - Option A
+            - Option B
+
+            2. ALWAYS return meaningful
+            attribute names and values.
+
+            GOOD EXAMPLES:
+
+            {{
+            "Color": "Black"
+            }}
+
+            {{
+            "Material": "Bamboo"
+            }}
+
+            {{
+            "Capacity": "750ml"
+            }}
+
+            {{
+            "Design": "Football Print"
+            }}
+
+            {{
+            "Finish": "Matte Silver"
+            }}
+
+            3. If a SINGLE IMAGE contains
+            MULTIPLE product colors/designs:
+
+            Create SEPARATE variants for EACH
+            visible product variation.
+
+            Example:
+            - black bottle
+            - blue bottle
+            - red bottle
+
+            MUST become:
+
+            [
+            {{
+                "attributes": {{
+                "Color": "Black"
+                }}
+            }},
+            {{
+                "attributes": {{
+                "Color": "Blue"
+                }}
+            }},
+            {{
+                "attributes": {{
+                "Color": "Red"
+                }}
+            }}
+            ]
+
+            4. If products differ by:
+            - artwork
+            - printed graphics
+            - pattern
+            - branding
+            - sports design
+            - texture
+
+            Use:
+            {{
+            "Design": "..."
+            }}
+
+            5. If products differ mainly by:
+            - size
+            - dimensions
+            - capacity
+
+            Use:
+            {{
+            "Size": "..."
+            }}
+
+            OR
+
+            {{
+            "Capacity": "..."
+            }}
+
+            6. NEVER invent attributes that
+            cannot be visually or textually
+            supported.
+
+            7. If uncertainty exists:
+            Prefer:
+            - Color
+            - Design
+            - Material
+            - Capacity
+
+            based on strongest visible evidence.
+
+            8. If NO meaningful difference exists:
+            Return ONE variant only.
+
+            9. IMPORTANT:
+            When multiple products appear in
+            one image, treat each visible
+            variation as a separate variant,
+            even if no explicit text exists.
+
+            10. Preserve consistency across
+            all variants for the same product.
+
+            BAD EXAMPLE:
+            [
+            {{
+                "attributes": {{
+                "Variant": "Variant 1"
+                }}
+            }}
+            ]
+
+            GOOD EXAMPLE:
+            [
+            {{
+                "attributes": {{
+                "Color": "White"
+                }}
+            }},
+            {{
+                "attributes": {{
+                "Color": "Black"
+                }}
+            }}
+            ]
+
+
             =====================================
             OUTPUT FORMAT
             =====================================
 
             [
-            {{
-                "name": "Clean product name",
-                "description": "Short product description (max 30 words)",
-                "category": "Best guess category",
-                "price": "",
-                "stock": "",
-                "image": "image_url_or_null"
-            }}
+                {{
+                    "name": "Clean product name",
+                    "description": "Short product description (max 30 words)",
+                    "category": "Best guess category",
+                    "price": "",
+                    "stock": "",
+                    "image": "image_url_or_null",
+                    "variants": [
+                                {{
+                                    "attributes": {{
+                                        "Variant": ""
+                                    }},
+                                    "image_index": 0,
+                                    "stock": null
+                                }}
+                            ]
+                }}
             ]
 
             =====================================
@@ -4795,6 +4982,224 @@ class VendorImportJob(models.Model):
                 ).create(vals)
 
                 self._apply_product_translation(product)
+
+                # =========================================
+                # URL VARIANTS
+                # =========================================
+
+                variants = product_data.get(
+                    "variants",
+                    []
+                )
+
+
+                # =========================================
+                # FALLBACK VARIANT
+                # =========================================
+
+                if not variants:
+
+                    variants = [{
+
+                        "attributes": {
+
+                            "Variant": name
+                        }
+
+                    }]
+
+
+                # =========================================
+                # PROCESS VARIANTS
+                # =========================================
+
+                for variant in variants:
+
+                    attributes = variant.get(
+                        "attributes",
+                        {}
+                    )
+
+
+                    for attr_name, attr_value in attributes.items():
+
+                        if not attr_value:
+
+                            continue
+
+
+                        # =====================================
+                        # ATTRIBUTE
+                        # =====================================
+
+                        attribute = self.env[
+                            'product.attribute'
+                        ].search([
+
+                            ('name', '=', attr_name)
+
+                        ], limit=1)
+
+
+                        if not attribute:
+
+                            attribute = self.env[
+                                'product.attribute'
+                            ].create({
+
+                                'name': attr_name
+                            })
+
+
+                        # =====================================
+                        # ATTRIBUTE VALUE
+                        # =====================================
+
+                        value = self.env[
+                            'product.attribute.value'
+                        ].search([
+
+                            ('name', '=', attr_value),
+
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
+
+                        ], limit=1)
+
+
+                        if not value:
+
+                            value = self.env[
+                                'product.attribute.value'
+                            ].create({
+
+                                'name': attr_value,
+
+                                'attribute_id':
+                                    attribute.id
+                            })
+
+
+                            # =================================
+                            # TRANSLATE VARIANT VALUE
+                            # =================================
+
+                            try:
+
+                                for lang_code in [
+
+                                    'ru_RU',
+
+                                    'az_AZ'
+                                ]:
+
+                                    translated_variant = (
+
+                                        self._force_translate(
+
+                                            str(attr_value),
+
+                                            lang_code
+                                        )
+                                    )
+
+
+                                    if translated_variant:
+
+                                        value.with_context(
+                                            lang=lang_code
+                                        ).write({
+
+                                            'name':
+                                                translated_variant
+                                        })
+
+
+                                        _logger.warning(
+
+                                            f"[URL VARIANT TRANSLATED] "
+
+                                            f"{attr_value} "
+
+                                            f"-> "
+
+                                            f"{translated_variant} "
+
+                                            f"({lang_code})"
+                                        )
+
+                            except Exception as e:
+
+                                _logger.warning(
+
+                                    f"[URL VARIANT TRANSLATION ERROR] "
+
+                                    f"{str(e)}"
+                                )
+
+
+                        # =====================================
+                        # ATTRIBUTE LINE
+                        # =====================================
+
+                        line = self.env[
+                            'product.template.attribute.line'
+                        ].search([
+
+                            (
+                                'product_tmpl_id',
+                                '=',
+                                product.id
+                            ),
+
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
+
+                        ], limit=1)
+
+
+                        if not line:
+
+                            self.env[
+                                'product.template.attribute.line'
+                            ].create({
+
+                                'product_tmpl_id':
+                                    product.id,
+
+                                'attribute_id':
+                                    attribute.id,
+
+                                'value_ids': [(6, 0, [
+
+                                    value.id
+
+                                ])]
+                            })
+
+                        else:
+
+                            if (
+
+                                value.id
+
+                                not in
+
+                                line.value_ids.ids
+
+                            ):
+
+                                line.value_ids = [
+
+                                    (4, value.id)
+
+                                ]
                 # =========================================
                 # URL VARIANTS
                 # =========================================

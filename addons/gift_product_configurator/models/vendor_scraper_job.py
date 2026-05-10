@@ -3794,7 +3794,7 @@ class VendorImportJob(models.Model):
 
                 should be treated as variants of ONE parent product.
 
-                 =====================================
+                =====================================
                 VARIANT DETECTION
                 =====================================
 
@@ -4326,10 +4326,6 @@ class VendorImportJob(models.Model):
         return None
     
     #============enforce translation=================================
-
-    #============enforce translation=================================
-
-    #============enforce translation=================================
     def _force_translate(self, text, target_lang):
 
         from openai import OpenAI
@@ -4567,7 +4563,6 @@ class VendorImportJob(models.Model):
 
                 f"product={product.id}"
             )
-
 
 
     #============product translation extended================
