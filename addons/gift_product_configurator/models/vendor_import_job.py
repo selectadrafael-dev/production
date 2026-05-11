@@ -3486,177 +3486,236 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROMPT
         # =====================================================
-
+       
         prompt = f"""
-        You are an advanced product extraction and interpretation engine for catalog PDFs.
+        You are an advanced AI product extraction engine for catalog PDF pages.
 
-        =====================
-        CORE RULES (STRICT)
-        =====================
+        You analyze BOTH:
+        - page text
+        - catalog product images
 
-        1. RETURN ONLY VALID JSON
-        2. NO explanation
-        3. NO markdown
+        Your job:
+        extract ALL visible products accurately.
+
+        ==================================================
+        STRICT OUTPUT RULES
+        ==================================================
+
+        1. RETURN ONLY VALID JSON ARRAY
+        2. NO markdown
+        3. NO explanation
         4. NO text outside JSON
-        5. DO NOT duplicate products WITHIN THE SAME PAGE
-        6. DO NOT skip any product
-        7. EACH product must appear exactly once PER PAGE
-        8. Prefer isolated product on plain/white background
-        9. Prefer centered single-product image
-        10. Prefer image with minimal text overlay
-        11. Prefer image showing full product clearly
-        12. Avoid collages whenever possible
-        13. Avoid description graphics
-        14. Avoid infographic layouts
-        15. Avoid lifestyle scenes if clean image exists
-        16. Avoid multi-product overview images
-        17. Prefer professional catalog product shots
+        5. NEVER invent products not visible
+        6. NEVER skip visible products
+        7. NEVER duplicate products
+        8. EACH product must appear ONLY ONCE
+        9. ALWAYS preserve product grouping correctly
 
-        IMPORTANT GLOBAL RULE:
+        ==================================================
+        CATALOG UNDERSTANDING RULES
+        ==================================================
 
-        - This input represents ONLY ONE PAGE of a catalog
-        - You MUST extract ONLY products visible on THIS PAGE
-        - DO NOT repeat products from previous pages
-        - DO NOT assume products continue across pages
+        This input represents ONLY ONE catalog page.
 
-        =====================
-        PRODUCT DETECTION LOGIC
-        =====================
+        DO NOT:
+        - continue products from previous pages
+        - assume future pages
+        - merge unrelated products
 
         A page may contain:
+        - one hero product
+        - multiple products
+        - one product with variants
+        - one product with gallery/supporting images
 
-        (A) ONE large product (hero layout)
-        (B) MULTIPLE products (grid/catalog layout)
-        (C) MIX of large + small supporting products
+        ==================================================
+        PRODUCT DETECTION RULES
+        ==================================================
 
-        You MUST:
-
-        - If SINGLE main product:
-        → return ONE product
-
-        - If MULTIPLE distinct products:
-        → extract EACH product separately
-
-        IMPORTANT:
-
-        - If multiple images exist → assume multiple products
-        - DO NOT collapse multiple items into one product
-        - If unsure → split into multiple products instead of merging
-
-        It is BETTER to slightly
-        over-detect products
-        than to miss products.
-
-        If multiple distinct product
-        areas are visible:
-
-        Extract them separately.
-
-        NEVER silently skip
-        visible products.
-
-        =====================
-        VARIANT DETECTION LOGIC
-        =====================
-
-        IMPORTANT:
-
-        If products share:
-        - same shape
-        - same structure
-        - same product type
-        - same layout
-
-        BUT differ by:
-        - color
-        - material
-        - texture
-        - print
-        - finish
-        - size
-        - capacity
-        - artwork
-        - design
+        If a page contains:
+        - visually separated products
+        - different product names
+        - different product codes
+        - different structures/shapes
 
         Then:
-        GROUP them as variants
-        under ONE product family.
+        extract them as SEPARATE products.
 
         IMPORTANT:
 
-        If a catalog page shows:
-        - multiple colors
-        - multiple patterns
-        - multiple finishes
-        - product grids
-        - repeated product silhouettes
+        If unsure:
+        it is BETTER to slightly over-detect
+        than to miss products.
 
-        You MUST create:
-        MULTIPLE variants.
+        NEVER silently ignore visible products.
 
-        DO NOT collapse them into
-        a single simple product.
+        ==================================================
+        VARIANT DETECTION RULES
+        ==================================================
 
-        DO NOT ignore visible colors/designs.
+        Products should become VARIANTS when:
 
-        GOOD EXAMPLE:
+        - same structure
+        - same silhouette
+        - same product family
+        - same product design
 
-        6 caps with different colors
+        BUT different:
+        - colors
+        - finishes
+        - textures
+        - materials
+        - artwork
+        - patterns
+        - capacities
+
+        Example:
+
+        6 caps in different colors
         =
-        1 product
+        ONE product
         with 6 color variants.
 
         IMPORTANT:
 
-        If products have clearly different:
-        - shapes
-        - categories
-        - structures
-        - functions
+        If repeated product silhouettes appear:
+        ASSUME variants.
 
-        Then:
-        they MUST become
-        SEPARATE products.
+        DO NOT:
+        - ignore visible colors
+        - collapse visible variants
+        - create Variant 1 / Variant 2
 
-        NEVER:
-        - merge unrelated products
-        - ignore visible product variations
-        - return Variant 1 / Variant 2
+        Variant names MUST be meaningful:
+        - Royal Blue
+        - Navy
+        - Charcoal
+        - Olive Green
+        - Lime Green
 
-        =====================
+        ==================================================
+        IMAGE CLASSIFICATION RULES
+        ==================================================
+
+        Each product may contain:
+
+        1. HERO IMAGE
+        2. GALLERY IMAGES
+        3. VARIANT IMAGES
+
+        --------------------------------------------------
+        HERO IMAGE RULES
+        --------------------------------------------------
+
+        "image" MUST be:
+
+        - isolated product
+        - centered product
+        - clean/plain background
+        - full product visible
+        - professional catalog shot
+
+        AVOID:
+        - infographic layouts
+        - text-heavy graphics
+        - logos
+        - specification blocks
+        - lifestyle scenes
+        - collages
+        - multi-product overview images
+
+        --------------------------------------------------
+        GALLERY IMAGE RULES
+        --------------------------------------------------
+
+        "gallery_images" should contain:
+        - side views
+        - back views
+        - inside/open views
+        - closeups
+        - detail shots
+        - lifestyle images
+        - alternate angles
+
+        DO NOT include:
+        - icons
+        - logos
+        - tiny fragments
+        - decorative graphics
+        - banners
+        - specification charts
+
+        --------------------------------------------------
+        VARIANT IMAGE RULES
+        --------------------------------------------------
+
+        Each variant should include:
+        - variant-specific image if visible
+        - correct matching color image
+
+        ==================================================
+        PRICE/STOCK RULES
+        ==================================================
+
+        Extract:
+        - visible product price
+        - visible stock quantity
+        - visible product code
+
+        If stock/price belongs to a specific variant:
+        assign it to that variant.
+
+        DO NOT invent prices or stock.
+
+        ==================================================
         OUTPUT FORMAT
-        =====================
+        ==================================================
+
+        Return JSON ARRAY:
 
         [
             {{
                 "name": "",
                 "description": "",
-                "category": "",
                 "price": "",
                 "stock": "",
-                "variant_group": "",
+                "product_code": "",
+
+                "image": "",
+
+                "gallery_images": [],
+
                 "variants": [
                     {{
                         "attributes": {{
                             "Color": ""
                         }},
-                        "image_index": 0,
-                        "stock": null
+                        "image": "",
+                        "stock": "",
+                        "price": ""
                     }}
                 ]
             }}
         ]
 
-        PAGE TEXT:
+        ==================================================
+        PAGE TEXT
+        ==================================================
+
         {page_text}
 
-        DETECTED PRICE:
+        ==================================================
+        DETECTED PRICE
+        ==================================================
+
         {page_price}
 
-        DETECTED STOCK:
+        ==================================================
+        DETECTED STOCK
+        ==================================================
+
         {page_stock}
         """
-
 
         # =====================================================
         # AI CALL
@@ -3678,7 +3737,7 @@ class VendorImportJob(models.Model):
 
             response = client.responses.create(
 
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
 
                 input=[{
                     "role": "user",
@@ -4648,7 +4707,7 @@ class VendorImportJob(models.Model):
 
                 return best_img
 
-
+ 
     #============marchin AI=========================================
     def match_image_with_ai(self, product_name, images):
 
@@ -4687,32 +4746,32 @@ class VendorImportJob(models.Model):
         - No explanation
         - No text
 
-        PRIORITY:
+            PRIORITY:
         1. Prefer isolated product on plain/white background
         2. Prefer centered single-product image
         3. Prefer image showing full product clearly
-        4. Prefer image with minimal text overlay
-        5. Prefer professional catalog product shots
-        6. Prefer clean studio product images
+        4. Prefer clean studio product photos
+        5. Prefer catalog hero product image
+        6. Avoid lifestyle scenes if isolated image exists
         7. Avoid collages whenever possible
-        8. Avoid infographic/description graphics
-        9. Avoid multi-product overview images
-        10. Avoid lifestyle scenes if clean product image exists
+        8. Avoid infographic layouts
+        9. Avoid text-heavy graphics
+        10. Avoid multi-product overview images
+        11. Avoid images containing large text blocks
 
         DO NOT PICK:
         - logos
         - icons
-        - background-only images
-        - cropped fragments
         - banners
+        - cropped fragments
         - specification charts
         - text-heavy graphics
-        - color swatch strips
+        - tiny thumbnails
         """
 
         try:
             response = client.responses.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 input=[{
                     "role": "user",
                     "content": [{"type": "input_text", "text": prompt}] + image_inputs
@@ -5531,8 +5590,7 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         self.env.cr.commit()
-
-
+    
     #==========create pdf product====================================
   
     def create_products_pdf(self):
@@ -5727,6 +5785,15 @@ class VendorImportJob(models.Model):
                 []
             )
 
+            if not products:
+
+                _logger.warning(
+
+                    f"[PDF EMPTY PAGE] "
+
+                    f"page={page_number}"
+                )
+
 
             _logger.warning(
 
@@ -5876,11 +5943,19 @@ class VendorImportJob(models.Model):
 
                     if not product:
 
+
                         vals = {
 
                             'name': name,
 
                             'default_code':
+
+                                product_data.get(
+                                    "product_code"
+                                )
+
+                                or
+
                                 variant_group,
 
                             'description_sale':
@@ -5899,6 +5974,27 @@ class VendorImportJob(models.Model):
 
                             'vendor_fingerprint':
                                 vendor_fingerprint,
+
+                            'list_price':
+
+                                self._safe_float(
+
+                                    product_data.get(
+                                        "price"
+                                    )
+                                ),
+
+                            'x_vendor_stock':
+
+                                str(
+
+                                    product_data.get(
+                                        "stock"
+                                    )
+
+                                    or ""
+
+                                ),
                         }
 
 
@@ -5923,6 +6019,49 @@ class VendorImportJob(models.Model):
                             tracking_disable=True
 
                         ).create(vals)
+
+
+                        # =========================================
+                        # PDF GALLERY IMAGES
+                        # =========================================
+
+                        gallery_images = product_data.get(
+                            "gallery_images",
+                            []
+                        )
+
+                        for extra_image in gallery_images:
+
+                            try:
+
+                                if not extra_image:
+                                    continue
+
+                                if extra_image == image:
+                                    continue
+
+                                self.env[
+                                    'product.image'
+                                ].create({
+
+                                    'name':
+                                        product.name,
+
+                                    'product_tmpl_id':
+                                        product.id,
+
+                                    'image_1920':
+                                        extra_image
+                                })
+
+                            except Exception as e:
+
+                                _logger.warning(
+
+                                    f"[PDF GALLERY FAILED] "
+
+                                    f"{str(e)}"
+                                )
 
                         #=====Product Translation========
                         self._apply_product_translation(product)
@@ -6172,25 +6311,25 @@ class VendorImportJob(models.Model):
 
                         ], limit=1)
 
+                        # variant_image = variant.get("image")
 
-                        if (
+                        # if variant_image:
 
-                            variant_record
+                        #     try:
 
-                            and
+                        #         variant_record.image_1920 = (
+                        #             variant_image
+                        #         )
 
-                            product_data.get(
-                                "image"
-                            )
+                        #     except Exception as e:
 
-                        ):
+                        #         _logger.warning(
 
-                            variant_record.image_1920 = (
+                        #             f"[VARIANT IMAGE FAILED] "
 
-                                product_data.get(
-                                    "image"
-                                )
-                            )
+                        #             f"{str(e)}"
+                        #         )
+
 
 
                 except Exception as e:
@@ -6267,6 +6406,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
 
 
     #=========product duplicate helper=======================
@@ -8899,3 +9039,26 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
 
+     #======variant color===================================
+    def _normalize_color_name(self, value):
+
+        if not value:
+            return value
+
+        value = str(value).strip()
+
+        mapping = {
+
+            'navy blue': 'Navy',
+            'royal blue': 'Royal Blue',
+            'sky blue': 'Sky Blue',
+            'dark blue': 'Navy',
+            'lime': 'Lime Green',
+            'charcoal': 'Charcoal',
+        }
+
+        return mapping.get(
+            value.lower(),
+            value
+        )
+  
