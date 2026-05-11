@@ -77,6 +77,9 @@ class VendorImportJob(models.Model):
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
+    completion_email_sent = fields.Boolean(
+        default=False
+    )
     is_excel_parsed = fields.Boolean(default=False)
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
@@ -113,6 +116,10 @@ class VendorImportJob(models.Model):
     excel_url_processing = fields.Boolean(
         default=False
     )
+
+    # completion_email_sent = fields.Boolean(
+    #     default=False
+    # )
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -176,6 +183,74 @@ class VendorImportJob(models.Model):
                 f"COMMIT FAILED → {commit_error}"
             )
 
+    #=================SEND VENDOR COMPLETION EMAIL=================
+
+    def send_completion_email(self):
+
+        try:
+
+            if not self.partner_id:
+                return
+
+            if not self.partner_id.email:
+                return
+
+
+            subject = (
+                f"Import Completed - {self.name}"
+            )
+
+            body = f"""
+            <p>Hello {self.partner_id.name},</p>
+
+            <p>Your vendor import job has completed successfully.</p>
+
+            <ul>
+                <li><b>File:</b> {self.name}</li>
+                <li><b>Source:</b> {self.source_type}</li>
+                <li><b>Date:</b> {self.create_date}</li>
+            </ul>
+
+            <p>Status: Completed</p>
+
+            <p>Regards</p>
+            """
+
+
+            mail = self.env['mail.mail'].sudo().create({
+
+                'subject': subject,
+
+                'body_html': body,
+
+                'email_to': self.partner_id.email,
+
+            })
+
+
+            mail.send()
+
+
+            self.completion_email_sent = True
+
+
+            _logger.warning(
+
+                f"[EMAIL SENT] "
+
+                f"{self.partner_id.email}"
+
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[EMAIL FAILED] "
+
+                f"{str(e)}"
+
+            )
 
     #============Processing Jobs===================================================
 
@@ -565,6 +640,10 @@ class VendorImportJob(models.Model):
                         "URL COMPLETE ✅"
                     )
 
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
+
                 elif new_index > previous_index:
 
                     self.state = 'url_creating'
@@ -668,13 +747,32 @@ class VendorImportJob(models.Model):
 
 
                     # parser itself decides completion
+                    # if self.is_excel_parsed:
+
+                    #     _logger.warning(
+                    #         "[EXCEL PARSE] FULLY COMPLETE"
+                    #     )
+
+                    #     self.state = 'done'
+
                     if self.is_excel_parsed:
 
                         _logger.warning(
-                            "[EXCEL PARSE] FULLY COMPLETE"
+                            "[EXCEL IMPORT COMPLETE] ✅"
                         )
 
                         self.state = 'done'
+
+                        if not self.completion_email_sent:
+
+                            self.send_completion_email()
+
+                        # cleanup URL queue
+                        self.excel_url_processing = False
+
+                        self.excel_url_queue = False
+
+                        self.excel_url_index = 0
 
                     else:
 
@@ -1044,6 +1142,10 @@ class VendorImportJob(models.Model):
                     )
 
                     self.state = 'done'
+
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
 
 
                 self.flush_recordset()
@@ -3399,6 +3501,16 @@ class VendorImportJob(models.Model):
         5. DO NOT duplicate products WITHIN THE SAME PAGE
         6. DO NOT skip any product
         7. EACH product must appear exactly once PER PAGE
+        8. Prefer isolated product on plain/white background
+        9. Prefer centered single-product image
+        10. Prefer image with minimal text overlay
+        11. Prefer image showing full product clearly
+        12. Avoid collages whenever possible
+        13. Avoid description graphics
+        14. Avoid infographic layouts
+        15. Avoid lifestyle scenes if clean image exists
+        16. Avoid multi-product overview images
+        17. Prefer professional catalog product shots
 
         IMPORTANT GLOBAL RULE:
 
@@ -3431,14 +3543,85 @@ class VendorImportJob(models.Model):
         - DO NOT collapse multiple items into one product
         - If unsure → split into multiple products instead of merging
 
+        It is BETTER to slightly
+        over-detect products
+        than to miss products.
+
+        If multiple distinct product
+        areas are visible:
+
+        Extract them separately.
+
+        NEVER silently skip
+        visible products.
+
         =====================
         VARIANT DETECTION LOGIC
         =====================
 
-        - Similar products with same structure/design
-        should be grouped as variants.
+        IMPORTANT:
 
-        - Different products MUST stay separate.
+        If products share:
+        - same shape
+        - same structure
+        - same product type
+        - same layout
+
+        BUT differ by:
+        - color
+        - material
+        - texture
+        - print
+        - finish
+        - size
+        - capacity
+        - artwork
+        - design
+
+        Then:
+        GROUP them as variants
+        under ONE product family.
+
+        IMPORTANT:
+
+        If a catalog page shows:
+        - multiple colors
+        - multiple patterns
+        - multiple finishes
+        - product grids
+        - repeated product silhouettes
+
+        You MUST create:
+        MULTIPLE variants.
+
+        DO NOT collapse them into
+        a single simple product.
+
+        DO NOT ignore visible colors/designs.
+
+        GOOD EXAMPLE:
+
+        6 caps with different colors
+        =
+        1 product
+        with 6 color variants.
+
+        IMPORTANT:
+
+        If products have clearly different:
+        - shapes
+        - categories
+        - structures
+        - functions
+
+        Then:
+        they MUST become
+        SEPARATE products.
+
+        NEVER:
+        - merge unrelated products
+        - ignore visible product variations
+        - return Variant 1 / Variant 2
 
         =====================
         OUTPUT FORMAT
@@ -3480,13 +3663,16 @@ class VendorImportJob(models.Model):
         # =====================================================
 
         try:
+            
+            MAX_IMAGES = 15
 
             image_inputs = [
                 {
                     "type": "input_image",
                     "image_url": f"data:image/jpeg;base64,{img}"
                 }
-                for img in page_images[:10]
+            
+                for img in page_images[:MAX_IMAGES]
             ]
 
 
@@ -3563,27 +3749,46 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # ATTACH IMAGES
+        # SMART IMAGE MATCHING
         # =====================================================
 
-        for p_index, prod in enumerate(
-            parsed
-        ):
+        for prod in parsed:
 
-            if (
+            try:
 
-                page_images
-
-                and
-
-                p_index < len(page_images)
-
-            ):
-
-                prod["image"] = (
-                    page_images[p_index]
+                product_name = (
+                    prod.get("name")
+                    or ""
                 )
 
+                best_image = self.match_image_with_ai(
+
+                    product_name,
+
+                    page_images
+                )
+
+                if best_image:
+
+                    prod["image"] = best_image
+
+                    _logger.warning(
+
+                        f"[PDF IMAGE MATCH] "
+
+                        f"{product_name}"
+
+                    )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF IMAGE MATCH FAILED] "
+
+                    f"{str(e)}"
+
+                )
 
         # =====================================================
         # MERGE RESULTS
@@ -4454,7 +4659,13 @@ class VendorImportJob(models.Model):
             return None
 
         # limit images for performance
-        images = images[:5]
+        # =====================================
+        # LIMIT FOR PERFORMANCE
+        # =====================================
+
+        MAX_IMAGES = 15
+
+        images = images[:MAX_IMAGES]
         image_inputs = [
         {
                 "type": "input_image",
@@ -4477,16 +4688,26 @@ class VendorImportJob(models.Model):
         - No text
 
         PRIORITY:
-        1. Clean product image (plain background)
-        2. Product centered and clearly visible
-        3. No human interaction preferred
-        4. If only lifestyle images exist, choose the clearest one
+        1. Prefer isolated product on plain/white background
+        2. Prefer centered single-product image
+        3. Prefer image showing full product clearly
+        4. Prefer image with minimal text overlay
+        5. Prefer professional catalog product shots
+        6. Prefer clean studio product images
+        7. Avoid collages whenever possible
+        8. Avoid infographic/description graphics
+        9. Avoid multi-product overview images
+        10. Avoid lifestyle scenes if clean product image exists
 
         DO NOT PICK:
         - logos
         - icons
         - background-only images
         - cropped fragments
+        - banners
+        - specification charts
+        - text-heavy graphics
+        - color swatch strips
         """
 
         try:
@@ -4511,6 +4732,7 @@ class VendorImportJob(models.Model):
 
         return None
     
+
     #============enforce translation=================================
     def _force_translate(self, text, target_lang):
 
@@ -8676,3 +8898,4 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+
