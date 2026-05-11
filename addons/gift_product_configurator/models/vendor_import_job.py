@@ -77,6 +77,9 @@ class VendorImportJob(models.Model):
     last_processed_product_index = fields.Integer(default=0)
     last_created_page = fields.Integer(default=0)
     lock = fields.Boolean(default=False)
+    completion_email_sent = fields.Boolean(
+        default=False
+    )
     is_excel_parsed = fields.Boolean(default=False)
     excel_ai_index = fields.Integer(default=0)
     upload_signature = fields.Char(string="Upload Signature")
@@ -113,6 +116,10 @@ class VendorImportJob(models.Model):
     excel_url_processing = fields.Boolean(
         default=False
     )
+
+    # completion_email_sent = fields.Boolean(
+    #     default=False
+    # )
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -176,6 +183,74 @@ class VendorImportJob(models.Model):
                 f"COMMIT FAILED → {commit_error}"
             )
 
+    #=================SEND VENDOR COMPLETION EMAIL=================
+
+    def send_completion_email(self):
+
+        try:
+
+            if not self.partner_id:
+                return
+
+            if not self.partner_id.email:
+                return
+
+
+            subject = (
+                f"Import Completed - {self.name}"
+            )
+
+            body = f"""
+            <p>Hello {self.partner_id.name},</p>
+
+            <p>Your vendor import job has completed successfully.</p>
+
+            <ul>
+                <li><b>File:</b> {self.name}</li>
+                <li><b>Source:</b> {self.source_type}</li>
+                <li><b>Date:</b> {self.create_date}</li>
+            </ul>
+
+            <p>Status: Completed</p>
+
+            <p>Regards</p>
+            """
+
+
+            mail = self.env['mail.mail'].sudo().create({
+
+                'subject': subject,
+
+                'body_html': body,
+
+                'email_to': self.partner_id.email,
+
+            })
+
+
+            mail.send()
+
+
+            self.completion_email_sent = True
+
+
+            _logger.warning(
+
+                f"[EMAIL SENT] "
+
+                f"{self.partner_id.email}"
+
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[EMAIL FAILED] "
+
+                f"{str(e)}"
+
+            )
 
     #============Processing Jobs===================================================
 
@@ -565,6 +640,10 @@ class VendorImportJob(models.Model):
                         "URL COMPLETE ✅"
                     )
 
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
+
                 elif new_index > previous_index:
 
                     self.state = 'url_creating'
@@ -668,13 +747,32 @@ class VendorImportJob(models.Model):
 
 
                     # parser itself decides completion
+                    # if self.is_excel_parsed:
+
+                    #     _logger.warning(
+                    #         "[EXCEL PARSE] FULLY COMPLETE"
+                    #     )
+
+                    #     self.state = 'done'
+
                     if self.is_excel_parsed:
 
                         _logger.warning(
-                            "[EXCEL PARSE] FULLY COMPLETE"
+                            "[EXCEL IMPORT COMPLETE] ✅"
                         )
 
                         self.state = 'done'
+
+                        if not self.completion_email_sent:
+
+                            self.send_completion_email()
+
+                        # cleanup URL queue
+                        self.excel_url_processing = False
+
+                        self.excel_url_queue = False
+
+                        self.excel_url_index = 0
 
                     else:
 
@@ -1044,6 +1142,10 @@ class VendorImportJob(models.Model):
                     )
 
                     self.state = 'done'
+
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
 
 
                 self.flush_recordset()
@@ -3384,115 +3486,258 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROMPT
         # =====================================================
-
+       
         prompt = f"""
-        You are an advanced product extraction and interpretation engine for catalog PDFs.
+        You are an advanced AI product extraction engine for catalog PDF pages.
 
-        =====================
-        CORE RULES (STRICT)
-        =====================
+        You analyze BOTH:
+        - page text
+        - catalog product images
 
-        1. RETURN ONLY VALID JSON
-        2. NO explanation
-        3. NO markdown
+        Your job:
+        extract ALL visible products accurately.
+
+        ==================================================
+        STRICT OUTPUT RULES
+        ==================================================
+
+        1. RETURN ONLY VALID JSON ARRAY
+        2. NO markdown
+        3. NO explanation
         4. NO text outside JSON
-        5. DO NOT duplicate products WITHIN THE SAME PAGE
-        6. DO NOT skip any product
-        7. EACH product must appear exactly once PER PAGE
+        5. NEVER invent products not visible
+        6. NEVER skip visible products
+        7. NEVER duplicate products
+        8. EACH product must appear ONLY ONCE
+        9. ALWAYS preserve product grouping correctly
 
-        IMPORTANT GLOBAL RULE:
+        ==================================================
+        CATALOG UNDERSTANDING RULES
+        ==================================================
 
-        - This input represents ONLY ONE PAGE of a catalog
-        - You MUST extract ONLY products visible on THIS PAGE
-        - DO NOT repeat products from previous pages
-        - DO NOT assume products continue across pages
+        This input represents ONLY ONE catalog page.
 
-        =====================
-        PRODUCT DETECTION LOGIC
-        =====================
+        DO NOT:
+        - continue products from previous pages
+        - assume future pages
+        - merge unrelated products
 
         A page may contain:
+        - one hero product
+        - multiple products
+        - one product with variants
+        - one product with gallery/supporting images
 
-        (A) ONE large product (hero layout)
-        (B) MULTIPLE products (grid/catalog layout)
-        (C) MIX of large + small supporting products
+        ==================================================
+        PRODUCT DETECTION RULES
+        ==================================================
 
-        You MUST:
+        If a page contains:
+        - visually separated products
+        - different product names
+        - different product codes
+        - different structures/shapes
 
-        - If SINGLE main product:
-        → return ONE product
-
-        - If MULTIPLE distinct products:
-        → extract EACH product separately
+        Then:
+        extract them as SEPARATE products.
 
         IMPORTANT:
 
-        - If multiple images exist → assume multiple products
-        - DO NOT collapse multiple items into one product
-        - If unsure → split into multiple products instead of merging
+        If unsure:
+        it is BETTER to slightly over-detect
+        than to miss products.
 
-        =====================
-        VARIANT DETECTION LOGIC
-        =====================
+        NEVER silently ignore visible products.
 
-        - Similar products with same structure/design
-        should be grouped as variants.
+        ==================================================
+        VARIANT DETECTION RULES
+        ==================================================
 
-        - Different products MUST stay separate.
+        Products should become VARIANTS when:
 
-        =====================
+        - same structure
+        - same silhouette
+        - same product family
+        - same product design
+
+        BUT different:
+        - colors
+        - finishes
+        - textures
+        - materials
+        - artwork
+        - patterns
+        - capacities
+
+        Example:
+
+        6 caps in different colors
+        =
+        ONE product
+        with 6 color variants.
+
+        IMPORTANT:
+
+        If repeated product silhouettes appear:
+        ASSUME variants.
+
+        DO NOT:
+        - ignore visible colors
+        - collapse visible variants
+        - create Variant 1 / Variant 2
+
+        Variant names MUST be meaningful:
+        - Royal Blue
+        - Navy
+        - Charcoal
+        - Olive Green
+        - Lime Green
+
+        ==================================================
+        IMAGE CLASSIFICATION RULES
+        ==================================================
+
+        Each product may contain:
+
+        1. HERO IMAGE
+        2. GALLERY IMAGES
+        3. VARIANT IMAGES
+
+        --------------------------------------------------
+        HERO IMAGE RULES
+        --------------------------------------------------
+
+        "image" MUST be:
+
+        - isolated product
+        - centered product
+        - clean/plain background
+        - full product visible
+        - professional catalog shot
+
+        AVOID:
+        - infographic layouts
+        - text-heavy graphics
+        - logos
+        - specification blocks
+        - lifestyle scenes
+        - collages
+        - multi-product overview images
+
+        --------------------------------------------------
+        GALLERY IMAGE RULES
+        --------------------------------------------------
+
+        "gallery_images" should contain:
+        - side views
+        - back views
+        - inside/open views
+        - closeups
+        - detail shots
+        - lifestyle images
+        - alternate angles
+
+        DO NOT include:
+        - icons
+        - logos
+        - tiny fragments
+        - decorative graphics
+        - banners
+        - specification charts
+
+        --------------------------------------------------
+        VARIANT IMAGE RULES
+        --------------------------------------------------
+
+        Each variant should include:
+        - variant-specific image if visible
+        - correct matching color image
+
+        ==================================================
+        PRICE/STOCK RULES
+        ==================================================
+
+        Extract:
+        - visible product price
+        - visible stock quantity
+        - visible product code
+
+        If stock/price belongs to a specific variant:
+        assign it to that variant.
+
+        DO NOT invent prices or stock.
+
+        ==================================================
         OUTPUT FORMAT
-        =====================
+        ==================================================
+
+        Return JSON ARRAY:
 
         [
             {{
                 "name": "",
                 "description": "",
-                "category": "",
                 "price": "",
                 "stock": "",
-                "variant_group": "",
+                "product_code": "",
+
+                "image": "",
+
+                "gallery_images": [],
+
                 "variants": [
                     {{
                         "attributes": {{
                             "Color": ""
                         }},
-                        "image_index": 0,
-                        "stock": null
+                        "image": "",
+                        "stock": "",
+                        "price": ""
                     }}
                 ]
             }}
         ]
 
-        PAGE TEXT:
+        ==================================================
+        PAGE TEXT
+        ==================================================
+
         {page_text}
 
-        DETECTED PRICE:
+        ==================================================
+        DETECTED PRICE
+        ==================================================
+
         {page_price}
 
-        DETECTED STOCK:
+        ==================================================
+        DETECTED STOCK
+        ==================================================
+
         {page_stock}
         """
-
 
         # =====================================================
         # AI CALL
         # =====================================================
 
         try:
+            
+            MAX_IMAGES = 15
 
             image_inputs = [
                 {
                     "type": "input_image",
                     "image_url": f"data:image/jpeg;base64,{img}"
                 }
-                for img in page_images[:10]
+            
+                for img in page_images[:MAX_IMAGES]
             ]
 
 
             response = client.responses.create(
 
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
 
                 input=[{
                     "role": "user",
@@ -3512,6 +3757,15 @@ class VendorImportJob(models.Model):
                 response.output_text or ""
             ).strip()
 
+            # =====================================
+            # REFRESH CURSOR AFTER OPENAI CALL
+            # =====================================
+
+            self.env.cr.commit()
+
+            self.env.invalidate_all()
+
+            self = self.sudo().browse(self.id)
 
             result = result.replace(
                 "```json",
@@ -3563,27 +3817,46 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # ATTACH IMAGES
+        # SMART IMAGE MATCHING
         # =====================================================
 
-        for p_index, prod in enumerate(
-            parsed
-        ):
+        for prod in parsed:
 
-            if (
+            try:
 
-                page_images
-
-                and
-
-                p_index < len(page_images)
-
-            ):
-
-                prod["image"] = (
-                    page_images[p_index]
+                product_name = (
+                    prod.get("name")
+                    or ""
                 )
 
+                best_image = self.match_image_with_ai(
+
+                    product_name,
+
+                    page_images
+                )
+
+                if best_image:
+
+                    prod["image"] = best_image
+
+                    _logger.warning(
+
+                        f"[PDF IMAGE MATCH] "
+
+                        f"{product_name}"
+
+                    )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF IMAGE MATCH FAILED] "
+
+                    f"{str(e)}"
+
+                )
 
         # =====================================================
         # MERGE RESULTS
@@ -4443,7 +4716,7 @@ class VendorImportJob(models.Model):
 
                 return best_img
 
-
+ 
     #============marchin AI=========================================
     def match_image_with_ai(self, product_name, images):
 
@@ -4454,7 +4727,13 @@ class VendorImportJob(models.Model):
             return None
 
         # limit images for performance
-        images = images[:5]
+        # =====================================
+        # LIMIT FOR PERFORMANCE
+        # =====================================
+
+        MAX_IMAGES = 15
+
+        images = images[:MAX_IMAGES]
         image_inputs = [
         {
                 "type": "input_image",
@@ -4476,22 +4755,32 @@ class VendorImportJob(models.Model):
         - No explanation
         - No text
 
-        PRIORITY:
-        1. Clean product image (plain background)
-        2. Product centered and clearly visible
-        3. No human interaction preferred
-        4. If only lifestyle images exist, choose the clearest one
+            PRIORITY:
+        1. Prefer isolated product on plain/white background
+        2. Prefer centered single-product image
+        3. Prefer image showing full product clearly
+        4. Prefer clean studio product photos
+        5. Prefer catalog hero product image
+        6. Avoid lifestyle scenes if isolated image exists
+        7. Avoid collages whenever possible
+        8. Avoid infographic layouts
+        9. Avoid text-heavy graphics
+        10. Avoid multi-product overview images
+        11. Avoid images containing large text blocks
 
         DO NOT PICK:
         - logos
         - icons
-        - background-only images
+        - banners
         - cropped fragments
+        - specification charts
+        - text-heavy graphics
+        - tiny thumbnails
         """
 
         try:
             response = client.responses.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 input=[{
                     "role": "user",
                     "content": [{"type": "input_text", "text": prompt}] + image_inputs
@@ -4511,6 +4800,7 @@ class VendorImportJob(models.Model):
 
         return None
     
+
     #============enforce translation=================================
     def _force_translate(self, text, target_lang):
 
@@ -5309,8 +5599,7 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         self.env.cr.commit()
-
-
+    
     #==========create pdf product====================================
   
     def create_products_pdf(self):
@@ -5505,6 +5794,15 @@ class VendorImportJob(models.Model):
                 []
             )
 
+            if not products:
+
+                _logger.warning(
+
+                    f"[PDF EMPTY PAGE] "
+
+                    f"page={page_number}"
+                )
+
 
             _logger.warning(
 
@@ -5654,11 +5952,19 @@ class VendorImportJob(models.Model):
 
                     if not product:
 
+
                         vals = {
 
                             'name': name,
 
                             'default_code':
+
+                                product_data.get(
+                                    "product_code"
+                                )
+
+                                or
+
                                 variant_group,
 
                             'description_sale':
@@ -5677,6 +5983,27 @@ class VendorImportJob(models.Model):
 
                             'vendor_fingerprint':
                                 vendor_fingerprint,
+
+                            'list_price':
+
+                                self._safe_float(
+
+                                    product_data.get(
+                                        "price"
+                                    )
+                                ),
+
+                            'x_vendor_stock':
+
+                                str(
+
+                                    product_data.get(
+                                        "stock"
+                                    )
+
+                                    or ""
+
+                                ),
                         }
 
 
@@ -5701,6 +6028,49 @@ class VendorImportJob(models.Model):
                             tracking_disable=True
 
                         ).create(vals)
+
+
+                        # =========================================
+                        # PDF GALLERY IMAGES
+                        # =========================================
+
+                        gallery_images = product_data.get(
+                            "gallery_images",
+                            []
+                        )
+
+                        for extra_image in gallery_images:
+
+                            try:
+
+                                if not extra_image:
+                                    continue
+
+                                if extra_image == image:
+                                    continue
+
+                                self.env[
+                                    'product.image'
+                                ].create({
+
+                                    'name':
+                                        product.name,
+
+                                    'product_tmpl_id':
+                                        product.id,
+
+                                    'image_1920':
+                                        extra_image
+                                })
+
+                            except Exception as e:
+
+                                _logger.warning(
+
+                                    f"[PDF GALLERY FAILED] "
+
+                                    f"{str(e)}"
+                                )
 
                         #=====Product Translation========
                         self._apply_product_translation(product)
@@ -5950,25 +6320,25 @@ class VendorImportJob(models.Model):
 
                         ], limit=1)
 
+                        # variant_image = variant.get("image")
 
-                        if (
+                        # if variant_image:
 
-                            variant_record
+                        #     try:
 
-                            and
+                        #         variant_record.image_1920 = (
+                        #             variant_image
+                        #         )
 
-                            product_data.get(
-                                "image"
-                            )
+                        #     except Exception as e:
 
-                        ):
+                        #         _logger.warning(
 
-                            variant_record.image_1920 = (
+                        #             f"[VARIANT IMAGE FAILED] "
 
-                                product_data.get(
-                                    "image"
-                                )
-                            )
+                        #             f"{str(e)}"
+                        #         )
+
 
 
                 except Exception as e:
@@ -6045,6 +6415,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
 
 
     #=========product duplicate helper=======================
@@ -8676,3 +9047,27 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+
+    #======variant color===================================
+    def _normalize_color_name(self, value):
+
+        if not value:
+            return value
+
+        value = str(value).strip()
+
+        mapping = {
+
+            'navy blue': 'Navy',
+            'royal blue': 'Royal Blue',
+            'sky blue': 'Sky Blue',
+            'dark blue': 'Navy',
+            'lime': 'Lime Green',
+            'charcoal': 'Charcoal',
+        }
+
+        return mapping.get(
+            value.lower(),
+            value
+        )
+  

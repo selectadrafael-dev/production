@@ -1,4 +1,4 @@
-#==================stable modified=================================
+#==================stable last modified=================================
 from odoo import models, fields
 import base64
 import logging
@@ -112,6 +112,10 @@ class VendorImportJob(models.Model):
     )
 
     excel_url_processing = fields.Boolean(
+        default=False
+    )
+
+    completion_email_sent = fields.Boolean(
         default=False
     )
 
@@ -2800,19 +2804,206 @@ class VendorImportJob(models.Model):
             - categories only (no product info)
             - repeated headers
 
+           =====================================
+            VARIANT DETECTION
+            =====================================
+
+            IMPORTANT:
+
+            Use PRODUCT IMAGES as the PRIMARY
+            source for detecting variants.
+
+            Also use:
+            - product title
+            - description
+            - SKU
+            - repeated patterns
+            - packaging labels
+            - text printed on product
+            - visible size/capacity markings
+
+            Detect REAL differences such as:
+            - color
+            - material
+            - finish
+            - texture
+            - pattern
+            - lid type
+            - bottle type
+            - packaging
+            - shape
+            - capacity
+            - dimensions
+            - style
+            - design
+            - print variation
+
+            IMPORTANT RULES:
+
+            1. NEVER generate:
+            - Variant 1
+            - Variant 2
+            - Default
+            - Standard
+            - Option A
+            - Option B
+
+            2. ALWAYS return meaningful
+            attribute names and values.
+
+            GOOD EXAMPLES:
+
+            {{
+            "Color": "Black"
+            }}
+
+            {{
+            "Material": "Bamboo"
+            }}
+
+            {{
+            "Capacity": "750ml"
+            }}
+
+            {{
+            "Design": "Football Print"
+            }}
+
+            {{
+            "Finish": "Matte Silver"
+            }}
+
+            3. If a SINGLE IMAGE contains
+            MULTIPLE product colors/designs:
+
+            Create SEPARATE variants for EACH
+            visible product variation.
+
+            Example:
+            - black bottle
+            - blue bottle
+            - red bottle
+
+            MUST become:
+
+            [
+            {{
+                "attributes": {{
+                "Color": "Black"
+                }}
+            }},
+            {{
+                "attributes": {{
+                "Color": "Blue"
+                }}
+            }},
+            {{
+                "attributes": {{
+                "Color": "Red"
+                }}
+            }}
+            ]
+
+            4. If products differ by:
+            - artwork
+            - printed graphics
+            - pattern
+            - branding
+            - sports design
+            - texture
+
+            Use:
+            {{
+            "Design": "..."
+            }}
+
+            5. If products differ mainly by:
+            - size
+            - dimensions
+            - capacity
+
+            Use:
+            {{
+            "Size": "..."
+            }}
+
+            OR
+
+            {{
+            "Capacity": "..."
+            }}
+
+            6. NEVER invent attributes that
+            cannot be visually or textually
+            supported.
+
+            7. If uncertainty exists:
+            Prefer:
+            - Color
+            - Design
+            - Material
+            - Capacity
+
+            based on strongest visible evidence.
+
+            8. If NO meaningful difference exists:
+            Return ONE variant only.
+
+            9. IMPORTANT:
+            When multiple products appear in
+            one image, treat each visible
+            variation as a separate variant,
+            even if no explicit text exists.
+
+            10. Preserve consistency across
+            all variants for the same product.
+
+            BAD EXAMPLE:
+            [
+            {{
+                "attributes": {{
+                "Variant": "Variant 1"
+                }}
+            }}
+            ]
+
+            GOOD EXAMPLE:
+            [
+            {{
+                "attributes": {{
+                "Color": "White"
+                }}
+            }},
+            {{
+                "attributes": {{
+                "Color": "Black"
+                }}
+            }}
+            ]
+
+
             =====================================
             OUTPUT FORMAT
             =====================================
 
             [
-            {{
-                "name": "Clean product name",
-                "description": "Short product description (max 30 words)",
-                "category": "Best guess category",
-                "price": "",
-                "stock": "",
-                "image": "image_url_or_null"
-            }}
+                {{
+                    "name": "Clean product name",
+                    "description": "Short product description (max 30 words)",
+                    "category": "Best guess category",
+                    "price": "",
+                    "stock": "",
+                    "image": "image_url_or_null",
+                    "variants": [
+                                {{
+                                    "attributes": {{
+                                        "Variant": ""
+                                    }},
+                                    "image_index": 0,
+                                    "stock": null
+                                }}
+                            ]
+                }}
             ]
 
             =====================================
@@ -3794,7 +3985,7 @@ class VendorImportJob(models.Model):
 
                 should be treated as variants of ONE parent product.
 
-                =====================================
+                 =====================================
                 VARIANT DETECTION
                 =====================================
 
@@ -4660,15 +4851,15 @@ class VendorImportJob(models.Model):
 
         for idx in range(start_index, end_index):
 
-            product = products[idx]
+            product_data = products[idx]
 
-            name = product.get("name")
+            name = product_data.get("name")
             if not name:
                 skipped_count += 1
                 continue
 
-            description = product.get("description", "")
-            raw_category = (product.get("category") or "").lower()
+            description = product_data.get("description", "")
+            raw_category = (product_data.get("category") or "").lower()
 
             # ================= CATEGORY =================
             mapped_category = "General"
@@ -4692,7 +4883,7 @@ class VendorImportJob(models.Model):
 
             variant_group = (
 
-                product.get("variant_group")
+                product_data.get("variant_group")
 
                 or
 
@@ -4746,7 +4937,7 @@ class VendorImportJob(models.Model):
             }
 
             # ================= IMAGE =================
-            image_url = product.get("image")
+            image_url = product_data.get("image")
 
             if image_url and isinstance(image_url, str) and image_url.startswith("http"):
 
@@ -4796,6 +4987,308 @@ class VendorImportJob(models.Model):
                 ).create(vals)
 
                 self._apply_product_translation(product)
+
+                # =========================================
+                # URL VARIANTS
+                # =========================================
+
+                variants = product_data.get(
+                    "variants",
+                    []
+                )
+
+
+                # =========================================
+                # FALLBACK VARIANT
+                # =========================================
+
+                if not variants:
+
+                    variants = [{
+
+                        "attributes": {
+
+                            "Variant": name
+                        }
+
+                    }]
+
+
+                # =========================================
+                # PROCESS VARIANTS
+                # =========================================
+
+                for variant in variants:
+
+                    attributes = variant.get(
+                        "attributes",
+                        {}
+                    )
+
+
+                    for attr_name, attr_value in attributes.items():
+
+
+                        if not attr_value:
+                            continue
+
+
+                        attr_value = str(attr_value).strip()
+
+
+                        # =====================================
+                        # NORMALIZE BAD VARIANTS
+                        # =====================================
+
+                        bad_variants = [
+
+                            'variant 1',
+
+                            'variant 2',
+
+                            'variant 3',
+
+                            'default',
+
+                            'option a',
+
+                            'option b'
+                        ]
+
+
+                        if attr_value.lower() in bad_variants:
+
+                            attr_name = "Design"
+
+                            attr_value = name
+
+
+                        # =====================================
+                        # ATTRIBUTE
+                        # =====================================
+
+                        attribute = self.env[
+                            'product.attribute'
+                        ].search([
+
+                            ('name', '=', attr_name)
+
+                        ], limit=1)
+
+                        # =====================================
+                        # TRANSLATE ATTRIBUTE NAME
+                        # =====================================
+
+                        try:
+
+                            for lang_code in [
+
+                                'ru_RU',
+
+                                'az_AZ'
+                            ]:
+
+                                translated_attr = self._force_translate(
+
+                                    str(attr_name),
+
+                                    lang_code
+                                )
+
+
+                                if translated_attr:
+
+                                    attribute.with_context(
+                                        lang=lang_code
+                                    ).write({
+
+                                        'name': translated_attr
+                                    })
+
+
+                                    _logger.warning(
+
+                                        f"[URL ATTRIBUTE TRANSLATED] "
+
+                                        f"{attr_name} "
+
+                                        f"-> "
+
+                                        f"{translated_attr} "
+
+                                        f"({lang_code})"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[URL ATTRIBUTE TRANSLATION ERROR] "
+
+                                f"{str(e)}"
+                            )
+
+
+                        if not attribute:
+
+                            attribute = self.env[
+                                'product.attribute'
+                            ].create({
+
+                                'name': attr_name
+                            })
+
+
+                        # =====================================
+                        # ATTRIBUTE VALUE
+                        # =====================================
+
+                        value = self.env[
+                            'product.attribute.value'
+                        ].search([
+
+                            ('name', '=', attr_value),
+
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
+
+                        ], limit=1)
+
+
+                        if not value:
+
+                            value = self.env[
+                                'product.attribute.value'
+                            ].create({
+
+                                'name': attr_value,
+
+                                'attribute_id':
+                                    attribute.id
+                            })
+
+
+                            # =================================
+                            # TRANSLATE VARIANT VALUE
+                            # =================================
+
+                            try:
+
+                                for lang_code in [
+
+                                    'ru_RU',
+
+                                    'az_AZ'
+                                ]:
+
+                                    translated_variant = (
+
+                                        self._force_translate(
+
+                                            str(attr_value),
+
+                                            lang_code
+                                        )
+                                    )
+
+
+                                    if translated_variant:
+
+                                        value.with_context(
+                                            lang=lang_code
+                                        ).write({
+
+                                            'name':
+                                                translated_variant
+                                        })
+
+
+                                        _logger.warning(
+
+                                            f"[URL VARIANT TRANSLATED] "
+
+                                            f"{attr_value} "
+
+                                            f"-> "
+
+                                            f"{translated_variant} "
+
+                                            f"({lang_code})"
+                                        )
+
+                            except Exception as e:
+
+                                _logger.warning(
+
+                                    f"[URL VARIANT TRANSLATION ERROR] "
+
+                                    f"{str(e)}"
+                                )
+
+
+                        # =====================================
+                        # ATTRIBUTE LINE
+                        # =====================================
+
+                        line = self.env[
+                            'product.template.attribute.line'
+                        ].search([
+
+                            (
+                                'product_tmpl_id',
+                                '=',
+                                product.id
+                            ),
+
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
+
+                        ], limit=1)
+
+
+                        if not line:
+
+                            self.env[
+                                'product.template.attribute.line'
+                            ].create({
+
+                                'product_tmpl_id':
+                                    product.id,
+
+                                'attribute_id':
+                                    attribute.id,
+
+                                'value_ids': [(6, 0, [
+
+                                    value.id
+
+                                ])]
+                            })
+
+                        else:
+
+                            if (
+
+                                value.id
+
+                                not in
+
+                                line.value_ids.ids
+
+                            ):
+
+                                line.value_ids = [
+
+                                    (4, value.id)
+
+                                ]
+               
                 created_count += 1
 
             except Exception as e:
@@ -5334,6 +5827,55 @@ class VendorImportJob(models.Model):
                                 })
 
 
+                                # =========================================
+                                # TRANSLATE VARIANT VALUE
+                                # =========================================
+
+                                try:
+
+                                    for lang_code in ['ru_RU', 'az_AZ']:
+
+                                        translated_variant = self._force_translate(
+
+                                            str(attr_value),
+
+                                            lang_code
+                                        )
+
+
+                                        if translated_variant:
+
+                                            value.with_context(
+                                                lang=lang_code
+                                            ).write({
+
+                                                'name': translated_variant
+                                            })
+
+
+                                            _logger.warning(
+
+                                                f"[PDF VARIANT TRANSLATED] "
+
+                                                f"{attr_value} "
+
+                                                f"-> "
+
+                                                f"{translated_variant} "
+
+                                                f"({lang_code})"
+                                            )
+
+                                except Exception as e:
+
+                                    _logger.warning(
+
+                                        f"[PDF VARIANT TRANSLATION ERROR] "
+
+                                        f"{str(e)}"
+                                    )
+
+
                             line = self.env[
                                 'product.template.attribute.line'
                             ].search([
@@ -5508,6 +6050,7 @@ class VendorImportJob(models.Model):
         self.flush_recordset()
 
         self.env.cr.commit()
+
 
     #=========product duplicate helper=======================
 
@@ -6507,7 +7050,6 @@ class VendorImportJob(models.Model):
 
                     ], limit=1)
 
-
                     if not value:
 
                         value = attribute_value_obj.create({
@@ -6516,6 +7058,55 @@ class VendorImportJob(models.Model):
 
                             'attribute_id': attribute.id
                         })
+
+
+                        # =========================================
+                        # TRANSLATE VARIANT VALUE
+                        # =========================================
+
+                        try:
+
+                            for lang_code in ['ru_RU', 'az_AZ']:
+
+                                translated_variant = self._force_translate(
+
+                                    attr_value,
+
+                                    lang_code
+                                )
+
+
+                                if translated_variant:
+
+                                    value.with_context(
+                                        lang=lang_code
+                                    ).write({
+
+                                        'name': translated_variant
+                                    })
+
+
+                                    _logger.warning(
+
+                                        f"[VARIANT TRANSLATED] "
+
+                                        f"{attr_value} "
+
+                                        f"-> "
+
+                                        f"{translated_variant} "
+
+                                        f"({lang_code})"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[VARIANT TRANSLATION ERROR] "
+
+                                f"{str(e)}"
+                            )
 
 
                         _logger.warning(
@@ -7905,7 +8496,7 @@ class VendorImportJob(models.Model):
         return pages
     
 
-    #======apify url fetch/scrapp products==================
+    #======apify url fetch/scrapp products=====================
     
     def _run_apify_actor(self, url):
 
@@ -8090,3 +8681,36 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+
+
+    #========vendor email notification==========
+    def send_completion_email(self):
+
+        if not self.partner_id.email:
+            return
+
+        subject = f"Import Completed - {self.name}"
+
+        body = f"""
+        Hello {self.partner_id.name},
+
+        Your import job has completed successfully.
+
+        File: {self.name}
+        Source: {self.source_type}
+        Upload Date: {self.create_date}
+
+        Status: Completed
+
+        Regards
+        """
+
+        mail = self.env['mail.mail'].create({
+            'subject': subject,
+            'body_html': body,
+            'email_to': self.partner_id.email,
+        })
+
+        mail.send()
+
+        self.completion_email_sent = True
