@@ -117,9 +117,9 @@ class VendorImportJob(models.Model):
         default=False
     )
 
-    # completion_email_sent = fields.Boolean(
-    #     default=False
-    # )
+    completion_email_sent = fields.Boolean(
+        default=False
+    )
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -183,74 +183,38 @@ class VendorImportJob(models.Model):
                 f"COMMIT FAILED → {commit_error}"
             )
 
-    #=================SEND VENDOR COMPLETION EMAIL=================
 
+ #========vendor email notification==========
     def send_completion_email(self):
 
-        try:
+        if not self.partner_id.email:
+            return
 
-            if not self.partner_id:
-                return
+        subject = f"Import Completed - {self.name}"
 
-            if not self.partner_id.email:
-                return
+        body = f"""
+        Hello {self.partner_id.name},
 
+        Your import job has completed successfully.
 
-            subject = (
-                f"Import Completed - {self.name}"
-            )
+        File: {self.name}
+        Source: {self.source_type}
+        Upload Date: {self.create_date}
 
-            body = f"""
-            <p>Hello {self.partner_id.name},</p>
+        Status: Completed
 
-            <p>Your vendor import job has completed successfully.</p>
+        Regards
+        """
 
-            <ul>
-                <li><b>File:</b> {self.name}</li>
-                <li><b>Source:</b> {self.source_type}</li>
-                <li><b>Date:</b> {self.create_date}</li>
-            </ul>
+        mail = self.env['mail.mail'].create({
+            'subject': subject,
+            'body_html': body,
+            'email_to': self.partner_id.email,
+        })
 
-            <p>Status: Completed</p>
+        mail.send()
 
-            <p>Regards</p>
-            """
-
-
-            mail = self.env['mail.mail'].sudo().create({
-
-                'subject': subject,
-
-                'body_html': body,
-
-                'email_to': self.partner_id.email,
-
-            })
-
-
-            mail.send()
-
-
-            self.completion_email_sent = True
-
-
-            _logger.warning(
-
-                f"[EMAIL SENT] "
-
-                f"{self.partner_id.email}"
-
-            )
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[EMAIL FAILED] "
-
-                f"{str(e)}"
-
-            )
+        self.completion_email_sent = True
 
     #============Processing Jobs===================================================
 
@@ -3757,15 +3721,6 @@ class VendorImportJob(models.Model):
                 response.output_text or ""
             ).strip()
 
-            # =====================================
-            # REFRESH CURSOR AFTER OPENAI CALL
-            # =====================================
-
-            self.env.cr.commit()
-
-            self.env.invalidate_all()
-
-            self = self.sudo().browse(self.id)
 
             result = result.replace(
                 "```json",
@@ -3958,7 +3913,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-
+    
 
     #===========Excel Open AI================================
     def send_to_openai_excel(self):
@@ -4716,7 +4671,7 @@ class VendorImportJob(models.Model):
 
                 return best_img
 
- 
+
     #============marchin AI=========================================
     def match_image_with_ai(self, product_name, images):
 
@@ -4727,13 +4682,7 @@ class VendorImportJob(models.Model):
             return None
 
         # limit images for performance
-        # =====================================
-        # LIMIT FOR PERFORMANCE
-        # =====================================
-
-        MAX_IMAGES = 15
-
-        images = images[:MAX_IMAGES]
+        images = images[:5]
         image_inputs = [
         {
                 "type": "input_image",
@@ -4755,32 +4704,22 @@ class VendorImportJob(models.Model):
         - No explanation
         - No text
 
-            PRIORITY:
-        1. Prefer isolated product on plain/white background
-        2. Prefer centered single-product image
-        3. Prefer image showing full product clearly
-        4. Prefer clean studio product photos
-        5. Prefer catalog hero product image
-        6. Avoid lifestyle scenes if isolated image exists
-        7. Avoid collages whenever possible
-        8. Avoid infographic layouts
-        9. Avoid text-heavy graphics
-        10. Avoid multi-product overview images
-        11. Avoid images containing large text blocks
+        PRIORITY:
+        1. Clean product image (plain background)
+        2. Product centered and clearly visible
+        3. No human interaction preferred
+        4. If only lifestyle images exist, choose the clearest one
 
         DO NOT PICK:
         - logos
         - icons
-        - banners
+        - background-only images
         - cropped fragments
-        - specification charts
-        - text-heavy graphics
-        - tiny thumbnails
         """
 
         try:
             response = client.responses.create(
-                model="gpt-4.1",
+                model="gpt-4.1-mini",
                 input=[{
                     "role": "user",
                     "content": [{"type": "input_text", "text": prompt}] + image_inputs
@@ -4800,7 +4739,6 @@ class VendorImportJob(models.Model):
 
         return None
     
-
     #============enforce translation=================================
     def _force_translate(self, text, target_lang):
 
@@ -5599,7 +5537,8 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         self.env.cr.commit()
-    
+
+
     #==========create pdf product====================================
   
     def create_products_pdf(self):
@@ -6374,7 +6313,6 @@ class VendorImportJob(models.Model):
             base.encode("utf-8")
         ).hexdigest()
 
-
     #==========Excel url detect workflo=======================
     def _extract_product_url(self, row):
 
@@ -6405,7 +6343,6 @@ class VendorImportJob(models.Model):
 
         return False
     
-
     #======Excel url detection router=======================
     def _route_excel_rows(self, products):
 
@@ -8791,8 +8728,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -8968,26 +8905,3 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
 
-    #======variant color===================================
-    def _normalize_color_name(self, value):
-
-        if not value:
-            return value
-
-        value = str(value).strip()
-
-        mapping = {
-
-            'navy blue': 'Navy',
-            'royal blue': 'Royal Blue',
-            'sky blue': 'Sky Blue',
-            'dark blue': 'Navy',
-            'lime': 'Lime Green',
-            'charcoal': 'Charcoal',
-        }
-
-        return mapping.get(
-            value.lower(),
-            value
-        )
-  
