@@ -5794,15 +5794,6 @@ class VendorImportJob(models.Model):
                 []
             )
 
-            if not products:
-
-                _logger.warning(
-
-                    f"[PDF EMPTY PAGE] "
-
-                    f"page={page_number}"
-                )
-
 
             _logger.warning(
 
@@ -5952,19 +5943,11 @@ class VendorImportJob(models.Model):
 
                     if not product:
 
-
                         vals = {
 
                             'name': name,
 
                             'default_code':
-
-                                product_data.get(
-                                    "product_code"
-                                )
-
-                                or
-
                                 variant_group,
 
                             'description_sale':
@@ -5983,27 +5966,6 @@ class VendorImportJob(models.Model):
 
                             'vendor_fingerprint':
                                 vendor_fingerprint,
-
-                            'list_price':
-
-                                self._safe_float(
-
-                                    product_data.get(
-                                        "price"
-                                    )
-                                ),
-
-                            'x_vendor_stock':
-
-                                str(
-
-                                    product_data.get(
-                                        "stock"
-                                    )
-
-                                    or ""
-
-                                ),
                         }
 
 
@@ -6028,49 +5990,6 @@ class VendorImportJob(models.Model):
                             tracking_disable=True
 
                         ).create(vals)
-
-
-                        # =========================================
-                        # PDF GALLERY IMAGES
-                        # =========================================
-
-                        gallery_images = product_data.get(
-                            "gallery_images",
-                            []
-                        )
-
-                        for extra_image in gallery_images:
-
-                            try:
-
-                                if not extra_image:
-                                    continue
-
-                                if extra_image == image:
-                                    continue
-
-                                self.env[
-                                    'product.image'
-                                ].create({
-
-                                    'name':
-                                        product.name,
-
-                                    'product_tmpl_id':
-                                        product.id,
-
-                                    'image_1920':
-                                        extra_image
-                                })
-
-                            except Exception as e:
-
-                                _logger.warning(
-
-                                    f"[PDF GALLERY FAILED] "
-
-                                    f"{str(e)}"
-                                )
 
                         #=====Product Translation========
                         self._apply_product_translation(product)
@@ -6320,25 +6239,25 @@ class VendorImportJob(models.Model):
 
                         ], limit=1)
 
-                        # variant_image = variant.get("image")
 
-                        # if variant_image:
+                        if (
 
-                        #     try:
+                            variant_record
 
-                        #         variant_record.image_1920 = (
-                        #             variant_image
-                        #         )
+                            and
 
-                        #     except Exception as e:
+                            product_data.get(
+                                "image"
+                            )
 
-                        #         _logger.warning(
+                        ):
 
-                        #             f"[VARIANT IMAGE FAILED] "
+                            variant_record.image_1920 = (
 
-                        #             f"{str(e)}"
-                        #         )
-
+                                product_data.get(
+                                    "image"
+                                )
+                            )
 
 
                 except Exception as e:
@@ -6417,7 +6336,6 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
 
-
     #=========product duplicate helper=======================
 
     def _build_vendor_fingerprint(self, product_data):
@@ -6456,6 +6374,7 @@ class VendorImportJob(models.Model):
             base.encode("utf-8")
         ).hexdigest()
 
+
     #==========Excel url detect workflo=======================
     def _extract_product_url(self, row):
 
@@ -6486,6 +6405,7 @@ class VendorImportJob(models.Model):
 
         return False
     
+
     #======Excel url detection router=======================
     def _route_excel_rows(self, products):
 
