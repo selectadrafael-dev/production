@@ -7,7 +7,6 @@ import pandas as pd
 from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl_image_loader import SheetImageLoader
-from PIL import Image
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -15,6 +14,15 @@ from openai import OpenAI
 import re
 import fitz
 import hashlib
+
+from PIL import (
+    Image,
+    ImageOps,
+    ImageChops
+)
+
+import cv2
+import numpy as np
  
 
 _logger = logging.getLogger(__name__)
@@ -186,7 +194,7 @@ class VendorImportJob(models.Model):
             )
 
 
- #========vendor email notification==========
+    #========vendor email notification==========
     def send_completion_email(self):
 
         if not self.partner_id.email:
@@ -2168,6 +2176,299 @@ class VendorImportJob(models.Model):
 
         wb.close()
 
+    # =====================================================
+    # REMOVE TEXT AREAS
+    # =====================================================
+
+    def _trim_catalog_whitespace(self, pil_image):
+
+        try:
+
+            bg = Image.new(
+                pil_image.mode,
+                pil_image.size,
+                pil_image.getpixel((0, 0))
+            )
+
+            diff = ImageChops.difference(
+                pil_image,
+                bg
+            )
+
+            bbox = diff.getbbox()
+
+            if bbox:
+                pil_image = pil_image.crop(bbox)
+
+            return pil_image
+
+        except Exception:
+
+            return pil_image
+
+    # =====================================================
+    # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
+    # =====================================================
+
+    def _segment_catalog_images(self, images):
+
+        segmented_images = []
+
+        if not images:
+            return segmented_images
+
+        for img_b64 in images:
+
+            try:
+
+                img_data = base64.b64decode(img_b64)
+
+                pil_image = Image.open(
+                    BytesIO(img_data)
+                ).convert("RGB")
+
+                original_width, original_height = pil_image.size
+
+                # =========================================
+                # CONVERT TO OPENCV
+                # =========================================
+
+                cv_image = cv2.cvtColor(
+                    np.array(pil_image),
+                    cv2.COLOR_RGB2BGR
+                )
+
+                gray = cv2.cvtColor(
+                    cv_image,
+                    cv2.COLOR_BGR2GRAY
+                )
+
+                # =========================================
+                # THRESHOLD
+                # =========================================
+
+                _, thresh = cv2.threshold(
+                    gray,
+                    245,
+                    255,
+                    cv2.THRESH_BINARY_INV
+                )
+
+                # =========================================
+                # DILATION
+                # =========================================
+
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_RECT,
+                    (9, 9)
+                )
+
+                dilated = cv2.dilate(
+                    thresh,
+                    kernel,
+                    iterations=2
+                )
+
+                # =========================================
+                # FIND CONTOURS
+                # =========================================
+
+                contours, _ = cv2.findContours(
+                    dilated,
+                    cv2.RETR_EXTERNAL,
+                    cv2.CHAIN_APPROX_SIMPLE
+                )
+
+                candidate_crops = []
+
+                for contour in contours:
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # =====================================
+                    # SIZE FILTERS
+                    # =====================================
+
+                    if w < 120 or h < 120:
+                        continue
+
+                    # reject huge full page
+                    if (
+                        w > original_width * 0.95
+                        and
+                        h > original_height * 0.95
+                    ):
+                        continue
+
+                    area = w * h
+
+                    # reject tiny fragments
+                    if area < 25000:
+                        continue
+
+                    # =====================================
+                    # CROP
+                    # =====================================
+
+                    pad = 12
+
+                    x1 = max(x - pad, 0)
+                    y1 = max(y - pad, 0)
+                    x2 = min(x + w + pad, original_width)
+                    y2 = min(y + h + pad, original_height)
+
+                    crop = pil_image.crop(
+                        (x1, y1, x2, y2)
+                    )
+
+                    crop = self._trim_catalog_whitespace(
+                        crop
+                    )
+
+                    # =====================================
+                    # VALIDATE
+                    # =====================================
+
+                    if not self._is_valid_product_crop(crop):
+                        continue
+
+                    # =====================================
+                    # OCR-LIKE TEXT REJECTION
+                    # =====================================
+
+                    crop_gray = crop.convert("L")
+
+                    crop_arr = np.array(crop_gray)
+
+                    dark_pixels = np.mean(
+                        crop_arr < 90
+                    )
+
+                    if dark_pixels < 0.01:
+                        continue
+
+                    # =====================================
+                    # SAVE
+                    # =====================================
+
+                    buffer = BytesIO()
+
+                    crop.save(
+                        buffer,
+                        format="JPEG",
+                        quality=92
+                    )
+
+                    encoded = base64.b64encode(
+                        buffer.getvalue()
+                    ).decode("utf-8")
+
+                    candidate_crops.append(encoded)
+                    _logger.warning(
+                        f"[CROP DETECTED] "
+                        f"{w}x{h}"
+                    )
+
+                # =========================================
+                # FALLBACK
+                # =========================================
+
+                if not candidate_crops:
+
+                    buffer = BytesIO()
+
+                    pil_image.save(
+                        buffer,
+                        format="JPEG"
+                    )
+
+                    encoded = base64.b64encode(
+                        buffer.getvalue()
+                    ).decode("utf-8")
+
+                    candidate_crops.append(encoded)
+
+                segmented_images.extend(
+                    candidate_crops
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[SEGMENTATION FAILED] {str(e)}"
+                )
+
+        # =============================================
+        # DEDUPE
+        # =============================================
+
+        deduped = []
+        hashes = set()
+
+        for img in segmented_images:
+
+            try:
+
+                image_hash = hashlib.md5(
+                    img.encode("utf-8")
+                ).hexdigest()
+
+                if image_hash in hashes:
+                    continue
+
+                hashes.add(image_hash)
+
+                deduped.append(img)
+
+            except Exception:
+                continue
+
+        _logger.warning(
+            f"[SEGMENTATION RESULT] "
+            f"{len(deduped)} clean assets"
+        )
+
+        return deduped
+
+    # =====================================================
+    # VALIDATE CROPPED IMAGE
+    # =====================================================
+
+    def _is_valid_product_crop(self, pil_image):
+
+        try:
+
+            width, height = pil_image.size
+
+            # too tiny
+            if width < 120 or height < 120:
+                return False
+
+            # aspect safety
+            ratio = width / float(height)
+
+            if ratio > 5 or ratio < 0.15:
+                return False
+
+            gray = pil_image.convert("L")
+
+            arr = np.array(gray)
+
+            # blank image rejection
+            if arr.std() < 14:
+                return False
+
+            # excessive dark block rejection
+            dark_ratio = np.mean(arr < 25)
+
+            if dark_ratio > 0.92:
+                return False
+
+            return True
+
+        except Exception:
+
+            return False
 
     # ---------------- Extract PDF ----------------
  
@@ -2484,6 +2785,14 @@ class VendorImportJob(models.Model):
                             images = p.get(
                                 "images",
                                 []
+                            )
+
+                            # ===========================
+                            # CLEAN CATALOG SEGMENTATION
+                            # ===========================
+
+                            images = self._segment_catalog_images(
+                                images
                             )
 
 
@@ -3914,14 +4223,25 @@ class VendorImportJob(models.Model):
                     or ""
                 )
 
-                best_index = (
-                    self.match_image_index_with_ai(
 
-                        product_name,
-
-                        page_images
-                    )
+                best_index = prod.get(
+                    "hero_image_index"
                 )
+
+                if (
+                    best_index is None
+                    or
+                    not isinstance(best_index, int)
+                    or
+                    best_index >= len(page_images)
+                ):
+
+                    best_index = (
+                        self.match_image_index_with_ai(
+                            product_name,
+                            page_images
+                        )
+                    )
 
                 if best_index is not None:
 
