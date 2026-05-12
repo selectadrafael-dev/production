@@ -41,6 +41,13 @@ class ProductTemplate(models.Model):
         copy=False
     )
 
+    vendor_import_job_id = fields.Many2one(
+        'vendor.import.job',
+        string='Vendor Import Job',
+        index=True,
+        ondelete='set null'
+    )
+
 # ✅ Extend existing model
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -5856,6 +5863,7 @@ class VendorImportJob(models.Model):
                 'website_published': False,
                 'vendor_id': vendor_id,
                 'vendor_fingerprint': vendor_fingerprint,
+                'vendor_import_job_id': self.id,
             }
 
             # ================= IMAGE =================
@@ -6678,6 +6686,8 @@ class VendorImportJob(models.Model):
 
                             'vendor_fingerprint':
                                 vendor_fingerprint,
+
+                            'vendor_import_job_id': self.id,
                         }
                    
 
@@ -8015,6 +8025,8 @@ class VendorImportJob(models.Model):
                             ),
 
                         'vendor_fingerprint': fingerprint,
+
+                        'vendor_import_job_id': self.id,
                     }
 
 
