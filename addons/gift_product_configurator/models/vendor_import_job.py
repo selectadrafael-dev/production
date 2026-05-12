@@ -2463,6 +2463,87 @@ class VendorImportJob(models.Model):
         return deduped
 
     # =====================================================
+    # VARIANTS IMAGES CONTROLLER/DETECTOR
+    # =====================================================
+
+    def _split_grid_products(self, image):
+
+        try:
+
+            import cv2
+            import numpy as np
+            import base64
+
+            gray = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2GRAY
+            )
+
+            thresh = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                21,
+                5
+            )
+
+            contours, _ = cv2.findContours(
+                thresh,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            results = []
+
+            for contour in contours:
+
+                area = cv2.contourArea(contour)
+
+                if area < 3500:
+                    continue
+
+                x, y, w, h = cv2.boundingRect(contour)
+
+                if w < 80 or h < 80:
+                    continue
+
+                ratio = w / float(h)
+
+                # reject text strips
+                if ratio > 4.0 or ratio < 0.25:
+                    continue
+
+                sub = image[
+                    y:y+h,
+                    x:x+w
+                ]
+
+                success, buffer = cv2.imencode(
+                    '.jpg',
+                    sub
+                )
+
+                if not success:
+                    continue
+
+                results.append(
+                    base64.b64encode(
+                        buffer
+                    ).decode()
+                )
+
+            return results[:12]
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[GRID SPLIT FAILED] {str(e)}"
+            )
+
+            return []
+
+    # =====================================================
     # VALIDATE CROPPED IMAGE
     # =====================================================
 
@@ -5883,6 +5964,7 @@ class VendorImportJob(models.Model):
             vals = {
                 'name': name.strip(),
                 'description_sale': description,
+                'type': 'product',
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
@@ -6697,6 +6779,8 @@ class VendorImportJob(models.Model):
 
                             'description_sale':
                                 description,
+
+                              'type': 'product',
 
                             'categ_id':
                                 category.id,
@@ -8028,6 +8112,8 @@ class VendorImportJob(models.Model):
 
                         'description_sale':
                             description,
+
+                        'type': 'product',
 
                         'categ_id':
                             category.id,
