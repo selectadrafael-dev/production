@@ -2573,6 +2573,8 @@ class VendorImportJob(models.Model):
                                 block.get("images", [])
                             )
 
+                            self.env.cr.commit()
+
                         self.env[
                             'vendor.import.page'
                         ].create({
@@ -4775,6 +4777,12 @@ class VendorImportJob(models.Model):
         return None
 
     #============marchin AI===================================================
+    # =====================================================
+    # LEGACY IMAGE PAYLOAD MATCHER
+    # Deprecated after migration to
+    # index-based asset orchestration.
+    # Keep temporarily for rollback safety.
+    # =====================================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
