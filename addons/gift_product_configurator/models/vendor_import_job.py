@@ -3531,6 +3531,33 @@ class VendorImportJob(models.Model):
         NEVER silently ignore visible products.
 
         ==================================================
+        STOCK EXTRACTION RULES:
+        ==================================================
+
+        Extract stock quantity ONLY when
+        actual available inventory is explicitly stated.
+
+        Examples:
+        - "Stock: 11 pcs"
+        - "Available: 25"
+        - "In stock: 8"
+
+        DO NOT extract:
+        - delivery times
+        - MOQ
+        - carton quantity
+        - package quantity
+        - shipping quantity
+        - lead times
+        - dimensions
+        - capacity values
+
+        If no real stock quantity exists:
+        set:
+
+        "stock_qty": 0
+
+        ==================================================
         VARIANT DETECTION RULES
         ==================================================
 
@@ -3654,8 +3681,8 @@ class VendorImportJob(models.Model):
             {{
                 "name": "",
                 "description": "",
+                "stock_qty": 0,
                 "price": "",
-                "stock": "",
                 "product_code": "",
                 "hero_image_index": null,
                 "gallery_image_indexes": [],
@@ -3666,7 +3693,7 @@ class VendorImportJob(models.Model):
                         }},
 
                         "image_index": null,
-                        "stock": "",
+                        "stock_qty": 0,
                         "price": ""
                     }}
                 ]
@@ -5863,6 +5890,18 @@ class VendorImportJob(models.Model):
             'product.category'
         ]
 
+        stock_quant_obj = self.env[
+            'stock.quant'
+        ]
+
+        stock_location = self.env[
+            'stock.location'
+        ].search([
+
+            ('usage', '=', 'internal')
+
+        ], limit=1)
+
 
         # =====================================================
         # CATEGORY MAP
@@ -6198,9 +6237,9 @@ class VendorImportJob(models.Model):
 
                     ], limit=1)
 
-                    # =========================================
+                    # ==========================================
                     # CREATE PRODUCT
-                    # =========================================
+                    # ==========================================
 
                     if not product:
 
@@ -6292,9 +6331,13 @@ class VendorImportJob(models.Model):
                                 if gallery_image in used_images:
                                     continue
 
+
                                 self.env[
                                     'product.image'
                                 ].create({
+
+                                    'name':
+                                        f"{product.name} Gallery",
 
                                     'product_tmpl_id':
                                         product.id,
@@ -6304,7 +6347,7 @@ class VendorImportJob(models.Model):
                                 })
 
                                 used_images.add(
-                                    gallery_image
+                                     gallery_image
                                 )
 
                             except Exception as e:
@@ -6623,7 +6666,90 @@ class VendorImportJob(models.Model):
 
                     continue
 
+            # =====================================
+            # STOCK QTY
+            # =====================================
 
+            stock_qty = int(
+
+                product_data.get(
+                    "stock_qty",
+                    0
+                ) or 0
+            )
+
+            if (
+
+                stock_qty > 0
+
+                and
+
+                variant_record
+
+                and
+
+                stock_location
+            ):
+
+                try:
+
+                    quant = stock_quant_obj.search([
+
+                        (
+                            'product_id',
+                            '=',
+                            variant_record.id
+                        ),
+
+                        (
+                            'location_id',
+                            '=',
+                            stock_location.id
+                        )
+
+                    ], limit=1)
+
+                    if quant:
+
+                        quant.inventory_quantity = (
+                            stock_qty
+                        )
+
+                        quant.action_apply_inventory()
+
+                    else:
+
+                        quant = stock_quant_obj.create({
+
+                            'product_id':
+                                variant_record.id,
+
+                            'location_id':
+                                stock_location.id,
+
+                            'inventory_quantity':
+                                stock_qty
+                        })
+
+                        quant.action_apply_inventory()
+
+                    _logger.warning(
+
+                        f"[PDF STOCK SET] "
+
+                        f"{variant_record.display_name} "
+
+                        f"-> {stock_qty}"
+                    )
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[PDF STOCK FAILED] "
+
+                        f"{str(e)}"
+                    )
             # =================================================
             # SAVE PAGE PROGRESS
             # =================================================
