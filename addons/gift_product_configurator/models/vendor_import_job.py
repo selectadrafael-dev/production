@@ -8871,8 +8871,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        #ACTOR_ID = "selectad~my-actor"
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -9048,7 +9048,7 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
 
-     #======variant color===================================
+    #======variant color===================================
     def _normalize_color_name(self, value):
 
         if not value:
