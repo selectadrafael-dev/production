@@ -16,4 +16,5 @@ class VendorImportPage(models.Model):
     page_number = fields.Integer()
 
     extracted_json = fields.Text()
-
+    
+    page_images_json = fields.Text()
