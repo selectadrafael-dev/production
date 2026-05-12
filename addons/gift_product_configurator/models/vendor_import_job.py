@@ -5993,17 +5993,6 @@ class VendorImportJob(models.Model):
                                     )
                                 ),
 
-                            'x_vendor_stock':
-
-                                str(
-
-                                    product_data.get(
-                                        "stock"
-                                    )
-
-                                    or ""
-
-                                ),
                         }
 
 
@@ -6456,6 +6445,7 @@ class VendorImportJob(models.Model):
             base.encode("utf-8")
         ).hexdigest()
 
+
     #==========Excel url detect workflo=======================
     def _extract_product_url(self, row):
 
@@ -6486,6 +6476,7 @@ class VendorImportJob(models.Model):
 
         return False
     
+
     #======Excel url detection router=======================
     def _route_excel_rows(self, products):
 
