@@ -4774,7 +4774,7 @@ class VendorImportJob(models.Model):
 
         return None
 
-    #============marchin AI=========================================
+    #============marchin AI===================================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -4851,7 +4851,7 @@ class VendorImportJob(models.Model):
 
         return None
     
-    #======== returning images indexes==================================
+    #======== returning images indexes========================================
     def match_image_index_with_ai( self, product_name, images):
 
         api_key = self.env[
@@ -4991,7 +4991,7 @@ class VendorImportJob(models.Model):
 
         return None
 
-    #============enforce translation=================================
+    #============enforce translation=========================================
     def _force_translate(self, text, target_lang):
 
         from openai import OpenAI
@@ -5078,7 +5078,7 @@ class VendorImportJob(models.Model):
 
             return text
 
-    #=========Translation new logic===================================
+    #=========Translation new logic==========================================
 
     def _apply_product_translation(self, product):
 
