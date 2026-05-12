@@ -14,6 +14,7 @@ from urllib.parse import urljoin
 from openai import OpenAI
 import re
 import fitz
+import hashlib
  
 
 _logger = logging.getLogger(__name__)
@@ -120,6 +121,7 @@ class VendorImportJob(models.Model):
     completion_email_sent = fields.Boolean(
         default=False
     )
+
 
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -2562,6 +2564,15 @@ class VendorImportJob(models.Model):
                         # SAVE PAGE
                         # =========================
 
+
+                        all_page_images = []
+
+                        for block in normalized_blocks:
+
+                            all_page_images.extend(
+                                block.get("images", [])
+                            )
+
                         self.env[
                             'vendor.import.page'
                         ].create({
@@ -2572,6 +2583,10 @@ class VendorImportJob(models.Model):
 
                             'extracted_json': json.dumps(
                                 normalized_blocks
+                            ),
+
+                            'page_images_json': json.dumps(
+                                all_page_images
                             )
                         })
 
@@ -3517,45 +3532,41 @@ class VendorImportJob(models.Model):
         VARIANT DETECTION RULES
         ==================================================
 
-        Products should become VARIANTS when:
+        VARIANT GROUPING RULES:
 
+        Products MUST be grouped as variants when:
+
+        - same product shape
         - same structure
-        - same silhouette
-        - same product family
-        - same product design
+        - same branding
+        - same dimensions
+        - same material
+        - only color changes
+        - only size changes
+        - only minor style changes
 
-        BUT different:
-        - colors
-        - finishes
-        - textures
-        - materials
-        - artwork
-        - patterns
-        - capacities
+        EXAMPLES:
+        - same cap in multiple colors
+        - same polo shirt in different colors
+        - same bottle with color variations
 
-        Example:
+        DO NOT create separate products for:
+        - color-only changes
+        - size-only changes
 
-        6 caps in different colors
-        =
-        ONE product
-        with 6 color variants.
+        Instead:
+        create ONE parent product with variants.
 
-        IMPORTANT:
+        Each variant should contain:
 
-        If repeated product silhouettes appear:
-        ASSUME variants.
+        {{
+            "attributes": {{
+                "Color": "",
+                "Size": ""
+            }},
 
-        DO NOT:
-        - ignore visible colors
-        - collapse visible variants
-        - create Variant 1 / Variant 2
-
-        Variant names MUST be meaningful:
-        - Royal Blue
-        - Navy
-        - Charcoal
-        - Olive Green
-        - Lime Green
+            "image_index": null
+        }}
 
         ==================================================
         IMAGE CLASSIFICATION RULES
@@ -3644,17 +3655,15 @@ class VendorImportJob(models.Model):
                 "price": "",
                 "stock": "",
                 "product_code": "",
-
-                "image": "",
-
-                "gallery_images": [],
-
+                "hero_image_index": null,
+                "gallery_image_indexes": [],
                 "variants": [
                     {{
                         "attributes": {{
                             "Color": ""
                         }},
-                        "image": "",
+
+                        "image_index": null,
                         "stock": "",
                         "price": ""
                     }}
@@ -3784,23 +3793,28 @@ class VendorImportJob(models.Model):
                     or ""
                 )
 
-                best_image = self.match_image_with_ai(
+                best_index = (
+                    self.match_image_index_with_ai(
 
-                    product_name,
+                        product_name,
 
-                    page_images
+                        page_images
+                    )
                 )
 
-                if best_image:
+                if best_index is not None:
 
-                    prod["image"] = best_image
+                    prod["hero_image_index"] = (
+                        best_index
+                    )
 
                     _logger.warning(
 
-                        f"[PDF IMAGE MATCH] "
+                        f"[PDF HERO INDEX] "
 
-                        f"{product_name}"
+                        f"{product_name} "
 
+                        f"-> {best_index}"
                     )
 
             except Exception as e:
@@ -4671,6 +4685,94 @@ class VendorImportJob(models.Model):
 
                 return best_img
 
+    #=================Centralized Rusable Image=======================
+    def _prepare_asset_pool(self, images):
+
+        prepared = []
+
+        seen = set()
+
+        for idx, img in enumerate(images or []):
+
+            try:
+
+                if not img:
+                    continue
+
+
+                image_hash = hashlib.md5(
+
+                    img.encode('utf-8')
+
+                ).hexdigest()
+
+                if image_hash in seen:
+                    continue
+
+                prepared.append({
+
+                    "index": len(prepared),
+
+                    "image": img
+                })
+
+                seen.add(image_hash)
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[ASSET POOL ERROR] "
+
+                    f"{str(e)}"
+                )
+
+        return prepared
+
+    #=================Centralized Rusable Image resolver=======================
+
+    def _resolve_asset_image( self, asset_pool, index):
+
+        try:
+
+            if index is None:
+                return None
+
+            if not isinstance(index, int):
+                return None
+
+            if index < 0:
+                return None
+
+            for asset in asset_pool:
+
+                if asset["index"] == index:
+
+                    image = asset.get(
+                        "image"
+                    )
+
+                    if not image:
+                        return None
+
+                    if not isinstance(
+                        image,
+                        str
+                    ):
+                        return None
+
+                    return image
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[ASSET RESOLVE FAILED] "
+
+                f"{str(e)}"
+            )
+
+        return None
 
     #============marchin AI=========================================
     def match_image_with_ai(self, product_name, images):
@@ -4704,22 +4806,32 @@ class VendorImportJob(models.Model):
         - No explanation
         - No text
 
-        PRIORITY:
-        1. Clean product image (plain background)
-        2. Product centered and clearly visible
-        3. No human interaction preferred
-        4. If only lifestyle images exist, choose the clearest one
+            PRIORITY:
+        1. Prefer isolated product on plain/white background
+        2. Prefer centered single-product image
+        3. Prefer image showing full product clearly
+        4. Prefer clean studio product photos
+        5. Prefer catalog hero product image
+        6. Avoid lifestyle scenes if isolated image exists
+        7. Avoid collages whenever possible
+        8. Avoid infographic layouts
+        9. Avoid text-heavy graphics
+        10. Avoid multi-product overview images
+        11. Avoid images containing large text blocks
 
         DO NOT PICK:
         - logos
         - icons
-        - background-only images
+        - banners
         - cropped fragments
+        - specification charts
+        - text-heavy graphics
+        - tiny thumbnails
         """
 
         try:
             response = client.responses.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1",
                 input=[{
                     "role": "user",
                     "content": [{"type": "input_text", "text": prompt}] + image_inputs
@@ -4739,6 +4851,146 @@ class VendorImportJob(models.Model):
 
         return None
     
+    #======== returning images indexes==================================
+    def match_image_index_with_ai( self, product_name, images):
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        client = OpenAI(api_key=api_key)
+
+        if not images:
+            return None
+
+
+        filtered_images = []
+
+        for img in images:
+
+            try:
+
+                if not img:
+                    continue
+
+                img_lower = img.lower()
+
+                bad_keywords = [
+
+                    "banner",
+
+                    "lifestyle",
+
+                    "infographic",
+
+                    "specification",
+
+                    "sizechart",
+
+                    "dimensions"
+                ]
+
+                if any(
+                    k in img_lower
+                    for k in bad_keywords
+                ):
+                    continue
+
+                filtered_images.append(img)
+
+            except Exception:
+                continue
+
+        if filtered_images:
+
+            images = filtered_images
+
+        images = images[:8]
+
+        image_inputs = []
+
+        for idx, img in enumerate(images):
+
+            image_inputs.append({
+                "type": "input_text",
+                "text": f"IMAGE INDEX: {idx}"
+            })
+
+            image_inputs.append({
+                "type": "input_image",
+                "image_url":
+                    f"data:image/jpeg;base64,{img}"
+            })
+
+        prompt = f"""
+        You are an ecommerce
+        product image selector.
+
+        PRODUCT:
+        {product_name}
+
+        Return ONLY the BEST
+        image index.
+
+        PRIORITY:
+        - isolated product
+        - plain background
+        - centered object
+        - clean catalog render
+
+        AVOID:
+        - people
+        - lifestyle scenes
+        - infographics
+        - collages
+        - banners
+        - text-heavy graphics
+
+        Return ONLY integer index.
+        """
+
+        try:
+
+            response = client.responses.create(
+
+                model="gpt-4.1",
+
+                input=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": prompt
+                        }
+                    ] + image_inputs
+                }],
+
+                timeout=30
+            )
+
+            result = (
+                response.output_text or ""
+            ).strip()
+
+            index = int(result)
+
+            if 0 <= index < len(images):
+
+                return index
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[IMAGE INDEX MATCH FAILED] "
+
+                f"{str(e)}"
+            )
+
+        return None
+
     #============enforce translation=================================
     def _force_translate(self, text, target_lang):
 
@@ -5727,12 +5979,74 @@ class VendorImportJob(models.Model):
                 "page"
             )
 
+            page_record = self.env[
+                'vendor.import.page'
+            ].search([
+
+                ('job_id', '=', self.id),
+
+                ('page_number', '=', page_number)
+
+            ], limit=1)
+
+            page_images = []
+
+            if page_record:
+
+                try:
+
+                    page_images = json.loads(
+
+                        page_record.page_images_json
+                        or "[]"
+                    )
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[PAGE IMAGE LOAD FAILED] "
+
+                        f"page={page_number} "
+
+                        f"| {str(e)}"
+                    )
+
+            asset_pool = self._prepare_asset_pool(
+                page_images
+            )
+
 
             products = page_data.get(
                 "products",
                 []
             )
 
+            # =====================================
+            # EMPTY PDF PAGE DEBUG
+            # =====================================
+
+            if not products:
+
+                _logger.warning(
+
+                    f"[PDF EMPTY PAGE] "
+
+                    f"page={page_number} "
+
+                    f"| ai_page_index={page_index}"
+                )
+
+            else:
+
+                _logger.warning(
+
+                    f"[PDF PRODUCT COUNT] "
+
+                    f"page={page_number} "
+
+                    f"| products={len(products)}"
+                )
 
             _logger.warning(
 
@@ -5906,21 +6220,26 @@ class VendorImportJob(models.Model):
                             'vendor_fingerprint':
                                 vendor_fingerprint,
                         }
+                   
 
-
-                        image = product_data.get(
-                            "image"
+                        hero_index = product_data.get(
+                            "hero_image_index"
                         )
 
+                        hero_image = self._resolve_asset_image(
 
-                        if image:
+                            asset_pool,
 
-                            vals[
-                                'image_1920'
-                            ] = image
+                            hero_index
+                        )
 
+                        if hero_image:
 
-                        product = product_obj.with_context(
+                            vals['image_1920'] = (
+                                hero_image
+                            )
+
+                            product = product_obj.with_context(
 
                             mail_create_nolog=True,
 
@@ -5928,10 +6247,68 @@ class VendorImportJob(models.Model):
 
                             tracking_disable=True
 
-                        ).create(vals)
+                         ).create(vals)
 
                         #=====Product Translation========
                         self._apply_product_translation(product)
+
+                        gallery_indexes = product_data.get(
+                            "gallery_image_indexes",
+                            []
+                        )
+
+                        used_images = set()
+
+                        if product.image_1920:
+
+                            used_images.add(
+                                product.image_1920
+                            )
+
+                        for index in gallery_indexes:
+
+                            try:
+
+                                gallery_image = (
+                                    self._resolve_asset_image(
+
+                                        asset_pool,
+
+                                        index
+                                    )
+                                )
+
+                                if not gallery_image:
+                                    continue
+
+                                if gallery_image in used_images:
+                                    continue
+
+                                self.env[
+                                    'product.image'
+                                ].create({
+
+                                    'product_tmpl_id':
+                                        product.id,
+
+                                    'image_1920':
+                                        gallery_image
+                                })
+
+                                used_images.add(
+                                    gallery_image
+                                )
+
+                            except Exception as e:
+
+                                _logger.warning(
+
+                                    f"[GALLERY IMAGE FAILED] "
+
+                                    f"{product.name} "
+
+                                    f"| {str(e)}"
+                                )
                         
 
                         created_count += 1
@@ -6178,6 +6555,9 @@ class VendorImportJob(models.Model):
 
                         ], limit=1)
 
+                        variant_image_index = (
+                            variant.get("image_index")
+                        )
 
                         if (
 
@@ -6185,18 +6565,43 @@ class VendorImportJob(models.Model):
 
                             and
 
-                            product_data.get(
-                                "image"
-                            )
+                            variant_image_index is not None
 
                         ):
 
-                            variant_record.image_1920 = (
+                            try:
 
-                                product_data.get(
-                                    "image"
+                                variant_image = (
+                                    self._resolve_asset_image(
+
+                                        asset_pool,
+
+                                        variant_image_index
+                                    )
                                 )
-                            )
+
+                                if variant_image:
+
+                                    variant_record.image_1920 = (
+                                        variant_image
+                                    )
+
+                                    _logger.warning(
+
+                                        f"[VARIANT IMAGE SET] "
+
+                                        f"{variant_record.display_name}"
+
+                                    )
+
+                            except Exception as e:
+
+                                _logger.warning(
+
+                                    f"[VARIANT IMAGE FAILED] "
+
+                                    f"{str(e)}"
+                                )
 
 
                 except Exception as e:
