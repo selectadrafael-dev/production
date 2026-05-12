@@ -70,22 +70,22 @@ Hide default Odoo product layout safely
 
 /*product gallery alignment*/
 /* =========================================
-   PRODUCT IMAGE + VERTICAL GALLERY
+   MAIN PRODUCT IMAGE LAYOUT
 ========================================= */
 
-.o_wsale_product_images {
+#o-carousel-product {
 
     display: flex !important;
     flex-direction: row !important;
+    align-items: flex-start !important;
     gap: 14px;
-    align-items: flex-start;
 }
 
 /* =========================================
    THUMBNAIL COLUMN
 ========================================= */
 
-.o_wsale_product_images .o_carousel_indicators {
+#o-carousel-product .o_carousel_product_indicators {
 
     display: flex !important;
     flex-direction: column !important;
@@ -99,22 +99,35 @@ Hide default Odoo product layout safely
     overflow-x: hidden;
 
     max-height: 620px;
+
+    order: 1;
+}
+
+/* =========================================
+   MAIN IMAGE CONTAINER
+========================================= */
+
+#o-carousel-product .o_carousel_product_outer {
+
+    flex: 1;
+
+    order: 2;
 }
 
 /* =========================================
    THUMBNAIL ITEMS
 ========================================= */
 
-.o_wsale_product_images .o_carousel_indicators img {
+#o-carousel-product .o_carousel_product_indicators img {
 
     width: 82px !important;
     height: 82px !important;
 
     object-fit: contain !important;
 
-    border-radius: 8px;
-
     border: 1px solid #ddd;
+
+    border-radius: 8px;
 
     background: #fff;
 
@@ -124,19 +137,10 @@ Hide default Odoo product layout safely
 }
 
 /* =========================================
-   MAIN IMAGE AREA
-========================================= */
-
-.o_wsale_product_images .carousel-inner {
-
-    flex: 1;
-}
-
-/* =========================================
    MAIN IMAGE
 ========================================= */
 
-.o_wsale_product_images .carousel-item img {
+#o-carousel-product .carousel-item img {
 
     width: 100% !important;
 
@@ -146,7 +150,6 @@ Hide default Odoo product layout safely
 
     background: #fff;
 }
-
 
 @media(max-width:991px){
 

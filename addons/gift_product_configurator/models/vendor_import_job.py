@@ -5964,7 +5964,7 @@ class VendorImportJob(models.Model):
             vals = {
                 'name': name.strip(),
                 'description_sale': description,
-                'type': 'product',
+                'detailed_type': 'product',
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
@@ -6780,7 +6780,7 @@ class VendorImportJob(models.Model):
                             'description_sale':
                                 description,
 
-                              'type': 'product',
+                            'detailed_type': 'product',
 
                             'categ_id':
                                 category.id,
@@ -8113,7 +8113,7 @@ class VendorImportJob(models.Model):
                         'description_sale':
                             description,
 
-                        'type': 'product',
+                        'detailed_type': 'product',
 
                         'categ_id':
                             category.id,
