@@ -68,6 +68,86 @@ Hide default Odoo product layout safely
     margin-bottom: 0!important;
 }
 
+/*product gallery alignment*/
+/* =========================================
+   PRODUCT IMAGE + VERTICAL GALLERY
+========================================= */
+
+.o_wsale_product_images {
+
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+/* =========================================
+   THUMBNAIL COLUMN
+========================================= */
+
+.o_wsale_product_images .o_carousel_indicators {
+
+    display: flex !important;
+    flex-direction: column !important;
+
+    width: 90px;
+    min-width: 90px;
+
+    gap: 12px;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    max-height: 620px;
+}
+
+/* =========================================
+   THUMBNAIL ITEMS
+========================================= */
+
+.o_wsale_product_images .o_carousel_indicators img {
+
+    width: 82px !important;
+    height: 82px !important;
+
+    object-fit: contain !important;
+
+    border-radius: 8px;
+
+    border: 1px solid #ddd;
+
+    background: #fff;
+
+    padding: 4px;
+
+    cursor: pointer;
+}
+
+/* =========================================
+   MAIN IMAGE AREA
+========================================= */
+
+.o_wsale_product_images .carousel-inner {
+
+    flex: 1;
+}
+
+/* =========================================
+   MAIN IMAGE
+========================================= */
+
+.o_wsale_product_images .carousel-item img {
+
+    width: 100% !important;
+
+    max-height: 650px;
+
+    object-fit: contain !important;
+
+    background: #fff;
+}
+
+
 @media(max-width:991px){
 
     #product_detail_main{
