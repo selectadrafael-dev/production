@@ -3757,6 +3757,15 @@ class VendorImportJob(models.Model):
                 response.output_text or ""
             ).strip()
 
+            # =====================================
+            # REFRESH CURSOR AFTER OPENAI CALL
+            # =====================================
+
+            self.env.cr.commit()
+
+            self.env.invalidate_all()
+
+            self = self.sudo().browse(self.id)
 
             result = result.replace(
                 "```json",
