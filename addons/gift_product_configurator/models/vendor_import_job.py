@@ -6286,7 +6286,7 @@ class VendorImportJob(models.Model):
                                 hero_image
                             )
 
-                            product = product_obj.with_context(
+                        product = product_obj.with_context(
 
                             mail_create_nolog=True,
 
