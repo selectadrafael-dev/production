@@ -19,6 +19,94 @@ def home():
     return "OK"
 
 
+def split_catalog_image(pil_image):
+
+    try:
+
+        import cv2
+        import numpy as np
+
+        image = np.array(pil_image)
+
+        gray = cv2.cvtColor(
+            image,
+            cv2.COLOR_RGB2GRAY
+        )
+
+        thresh = cv2.adaptiveThreshold(
+            gray,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            21,
+            5
+        )
+
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (5, 5)
+        )
+
+        thresh = cv2.morphologyEx(
+            thresh,
+            cv2.MORPH_CLOSE,
+            kernel,
+            iterations=1
+        )
+
+        contours, _ = cv2.findContours(
+            thresh,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        results = []
+
+        for contour in contours:
+
+            area = cv2.contourArea(contour)
+
+            if area < 8000:
+                continue
+
+            x, y, w, h = cv2.boundingRect(contour)
+
+            if w < 120 or h < 120:
+                continue
+
+            ratio = w / float(h)
+
+            if ratio > 4.5 or ratio < 0.22:
+                continue
+
+            crop = image[
+                y:y+h,
+                x:x+w
+            ]
+
+            crop_pil = Image.fromarray(crop)
+
+            buffer = io.BytesIO()
+
+            crop_pil.save(
+                buffer,
+                format="JPEG",
+                quality=75
+            )
+
+            results.append(
+                base64.b64encode(
+                    buffer.getvalue()
+                ).decode("utf-8")
+            )
+
+        return results[:12]
+
+    except Exception:
+
+        return []
+    
+
 # ================= PDF EXTRACT =================
 @app.route("/extract", methods=["POST"])
 def extract():
@@ -86,12 +174,20 @@ def extract():
                 compressed_bytes = buffer.getvalue()
 
                 # 🔒 skip large images
-                # if len(compressed_bytes) > 500000:
-                #     continue
+            
+                segmented = split_catalog_image(img)
 
-                image_base64 = base64.b64encode(compressed_bytes).decode("utf-8")
+                if segmented:
 
-                image_list.append(image_base64)
+                    image_list.extend(segmented)
+
+                else:
+
+                    image_base64 = base64.b64encode(
+                        compressed_bytes
+                    ).decode("utf-8")
+
+                    image_list.append(image_base64)
 
                 # 🔥 free memory
                 buffer.close()
