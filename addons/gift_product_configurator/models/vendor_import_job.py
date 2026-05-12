@@ -2286,6 +2286,31 @@ class VendorImportJob(models.Model):
                     cv2.CHAIN_APPROX_SIMPLE
                 )
 
+                filtered_contours = []
+
+                for contour in contours:
+
+                    area = cv2.contourArea(contour)
+
+                    if area < 8000:
+                        continue
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # reject ultra-thin text columns
+                    if w < 120 or h < 120:
+                        continue
+
+                    ratio = w / float(h)
+
+                    # reject long text strips
+                    if ratio > 4.5 or ratio < 0.22:
+                        continue
+
+                    filtered_contours.append(contour)
+
+                contours = filtered_contours[:12]
+
                 candidate_crops = []
 
                 for contour in contours:
