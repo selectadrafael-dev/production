@@ -5,4 +5,5 @@ beautifulsoup4
 requests
 openpyxl-image-loader
 PyMuPDF==1.23.7
+opencv-python-headless==4.10.0.84
 #playwright==1.42.0
