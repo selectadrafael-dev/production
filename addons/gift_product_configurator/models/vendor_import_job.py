@@ -3598,64 +3598,156 @@ class VendorImportJob(models.Model):
         }}
 
         ==================================================
-        IMAGE CLASSIFICATION RULES
+        ECOMMERCE IMAGE UNDERSTANDING RULES
         ==================================================
 
-        Each product may contain:
+        You are NOT selecting the most artistic image.
 
-        1. HERO IMAGE
-        2. GALLERY IMAGES
-        3. VARIANT IMAGES
+        You are selecting the BEST PROFESSIONAL
+        ECOMMERCE PRODUCT IMAGE.
+
+        Your goal:
+        produce Amazon/Alibaba/Shopify-style
+        product merchandising quality.
 
         --------------------------------------------------
-        HERO IMAGE RULES
+        PRIORITY ORDER (VERY IMPORTANT)
         --------------------------------------------------
 
-        "image" MUST be:
+        ALWAYS prioritize:
 
-        - isolated product
-        - centered product
-        - clean/plain background
-        - full product visible
-        - professional catalog shot
+        1. isolated standalone product
+        2. clean white/plain background
+        3. centered product
+        4. full product visibility
+        5. variant color visibility
+        6. clean catalog render
+        7. multiple isolated color options
 
-        AVOID:
-        - infographic layouts
-        - text-heavy graphics
-        - logos
-        - specification blocks
+        NEVER prioritize:
+        - humans/models
         - lifestyle scenes
-        - collages
-        - multi-product overview images
+        - promotional layouts
+        - infographic compositions
+        - text-heavy blocks
+        - banners
+        - decorative graphics
 
-        --------------------------------------------------
+        ==================================================
+        HERO IMAGE RULES
+        ==================================================
+
+        hero_image_index MUST point to:
+
+        - ONE isolated product
+        - clean/plain background
+        - centered product
+        - professional ecommerce shot
+        - no text overlays
+        - no large text areas
+        - no promotional layout
+        - no infographic composition
+
+        DO NOT use:
+        - humans wearing products
+        - lifestyle photography
+        - catalog cover layouts
+        - multi-product collages
+        - pages with large text blocks
+        - specification layouts
+        - promotional graphics
+
+        VERY IMPORTANT:
+
+        If isolated product variants exist anywhere
+        on the page,
+        ALWAYS prefer them over:
+        - human/model photos
+        - lifestyle shots
+        - promotional scenes
+
+        Example:
+        If a cap page contains:
+        - woman wearing cap
+        - isolated cap colors
+
+        hero_image_index MUST use:
+        isolated cap color image
+
+        NOT the woman/model image.
+
+        ==================================================
         GALLERY IMAGE RULES
-        --------------------------------------------------
+        ==================================================
 
-        "gallery_images" should contain:
-        - side views
-        - back views
-        - inside/open views
-        - closeups
-        - detail shots
-        - lifestyle images
-        - alternate angles
+        gallery_image_indexes should contain ONLY:
+
+        - isolated alternate angles
+        - isolated closeups
+        - isolated detail shots
+        - isolated side/back views
 
         DO NOT include:
+        - banners
+        - specification layouts
+        - infographic graphics
+        - text-heavy images
+        - decorative layouts
         - icons
         - logos
-        - tiny fragments
-        - decorative graphics
-        - banners
-        - specification charts
+        - promotional compositions
 
-        --------------------------------------------------
+        ==================================================
         VARIANT IMAGE RULES
-        --------------------------------------------------
+        ==================================================
 
-        Each variant should include:
-        - variant-specific image if visible
-        - correct matching color image
+        Variants MUST be created when:
+
+        - same product
+        - same shape
+        - same structure
+        - same dimensions
+        - only color/material/style changes
+
+        IMPORTANT:
+
+        If multiple isolated product colors exist,
+        they MUST become variants.
+
+        Example:
+        - black cap
+        - blue cap
+        - red cap
+
+        MUST become:
+        ONE product
+        with multiple color variants.
+
+        DO NOT create separate products.
+
+        Each variant should contain:
+        - correct Color/Material attribute
+        - correct image_index
+
+        ==================================================
+        COLLAGE UNDERSTANDING RULES
+        ==================================================
+
+        Supplier catalog pages often contain:
+        - one large lifestyle image
+        - multiple smaller isolated products
+
+        IMPORTANT:
+
+        The smaller isolated products are usually
+        the CORRECT ecommerce assets.
+
+        DO NOT automatically prefer the largest image.
+
+        Prefer:
+        isolated product renders
+        over:
+        visually dominant lifestyle graphics.
 
         ==================================================
         PRICE/STOCK RULES
