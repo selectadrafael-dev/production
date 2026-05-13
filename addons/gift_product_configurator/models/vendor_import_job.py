@@ -5964,7 +5964,7 @@ class VendorImportJob(models.Model):
             vals = {
                 'name': name.strip(),
                 'description_sale': description,
-                'detailed_type': 'product',
+                'type': 'consu',
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
@@ -6764,9 +6764,9 @@ class VendorImportJob(models.Model):
 
                     ], limit=1)
 
-                    # ==========================================
+                    # ===========================================
                     # CREATE PRODUCT
-                    # ==========================================
+                    # ===========================================
 
                     if not product:
 
@@ -6780,7 +6780,7 @@ class VendorImportJob(models.Model):
                             'description_sale':
                                 description,
 
-                            'detailed_type': 'product',
+                            'type': 'consu',
 
                             'categ_id':
                                 category.id,
@@ -7119,168 +7119,187 @@ class VendorImportJob(models.Model):
                         # VARIANT IMAGE
                         # =====================================
 
-                        image_index = variant.get(
-                            "image_index",
-                            0
-                        )
+                        variant_record = False
 
+                        try:
 
-                        variant_record = self.env[
-                            'product.product'
-                        ].search([
+                            # =====================================
+                            # CREATE PRODUCT
+                            # =====================================
 
-                            (
-                                'product_tmpl_id',
-                                '=',
-                                product.id
+                            product = self.env[
+                                'product.template'
+                            ].create(vals)
+
+                            # =====================================
+                            # MAIN VARIANT
+                            # =====================================
+
+                            variant_record = self.env[
+                                'product.product'
+                            ].search([
+
+                                (
+                                    'product_tmpl_id',
+                                    '=',
+                                    product.id
+                                )
+
+                            ], limit=1)
+
+                            # =====================================
+                            # VARIANT IMAGE
+                            # =====================================
+
+                            image_index = variant.get(
+                                "image_index",
+                                0
                             )
 
-                        ], limit=1)
+                            variant_image_index = (
+                                variant.get("image_index")
+                            )
 
-                        variant_image_index = (
-                            variant.get("image_index")
+                            if (
+
+                                variant_record
+
+                                and
+
+                                variant_image_index is not None
+
+                            ):
+
+                                try:
+
+                                    variant_image = (
+                                        self._resolve_asset_image(
+
+                                            asset_pool,
+
+                                            variant_image_index
+                                        )
+                                    )
+
+                                    if variant_image:
+
+                                        variant_record.image_1920 = (
+                                            variant_image
+                                        )
+
+                                        _logger.warning(
+
+                                            f"[VARIANT IMAGE SET] "
+
+                                            f"{variant_record.display_name}"
+
+                                        )
+
+                                except Exception as e:
+
+                                    _logger.warning(
+
+                                        f"[VARIANT IMAGE FAILED] "
+
+                                        f"{str(e)}"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.exception(
+
+                                f"[PDF PRODUCT ERROR] "
+
+                                f"{str(e)}"
+                            )
+
+                            continue
+
+
+                        # =====================================
+                        # STOCK QTY
+                        # =====================================
+
+                        stock_qty = int(
+
+                            product_data.get(
+                                "stock_qty",
+                                0
+                            ) or 0
                         )
 
                         if (
+
+                            stock_qty > 0
+
+                            and
 
                             variant_record
 
                             and
 
-                            variant_image_index is not None
-
+                            stock_location
                         ):
 
                             try:
 
-                                variant_image = (
-                                    self._resolve_asset_image(
+                                quant = stock_quant_obj.search([
 
-                                        asset_pool,
+                                    (
+                                        'product_id',
+                                        '=',
+                                        variant_record.id
+                                    ),
 
-                                        variant_image_index
+                                    (
+                                        'location_id',
+                                        '=',
+                                        stock_location.id
                                     )
+
+                                ], limit=1)
+
+                                if quant:
+
+                                    quant.inventory_quantity = (
+                                        stock_qty
+                                    )
+
+                                    quant.action_apply_inventory()
+
+                                else:
+
+                                    quant = stock_quant_obj.create({
+
+                                        'product_id':
+                                            variant_record.id,
+
+                                        'location_id':
+                                            stock_location.id,
+
+                                        'inventory_quantity':
+                                            stock_qty
+                                    })
+
+                                    quant.action_apply_inventory()
+
+                                _logger.warning(
+
+                                    f"[PDF STOCK SET] "
+
+                                    f"{variant_record.display_name} "
+
+                                    f"-> {stock_qty}"
                                 )
-
-                                if variant_image:
-
-                                    variant_record.image_1920 = (
-                                        variant_image
-                                    )
-
-                                    _logger.warning(
-
-                                        f"[VARIANT IMAGE SET] "
-
-                                        f"{variant_record.display_name}"
-
-                                    )
 
                             except Exception as e:
 
                                 _logger.warning(
 
-                                    f"[VARIANT IMAGE FAILED] "
+                                    f"[PDF STOCK FAILED] "
 
                                     f"{str(e)}"
                                 )
-
-
-                except Exception as e:
-
-                    _logger.exception(
-
-                        f"[PDF PRODUCT ERROR] "
-
-                        f"{str(e)}"
-                    )
-
-                    continue
-
-            # =====================================
-            # STOCK QTY
-            # =====================================
-
-            stock_qty = int(
-
-                product_data.get(
-                    "stock_qty",
-                    0
-                ) or 0
-            )
-
-            if (
-
-                stock_qty > 0
-
-                and
-
-                variant_record
-
-                and
-
-                stock_location
-            ):
-
-                try:
-
-                    quant = stock_quant_obj.search([
-
-                        (
-                            'product_id',
-                            '=',
-                            variant_record.id
-                        ),
-
-                        (
-                            'location_id',
-                            '=',
-                            stock_location.id
-                        )
-
-                    ], limit=1)
-
-                    if quant:
-
-                        quant.inventory_quantity = (
-                            stock_qty
-                        )
-
-                        quant.action_apply_inventory()
-
-                    else:
-
-                        quant = stock_quant_obj.create({
-
-                            'product_id':
-                                variant_record.id,
-
-                            'location_id':
-                                stock_location.id,
-
-                            'inventory_quantity':
-                                stock_qty
-                        })
-
-                        quant.action_apply_inventory()
-
-                    _logger.warning(
-
-                        f"[PDF STOCK SET] "
-
-                        f"{variant_record.display_name} "
-
-                        f"-> {stock_qty}"
-                    )
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"[PDF STOCK FAILED] "
-
-                        f"{str(e)}"
-                    )
             # =================================================
             # SAVE PAGE PROGRESS
             # =================================================
@@ -8113,7 +8132,7 @@ class VendorImportJob(models.Model):
                         'description_sale':
                             description,
 
-                        'detailed_type': 'product',
+                       'type': 'consu',
 
                         'categ_id':
                             category.id,
