@@ -6,6 +6,8 @@ import os
 from PIL import Image
 import io
 import gc  # 🔥 memory cleanup
+import cv2
+import numpy as np
 
 app = Flask(__name__)
 
@@ -137,70 +139,173 @@ def extract():
 
         text = page.get_text("text") or ""
         image_list = []
-        images = page.get_images(full=True)
-        images = sorted(
-                images,
-                key=lambda x: x[2] * x[3] if len(x) > 3 else 0,
-                reverse=True
+
+    pix = page.get_pixmap(
+        matrix=fitz.Matrix(2, 2)
+    )
+
+    img = Image.frombytes(
+
+        "RGB",
+
+        [pix.width, pix.height],
+
+        pix.samples
+    )
+
+    page_np = np.array(img)
+
+    gray = cv2.cvtColor(
+        page_np,
+        cv2.COLOR_RGB2GRAY
+    )
+
+    # ===============================
+    # THRESHOLD
+    # ===============================
+
+    thresh = cv2.threshold(
+
+        gray,
+
+        240,
+
+        255,
+
+        cv2.THRESH_BINARY_INV
+
+    )[1]
+
+    # ===============================
+    # FIND CONTOURS
+    # ===============================
+
+    contours, _ = cv2.findContours(
+
+        thresh,
+
+        cv2.RETR_EXTERNAL,
+
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    candidate_images = []
+
+    # ===============================
+    # EXTRACT CROPS
+    # ===============================
+
+    for contour in contours:
+
+        x, y, w, h = cv2.boundingRect(
+            contour
+        )
+
+        # skip tiny areas
+        if w < 180 or h < 180:
+            continue
+
+        # skip full-page blocks
+        if w > page_np.shape[1] * 0.95:
+            continue
+
+        if h > page_np.shape[0] * 0.95:
+            continue
+
+        crop = page_np[
+            y:y+h,
+            x:x+w
+        ]
+
+        # =================================
+        # TEXT FILTER
+        # =================================
+
+        text_ratio = np.mean(
+
+            crop < 80
+        )
+
+        if text_ratio > 0.45:
+            continue
+
+        # =================================
+        # HUMAN FILTER
+        # =================================
+
+        aspect_ratio = h / float(w)
+
+        # portrait human-like layout
+        if aspect_ratio > 1.7 and w < 400:
+            continue
+
+        candidate_images.append({
+
+            "crop": crop,
+
+            "score": (w * h)
+        })
+
+    # ===============================
+    # SORT BEST FIRST
+    # ===============================
+
+    candidate_images = sorted(
+
+        candidate_images,
+
+        key=lambda x: x["score"],
+
+        reverse=True
+    )
+
+    MAX_IMAGES_PER_PAGE = 10
+
+    image_list = []
+
+    for item in candidate_images[
+        :MAX_IMAGES_PER_PAGE
+    ]:
+
+        try:
+
+            crop = item["crop"]
+
+            crop_img = Image.fromarray(
+                crop
+            ).convert("RGB")
+
+            crop_img.thumbnail((800, 800))
+
+            buffer = io.BytesIO()
+
+            crop_img.save(
+
+                buffer,
+
+                format="JPEG",
+
+                quality=85
             )
 
-        MAX_IMAGES_PER_PAGE = 10
+            image_base64 = base64.b64encode(
 
-        for img_data in images:
-            try:
-                if len(image_list) >= MAX_IMAGES_PER_PAGE:
-                    break
+                buffer.getvalue()
 
-                xref = img_data[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image.get("image")
+            ).decode("utf-8")
 
-                if not image_bytes:
-                    continue
+            image_list.append(
+                image_base64
+            )
 
-                img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-                width, height = img.size
-
-                # skip tiny images (icons, logos)
-                if width < 200 or height < 200:
-                    continue
-
-                # 🔒 reduce size
-                img.thumbnail((800, 800))
-
-                buffer = io.BytesIO()
-                img.save(buffer, format="JPEG", quality=75)
-
-                compressed_bytes = buffer.getvalue()
-
-                # 🔒 skip large images
-            
-                segmented = split_catalog_image(img)
-
-                if segmented:
-
-                    image_list.extend(segmented)
-
-                else:
-
-                    image_base64 = base64.b64encode(
-                        compressed_bytes
-                    ).decode("utf-8")
-
-                    image_list.append(image_base64)
-
-                # 🔥 free memory
-                buffer.close()
-
-            except Exception:
-                continue
+        except Exception:
+            continue
 
         # 🔒 limit text
         text = text[:2000]
 
-        _logger.info(
-                f"PAGE {page_number+1} → RAW IMAGES: {len(images)} | KEPT: {len(image_list)}"
-        )
+        f"PAGE {page_number+1} → SEGMENTS: {len(candidate_images)} | KEPT: {len(image_list)}"
+        
         pages_data.append({
             "page": page_number + 1,
             "text": text,
