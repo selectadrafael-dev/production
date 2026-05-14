@@ -74,6 +74,11 @@ Hide default Odoo product layout safely
     align-items: flex-start !important;
     gap: 16px !important;
 }
+#o-carousel-product {
+
+    display: flex !important;
+    flex-direction: column !important;
+}
 
 .o_carousel_product_indicators {
 
@@ -86,7 +91,8 @@ Hide default Odoo product layout safely
     overflow-y: auto !important;
     overflow-x: hidden !important;
 
-    max-height: 620px !important;
+   /* max-height: 620px !important;*/
+   max-height: auto !important;
 
     gap: 10px !important;
 
@@ -96,10 +102,14 @@ Hide default Odoo product layout safely
 .o_carousel_product_indicators > * {
 
     width: 72px !important;
-    height: 72px !important;
+    height: auto !important;
 
     flex: 0 0 auto !important;
 
+    display: block !important;
+}
+
+.o_carousel_product_indicators ol{
     display: block !important;
 }
 
@@ -107,6 +117,10 @@ Hide default Odoo product layout safely
 
     flex: 1 !important;
     order: 2 !important;
+}
+
+#o-carousel-product .o_carousel_product_indicators .carousel-indicators li {
+        margin: 0 0 10px 0 !important;
 }
 
 @media(max-width:991px){
