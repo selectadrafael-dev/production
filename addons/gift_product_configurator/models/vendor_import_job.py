@@ -48,6 +48,8 @@ class ProductTemplate(models.Model):
         ondelete='set null'
     )
 
+    vendor_stock_qty = fields.Integer()
+
 # ✅ Extend existing model
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -137,7 +139,7 @@ class VendorImportJob(models.Model):
         default=False
     )
 
-
+   
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -7215,25 +7217,6 @@ class VendorImportJob(models.Model):
                                     f"{str(e)}"
                                 )
 
-                        stock_qty = int(
-
-                            product_data.get(
-                                "stock_qty",
-                                0
-                            ) or 0
-                        )
-
-                        self._apply_pdf_stock(
-
-                            variant_record,
-
-                            stock_qty,
-
-                            stock_quant_obj,
-
-                            stock_location
-                        )
-
                 except Exception as e:
 
                     _logger.exception(
@@ -7391,11 +7374,22 @@ class VendorImportJob(models.Model):
 
             'vendor_import_job_id':
                 self.id,
+
+            'vendor_stock_qty': int(
+
+                product_data.get(
+                    "stock_qty",
+                    0
+                ) or 0
+            ),
         }
+
+
 
         hero_index = product_data.get(
             "hero_image_index"
         )
+        
 
 
         # =====================================
