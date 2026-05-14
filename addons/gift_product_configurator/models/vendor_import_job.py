@@ -6358,16 +6358,10 @@ class VendorImportJob(models.Model):
     def create_products_pdf(self):
 
         import json
-        import re
 
         _logger.warning(
             "[PDF CREATE] START"
         )
-
-
-        # =====================================================
-        # VALIDATION
-        # =====================================================
 
         if not self.ai_response:
 
@@ -6376,7 +6370,6 @@ class VendorImportJob(models.Model):
             )
 
             return
-
 
         try:
 
@@ -6395,7 +6388,6 @@ class VendorImportJob(models.Model):
 
             return
 
-
         if not isinstance(ai_pages, list):
 
             _logger.warning(
@@ -6403,11 +6395,6 @@ class VendorImportJob(models.Model):
             )
 
             return
-
-
-        # =====================================================
-        # MODELS
-        # =====================================================
 
         product_obj = self.env[
             'product.template'
@@ -6428,11 +6415,6 @@ class VendorImportJob(models.Model):
             ('usage', '=', 'internal')
 
         ], limit=1)
-
-
-        # =====================================================
-        # CATEGORY MAP
-        # =====================================================
 
         CATEGORY_MAPPING = {
 
@@ -6457,17 +6439,11 @@ class VendorImportJob(models.Model):
             "laptop": "Electronics",
         }
 
-
-        # =====================================================
-        # ROOT CATEGORY
-        # =====================================================
-
         parent_category = category_obj.search([
 
             ('name', '=', "All Products")
 
         ], limit=1)
-
 
         if not parent_category:
 
@@ -6477,11 +6453,6 @@ class VendorImportJob(models.Model):
 
             })
 
-
-        # =====================================================
-        # VENDOR
-        # =====================================================
-
         vendor_id = (
 
             self.partner_id.id
@@ -6490,11 +6461,6 @@ class VendorImportJob(models.Model):
 
             else False
         )
-
-
-        # =====================================================
-        # BATCHING
-        # =====================================================
 
         BATCH_SIZE = 3
 
@@ -6509,25 +6475,8 @@ class VendorImportJob(models.Model):
             len(ai_pages)
         )
 
-
-        _logger.warning(
-
-            f"[PDF CREATE RANGE] "
-
-            f"{start} -> {end} "
-
-            f"| total={len(ai_pages)}"
-        )
-
-
         created_count = 0
-
         skipped_count = 0
-
-
-        # =====================================================
-        # MAIN LOOP
-        # =====================================================
 
         for page_index in range(start, end):
 
@@ -6547,7 +6496,6 @@ class VendorImportJob(models.Model):
                 )
 
                 continue
-
 
             page_number = page_data.get(
                 "page"
@@ -6590,51 +6538,10 @@ class VendorImportJob(models.Model):
                 page_images
             )
 
-
             products = page_data.get(
                 "products",
                 []
             )
-
-            # =====================================
-            # EMPTY PDF PAGE DEBUG
-            # =====================================
-
-            if not products:
-
-                _logger.warning(
-
-                    f"[PDF EMPTY PAGE] "
-
-                    f"page={page_number} "
-
-                    f"| ai_page_index={page_index}"
-                )
-
-            else:
-
-                _logger.warning(
-
-                    f"[PDF PRODUCT COUNT] "
-
-                    f"page={page_number} "
-
-                    f"| products={len(products)}"
-                )
-
-            _logger.warning(
-
-                f"[PDF PAGE] "
-
-                f"page={page_number} "
-
-                f"| products={len(products)}"
-            )
-
-
-            # =================================================
-            # PRODUCTS
-            # =================================================
 
             for product_data in products:
 
@@ -6650,22 +6557,9 @@ class VendorImportJob(models.Model):
 
                     ).strip()
 
-
                     if not name:
 
-                        _logger.warning(
-                            "[PDF SKIP] EMPTY NAME"
-                        )
-
                         continue
-
-
-                    description = (
-                        product_data.get(
-                            "description"
-                        ) or ""
-                    )
-
 
                     raw_category = (
 
@@ -6675,12 +6569,10 @@ class VendorImportJob(models.Model):
 
                     ).lower()
 
-
                     variants = product_data.get(
                         "variants",
                         []
                     )
-
 
                     variant_group = (
 
@@ -6693,234 +6585,67 @@ class VendorImportJob(models.Model):
                         name
                     )
 
-
                     variant_group = str(
                         variant_group
                     ).strip().upper()
 
+                    category = (
+                        self._get_or_create_pdf_category(
 
-                    # =========================================
-                    # CATEGORY MAP
-                    # =========================================
+                            raw_category,
 
-                    mapped_category = (
-                        "General"
-                    )
+                            category_obj,
 
+                            parent_category,
 
-                    for key, val in CATEGORY_MAPPING.items():
-
-                        if key in raw_category:
-
-                            mapped_category = val
-
-                            break
-
-
-                    category = category_obj.search([
-
-                        ('name', '=ilike', mapped_category),
-
-                        (
-                            'parent_id',
-                            '=',
-                            parent_category.id
+                            CATEGORY_MAPPING
                         )
-
-                    ], limit=1)
-
-
-                    if not category:
-
-                        category = category_obj.create({
-
-                            'name': mapped_category,
-
-                            'parent_id':
-                                parent_category.id
-                        })
-
-
-                   # =========================================
-                    # FINGERPRINT
-                    # =========================================
+                    )
 
                     vendor_fingerprint = (
                         f"{vendor_id}_{variant_group}"
                     )
 
+                    product, created = (
 
-                    # =========================================
-                    # DUPLICATE CHECK
-                    # =========================================
+                        self._get_or_create_pdf_product(
 
-                    product = product_obj.search([
+                            product_data,
 
-                        (
-                            'vendor_fingerprint',
-                            '=',
-                            vendor_fingerprint
-                        )
+                            variant_group,
 
-                    ], limit=1)
+                            vendor_id,
 
-                    # ===========================================
-                    # CREATE PRODUCT
-                    # ===========================================
+                            vendor_fingerprint,
 
-                    if not product:
-
-                        vals = {
-
-                            'name': name,
-
-                            'default_code':
-                                variant_group,
-
-                            'description_sale':
-                                description,
-
-                            'type': 'consu',
-
-                            'categ_id':
-                                category.id,
-
-                            'sale_ok': True,
-
-                            'website_published':
-                                False,
-
-                            'vendor_id':
-                                vendor_id,
-
-                            'vendor_fingerprint':
-                                vendor_fingerprint,
-
-                            'vendor_import_job_id': self.id,
-                        }
-                   
-
-                        hero_index = product_data.get(
-                            "hero_image_index"
-                        )
-
-                        hero_image = self._resolve_asset_image(
+                            category,
 
                             asset_pool,
 
-                            hero_index
+                            product_obj
+                        )
+                    )
+
+                    if created:
+
+                        self._apply_product_translation(
+                            product
                         )
 
-                        if hero_image:
+                        self._create_pdf_gallery(
 
-                            vals['image_1920'] = (
-                                hero_image
-                            )
+                            product,
 
-                        product = product_obj.with_context(
+                            product_data,
 
-                            mail_create_nolog=True,
-
-                            mail_notify_force_send=False,
-
-                            tracking_disable=True
-
-                         ).create(vals)
-
-                        #=====Product Translation========
-                        self._apply_product_translation(product)
-
-                        gallery_indexes = product_data.get(
-                            "gallery_image_indexes",
-                            []
+                            asset_pool
                         )
-
-                        used_images = set()
-
-                        if product.image_1920:
-
-                            used_images.add(
-                                product.image_1920
-                            )
-
-                        for index in gallery_indexes:
-
-                            try:
-
-                                gallery_image = (
-                                    self._resolve_asset_image(
-
-                                        asset_pool,
-
-                                        index
-                                    )
-                                )
-
-                                if not gallery_image:
-                                    continue
-
-                                if gallery_image in used_images:
-                                    continue
-
-
-                                self.env[
-                                    'product.image'
-                                ].create({
-
-                                    'name':
-                                        f"{product.name} Gallery",
-
-                                    'product_tmpl_id':
-                                        product.id,
-
-                                    'image_1920':
-                                        gallery_image
-                                })
-
-                                used_images.add(
-                                     gallery_image
-                                )
-
-                            except Exception as e:
-
-                                _logger.warning(
-
-                                    f"[GALLERY IMAGE FAILED] "
-
-                                    f"{product.name} "
-
-                                    f"| {str(e)}"
-                                )
-                        
 
                         created_count += 1
-
-
-                        _logger.warning(
-
-                            f"[PDF CREATED] "
-
-                            f"{variant_group}"
-                        )
 
                     else:
 
                         skipped_count += 1
-
-
-                        _logger.warning(
-
-                            f"[PDF EXISTS] "
-
-                            f"{variant_group} "
-
-                            f"| vendor={vendor_id}"
-                        )
-
-
-                    # ==========================================
-                    # FALLBACK VARIANT
-                    # ==========================================
 
                     if not variants:
 
@@ -6933,11 +6658,6 @@ class VendorImportJob(models.Model):
 
                         }]
 
-
-                    # =========================================
-                    # VARIANTS
-                    # =========================================
-
                     for variant in variants:
 
                         attributes = variant.get(
@@ -6945,13 +6665,10 @@ class VendorImportJob(models.Model):
                             {}
                         )
 
-
                         for attr_name, attr_value in attributes.items():
 
                             if not attr_value:
-
                                 continue
-
 
                             attribute = self.env[
                                 'product.attribute'
@@ -6965,7 +6682,6 @@ class VendorImportJob(models.Model):
 
                             ], limit=1)
 
-
                             if not attribute:
 
                                 attribute = self.env[
@@ -6975,7 +6691,6 @@ class VendorImportJob(models.Model):
                                     'name': attr_name
 
                                 })
-
 
                             value = self.env[
                                 'product.attribute.value'
@@ -6995,7 +6710,6 @@ class VendorImportJob(models.Model):
 
                             ], limit=1)
 
-
                             if not value:
 
                                 value = self.env[
@@ -7007,56 +6721,6 @@ class VendorImportJob(models.Model):
                                     'attribute_id':
                                         attribute.id
                                 })
-
-
-                                # =========================================
-                                # TRANSLATE VARIANT VALUE
-                                # =========================================
-
-                                try:
-
-                                    for lang_code in ['ru_RU', 'az_AZ']:
-
-                                        translated_variant = self._force_translate(
-
-                                            str(attr_value),
-
-                                            lang_code
-                                        )
-
-
-                                        if translated_variant:
-
-                                            value.with_context(
-                                                lang=lang_code
-                                            ).write({
-
-                                                'name': translated_variant
-                                            })
-
-
-                                            _logger.warning(
-
-                                                f"[PDF VARIANT TRANSLATED] "
-
-                                                f"{attr_value} "
-
-                                                f"-> "
-
-                                                f"{translated_variant} "
-
-                                                f"({lang_code})"
-                                            )
-
-                                except Exception as e:
-
-                                    _logger.warning(
-
-                                        f"[PDF VARIANT TRANSLATION ERROR] "
-
-                                        f"{str(e)}"
-                                    )
-
 
                             line = self.env[
                                 'product.template.attribute.line'
@@ -7075,7 +6739,6 @@ class VendorImportJob(models.Model):
                                 )
 
                             ], limit=1)
-
 
                             if not line:
 
@@ -7114,111 +6777,57 @@ class VendorImportJob(models.Model):
 
                                     ]
 
+                        variant_record = self.env[
+                            'product.product'
+                        ].search([
 
-                        # =====================================
-                        # VARIANT IMAGE
-                        # =====================================
+                            (
+                                'product_tmpl_id',
+                                '=',
+                                product.id
+                            )
 
-                        variant_record = False
+                        ], limit=1)
 
-                        try:
+                        variant_image_index = (
+                            variant.get("image_index")
+                        )
 
-                            # =====================================
-                            # CREATE PRODUCT
-                            # =====================================
+                        if (
 
-                            product = self.env[
-                                'product.template'
-                            ].create(vals)
+                            variant_record
 
-                            # =====================================
-                            # MAIN VARIANT
-                            # =====================================
+                            and
 
-                            variant_record = self.env[
-                                'product.product'
-                            ].search([
+                            variant_image_index is not None
 
-                                (
-                                    'product_tmpl_id',
-                                    '=',
-                                    product.id
+                        ):
+
+                            try:
+
+                                variant_image = (
+                                    self._resolve_asset_image(
+
+                                        asset_pool,
+
+                                        variant_image_index
+                                    )
                                 )
 
-                            ], limit=1)
+                                if variant_image:
 
-                            # =====================================
-                            # VARIANT IMAGE
-                            # =====================================
-
-                            image_index = variant.get(
-                                "image_index",
-                                0
-                            )
-
-                            variant_image_index = (
-                                variant.get("image_index")
-                            )
-
-                            if (
-
-                                variant_record
-
-                                and
-
-                                variant_image_index is not None
-
-                            ):
-
-                                try:
-
-                                    variant_image = (
-                                        self._resolve_asset_image(
-
-                                            asset_pool,
-
-                                            variant_image_index
-                                        )
+                                    variant_record.image_1920 = (
+                                        variant_image
                                     )
 
-                                    if variant_image:
+                            except Exception as e:
 
-                                        variant_record.image_1920 = (
-                                            variant_image
-                                        )
+                                _logger.warning(
 
-                                        _logger.warning(
+                                    f"[VARIANT IMAGE FAILED] "
 
-                                            f"[VARIANT IMAGE SET] "
-
-                                            f"{variant_record.display_name}"
-
-                                        )
-
-                                except Exception as e:
-
-                                    _logger.warning(
-
-                                        f"[VARIANT IMAGE FAILED] "
-
-                                        f"{str(e)}"
-                                    )
-
-                        except Exception as e:
-
-                            _logger.exception(
-
-                                f"[PDF PRODUCT ERROR] "
-
-                                f"{str(e)}"
-                            )
-
-                            continue
-
-
-                        # =====================================
-                        # STOCK QTY
-                        # =====================================
+                                    f"{str(e)}"
+                                )
 
                         stock_qty = int(
 
@@ -7228,105 +6837,35 @@ class VendorImportJob(models.Model):
                             ) or 0
                         )
 
-                        if (
+                        self._apply_pdf_stock(
 
-                            stock_qty > 0
+                            variant_record,
 
-                            and
+                            stock_qty,
 
-                            variant_record
-
-                            and
+                            stock_quant_obj,
 
                             stock_location
-                        ):
+                        )
 
-                            try:
+                except Exception as e:
 
-                                quant = stock_quant_obj.search([
+                    _logger.exception(
 
-                                    (
-                                        'product_id',
-                                        '=',
-                                        variant_record.id
-                                    ),
+                        f"[PDF PRODUCT ERROR] "
 
-                                    (
-                                        'location_id',
-                                        '=',
-                                        stock_location.id
-                                    )
+                        f"{str(e)}"
+                    )
 
-                                ], limit=1)
-
-                                if quant:
-
-                                    quant.inventory_quantity = (
-                                        stock_qty
-                                    )
-
-                                    quant.action_apply_inventory()
-
-                                else:
-
-                                    quant = stock_quant_obj.create({
-
-                                        'product_id':
-                                            variant_record.id,
-
-                                        'location_id':
-                                            stock_location.id,
-
-                                        'inventory_quantity':
-                                            stock_qty
-                                    })
-
-                                    quant.action_apply_inventory()
-
-                                _logger.warning(
-
-                                    f"[PDF STOCK SET] "
-
-                                    f"{variant_record.display_name} "
-
-                                    f"-> {stock_qty}"
-                                )
-
-                            except Exception as e:
-
-                                _logger.warning(
-
-                                    f"[PDF STOCK FAILED] "
-
-                                    f"{str(e)}"
-                                )
-            # =================================================
-            # SAVE PAGE PROGRESS
-            # =================================================
+                    continue
 
             self.last_created_page = (
                 page_index + 1
             )
 
-
-            _logger.warning(
-
-                f"[PDF TRACK] "
-
-                f"last_created_page="
-
-                f"{self.last_created_page}"
-            )
-
-
             self.flush_recordset()
 
             self.env.cr.commit()
-
-
-        # =====================================================
-        # FINAL LOG
-        # =====================================================
 
         _logger.warning(
 
@@ -7337,35 +6876,331 @@ class VendorImportJob(models.Model):
             f"| skipped={skipped_count}"
         )
 
-
-        # =====================================================
-        # NEXT STATE
-        # =====================================================
-
         if self.last_created_page >= len(ai_pages):
-
-            _logger.warning(
-                "[PDF FLOW] DONE ✅"
-            )
 
             self.state = 'done'
 
         else:
 
-            _logger.warning(
-                "[PDF FLOW] CONTINUE"
-            )
-
             self.state = 'pdf_creating'
-
 
         self.flush_recordset()
 
         self.env.cr.commit()
 
+    #==========create pdf CATEGORY RESOLVER====================================
+    def _get_or_create_pdf_category(
 
-    #=========product duplicate helper=======================
+        self,
 
+        raw_category,
+
+        category_obj,
+
+        parent_category,
+
+        category_mapping
+    ):
+
+        mapped_category = "General"
+
+        raw_category = (
+            raw_category or ""
+        ).lower()
+
+        for key, val in category_mapping.items():
+
+            if key in raw_category:
+
+                mapped_category = val
+
+                break
+
+        category = category_obj.search([
+
+            ('name', '=ilike', mapped_category),
+
+            (
+                'parent_id',
+                '=',
+                parent_category.id
+            )
+
+        ], limit=1)
+
+        if not category:
+
+            category = category_obj.create({
+
+                'name': mapped_category,
+
+                'parent_id': parent_category.id
+            })
+
+        return category
+
+    #==========pdf product PRODUCT CREATE/GET====================================
+    def _get_or_create_pdf_product(
+
+        self,
+
+        product_data,
+
+        variant_group,
+
+        vendor_id,
+
+        vendor_fingerprint,
+
+        category,
+
+        asset_pool,
+
+        product_obj
+    ):
+
+        product = product_obj.search([
+
+            (
+                'vendor_fingerprint',
+                '=',
+                vendor_fingerprint
+            )
+
+        ], limit=1)
+
+        if product:
+
+            return product, False
+
+        vals = {
+
+            'name': (
+                product_data.get("name")
+                or ""
+            ).strip(),
+
+            'default_code': variant_group,
+
+            'description_sale': (
+                product_data.get(
+                    "description"
+                ) or ""
+            ),
+
+            'type': 'consu',
+
+            'categ_id': category.id,
+
+            'sale_ok': True,
+
+            'website_published': False,
+
+            'vendor_id': vendor_id,
+
+            'vendor_fingerprint':
+                vendor_fingerprint,
+
+            'vendor_import_job_id':
+                self.id,
+        }
+
+        hero_index = product_data.get(
+            "hero_image_index"
+        )
+
+        hero_image = self._resolve_asset_image(
+
+            asset_pool,
+
+            hero_index
+        )
+
+        if hero_image:
+
+            vals['image_1920'] = hero_image
+
+        product = product_obj.with_context(
+
+            mail_create_nolog=True,
+
+            mail_notify_force_send=False,
+
+            tracking_disable=True
+
+        ).create(vals)
+
+        return product, True
+
+
+     #==========create pdf product helper 3====================================
+
+
+    #=========pdf product GALLERY CREATOR=======================
+    def _create_pdf_gallery(
+
+        self,
+
+        product,
+
+        product_data,
+
+        asset_pool
+    ):
+
+        gallery_indexes = product_data.get(
+            "gallery_image_indexes",
+            []
+        )
+
+        used_images = set()
+
+        if product.image_1920:
+
+            used_images.add(
+                product.image_1920
+            )
+
+        for index in gallery_indexes:
+
+            try:
+
+                gallery_image = (
+                    self._resolve_asset_image(
+
+                        asset_pool,
+
+                        index
+                    )
+                )
+
+                if not gallery_image:
+                    continue
+
+                if gallery_image in used_images:
+                    continue
+
+                self.env[
+                    'product.image'
+                ].create({
+
+                    'name':
+                        f"{product.name} Gallery",
+
+                    'product_tmpl_id':
+                        product.id,
+
+                    'image_1920':
+                        gallery_image
+                })
+
+                used_images.add(
+                    gallery_image
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[GALLERY IMAGE FAILED] "
+
+                    f"{product.name} "
+
+                    f"| {str(e)}"
+                )
+    
+    #=========pdf product STOCK APPLY=======================
+    def _apply_pdf_stock(
+
+        self,
+
+        variant_record,
+
+        stock_qty,
+
+        stock_quant_obj,
+
+        stock_location
+    ):
+
+        if (
+
+            not stock_qty
+
+            or
+
+            not variant_record
+
+            or
+
+            not stock_location
+        ):
+
+            return
+
+        try:
+
+            quant = stock_quant_obj.search([
+
+                (
+                    'product_id',
+                    '=',
+                    variant_record.id
+                ),
+
+                (
+                    'location_id',
+                    '=',
+                    stock_location.id
+                )
+
+            ], limit=1)
+
+            if quant:
+
+                quant.inventory_quantity = (
+                    stock_qty
+                )
+
+                quant.action_apply_inventory()
+
+            else:
+
+                quant = stock_quant_obj.create({
+
+                    'product_id':
+                        variant_record.id,
+
+                    'location_id':
+                        stock_location.id,
+
+                    'inventory_quantity':
+                            stock_qty
+                })
+
+                quant.action_apply_inventory()
+
+            _logger.warning(
+
+                f"[PDF STOCK SET] "
+
+                f"{variant_record.display_name} "
+
+                f"-> {stock_qty}"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[PDF STOCK FAILED] "
+
+                f"{str(e)}"
+            )
+
+    #=========pdf product STOCK APPLY=======================
+
+    #===============fingerprint================================
     def _build_vendor_fingerprint(self, product_data):
 
         import re

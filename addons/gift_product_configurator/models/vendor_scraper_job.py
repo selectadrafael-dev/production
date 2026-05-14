@@ -8714,3 +8714,4 @@ class VendorImportJob(models.Model):
         mail.send()
 
         self.completion_email_sent = True
+        
