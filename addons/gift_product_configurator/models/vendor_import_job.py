@@ -24,6 +24,7 @@ from PIL import (
 
 import cv2
 import numpy as np
+
  
 
 _logger = logging.getLogger(__name__)
@@ -2383,6 +2384,89 @@ class VendorImportJob(models.Model):
                         continue
 
                     # =====================================
+                    # IMAGE ANALYSIS
+                    # =====================================
+
+                    crop_width, crop_height = crop.size
+
+                    crop_area = crop_width * crop_height
+
+                    page_area = (
+                        original_width * original_height
+                    )
+
+                    coverage_ratio = (
+                        crop_area / float(page_area)
+                    )
+
+                    # =====================================
+                    # COLLAGE DETECTION
+                    # =====================================
+
+                    is_collage = False
+
+                    if len(contours) >= 4:
+
+                        is_collage = True
+
+                    # =====================================
+                    # CENTER DETECTION
+                    # =====================================
+
+                    centered_object = False
+
+                    crop_center_x = x + (w / 2.0)
+                    crop_center_y = y + (h / 2.0)
+
+                    page_center_x = (
+                        original_width / 2.0
+                    )
+
+                    page_center_y = (
+                        original_height / 2.0
+                    )
+
+                    distance_x = abs(
+                        crop_center_x - page_center_x
+                    )
+
+                    distance_y = abs(
+                        crop_center_y - page_center_y
+                    )
+
+                    if (
+
+                        distance_x < original_width * 0.18
+
+                        and
+
+                        distance_y < original_height * 0.18
+                    ):
+
+                        centered_object = True
+
+                    # =====================================
+                    # SCORE
+                    # =====================================
+
+                    score = 0
+
+                    # big product bonus
+                    score += int(
+                        coverage_ratio * 100
+                    )
+
+                    # center hero bonus
+                    if centered_object:
+
+                        score += 40
+
+                    # collage penalty
+                    if is_collage:
+
+                        score -= 35
+
+                    # =====================================
                     # SAVE
                     # =====================================
 
@@ -2398,10 +2482,24 @@ class VendorImportJob(models.Model):
                         buffer.getvalue()
                     ).decode("utf-8")
 
-                    candidate_crops.append(encoded)
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": score,
+
+                        "is_collage": is_collage
+                    })
+
                     _logger.warning(
+
                         f"[CROP DETECTED] "
-                        f"{w}x{h}"
+
+                        f"{w}x{h} "
+
+                        f"| score={score} "
+
+                        f"| collage={is_collage}"
                     )
 
                 # =========================================
@@ -2440,9 +2538,34 @@ class VendorImportJob(models.Model):
         deduped = []
         hashes = set()
 
-        for img in segmented_images:
+        # for img in segmented_images:
+
+        #     try:
+
+        #         image_hash = hashlib.md5(
+        #             img.encode("utf-8")
+        #         ).hexdigest()
+
+        #         if image_hash in hashes:
+        #             continue
+
+        #         hashes.add(image_hash)
+
+        #         deduped.append(img)
+
+        #     except Exception:
+        #         continue
+
+        # _logger.warning(
+        #     f"[SEGMENTATION RESULT] "
+        #     f"{len(deduped)} clean assets"
+        # )
+
+        for asset in segmented_images:
 
             try:
+
+                img = asset.get("image")
 
                 image_hash = hashlib.md5(
                     img.encode("utf-8")
@@ -2453,17 +2576,13 @@ class VendorImportJob(models.Model):
 
                 hashes.add(image_hash)
 
-                deduped.append(img)
+                deduped.append(asset)
 
             except Exception:
                 continue
 
-        _logger.warning(
-            f"[SEGMENTATION RESULT] "
-            f"{len(deduped)} clean assets"
-        )
-
         return deduped
+
 
     # =====================================================
     # VARIANTS IMAGES CONTROLLER/DETECTOR
@@ -5250,9 +5369,35 @@ class VendorImportJob(models.Model):
 
         seen = set()
 
-        for idx, img in enumerate(images or []):
+        for idx, asset in enumerate(images or []):
 
             try:
+
+                if not asset:
+                    continue
+
+                # =====================================
+                # SUPPORT OLD + NEW FORMAT
+                # =====================================
+
+                if isinstance(asset, dict):
+
+                    img = asset.get("image")
+
+                    score = asset.get("score", 0)
+
+                    is_collage = asset.get(
+                        "is_collage",
+                        False
+                    )
+
+                else:
+
+                    img = asset
+
+                    score = 0
+
+                    is_collage = False
 
                 if not img:
                     continue
@@ -5266,20 +5411,10 @@ class VendorImportJob(models.Model):
                 if image_hash in seen:
                     continue
 
-                # ==========================================
-                # IMAGE SCORE
-                # ==========================================
-
-                score = self._score_segmented_image(
-                    img
-                )
-
-                # reject very poor images
-                if score <= -500:
-                    continue
-
-                dominant_color = self._get_dominant_color_name(
-                    img
+                dominant_color = (
+                    self._detect_dominant_color(
+                        img
+                    )
                 )
 
                 prepared.append({
@@ -5290,7 +5425,10 @@ class VendorImportJob(models.Model):
 
                     "score": score,
 
-                    "dominant_color": dominant_color
+                    "is_collage": is_collage,
+
+                    "dominant_color":
+                        dominant_color
                 })
 
                 seen.add(image_hash)
@@ -5304,9 +5442,9 @@ class VendorImportJob(models.Model):
                     f"{str(e)}"
                 )
 
-        # ==========================================
-        # SORT BEST IMAGES FIRST
-        # ==========================================
+        # =====================================
+        # SORT BEST FIRST
+        # =====================================
 
         prepared = sorted(
 
@@ -5320,17 +5458,97 @@ class VendorImportJob(models.Model):
             reverse=True
         )
 
-        # ==========================================
-        # REBUILD CLEAN INDEXES
-        # ==========================================
+        _logger.warning(
 
-        for new_index, item in enumerate(prepared):
+            f"[ASSET POOL READY] "
 
-            item["index"] = new_index
+            f"{len(prepared)} assets"
+        )
 
         return prepared
 
-    
+    # =====================================
+    # DOMINANT COLOR DETECTION
+    # =====================================
+
+    def _detect_dominant_color(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            image_data = base64.b64decode(
+                image_base64
+            )
+
+            image = Image.open(
+
+                BytesIO(image_data)
+
+            ).convert("RGB")
+
+            image = image.resize((80, 80))
+
+            pixels = np.array(image)
+
+            pixels = pixels.reshape(
+                -1,
+                3
+            )
+
+            avg = pixels.mean(axis=0)
+
+            r, g, b = avg
+
+            # =====================================
+            # COLOR CLASSIFICATION
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "white"
+
+            if r < 60 and g < 60 and b < 60:
+                return "black"
+
+            if abs(r - g) < 18 and abs(g - b) < 18:
+                return "gray"
+
+            if r > g and r > b:
+
+                if g > 120:
+                    return "orange"
+
+                return "red"
+
+            if g > r and g > b:
+
+                if r > 120:
+                    return "yellow"
+
+                return "green"
+
+            if b > r and b > g:
+                return "blue"
+
+            if r > 120 and b > 120:
+                return "purple"
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[DOMINANT COLOR FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return "unknown"
+
     #======score_segmented_image ==========================
     def _score_segmented_image(
 
@@ -5511,48 +5729,33 @@ class VendorImportJob(models.Model):
 
     #=================Centralized Rusable Image resolver=======================
 
-    def _resolve_asset_image( self, asset_pool, index):
+    def _resolve_asset_image(
+
+        self,
+
+        asset_pool,
+
+        index
+    ):
 
         try:
 
-            if index is None:
-                return None
-
-            if not isinstance(index, int):
-                return None
-
-            if index < 0:
-                return None
-
             for asset in asset_pool:
 
-                if asset["index"] == index:
+                if asset.get("index") == index:
 
-                    image = asset.get(
-                        "image"
-                    )
-
-                    if not image:
-                        return None
-
-                    if not isinstance(
-                        image,
-                        str
-                    ):
-                        return None
-
-                    return image
+                    return asset.get("image")
 
         except Exception as e:
 
             _logger.warning(
 
-                f"[ASSET RESOLVE FAILED] "
+                f"[ASSET RESOLVE ERROR] "
 
                 f"{str(e)}"
             )
 
-        return None
+        return False
 
     #============marchin AI===================================================
     # =====================================================
@@ -7096,7 +7299,7 @@ class VendorImportJob(models.Model):
                             )
                       
                         # =====================================
-                        # SMART VARIANT IMAGE MATCHING
+                        # PROFESSIONAL VARIANT IMAGE MATCHING
                         # =====================================
 
                         if variant_record:
@@ -7104,6 +7307,8 @@ class VendorImportJob(models.Model):
                             try:
 
                                 matched_asset = None
+
+                                best_score = -999
 
                                 variant_name = ""
 
@@ -7122,73 +7327,100 @@ class VendorImportJob(models.Model):
 
                                     ]).lower()
 
-                                # ---------------------------------
-                                # COLOR MATCH FIRST
-                                # ---------------------------------
+                                # =====================================
+                                # SCORE ALL ASSETS
+                                # =====================================
 
                                 for asset in asset_pool:
 
-                                    asset_color = str(
+                                    asset_score = asset.get(
+                                        "score",
+                                        0
+                                    )
 
-                                        asset.get(
-                                            "dominant_color",
-                                            ""
-                                        )
+                                    asset_string = str(asset).lower()
 
-                                    ).lower()
+                                    # ---------------------------------
+                                    # COLLAGE PENALTY
+                                    # ---------------------------------
 
-                                    if (
+                                    if asset.get("is_collage"):
 
-                                        asset_color
+                                        asset_score -= 35
 
-                                        and
+                                    # ---------------------------------
+                                    # HERO BONUS
+                                    # ---------------------------------
 
-                                        asset_color in variant_name
+                                    if asset.get("score", 0) >= 70:
 
-                                    ):
+                                        asset_score += 20
+
+                                    # ---------------------------------
+                                    # COLOR MATCHING
+                                    # ---------------------------------
+
+                                    color_boosts = [
+
+                                        "red",
+                                        "blue",
+                                        "green",
+                                        "lime",
+                                        "white",
+                                        "black",
+                                        "gray",
+                                        "grey",
+                                        "orange",
+                                        "purple",
+                                        "pink",
+                                        "yellow"
+                                    ]
+
+                                    for color in color_boosts:
+
+                                        if (
+
+                                            color in variant_name
+
+                                            and
+
+                                            color in asset_string
+                                        ):
+
+                                            asset_score += 120
+
+                                    # ---------------------------------
+                                    # BEST MATCH
+                                    # ---------------------------------
+
+                                    if asset_score > best_score:
+
+                                        best_score = asset_score
 
                                         matched_asset = asset
 
-                                        break
-
-                                # ---------------------------------
-                                # AI IMAGE INDEX FALLBACK
-                                # ---------------------------------
-
-                                if not matched_asset:
-
-                                    variant_image_index = (
-                                        variant.get("image_index")
-                                    )
-
-                                    if variant_image_index is not None:
-
-                                        for asset in asset_pool:
-
-                                            if (
-
-                                                asset.get("index")
-
-                                                ==
-
-                                                variant_image_index
-                                            ):
-
-                                                matched_asset = asset
-
-                                                break
-
-                                # ---------------------------------
-                                # FINAL SAFE FALLBACK
-                                # ---------------------------------
+                                # =====================================
+                                # SAFE FALLBACK
+                                # =====================================
 
                                 if not matched_asset and asset_pool:
 
-                                    matched_asset = asset_pool[0]
+                                    matched_asset = sorted(
 
-                                # ---------------------------------
+                                        asset_pool,
+
+                                        key=lambda x: x.get(
+                                            "score",
+                                            0
+                                        ),
+
+                                        reverse=True
+
+                                    )[0]
+
+                                # =====================================
                                 # APPLY
-                                # ---------------------------------
+                                # =====================================
 
                                 if matched_asset:
 
@@ -7204,9 +7436,7 @@ class VendorImportJob(models.Model):
 
                                         f"{variant_name} "
 
-                                        f"-> "
-
-                                        f"{matched_asset.get('dominant_color')}"
+                                        f"| score={best_score}"
                                     )
 
                             except Exception as e:
@@ -7260,6 +7490,7 @@ class VendorImportJob(models.Model):
 
 
     #==========create pdf CATEGORY RESOLVER====================================
+    
     def _get_or_create_pdf_category(
 
         self,
@@ -7399,9 +7630,9 @@ class VendorImportJob(models.Model):
 
         hero_asset = None
 
-        # ---------------------------------
+        # =====================================
         # AI SELECTED HERO
-        # ---------------------------------
+        # =====================================
 
         if hero_index is not None:
 
@@ -7409,13 +7640,18 @@ class VendorImportJob(models.Model):
 
                 if asset.get("index") == hero_index:
 
+                    # reject collages as hero
+                    if asset.get("is_collage"):
+
+                        continue
+
                     hero_asset = asset
 
                     break
 
-        # ---------------------------------
-        # FALLBACK TO BEST SCORE
-        # ---------------------------------
+        # =====================================
+        # FALLBACK TO BEST CLEAN IMAGE
+        # =====================================
 
         if not hero_asset:
 
@@ -7433,35 +7669,34 @@ class VendorImportJob(models.Model):
 
             for asset in sorted_assets:
 
-                if (
+                # reject collage sheets
+                if asset.get("is_collage"):
+                    continue
 
-                    asset.get("score", 0) >= 60
-
-                    and
-
-                    asset.get(
-                        "dominant_color"
-                    ) != "unknown"
-
-                ):
+                # require strong quality
+                if asset.get("score", 0) >= 45:
 
                     hero_asset = asset
 
                     break
 
-        # ---------------------------------
-        # FINAL FALLBACK
-        # ---------------------------------
+        # =====================================
+        # FINAL SAFE FALLBACK
+        # =====================================
 
         if not hero_asset and asset_pool:
 
-            hero_asset = asset_pool[0]
+            for asset in asset_pool:
 
-        # ---------------------------------
-        # APPLY TO CREATE VALS
-        # ---------------------------------
+                if not asset.get("is_collage"):
 
-        if hero_asset:
+                    hero_asset = asset
+
+                    break
+
+            if not hero_asset:
+
+                hero_asset = asset_pool[0]
 
             vals['image_1920'] = hero_asset.get(
                 "image"
