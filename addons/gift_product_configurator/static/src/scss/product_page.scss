@@ -68,87 +68,45 @@ Hide default Odoo product layout safely
     margin-bottom: 0!important;
 }
 
-/*product gallery alignment*/
-/* =========================================
-   MAIN PRODUCT IMAGE LAYOUT
-========================================= */
-
-#o-carousel-product {
+.o_carousel_product {
 
     display: flex !important;
-    flex-direction: row !important;
     align-items: flex-start !important;
-    gap: 14px;
+    gap: 16px !important;
 }
 
-/* =========================================
-   THUMBNAIL COLUMN
-========================================= */
-
-#o-carousel-product .o_carousel_product_indicators {
+.o_carousel_product_indicators {
 
     display: flex !important;
     flex-direction: column !important;
 
-    width: 90px;
-    min-width: 90px;
+    width: 90px !important;
+    min-width: 90px !important;
 
-    gap: 12px;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 
-    overflow-y: auto;
-    overflow-x: hidden;
+    max-height: 620px !important;
 
-    max-height: 620px;
+    gap: 10px !important;
 
-    order: 1;
+    order: 1 !important;
 }
 
-/* =========================================
-   MAIN IMAGE CONTAINER
-========================================= */
+.o_carousel_product_indicators > * {
 
-#o-carousel-product .o_carousel_product_outer {
+    width: 72px !important;
+    height: 72px !important;
 
-    flex: 1;
+    flex: 0 0 auto !important;
 
-    order: 2;
+    display: block !important;
 }
 
-/* =========================================
-   THUMBNAIL ITEMS
-========================================= */
+.o_carousel_product_outer {
 
-#o-carousel-product .o_carousel_product_indicators img {
-
-    width: 82px !important;
-    height: 82px !important;
-
-    object-fit: contain !important;
-
-    border: 1px solid #ddd;
-
-    border-radius: 8px;
-
-    background: #fff;
-
-    padding: 4px;
-
-    cursor: pointer;
-}
-
-/* =========================================
-   MAIN IMAGE
-========================================= */
-
-#o-carousel-product .carousel-item img {
-
-    width: 100% !important;
-
-    max-height: 650px;
-
-    object-fit: contain !important;
-
-    background: #fff;
+    flex: 1 !important;
+    order: 2 !important;
 }
 
 @media(max-width:991px){
