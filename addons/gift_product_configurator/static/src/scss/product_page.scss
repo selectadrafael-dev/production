@@ -85,13 +85,13 @@ Hide default Odoo product layout safely
     display: flex !important;
     flex-direction: column !important;
 
-    width: 90px !important;
-    min-width: 90px !important;
+    width: 50px !important;
+    min-width: 50px !important;
 
     overflow-y: auto !important;
     overflow-x: hidden !important;
 
-   /* max-height: 620px !important;*/
+   /*max-height: 620px !important;*/
    max-height: auto !important;
 
     gap: 10px !important;
