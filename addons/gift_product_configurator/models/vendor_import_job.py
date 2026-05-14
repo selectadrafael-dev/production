@@ -14,6 +14,7 @@ from openai import OpenAI
 import re
 import fitz
 import hashlib
+import psycopg2
 
 from PIL import (
     Image,
@@ -9532,9 +9533,39 @@ class VendorImportJob(models.Model):
                 # PROCESS
                 # =========================================
 
+
                 try:
 
                     job._process_step()
+
+                # =========================================
+                # HOT RELOAD / CURSOR CLOSED
+                # =========================================
+
+                except psycopg2.InterfaceError as e:
+
+                    _logger.warning(
+
+                        f"[CURSOR CLOSED] "
+
+                        f"job={job.id} "
+
+                        f"| {str(e)}"
+                    )
+
+                    try:
+
+                        self.env.cr.rollback()
+
+                    except Exception:
+
+                        pass
+
+                    break
+
+                # =========================================
+                # NORMAL ERRORS
+                # =========================================
 
                 except Exception as e:
 
@@ -9549,9 +9580,19 @@ class VendorImportJob(models.Model):
 
                     try:
 
-                        job.state = 'failed'
+                        self.env.cr.rollback()
 
-                        self.env.cr.commit()
+                    except Exception:
+
+                        pass
+
+                    try:
+
+                        if job.exists():
+
+                            job.state = 'failed'
+
+                            self.env.cr.commit()
 
                     except Exception:
 
