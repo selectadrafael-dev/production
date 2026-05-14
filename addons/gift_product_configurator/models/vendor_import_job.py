@@ -5240,6 +5240,7 @@ class VendorImportJob(models.Model):
                 return best_img
 
     #=================Centralized Rusable Image=======================
+
     def _prepare_asset_pool(self, images):
 
         prepared = []
@@ -5253,7 +5254,6 @@ class VendorImportJob(models.Model):
                 if not img:
                     continue
 
-
                 image_hash = hashlib.md5(
 
                     img.encode('utf-8')
@@ -5263,11 +5263,25 @@ class VendorImportJob(models.Model):
                 if image_hash in seen:
                     continue
 
+                # ==========================================
+                # IMAGE SCORE
+                # ==========================================
+
+                score = self._score_segmented_image(
+                    img
+                )
+
+                # reject very poor images
+                if score <= -500:
+                    continue
+
                 prepared.append({
 
                     "index": len(prepared),
 
-                    "image": img
+                    "image": img,
+
+                    "score": score
                 })
 
                 seen.add(image_hash)
@@ -5281,7 +5295,125 @@ class VendorImportJob(models.Model):
                     f"{str(e)}"
                 )
 
+        # ==========================================
+        # SORT BEST IMAGES FIRST
+        # ==========================================
+
+        prepared = sorted(
+
+            prepared,
+
+            key=lambda x: x.get(
+                "score",
+                0
+            ),
+
+            reverse=True
+        )
+
+        # ==========================================
+        # REBUILD CLEAN INDEXES
+        # ==========================================
+
+        for new_index, item in enumerate(prepared):
+
+            item["index"] = new_index
+
         return prepared
+
+    
+    #======score_segmented_image ==========================
+    def _score_segmented_image(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            import base64
+            import io
+
+            import numpy as np
+
+            from PIL import Image
+
+            image_bytes = base64.b64decode(
+                image_base64
+            )
+
+            img = Image.open(
+
+                io.BytesIO(image_bytes)
+
+            ).convert("RGB")
+
+            width, height = img.size
+
+            # ==========================================
+            # REJECT VERY SMALL CROPS
+            # ==========================================
+
+            if width < 180 or height < 180:
+
+                return -999
+
+            np_img = np.array(img)
+
+            score = 0
+
+            # ==========================================
+            # LARGE IMAGE BONUS
+            # ==========================================
+
+            score += (
+                width * height
+            ) / 10000
+
+            # ==========================================
+            # TEXT HEAVY PENALTY
+            # ==========================================
+
+            dark_ratio = np.mean(
+                np_img < 70
+            )
+
+            score -= dark_ratio * 200
+
+            # ==========================================
+            # GOOD PRODUCT ASPECT BONUS
+            # ==========================================
+
+            aspect = width / float(height)
+
+            if 0.7 <= aspect <= 1.5:
+
+                score += 50
+
+            # ==========================================
+            # CLEAN BACKGROUND BONUS
+            # ==========================================
+
+            white_ratio = np.mean(
+                np_img > 230
+            )
+
+            score += white_ratio * 80
+
+            return score
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[IMAGE SCORE ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return 0    
+        
 
     #=================Centralized Rusable Image resolver=======================
 
@@ -9827,4 +9959,3 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
-
