@@ -5275,13 +5275,19 @@ class VendorImportJob(models.Model):
                 if score <= -500:
                     continue
 
+                dominant_color = self._get_dominant_color_name(
+                    img
+                )
+
                 prepared.append({
 
                     "index": len(prepared),
 
                     "image": img,
 
-                    "score": score
+                    "score": score,
+
+                    "dominant_color": dominant_color
                 })
 
                 seen.add(image_hash)
@@ -5414,6 +5420,91 @@ class VendorImportJob(models.Model):
 
             return 0    
         
+    #=============variant color enhancement 1=================
+    def _get_dominant_color_name(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            import base64
+            import io
+            import numpy as np
+
+            from PIL import Image
+
+            image_bytes = base64.b64decode(
+                image_base64
+            )
+
+            img = Image.open(
+
+                io.BytesIO(image_bytes)
+
+            ).convert("RGB")
+
+            img = img.resize((80, 80))
+
+            np_img = np.array(img)
+
+            pixels = np_img.reshape(
+                (-1, 3)
+            )
+
+            avg = pixels.mean(axis=0)
+
+            r, g, b = avg
+
+            # =====================================
+            # COLOR CLASSIFICATION
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "white"
+
+            if r < 60 and g < 60 and b < 60:
+                return "black"
+
+            if r > 160 and g < 120 and b < 120:
+                return "red"
+
+            if r > 180 and g > 180 and b < 120:
+                return "yellow"
+
+            if b > r and b > g:
+                return "blue"
+
+            if g > r and g > b:
+                return "green"
+
+            if r > 120 and b > 120:
+                return "purple"
+
+            if r > 150 and g > 120 and b < 100:
+                return "orange"
+
+            if (
+                abs(r - g) < 20
+                and
+                abs(g - b) < 20
+            ):
+                return "grey"
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return "unknown"
 
     #=================Centralized Rusable Image resolver=======================
 
@@ -6790,6 +6881,13 @@ class VendorImportJob(models.Model):
 
                         }]
 
+                    # =======================================
+                    # GENERATE ODOO VARIANTS ONCE
+                    # =======================================
+
+                    product._create_variant_ids()
+
+
                     for variant in variants:
 
                         attributes = variant.get(
@@ -6909,47 +7007,203 @@ class VendorImportJob(models.Model):
 
                                     ]
 
-                        variant_record = self.env[
-                            'product.product'
-                        ].search([
 
-                            (
-                                'product_tmpl_id',
-                                '=',
-                                product.id
-                            )
+                        # =====================================
+                        # MATCH REAL GENERATED VARIANT
+                        # =====================================
 
-                        ], limit=1)
+                        variant_record = False
 
-                        variant_image_index = (
-                            variant.get("image_index")
+                        product_variants = (
+                            product.product_variant_ids
                         )
+
+                        variant_name = ""
+
+                        attributes = variant.get(
+                            "attributes",
+                            {}
+                        )
+
+                        if isinstance(attributes, dict):
+
+                            variant_name = " ".join([
+
+                                str(v)
+
+                                for v in attributes.values()
+
+                            ]).lower()
+
+                        for pv in product_variants:
+
+                            combo = " ".join([
+
+                                v.name.lower()
+
+                                for v in (
+                                    pv.product_template_variant_value_ids
+                                )
+
+                            ])
+
+                            if combo:
+
+                                combo_words = combo.split()
+
+                                variant_words = (
+                                    variant_name.split()
+                                )
+
+                                match_count = 0
+
+                                for word in variant_words:
+
+                                    if word in combo_words:
+
+                                        match_count += 1
+
+                                if (
+
+                                    variant_words
+
+                                    and
+
+                                    match_count >= 1
+                                ):
+
+                                    variant_record = pv
+                                    break
+
+                        # ---------------------------------
+                        # SAFE FALLBACK
+                        # ---------------------------------
 
                         if (
 
-                            variant_record
+                            not variant_record
 
                             and
 
-                            variant_image_index is not None
-
+                            product_variants
                         ):
+
+                            variant_record = (
+                                product_variants[0]
+                            )
+                      
+                        # =====================================
+                        # SMART VARIANT IMAGE MATCHING
+                        # =====================================
+
+                        if variant_record:
 
                             try:
 
-                                variant_image = (
-                                    self._resolve_asset_image(
+                                matched_asset = None
 
-                                        asset_pool,
+                                variant_name = ""
 
-                                        variant_image_index
-                                    )
+                                attributes = variant.get(
+                                    "attributes",
+                                    {}
                                 )
 
-                                if variant_image:
+                                if isinstance(attributes, dict):
+
+                                    variant_name = " ".join([
+
+                                        str(v)
+
+                                        for v in attributes.values()
+
+                                    ]).lower()
+
+                                # ---------------------------------
+                                # COLOR MATCH FIRST
+                                # ---------------------------------
+
+                                for asset in asset_pool:
+
+                                    asset_color = str(
+
+                                        asset.get(
+                                            "dominant_color",
+                                            ""
+                                        )
+
+                                    ).lower()
+
+                                    if (
+
+                                        asset_color
+
+                                        and
+
+                                        asset_color in variant_name
+
+                                    ):
+
+                                        matched_asset = asset
+
+                                        break
+
+                                # ---------------------------------
+                                # AI IMAGE INDEX FALLBACK
+                                # ---------------------------------
+
+                                if not matched_asset:
+
+                                    variant_image_index = (
+                                        variant.get("image_index")
+                                    )
+
+                                    if variant_image_index is not None:
+
+                                        for asset in asset_pool:
+
+                                            if (
+
+                                                asset.get("index")
+
+                                                ==
+
+                                                variant_image_index
+                                            ):
+
+                                                matched_asset = asset
+
+                                                break
+
+                                # ---------------------------------
+                                # FINAL SAFE FALLBACK
+                                # ---------------------------------
+
+                                if not matched_asset and asset_pool:
+
+                                    matched_asset = asset_pool[0]
+
+                                # ---------------------------------
+                                # APPLY
+                                # ---------------------------------
+
+                                if matched_asset:
 
                                     variant_record.image_1920 = (
-                                        variant_image
+                                        matched_asset.get(
+                                            "image"
+                                        )
+                                    )
+
+                                    _logger.warning(
+
+                                        f"[VARIANT IMAGE APPLIED] "
+
+                                        f"{variant_name} "
+
+                                        f"-> "
+
+                                        f"{matched_asset.get('dominant_color')}"
                                     )
 
                             except Exception as e:
@@ -7072,6 +7326,7 @@ class VendorImportJob(models.Model):
 
         return category
 
+
     #==========pdf product PRODUCT CREATE/GET====================================
     def _get_or_create_pdf_product(
 
@@ -7142,16 +7397,89 @@ class VendorImportJob(models.Model):
             "hero_image_index"
         )
 
-        hero_image = self._resolve_asset_image(
 
-            asset_pool,
+        # =====================================
+        # PROFESSIONAL HERO IMAGE SELECTION
+        # =====================================
 
-            hero_index
-        )
+        hero_asset = None
 
-        if hero_image:
+        # ---------------------------------
+        # AI SELECTED HERO
+        # ---------------------------------
 
-            vals['image_1920'] = hero_image
+        if hero_index is not None:
+
+            for asset in asset_pool:
+
+                if asset.get("index") == hero_index:
+
+                    hero_asset = asset
+
+                    break
+
+        # ---------------------------------
+        # FALLBACK TO BEST SCORE
+        # ---------------------------------
+
+        if not hero_asset:
+
+            sorted_assets = sorted(
+
+                asset_pool,
+
+                key=lambda x: x.get(
+                    "score",
+                    0
+                ),
+
+                reverse=True
+            )
+
+            for asset in sorted_assets:
+
+                if (
+
+                    asset.get("score", 0) >= 60
+
+                    and
+
+                    asset.get(
+                        "dominant_color"
+                    ) != "unknown"
+
+                ):
+
+                    hero_asset = asset
+
+                    break
+
+        # ---------------------------------
+        # FINAL FALLBACK
+        # ---------------------------------
+
+        if not hero_asset and asset_pool:
+
+            hero_asset = asset_pool[0]
+
+        # ---------------------------------
+        # APPLY TO CREATE VALS
+        # ---------------------------------
+
+        if hero_asset:
+
+            vals['image_1920'] = hero_asset.get(
+                "image"
+            )
+
+            _logger.warning(
+
+                f"[PDF HERO APPLIED] "
+
+                f"score={hero_asset.get('score')} "
+
+                f"color={hero_asset.get('dominant_color')}"
+            )
 
         product = product_obj.with_context(
 
@@ -7164,6 +7492,7 @@ class VendorImportJob(models.Model):
         ).create(vals)
 
         return product, True
+
 
     #=========pdf product GALLERY CREATOR=======================
     def _create_pdf_gallery(
@@ -7182,7 +7511,41 @@ class VendorImportJob(models.Model):
             []
         )
 
+        # =====================================
+        # FALLBACK GALLERY EXPANSION
+        # =====================================
+
+        if (
+
+            len(gallery_indexes) < 3
+
+            and
+
+            asset_pool
+        ):
+
+            extra_indexes = [
+
+                a.get("index")
+
+                for a in asset_pool
+
+                if a.get("score", 0) >= 45
+            ]
+
+            gallery_indexes.extend(
+                extra_indexes
+            )
+
+            gallery_indexes = list(
+
+                dict.fromkeys(
+                    gallery_indexes
+                )
+            )[:6]
+
         used_images = set()
+        used_hashes = set()
 
         if product.image_1920:
 
@@ -7206,7 +7569,13 @@ class VendorImportJob(models.Model):
                 if not gallery_image:
                     continue
 
-                if gallery_image in used_images:
+                image_hash = hashlib.md5(
+
+                    gallery_image.encode('utf-8')
+
+                ).hexdigest()
+
+                if image_hash in used_hashes:
                     continue
 
                 self.env[
@@ -7223,8 +7592,8 @@ class VendorImportJob(models.Model):
                         gallery_image
                 })
 
-                used_images.add(
-                    gallery_image
+                used_hashes.add(
+                    image_hash
                 )
 
             except Exception as e:
