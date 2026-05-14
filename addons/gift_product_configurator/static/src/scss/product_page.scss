@@ -77,7 +77,6 @@ Hide default Odoo product layout safely
 #o-carousel-product {
 
     display: flex !important;
-    flex-direction: column !important;
 }
 
 .o_carousel_product_indicators {
@@ -91,7 +90,7 @@ Hide default Odoo product layout safely
     overflow-y: auto !important;
     overflow-x: hidden !important;
 
-   /*max-height: 620px !important;*/
+   /*ymax-height: 620px !important;*/
    max-height: auto !important;
 
     gap: 10px !important;
