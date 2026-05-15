@@ -3970,7 +3970,9 @@ class VendorImportJob(models.Model):
 
             self.state = "pdf_creating"
 
-            self._safe_commit_progress()
+            self.flush_recordset()
+
+            self.env.cr.commit()
 
             return
 
@@ -4910,7 +4912,8 @@ class VendorImportJob(models.Model):
             self.state = "pdf_creating"
 
 
-        self._safe_commit_progress()
+        self.flush_recordset()
+        self.env.cr.commit()
 
         return
     
