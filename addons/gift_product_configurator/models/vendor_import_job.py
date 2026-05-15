@@ -238,7 +238,6 @@ class VendorImportJob(models.Model):
         self.completion_email_sent = True
 
     #============Processing Jobs===================================================
-
     def _process_step(self):
 
         import json
@@ -259,7 +258,8 @@ class VendorImportJob(models.Model):
 
             self.state = "failed"
 
-            self._safe_commit_progress()
+            self.flush_recordset()
+            self.env.cr.commit()
 
             return
 
@@ -305,7 +305,8 @@ class VendorImportJob(models.Model):
                 self.state = 'url_scraping'
 
 
-            self._safe_commit_progress()
+            self.flush_recordset()
+            self.env.cr.commit()
 
             return
 
@@ -668,7 +669,8 @@ class VendorImportJob(models.Model):
 
                 self.state = 'excel_parsing'
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -761,7 +763,8 @@ class VendorImportJob(models.Model):
                         self.state = 'excel_parsing'
 
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -785,7 +788,8 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self._safe_commit_progress()
+                    self.flush_recordset()
+                    self.env.cr.commit()
 
                     return
 
@@ -819,7 +823,8 @@ class VendorImportJob(models.Model):
                 )
 
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -862,7 +867,8 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self._safe_commit_progress()
+                    self.flush_recordset()
+                    self.env.cr.commit()
 
                     return
 
@@ -873,7 +879,8 @@ class VendorImportJob(models.Model):
                     f"{self.state}"
                 )
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
 
             # =============================================
@@ -904,7 +911,8 @@ class VendorImportJob(models.Model):
 
                 self.state = 'pdf_extracting'
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -928,7 +936,8 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self._safe_commit_progress()
+                    self.flush_recordset()
+                    self.env.cr.commit()
 
                     return
 
@@ -965,7 +974,8 @@ class VendorImportJob(models.Model):
                     self.state = 'pdf_ai'
 
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -989,7 +999,8 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self._safe_commit_progress()
+                    self.flush_recordset()
+                    self.env.cr.commit()
 
                     return
 
@@ -1043,7 +1054,8 @@ class VendorImportJob(models.Model):
                     self.state = 'pdf_creating'
 
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -1067,7 +1079,8 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self._safe_commit_progress()
+                    self.flush_recordset()
+                    self.env.cr.commit()
 
                     return
 
@@ -1119,7 +1132,8 @@ class VendorImportJob(models.Model):
                         self.send_completion_email()
 
 
-                self._safe_commit_progress()
+                self.flush_recordset()
+                self.env.cr.commit()
 
                 return
 
@@ -8093,7 +8107,7 @@ class VendorImportJob(models.Model):
 
             for asset in asset_pool:
 
-                if asset.get("index") == hero_index:
+                if asset.get("clean_index") == hero_index:
 
                     # reject collages as hero
                     if asset.get("is_collage"):
@@ -8152,6 +8166,12 @@ class VendorImportJob(models.Model):
             if not hero_asset:
 
                 hero_asset = asset_pool[0]
+
+        # =====================================
+        # APPLY HERO IMAGE
+        # =====================================
+
+        if hero_asset:
 
             vals['image_1920'] = hero_asset.get(
                 "image"
@@ -9954,7 +9974,7 @@ class VendorImportJob(models.Model):
 
                 duplicates.unlink()
 
-                self._safe_commit_progress()
+                self.env.cr.commit()
 
                 _logger.warning(
                     "[CRON] DUPLICATES REMOVED"
@@ -10025,7 +10045,7 @@ class VendorImportJob(models.Model):
 
                     stale.lock = False
 
-                    self._safe_commit_progress()
+                    self.env.cr.commit()
 
                 except Exception as e:
 
@@ -10080,7 +10100,7 @@ class VendorImportJob(models.Model):
 
             job.lock = True
 
-            self._safe_commit_progress()
+            self.env.cr.commit()
 
 
             _logger.warning(
@@ -10211,39 +10231,9 @@ class VendorImportJob(models.Model):
                 # PROCESS
                 # =========================================
 
-
                 try:
 
                     job._process_step()
-
-                # =========================================
-                # HOT RELOAD / CURSOR CLOSED
-                # =========================================
-
-                except psycopg2.InterfaceError as e:
-
-                    _logger.warning(
-
-                        f"[CURSOR CLOSED] "
-
-                        f"job={job.id} "
-
-                        f"| {str(e)}"
-                    )
-
-                    try:
-
-                        self.env.cr.rollback()
-
-                    except Exception:
-
-                        pass
-
-                    break
-
-                # =========================================
-                # NORMAL ERRORS
-                # =========================================
 
                 except Exception as e:
 
@@ -10258,19 +10248,9 @@ class VendorImportJob(models.Model):
 
                     try:
 
-                        self.env.cr.rollback()
+                        job.state = 'failed'
 
-                    except Exception:
-
-                        pass
-
-                    try:
-
-                        if job.exists():
-
-                            job.state = 'failed'
-
-                            self._safe_commit_progress()
+                        self.env.cr.commit()
 
                     except Exception:
 
@@ -10588,7 +10568,7 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    self._safe_commit_progress()
+                    self.env.cr.commit()
 
                     _logger.warning(
                         "[CHAIN] COMMIT OK"
@@ -10656,7 +10636,7 @@ class VendorImportJob(models.Model):
 
                     job.lock = False
 
-                    self._safe_commit_progress()
+                    self.env.cr.commit()
 
 
                     _logger.warning(
