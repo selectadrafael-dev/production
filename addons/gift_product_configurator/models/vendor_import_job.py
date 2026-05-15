@@ -7,7 +7,6 @@ import pandas as pd
 from io import BytesIO
 from openpyxl import load_workbook
 from openpyxl_image_loader import SheetImageLoader
-from PIL import Image
 import json
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
@@ -15,6 +14,17 @@ from openai import OpenAI
 import re
 import fitz
 import hashlib
+import psycopg2
+
+from PIL import (
+    Image,
+    ImageOps,
+    ImageChops
+)
+
+import cv2
+import numpy as np
+
  
 
 _logger = logging.getLogger(__name__)
@@ -32,6 +42,15 @@ class ProductTemplate(models.Model):
         index=True,
         copy=False
     )
+
+    vendor_import_job_id = fields.Many2one(
+        'vendor.import.job',
+        string='Vendor Import Job',
+        index=True,
+        ondelete='set null'
+    )
+
+    vendor_stock_qty = fields.Integer()
 
 # ✅ Extend existing model
 class ResPartner(models.Model):
@@ -122,7 +141,7 @@ class VendorImportJob(models.Model):
         default=False
     )
 
-
+   
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -186,7 +205,7 @@ class VendorImportJob(models.Model):
             )
 
 
- #========vendor email notification==========
+    #========vendor email notification==========
     def send_completion_email(self):
 
         if not self.partner_id.email:
@@ -219,7 +238,6 @@ class VendorImportJob(models.Model):
         self.completion_email_sent = True
 
     #============Processing Jobs===================================================
-
     def _process_step(self):
 
         import json
@@ -711,15 +729,6 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NO NEW ROWS"
                     )
 
-
-                    # parser itself decides completion
-                    # if self.is_excel_parsed:
-
-                    #     _logger.warning(
-                    #         "[EXCEL PARSE] FULLY COMPLETE"
-                    #     )
-
-                    #     self.state = 'done'
 
                     if self.is_excel_parsed:
 
@@ -2168,7 +2177,648 @@ class VendorImportJob(models.Model):
 
         wb.close()
 
+    # =====================================================
+    # REMOVE TEXT AREAS
+    # =====================================================
 
+    def _trim_catalog_whitespace(self, pil_image):
+
+        try:
+
+            bg = Image.new(
+                pil_image.mode,
+                pil_image.size,
+                pil_image.getpixel((0, 0))
+            )
+
+            diff = ImageChops.difference(
+                pil_image,
+                bg
+            )
+
+            bbox = diff.getbbox()
+
+            if bbox:
+                pil_image = pil_image.crop(bbox)
+
+            return pil_image
+
+        except Exception:
+
+            return pil_image
+
+    # =====================================================
+    # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
+    # =====================================================
+
+    def _segment_catalog_images(self, images):
+
+        segmented_images = []
+
+        if not images:
+            return segmented_images
+
+        for img_b64 in images:
+
+            try:
+
+                img_data = base64.b64decode(img_b64)
+
+                pil_image = Image.open(
+                    BytesIO(img_data)
+                ).convert("RGB")
+
+                original_width, original_height = pil_image.size
+
+                # =========================================
+                # CONVERT TO OPENCV
+                # =========================================
+
+                cv_image = cv2.cvtColor(
+                    np.array(pil_image),
+                    cv2.COLOR_RGB2BGR
+                )
+
+                gray = cv2.cvtColor(
+                    cv_image,
+                    cv2.COLOR_BGR2GRAY
+                )
+
+                # =========================================
+                # THRESHOLD
+                # =========================================
+
+                _, thresh = cv2.threshold(
+                    gray,
+                    245,
+                    255,
+                    cv2.THRESH_BINARY_INV
+                )
+
+                # =========================================
+                # DILATION
+                # =========================================
+
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_RECT,
+                    (9, 9)
+                )
+
+                dilated = cv2.dilate(
+                    thresh,
+                    kernel,
+                    iterations=2
+                )
+
+                # =========================================
+                # FIND CONTOURS
+                # =========================================
+
+                contours, _ = cv2.findContours(
+                    dilated,
+                    cv2.RETR_EXTERNAL,
+                    cv2.CHAIN_APPROX_SIMPLE
+                )
+
+                filtered_contours = []
+
+                for contour in contours:
+
+                    area = cv2.contourArea(contour)
+
+                    if area < 8000:
+                        continue
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # reject ultra-thin text columns
+                    if w < 120 or h < 120:
+                        continue
+
+                    ratio = w / float(h)
+
+                    # reject long text strips
+                    if ratio > 4.5 or ratio < 0.22:
+                        continue
+
+                    filtered_contours.append(contour)
+
+                contours = filtered_contours[:12]
+
+                candidate_crops = []
+
+                for contour in contours:
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # =====================================
+                    # SIZE FILTERS
+                    # =====================================
+
+                    if w < 120 or h < 120:
+                        continue
+
+                    # reject huge full page
+                    if (
+                        w > original_width * 0.95
+                        and
+                        h > original_height * 0.95
+                    ):
+                        continue
+
+                    area = w * h
+
+                    # reject tiny fragments
+                    if area < 25000:
+                        continue
+
+                    # =====================================
+                    # CROP
+                    # =====================================
+
+                    pad = 12
+
+                    x1 = max(x - pad, 0)
+                    y1 = max(y - pad, 0)
+                    x2 = min(x + w + pad, original_width)
+                    y2 = min(y + h + pad, original_height)
+
+                    crop = pil_image.crop(
+                        (x1, y1, x2, y2)
+                    )
+
+                    crop = self._trim_catalog_whitespace(
+                        crop
+                    )
+
+                    # =====================================
+                    # VALIDATE
+                    # =====================================
+
+                    if not self._is_valid_product_crop(crop):
+                        continue
+
+                    # =====================================
+                    # OCR-LIKE TEXT REJECTION
+                    # =====================================
+
+                    crop_gray = crop.convert("L")
+
+                    crop_arr = np.array(crop_gray)
+
+                    dark_pixels = np.mean(
+                        crop_arr < 90
+                    )
+
+                    if dark_pixels < 0.01:
+                        continue
+
+                    # =====================================
+                    # IMAGE ANALYSIS
+                    # =====================================
+
+                    crop_width, crop_height = crop.size
+
+                    crop_area = crop_width * crop_height
+
+                    page_area = (
+                        original_width * original_height
+                    )
+
+                    coverage_ratio = (
+                        crop_area / float(page_area)
+                    )
+
+                    # =====================================
+                    # COLLAGE DETECTION
+                    # =====================================
+
+                    is_collage = False
+
+                    if len(filtered_contours) >= 6:
+
+                        is_collage = True
+
+                    # =====================================
+                    # CENTER DETECTION
+                    # =====================================
+
+                    centered_object = False
+
+                    crop_center_x = x + (w / 2.0)
+                    crop_center_y = y + (h / 2.0)
+
+                    page_center_x = (
+                        original_width / 2.0
+                    )
+
+                    page_center_y = (
+                        original_height / 2.0
+                    )
+
+                    distance_x = abs(
+                        crop_center_x - page_center_x
+                    )
+
+                    distance_y = abs(
+                        crop_center_y - page_center_y
+                    )
+
+                    if (
+
+                        distance_x < original_width * 0.18
+
+                        and
+
+                        distance_y < original_height * 0.18
+                    ):
+
+                        centered_object = True
+
+                    # =====================================
+                    # SCORE
+                    # =====================================
+                    human_penalty = 0
+                    score = 0
+
+                    # big clean product bonus
+                    score += int(
+                        coverage_ratio * 140
+                    )
+
+                    # centered ecommerce product
+                    if centered_object:
+                        score += 55
+
+                    # strong collage penalty
+                    if is_collage:
+                        score -= 70
+
+                    # portrait product bonus
+                    if crop_height > crop_width:
+                        score += 18
+
+                    # isolated product bonus
+                    edge_density = cv2.Canny(
+                        crop_arr,
+                        80,
+                        160
+                    ).mean()
+
+                    # =====================================
+                    # CLEAN CENTER HERO DETECTION
+                    # =====================================
+
+                    background_ratio = np.mean(
+                        crop_arr > 235
+                    )
+
+                    # strong ecommerce isolated render
+                    if (
+                        centered_object
+                        and
+                        background_ratio > 0.45
+                        and
+                        not is_collage
+                    ):
+                        score += 120
+
+                    # medium clean product
+                    elif (
+                        background_ratio > 0.30
+                        and
+                        not is_collage
+                    ):
+                        score += 60
+
+                    # dark/lifestyle penalty
+                    if background_ratio < 0.12:
+                        score -= 55
+
+                    # excessive visual noise
+                    if edge_density > 55:
+                        score -= 35
+
+
+                    # =====================================
+                    # HUMAN / LIFESTYLE APPROXIMATION
+                    # =====================================
+
+                    human_penalty = 0
+
+                    rgb_arr = np.array(crop)
+
+                    r = rgb_arr[:, :, 0]
+                    g = rgb_arr[:, :, 1]
+                    b = rgb_arr[:, :, 2]
+
+                    skin_mask = (
+
+                        (r > 95)
+
+                        &
+
+                        (g > 40)
+
+                        &
+
+                        (b > 20)
+
+                        &
+
+                        (r > g)
+
+                        &
+
+                        (r > b)
+
+                        &
+
+                        (np.abs(r - g) > 15)
+                    )
+
+                    skin_ratio = np.mean(skin_mask)
+
+                    if skin_ratio > 0.28:
+
+                        human_penalty = 40
+
+                    score -= human_penalty
+
+                    score -= human_penalty
+
+                    if 8 < edge_density < 35:
+                        score += 25
+
+                    # =====================================
+                    # SAVE
+                    # =====================================
+
+                    buffer = BytesIO()
+
+                    crop.save(
+                        buffer,
+                        format="JPEG",
+                        quality=92
+                    )
+
+                    encoded = base64.b64encode(
+                        buffer.getvalue()
+                    ).decode("utf-8")
+
+
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": score,
+
+                        "is_collage": is_collage
+                    })
+
+                    _logger.warning(
+
+                        f"[CROP DETECTED] "
+
+                        f"{w}x{h} "
+
+                        f"| score={score} "
+
+                        f"| collage={is_collage}"
+                    )
+
+                # =========================================
+                # FALLBACK
+                # =========================================
+
+                if not candidate_crops:
+
+                    buffer = BytesIO()
+
+                    pil_image.save(
+                        buffer,
+                        format="JPEG"
+                    )
+
+                    encoded = base64.b64encode(
+                        buffer.getvalue()
+                    ).decode("utf-8")
+
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": 10,
+
+                        "is_collage": False
+                    })
+
+                segmented_images.extend(
+                    candidate_crops
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[SEGMENTATION FAILED] {str(e)}"
+                )
+
+        # =============================================
+        # DEDUPE
+        # =============================================
+
+        deduped = []
+        hashes = {}
+
+        for asset in segmented_images:
+
+            try:
+
+                img = asset.get("image")
+
+                image_hash = hashlib.md5(
+                    img.encode("utf-8")
+                ).hexdigest()
+
+
+                existing_score = hashes.get(
+                    image_hash
+                )
+
+                if existing_score == asset.get(
+                    "score"
+                ):
+                    continue
+
+                hashes[image_hash] = asset.get(
+                    "score"
+                )
+
+                deduped.append(asset)
+
+            except Exception:
+                continue
+
+        return deduped
+
+
+    # =====================================================
+    # VARIANTS IMAGES CONTROLLER/DETECTOR
+    # =====================================================
+
+    def _split_grid_products(self, image):
+
+        try:
+
+            import cv2
+            import numpy as np
+            import base64
+
+            gray = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2GRAY
+            )
+
+            thresh = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                21,
+                5
+            )
+
+            contours, _ = cv2.findContours(
+                thresh,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            results = []
+
+            for contour in contours:
+
+                area = cv2.contourArea(contour)
+
+                if area < 3500:
+                    continue
+
+                x, y, w, h = cv2.boundingRect(contour)
+
+                if w < 80 or h < 80:
+                    continue
+
+                ratio = w / float(h)
+
+                # reject text strips
+                if ratio > 4.0 or ratio < 0.25:
+                    continue
+
+                sub = image[
+                    y:y+h,
+                    x:x+w
+                ]
+
+                success, buffer = cv2.imencode(
+                    '.jpg',
+                    sub
+                )
+
+                if not success:
+                    continue
+
+                results.append(
+                    base64.b64encode(
+                        buffer
+                    ).decode()
+                )
+
+            return results[:12]
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[GRID SPLIT FAILED] {str(e)}"
+            )
+
+            return []
+
+    # =====================================================
+    # VALIDATE CROPPED IMAGE
+    # =====================================================
+
+    def _is_valid_product_crop(self, pil_image):
+
+        try:
+
+            width, height = pil_image.size
+
+            # too tiny
+            if width < 120 or height < 120:
+                return False
+
+            # aspect safety
+            ratio = width / float(height)
+
+            if ratio > 5 or ratio < 0.15:
+                return False
+
+            gray = pil_image.convert("L")
+
+            arr = np.array(gray)
+
+            # blank image rejection
+            if arr.std() < 14:
+                return False
+
+            # excessive dark block rejection
+            dark_ratio = np.mean(arr < 25)
+
+            if dark_ratio > 0.92:
+                return False
+
+            return True
+
+        except Exception:
+
+            return False
+
+    #=========VALIDATE AI IMAGE====================================
+    def _is_valid_ai_image(self, image_data):
+
+        try:
+
+            if not image_data:
+                return False
+
+            import base64
+            import io
+
+            from PIL import Image
+
+            # remove data url prefix
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
+
+            decoded = base64.b64decode(image_data)
+
+            img = Image.open(
+                io.BytesIO(decoded)
+            )
+
+            img.verify()
+
+            return True
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[INVALID AI IMAGE] {str(e)}"
+            )
+
+            return False
+        
     # ---------------- Extract PDF ----------------
  
     def extract_pdf(self):
@@ -2486,6 +3136,14 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
+                            # ===========================
+                            # CLEAN CATALOG SEGMENTATION
+                            # ===========================
+
+                            images = self._segment_catalog_images(
+                                images
+                            )
+
 
                             if (
                                 not text
@@ -2573,7 +3231,7 @@ class VendorImportJob(models.Model):
                                 block.get("images", [])
                             )
 
-                            self.env.cr.commit()
+                            self._safe_commit_progress()
 
                         self.env[
                             'vendor.import.page'
@@ -2668,9 +3326,7 @@ class VendorImportJob(models.Model):
 
             try:
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 _logger.warning(
                     f"[PDF SAVE] "
@@ -3155,7 +3811,6 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         # 🔥 IMPORTANT: COMMIT FOR CRON CONTINUITY
-        # self.env.cr.commit()
 
         try:
 
@@ -3419,13 +4074,111 @@ class VendorImportJob(models.Model):
 
         page_images = []
 
-
         for p in page_blocks:
 
-            page_images.extend(
-                p.get("images", [])
-            )
+            raw_images = p.get("images", [])
 
+            # =====================================
+            # NORMALIZE STRUCTURED ASSETS
+            # =====================================
+
+            for img in raw_images:
+
+                if isinstance(img, dict):
+
+                    if img.get("image"):
+
+                        page_images.append(img)
+
+                elif isinstance(img, str):
+
+                    page_images.append({
+
+                        "image": img,
+
+                        "score": 0,
+
+                        "is_collage": False
+                    })
+
+        # =====================================================
+        # VALIDATE PAGE IMAGES
+        # =====================================================
+
+        valid_page_images = []
+
+        for asset in page_images:
+
+            try:
+
+                # segmented assets are now dicts
+                if isinstance(asset, dict):
+
+                    image_data = asset.get(
+                        "image"
+                    )
+
+                else:
+
+                    image_data = asset
+
+                if not image_data:
+                    continue
+
+                if not self._is_valid_ai_image(
+                    image_data
+                ):
+
+                    _logger.warning(
+
+                        f"[PDF AI] INVALID IMAGE "
+
+                        f"| PAGE "
+
+                        f"{next_record.page_number}"
+                    )
+
+                    continue
+
+                valid_page_images.append(
+                    asset
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI IMAGE ERROR] "
+
+                    f"{str(e)}"
+                )
+
+        page_images = valid_page_images
+        # =========================================
+        # REBUILD CLEAN IMAGE INDEX MAP
+        # =========================================
+
+        normalized_page_images = []
+
+        for idx, asset in enumerate(page_images):
+
+            if isinstance(asset, dict):
+
+                asset["clean_index"] = idx
+
+                normalized_page_images.append(asset)
+
+
+        page_images = normalized_page_images
+
+        _logger.warning(
+
+            f"[PDF AI IMAGES] "
+
+            f"PAGE={next_record.page_number} "
+
+            f"| valid={len(page_images)}"
+        )
 
         page_price = ""
 
@@ -3598,64 +4351,156 @@ class VendorImportJob(models.Model):
         }}
 
         ==================================================
-        IMAGE CLASSIFICATION RULES
+        ECOMMERCE IMAGE UNDERSTANDING RULES
         ==================================================
 
-        Each product may contain:
+        You are NOT selecting the most artistic image.
 
-        1. HERO IMAGE
-        2. GALLERY IMAGES
-        3. VARIANT IMAGES
+        You are selecting the BEST PROFESSIONAL
+        ECOMMERCE PRODUCT IMAGE.
+
+        Your goal:
+        produce Amazon/Alibaba/Shopify-style
+        product merchandising quality.
 
         --------------------------------------------------
-        HERO IMAGE RULES
+        PRIORITY ORDER (VERY IMPORTANT)
         --------------------------------------------------
 
-        "image" MUST be:
+        ALWAYS prioritize:
 
-        - isolated product
-        - centered product
-        - clean/plain background
-        - full product visible
-        - professional catalog shot
+        1. isolated standalone product
+        2. clean white/plain background
+        3. centered product
+        4. full product visibility
+        5. variant color visibility
+        6. clean catalog render
+        7. multiple isolated color options
 
-        AVOID:
-        - infographic layouts
-        - text-heavy graphics
-        - logos
-        - specification blocks
+        NEVER prioritize:
+        - humans/models
         - lifestyle scenes
-        - collages
-        - multi-product overview images
+        - promotional layouts
+        - infographic compositions
+        - text-heavy blocks
+        - banners
+        - decorative graphics
 
-        --------------------------------------------------
+        ==================================================
+        HERO IMAGE RULES
+        ==================================================
+
+        hero_image_index MUST point to:
+
+        - ONE isolated product
+        - clean/plain background
+        - centered product
+        - professional ecommerce shot
+        - no text overlays
+        - no large text areas
+        - no promotional layout
+        - no infographic composition
+
+        DO NOT use:
+        - humans wearing products
+        - lifestyle photography
+        - catalog cover layouts
+        - multi-product collages
+        - pages with large text blocks
+        - specification layouts
+        - promotional graphics
+
+        VERY IMPORTANT:
+
+        If isolated product variants exist anywhere
+        on the page,
+        ALWAYS prefer them over:
+        - human/model photos
+        - lifestyle shots
+        - promotional scenes
+
+        Example:
+        If a cap page contains:
+        - woman wearing cap
+        - isolated cap colors
+
+        hero_image_index MUST use:
+        isolated cap color image
+
+        NOT the woman/model image.
+
+        ==================================================
         GALLERY IMAGE RULES
-        --------------------------------------------------
+        ==================================================
 
-        "gallery_images" should contain:
-        - side views
-        - back views
-        - inside/open views
-        - closeups
-        - detail shots
-        - lifestyle images
-        - alternate angles
+        gallery_image_indexes should contain ONLY:
+
+        - isolated alternate angles
+        - isolated closeups
+        - isolated detail shots
+        - isolated side/back views
 
         DO NOT include:
+        - banners
+        - specification layouts
+        - infographic graphics
+        - text-heavy images
+        - decorative layouts
         - icons
         - logos
-        - tiny fragments
-        - decorative graphics
-        - banners
-        - specification charts
+        - promotional compositions
 
-        --------------------------------------------------
+        ==================================================
         VARIANT IMAGE RULES
-        --------------------------------------------------
+        ==================================================
 
-        Each variant should include:
-        - variant-specific image if visible
-        - correct matching color image
+        Variants MUST be created when:
+
+        - same product
+        - same shape
+        - same structure
+        - same dimensions
+        - only color/material/style changes
+
+        IMPORTANT:
+
+        If multiple isolated product colors exist,
+        they MUST become variants.
+
+        Example:
+        - black cap
+        - blue cap
+        - red cap
+
+        MUST become:
+        ONE product
+        with multiple color variants.
+
+        DO NOT create separate products.
+
+        Each variant should contain:
+        - correct Color/Material attribute
+        - correct image_index
+
+        ==================================================
+        COLLAGE UNDERSTANDING RULES
+        ==================================================
+
+        Supplier catalog pages often contain:
+        - one large lifestyle image
+        - multiple smaller isolated products
+
+        IMPORTANT:
+
+        The smaller isolated products are usually
+        the CORRECT ecommerce assets.
+
+        DO NOT automatically prefer the largest image.
+
+        Prefer:
+        isolated product renders
+        over:
+        visually dominant lifestyle graphics.
 
         ==================================================
         PRICE/STOCK RULES
@@ -3727,14 +4572,58 @@ class VendorImportJob(models.Model):
             
             MAX_IMAGES = 15
 
-            image_inputs = [
-                {
-                    "type": "input_image",
-                    "image_url": f"data:image/jpeg;base64,{img}"
-                }
-            
-                for img in page_images[:MAX_IMAGES]
-            ]
+            image_inputs = []
+
+            sorted_page_images = sorted(
+
+                page_images,
+
+                key=lambda x: x.get(
+                    "score",
+                    0
+                ),
+
+                reverse=True
+            )
+
+            for asset in sorted_page_images[:MAX_IMAGES]:
+
+                try:
+
+                    # =====================================
+                    # SUPPORT DICT ASSETS
+                    # =====================================
+
+                    if isinstance(asset, dict):
+
+                        image_data = asset.get(
+                            "image"
+                        )
+
+                    else:
+
+                        image_data = asset
+
+                    if not image_data:
+                        continue
+
+                    image_inputs.append({
+
+                        "type": "input_image",
+
+                        "image_url":
+
+                            f"data:image/jpeg;base64,{image_data}"
+                    })
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[IMAGE INPUT BUILD FAILED] "
+
+                        f"{str(e)}"
+                    )
 
 
             response = client.responses.create(
@@ -3778,9 +4667,58 @@ class VendorImportJob(models.Model):
                 )
 
 
-            parsed = json.loads(
-                result
-            )
+            # parsed = json.loads(
+            #     result
+            # )
+
+            try:
+
+                parsed = json.loads(result)
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI JSON FAILED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| {str(e)}"
+                )
+
+                _logger.warning(
+
+                    f"[PDF AI RAW OUTPUT] "
+
+                    f"{result[:1200]}"
+                )
+
+                next_record.write({
+
+                    'state': 'failed'
+                })
+
+                self._safe_commit_progress()
+
+                return
+
+            if not parsed:
+
+                _logger.warning(
+
+                    f"[PDF AI EMPTY RESPONSE] "
+
+                    f"PAGE={next_record.page_number}"
+                )
+
+                next_record.write({
+
+                    'state': 'failed'
+                })
+
+                self._safe_commit_progress()
+
+                return
 
 
             if not isinstance(
@@ -3822,14 +4760,60 @@ class VendorImportJob(models.Model):
                     or ""
                 )
 
-                best_index = (
-                    self.match_image_index_with_ai(
 
-                        product_name,
-
-                        page_images
-                    )
+                best_index = prod.get(
+                    "hero_image_index"
                 )
+
+                # =====================================
+                # VALIDATE CLEAN INDEX
+                # =====================================
+
+                valid_indexes = [
+
+                    a.get("clean_index")
+
+                    for a in page_images
+
+                    if isinstance(a, dict)
+                ]
+
+                if (
+
+                    best_index is None
+
+                    or
+
+                    not isinstance(best_index, int)
+
+                    or
+
+                    best_index not in valid_indexes
+                ):
+
+                    best_index = (
+                        self.match_image_index_with_ai(
+                            product_name,
+                            page_images
+                        )
+                    )
+
+                    if isinstance(best_index, int):
+
+                        try:
+
+                            matched_asset = page_images[
+                                best_index
+                            ]
+
+                            if isinstance(matched_asset, dict):
+
+                                best_index = matched_asset.get(
+                                    "clean_index"
+                                )
+
+                        except Exception:
+                            pass
 
                 if best_index is not None:
 
@@ -3876,7 +4860,9 @@ class VendorImportJob(models.Model):
 
             "page": next_record.page_number,
 
-            "products": parsed
+            "products": parsed,
+
+            "images": page_images
         }
 
 
@@ -3952,7 +4938,6 @@ class VendorImportJob(models.Model):
 
 
         self.flush_recordset()
-
         self.env.cr.commit()
 
         return
@@ -4719,15 +5704,48 @@ class VendorImportJob(models.Model):
 
         prepared = []
 
-        seen = set()
+        seen = {}
 
-        for idx, img in enumerate(images or []):
+        for asset in (images or []):
 
             try:
 
-                if not img:
+                if not asset:
                     continue
 
+                # =====================================
+                # SUPPORT OLD + NEW FORMAT
+                # =====================================
+
+                if isinstance(asset, dict):
+
+                    img = asset.get("image")
+
+                    score = asset.get(
+                        "score",
+                        0
+                    )
+
+                    is_collage = asset.get(
+                        "is_collage",
+                        False
+                    )
+
+                else:
+
+                    img = asset
+
+                    score = 0
+
+                    is_collage = False
+
+                if not img:
+
+                    _logger.warning(
+                        "[ASSET SKIPPED] EMPTY IMAGE"
+                    )
+
+                    continue
 
                 image_hash = hashlib.md5(
 
@@ -4735,17 +5753,104 @@ class VendorImportJob(models.Model):
 
                 ).hexdigest()
 
-                if image_hash in seen:
-                    continue
+                # =====================================
+                # SAFE COLOR DETECTION
+                # =====================================
+
+                dominant_color = ""
+
+                try:
+
+                    dominant_color = (
+
+                        self._detect_dominant_color(
+                            img
+                        ) or ""
+                    )
+
+                except Exception as color_error:
+
+                    _logger.warning(
+
+                        f"[COLOR DETECT FAILED] "
+
+                        f"{str(color_error)}"
+                    )
+
+                # =====================================
+                # ONLY REMOVE TRUE DUPLICATES
+                # =====================================
+
+                existing_asset = seen.get(
+                    image_hash
+                )
+
+                # SAME HASH + SAME SCORE + SAME COLLAGE
+                # = real duplicate only
+
+                if existing_asset:
+
+                    if (
+
+                        existing_asset.get("score") == score
+
+                        and
+
+                        existing_asset.get("is_collage") == is_collage
+
+                    ):
+
+                        _logger.warning(
+
+                            f"[ASSET SKIPPED] TRUE DUPLICATE"
+                        )
+
+                        continue
+
+                _logger.warning(
+
+                    f"[ASSET DEBUG] "
+
+                    f"type={type(asset)} "
+
+                    f"score={score} "
+
+                    f"collage={is_collage} "
+
+                    f"color={dominant_color}"
+                )
 
                 prepared.append({
 
-                    "index": len(prepared),
+                    "image": img,
 
-                    "image": img
+                    "score": score,
+
+                    "is_collage": is_collage,
+
+                    "dominant_color":
+                        dominant_color
                 })
 
-                seen.add(image_hash)
+                seen[image_hash] = {
+
+                    "score": score,
+
+                    "is_collage": is_collage,
+
+                    "dominant_color": dominant_color
+                }
+
+                _logger.warning(
+
+                    f"[ASSET ADDED] "
+
+                    f"score={score} "
+
+                    f"collage={is_collage} "
+
+                    f"color={dominant_color}"
+                )
 
             except Exception as e:
 
@@ -4756,52 +5861,643 @@ class VendorImportJob(models.Model):
                     f"{str(e)}"
                 )
 
+        # =====================================
+        # SORT BEST FIRST
+        # =====================================
+
+        prepared = sorted(
+
+            prepared,
+
+            key=lambda x: (
+
+                x.get("score", 0),
+
+                not x.get(
+                    "is_collage",
+                    False
+                )
+            ),
+
+            reverse=True
+        )
+
+        # =====================================
+        # REBUILD INDEXES AFTER SORT
+        # =====================================
+
+        for idx, asset in enumerate(prepared):
+
+            asset["index"] = idx
+
+        _logger.warning(
+
+            f"[ASSET POOL READY] "
+
+            f"{len(prepared)} assets"
+        )
+
         return prepared
 
-    #=================Centralized Rusable Image resolver=======================
+    # =====================================
+    # ADVANCED DOMINANT COLOR DETECTION
+    # =====================================
 
-    def _resolve_asset_image( self, asset_pool, index):
+    def _detect_dominant_color(
+
+        self,
+
+        image_base64
+    ):
 
         try:
 
-            if index is None:
-                return None
+            import base64
+            import colorsys
+            import numpy as np
 
-            if not isinstance(index, int):
-                return None
+            from io import BytesIO
+            from PIL import Image
 
-            if index < 0:
-                return None
+            image_data = base64.b64decode(
+                image_base64
+            )
 
-            for asset in asset_pool:
+            image = Image.open(
 
-                if asset["index"] == index:
+                BytesIO(image_data)
 
-                    image = asset.get(
-                        "image"
-                    )
+            ).convert("RGB")
 
-                    if not image:
-                        return None
+            image = image.resize((120, 120))
 
-                    if not isinstance(
-                        image,
-                        str
-                    ):
-                        return None
+            pixels = np.array(image)
 
-                    return image
+            # =====================================
+            # REMOVE VERY BRIGHT BACKGROUND
+            # =====================================
+
+            pixels = pixels.reshape(-1, 3)
+
+            filtered_pixels = []
+
+            for r, g, b in pixels:
+
+                # remove white bg
+                if r > 235 and g > 235 and b > 235:
+                    continue
+
+                filtered_pixels.append([r, g, b])
+
+            if not filtered_pixels:
+                return "white"
+
+            pixels = np.array(filtered_pixels)
+
+            avg = pixels.mean(axis=0)
+
+            r, g, b = avg
+
+            # =====================================
+            # RGB → HSV
+            # =====================================
+
+            h, s, v = colorsys.rgb_to_hsv(
+
+                r / 255.0,
+                g / 255.0,
+                b / 255.0
+            )
+
+            h = h * 360
+            s = s * 100
+            v = v * 100
+
+            # =====================================
+            # BLACK
+            # =====================================
+
+            if v < 18:
+                return "black"
+
+            # =====================================
+            # WHITE
+            # =====================================
+
+            if v > 92 and s < 10:
+                return "white"
+
+            # =====================================
+            # GRAY / GREY
+            # =====================================
+
+            if s < 15:
+
+                if v < 55:
+                    return "gray"
+
+                return "grey"
+
+            # =====================================
+            # RED
+            # =====================================
+
+            if h < 15 or h >= 345:
+                return "red"
+
+            # =====================================
+            # ORANGE
+            # =====================================
+
+            if 15 <= h < 40:
+                return "orange"
+
+            # =====================================
+            # YELLOW
+            # =====================================
+
+            if 40 <= h < 70:
+                return "yellow"
+
+            # =====================================
+            # GREEN
+            # =====================================
+
+            if 70 <= h < 170:
+                return "green"
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if 170 <= h < 260:
+
+                if v < 45:
+                    return "navy"
+
+                if s < 35:
+                    return "light blue"
+
+                return "blue"
+
+            # =====================================
+            # PURPLE
+            # =====================================
+
+            if 260 <= h < 320:
+                return "purple"
+
+            # =====================================
+            # PINK
+            # =====================================
+
+            if 320 <= h < 345:
+                return "pink"
+
+            return "unknown"
 
         except Exception as e:
 
             _logger.warning(
 
-                f"[ASSET RESOLVE FAILED] "
+                f"[DOMINANT COLOR FAILED] "
 
                 f"{str(e)}"
             )
 
-        return None
+            return "unknown"
+
+    # =====================================
+    # PROFESSIONAL VARIANT IMAGE MATCHER
+    # =====================================
+  
+    def _match_variant_image(
+         self,
+        variant,
+        asset_pool,
+        used_asset_indexes=None
+    ):
+
+        try:
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+
+            if not asset_pool:
+                return False
+
+            best_asset = None
+
+            best_score = -999
+
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+            variant_text = ""
+
+            attributes = variant.get(
+                "attributes",
+                {}
+            )
+
+            if isinstance(attributes, dict):
+
+                variant_text = " ".join([
+
+                    str(v)
+
+                    for v in attributes.values()
+
+                ]).lower()
+
+            # =====================================
+            # SCORE ASSETS
+            # =====================================
+
+            for asset in asset_pool:
+                if asset.get("index") in used_asset_indexes:
+                    continue
+
+                asset_index = asset.get(
+                    "index"
+                )
+
+                if asset_index in used_asset_indexes:
+                    continue
+
+                asset_score = asset.get(
+                    "score",
+                    0
+                )
+
+                dominant_color = asset.get(
+                    "dominant_color",
+                    ""
+                )
+
+                if dominant_color == "unknown":
+
+                    asset_score -= 45
+
+                # ---------------------------------
+                # COLLAGE PENALTY
+                # ---------------------------------
+
+                if asset.get("is_collage"):
+
+                    asset_score -= 80
+
+                # ---------------------------------
+                # COLOR MATCHING
+                # ---------------------------------
+
+                color_map = [
+
+                    "red",
+                    "blue",
+                    "green",
+                    "lime",
+                    "yellow",
+                    "orange",
+                    "white",
+                    "black",
+                    "gray",
+                    "grey",
+                    "purple",
+                    "pink",
+                    "brown"
+                ]
+
+
+                for color in color_map:
+
+                    if color not in variant_text:
+                        continue
+
+                    # exact match
+                    if color == dominant_color:
+
+                        asset_score += 180
+
+                    # gray/grey normalization
+                    elif (
+
+                        color in ["gray", "grey"]
+
+                        and
+
+                        dominant_color in [
+                            "gray",
+                            "grey",
+                            "black"
+                        ]
+                    ):
+
+                        asset_score += 120
+
+                    # white/silver/light handling
+                    elif (
+
+                        color == "white"
+
+                        and
+
+                        dominant_color in [
+                            "white",
+                            "gray"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                    # dark product approximation
+                    elif (
+
+                        color == "black"
+
+                        and
+
+                        dominant_color in [
+                            "black",
+                            "gray"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                # ---------------------------------
+                # HERO BONUS
+                # ---------------------------------
+
+                if asset.get("score", 0) >= 70:
+
+                    asset_score += 10
+
+                # ---------------------------------
+                # BEST MATCH
+                # ---------------------------------
+
+                if asset_score > best_score:
+
+                    best_score = asset_score
+
+                    best_asset = asset
+
+            # =====================================
+            # SAFE FALLBACK
+            # =====================================
+
+            if not best_asset:
+
+                best_asset = sorted(
+
+                    asset_pool,
+
+                    key=lambda x: x.get(
+                        "score",
+                        0
+                    ),
+
+                    reverse=True
+
+                )[0]
+
+            if best_asset:
+
+                used_asset_indexes.add(
+
+                    best_asset.get("index")
+                )
+
+            return best_asset
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[VARIANT MATCH FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
+
+
+    #======score_segmented_image ==========================
+    def _score_segmented_image(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            import base64
+            import io
+
+            import numpy as np
+
+            from PIL import Image
+
+            image_bytes = base64.b64decode(
+                image_base64
+            )
+
+            img = Image.open(
+
+                io.BytesIO(image_bytes)
+
+            ).convert("RGB")
+
+            width, height = img.size
+
+            # ==========================================
+            # REJECT VERY SMALL CROPS
+            # ==========================================
+
+            if width < 180 or height < 180:
+
+                return -999
+
+            np_img = np.array(img)
+
+            score = 0
+
+            # ==========================================
+            # LARGE IMAGE BONUS
+            # ==========================================
+
+            score += (
+                width * height
+            ) / 10000
+
+            # ==========================================
+            # TEXT HEAVY PENALTY
+            # ==========================================
+
+            dark_ratio = np.mean(
+                np_img < 70
+            )
+
+            score -= dark_ratio * 200
+
+            # ==========================================
+            # GOOD PRODUCT ASPECT BONUS
+            # ==========================================
+
+            aspect = width / float(height)
+
+            if 0.7 <= aspect <= 1.5:
+
+                score += 50
+
+            # ==========================================
+            # CLEAN BACKGROUND BONUS
+            # ==========================================
+
+            white_ratio = np.mean(
+                np_img > 230
+            )
+
+            score += white_ratio * 80
+
+            return score
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[IMAGE SCORE ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return 0    
+        
+    #=============variant color enhancement 1=================
+    def _get_dominant_color_name(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            import base64
+            import io
+            import numpy as np
+
+            from PIL import Image
+
+            image_bytes = base64.b64decode(
+                image_base64
+            )
+
+            img = Image.open(
+
+                io.BytesIO(image_bytes)
+
+            ).convert("RGB")
+
+            img = img.resize((80, 80))
+
+            np_img = np.array(img)
+
+            pixels = np_img.reshape(
+                (-1, 3)
+            )
+
+            avg = pixels.mean(axis=0)
+
+            r, g, b = avg
+
+            # =====================================
+            # COLOR CLASSIFICATION
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "white"
+
+            if r < 60 and g < 60 and b < 60:
+                return "black"
+
+            if r > 160 and g < 120 and b < 120:
+                return "red"
+
+            if r > 180 and g > 180 and b < 120:
+                return "yellow"
+
+            if b > r and b > g:
+                return "blue"
+
+            if g > r and g > b:
+                return "green"
+
+            if r > 120 and b > 120:
+                return "purple"
+
+            if r > 150 and g > 120 and b < 100:
+                return "orange"
+
+            if (
+                abs(r - g) < 20
+                and
+                abs(g - b) < 20
+            ):
+                return "grey"
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return "unknown"
+
+    #=================Centralized Rusable Image resolver==============
+
+    def _resolve_asset_image(
+        self,
+        asset_pool,
+        index
+    ):
+
+        try:
+
+            if index is None:
+                return False
+
+            for asset in asset_pool:
+
+                if isinstance(asset, dict):
+
+                    if asset.get("index") == index:
+
+                        return asset.get("image")
+
+                elif isinstance(asset, str):
+
+                    return asset
+
+            return False
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[RESOLVE ASSET ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return False
 
     #============marchin AI===================================================
     # =====================================================
@@ -5439,11 +7135,13 @@ class VendorImportJob(models.Model):
             vals = {
                 'name': name.strip(),
                 'description_sale': description,
+                'type': 'consu',
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
                 'vendor_id': vendor_id,
                 'vendor_fingerprint': vendor_fingerprint,
+                'vendor_import_job_id': self.id,
             }
 
             # ================= IMAGE =================
@@ -5807,7 +7505,7 @@ class VendorImportJob(models.Model):
                 continue
 
             if created_count % 10 == 0:
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
         # ================= SAVE PROGRESS =================
         self.last_processed_product_index = end_index
@@ -5823,7 +7521,7 @@ class VendorImportJob(models.Model):
             _logger.warning("MORE PRODUCTS REMAIN → CONTINUE CREATION")
             self.state = "url_creating"
 
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #==========create pdf product====================================
@@ -5831,16 +7529,10 @@ class VendorImportJob(models.Model):
     def create_products_pdf(self):
 
         import json
-        import re
 
         _logger.warning(
             "[PDF CREATE] START"
         )
-
-
-        # =====================================================
-        # VALIDATION
-        # =====================================================
 
         if not self.ai_response:
 
@@ -5849,7 +7541,6 @@ class VendorImportJob(models.Model):
             )
 
             return
-
 
         try:
 
@@ -5868,7 +7559,6 @@ class VendorImportJob(models.Model):
 
             return
 
-
         if not isinstance(ai_pages, list):
 
             _logger.warning(
@@ -5876,11 +7566,6 @@ class VendorImportJob(models.Model):
             )
 
             return
-
-
-        # =====================================================
-        # MODELS
-        # =====================================================
 
         product_obj = self.env[
             'product.template'
@@ -5901,11 +7586,6 @@ class VendorImportJob(models.Model):
             ('usage', '=', 'internal')
 
         ], limit=1)
-
-
-        # =====================================================
-        # CATEGORY MAP
-        # =====================================================
 
         CATEGORY_MAPPING = {
 
@@ -5930,17 +7610,11 @@ class VendorImportJob(models.Model):
             "laptop": "Electronics",
         }
 
-
-        # =====================================================
-        # ROOT CATEGORY
-        # =====================================================
-
         parent_category = category_obj.search([
 
             ('name', '=', "All Products")
 
         ], limit=1)
-
 
         if not parent_category:
 
@@ -5950,11 +7624,6 @@ class VendorImportJob(models.Model):
 
             })
 
-
-        # =====================================================
-        # VENDOR
-        # =====================================================
-
         vendor_id = (
 
             self.partner_id.id
@@ -5963,11 +7632,6 @@ class VendorImportJob(models.Model):
 
             else False
         )
-
-
-        # =====================================================
-        # BATCHING
-        # =====================================================
 
         BATCH_SIZE = 3
 
@@ -5982,25 +7646,8 @@ class VendorImportJob(models.Model):
             len(ai_pages)
         )
 
-
-        _logger.warning(
-
-            f"[PDF CREATE RANGE] "
-
-            f"{start} -> {end} "
-
-            f"| total={len(ai_pages)}"
-        )
-
-
         created_count = 0
-
         skipped_count = 0
-
-
-        # =====================================================
-        # MAIN LOOP
-        # =====================================================
 
         for page_index in range(start, end):
 
@@ -6021,7 +7668,6 @@ class VendorImportJob(models.Model):
 
                 continue
 
-
             page_number = page_data.get(
                 "page"
             )
@@ -6036,32 +7682,26 @@ class VendorImportJob(models.Model):
 
             ], limit=1)
 
-            page_images = []
 
-            if page_record:
+            # =====================================
+            # LOAD AI-PERSISTED IMAGES
+            # =====================================
 
-                try:
-
-                    page_images = json.loads(
-
-                        page_record.page_images_json
-                        or "[]"
-                    )
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"[PAGE IMAGE LOAD FAILED] "
-
-                        f"page={page_number} "
-
-                        f"| {str(e)}"
-                    )
-
-            asset_pool = self._prepare_asset_pool(
-                page_images
+            page_images = page_data.get(
+                "images",
+                []
             )
+
+            if not page_images:
+
+                _logger.warning(
+
+                    f"[PDF CREATE] "
+
+                    f"NO IMAGES FOUND "
+
+                    f"| PAGE {page_number}"
+                )
 
 
             products = page_data.get(
@@ -6069,47 +7709,86 @@ class VendorImportJob(models.Model):
                 []
             )
 
-            # =====================================
-            # EMPTY PDF PAGE DEBUG
-            # =====================================
-
-            if not products:
-
-                _logger.warning(
-
-                    f"[PDF EMPTY PAGE] "
-
-                    f"page={page_number} "
-
-                    f"| ai_page_index={page_index}"
-                )
-
-            else:
-
-                _logger.warning(
-
-                    f"[PDF PRODUCT COUNT] "
-
-                    f"page={page_number} "
-
-                    f"| products={len(products)}"
-                )
-
-            _logger.warning(
-
-                f"[PDF PAGE] "
-
-                f"page={page_number} "
-
-                f"| products={len(products)}"
-            )
-
-
-            # =================================================
-            # PRODUCTS
-            # =================================================
-
             for product_data in products:
+
+                # =====================================
+                # PRODUCT IMAGE PREP
+                # =====================================
+
+                product_images = product_data.get(
+                    "images",
+                    []
+                )
+
+                _logger.warning(
+
+                    f"[PRODUCT IMAGE COUNT] "
+
+                    f"{product_data.get('name')} "
+
+                    f"| images={len(product_images)}"
+                )
+
+                # =====================================
+                # FALLBACK TO PAGE IMAGES
+                # =====================================
+
+                if not product_images:
+
+                    product_images = page_images
+
+                    _logger.warning(
+
+                        f"[PAGE IMAGE FALLBACK] "
+
+                        f"{product_data.get('name')}"
+                    )
+
+                segmented_assets = []
+
+                for img in product_images:
+
+                    # ---------------------------------
+                    # ALREADY STRUCTURED
+                    # ---------------------------------
+
+                    if isinstance(img, dict):
+
+                        if img.get("image"):
+
+                            segmented_assets.append(img)
+
+                    # ---------------------------------
+                    # RAW BASE64 FALLBACK
+                    # ---------------------------------
+
+                    elif isinstance(img, str):
+
+                        segmented_assets.append({
+
+                            "image": img,
+
+                            "score": 0,
+
+                            "is_collage": False
+                        })
+
+                # =====================================
+                # BUILD ASSET POOL
+                # =====================================
+
+                asset_pool = self._prepare_asset_pool(
+                    segmented_assets
+                )
+
+                _logger.warning(
+
+                    f"[PDF ASSET POOL] "
+
+                    f"product={product_data.get('name')} "
+
+                    f"| assets={len(asset_pool)}"
+                )
 
                 try:
 
@@ -6123,22 +7802,9 @@ class VendorImportJob(models.Model):
 
                     ).strip()
 
-
                     if not name:
 
-                        _logger.warning(
-                            "[PDF SKIP] EMPTY NAME"
-                        )
-
                         continue
-
-
-                    description = (
-                        product_data.get(
-                            "description"
-                        ) or ""
-                    )
-
 
                     raw_category = (
 
@@ -6148,12 +7814,10 @@ class VendorImportJob(models.Model):
 
                     ).lower()
 
-
                     variants = product_data.get(
                         "variants",
                         []
                     )
-
 
                     variant_group = (
 
@@ -6166,230 +7830,142 @@ class VendorImportJob(models.Model):
                         name
                     )
 
-
                     variant_group = str(
                         variant_group
                     ).strip().upper()
 
+                    category = (
+                        self._get_or_create_pdf_category(
 
-                    # =========================================
-                    # CATEGORY MAP
-                    # =========================================
+                            raw_category,
 
-                    mapped_category = (
-                        "General"
-                    )
+                            category_obj,
 
+                            parent_category,
 
-                    for key, val in CATEGORY_MAPPING.items():
-
-                        if key in raw_category:
-
-                            mapped_category = val
-
-                            break
-
-
-                    category = category_obj.search([
-
-                        ('name', '=ilike', mapped_category),
-
-                        (
-                            'parent_id',
-                            '=',
-                            parent_category.id
+                            CATEGORY_MAPPING
                         )
-
-                    ], limit=1)
-
-
-                    if not category:
-
-                        category = category_obj.create({
-
-                            'name': mapped_category,
-
-                            'parent_id':
-                                parent_category.id
-                        })
-
-
-                   # =========================================
-                    # FINGERPRINT
-                    # =========================================
+                    )
 
                     vendor_fingerprint = (
                         f"{vendor_id}_{variant_group}"
                     )
 
+                    product, created = (
 
-                    # =========================================
-                    # DUPLICATE CHECK
-                    # =========================================
+                        self._get_or_create_pdf_product(
 
-                    product = product_obj.search([
+                            product_data,
 
-                        (
-                            'vendor_fingerprint',
-                            '=',
-                            vendor_fingerprint
-                        )
+                            variant_group,
 
-                    ], limit=1)
+                            vendor_id,
 
-                    # ==========================================
-                    # CREATE PRODUCT
-                    # ==========================================
+                            vendor_fingerprint,
 
-                    if not product:
-
-                        vals = {
-
-                            'name': name,
-
-                            'default_code':
-                                variant_group,
-
-                            'description_sale':
-                                description,
-
-                            'categ_id':
-                                category.id,
-
-                            'sale_ok': True,
-
-                            'website_published':
-                                False,
-
-                            'vendor_id':
-                                vendor_id,
-
-                            'vendor_fingerprint':
-                                vendor_fingerprint,
-                        }
-                   
-
-                        hero_index = product_data.get(
-                            "hero_image_index"
-                        )
-
-                        hero_image = self._resolve_asset_image(
+                            category,
 
                             asset_pool,
 
-                            hero_index
+                            product_obj
+                        )
+                    )
+
+
+                    if created:
+
+                        self._apply_product_translation(
+                            product
                         )
 
-                        if hero_image:
+                        self._create_pdf_gallery(
 
-                            vals['image_1920'] = (
-                                hero_image
-                            )
+                            product,
 
-                        product = product_obj.with_context(
+                            product_data,
 
-                            mail_create_nolog=True,
-
-                            mail_notify_force_send=False,
-
-                            tracking_disable=True
-
-                         ).create(vals)
-
-                        #=====Product Translation========
-                        self._apply_product_translation(product)
-
-                        gallery_indexes = product_data.get(
-                            "gallery_image_indexes",
-                            []
+                            asset_pool
                         )
 
-                        used_images = set()
+                        # =====================================
+                        # APPLY REAL INVENTORY STOCK
+                        # =====================================
 
-                        if product.image_1920:
+                        try:
 
-                            used_images.add(
-                                product.image_1920
+                            stock_qty = int(
+
+                                product_data.get(
+                                    "stock_qty",
+                                    0
+                                ) or 0
                             )
 
-                        for index in gallery_indexes:
+                            if stock_qty > 0:
 
-                            try:
+                                quant = stock_quant_obj.search([
 
-                                gallery_image = (
-                                    self._resolve_asset_image(
+                                    (
+                                        'product_id',
+                                        '=',
+                                        product.product_variant_id.id
+                                    ),
 
-                                        asset_pool,
-
-                                        index
+                                    (
+                                        'location_id',
+                                        '=',
+                                        stock_location.id
                                     )
-                                )
 
-                                if not gallery_image:
-                                    continue
+                                ], limit=1)
 
-                                if gallery_image in used_images:
-                                    continue
+                                if quant:
 
+                                    quant.inventory_quantity = (
+                                        stock_qty
+                                    )
 
-                                self.env[
-                                    'product.image'
-                                ].create({
+                                    quant.action_apply_inventory()
 
-                                    'name':
-                                        f"{product.name} Gallery",
+                                else:
 
-                                    'product_tmpl_id':
-                                        product.id,
+                                    quant = stock_quant_obj.create({
 
-                                    'image_1920':
-                                        gallery_image
-                                })
+                                        'product_id':
+                                            product.product_variant_id.id,
 
-                                used_images.add(
-                                     gallery_image
-                                )
+                                        'location_id':
+                                            stock_location.id,
 
-                            except Exception as e:
+                                        'inventory_quantity':
+                                            stock_qty
+                                    })
+
+                                    quant.action_apply_inventory()
 
                                 _logger.warning(
 
-                                    f"[GALLERY IMAGE FAILED] "
+                                    f"[STOCK APPLIED] "
 
                                     f"{product.name} "
 
-                                    f"| {str(e)}"
+                                    f"| qty={stock_qty}"
                                 )
-                        
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[STOCK APPLY FAILED] "
+
+                                f"{str(e)}"
+                            )
 
                         created_count += 1
-
-
-                        _logger.warning(
-
-                            f"[PDF CREATED] "
-
-                            f"{variant_group}"
-                        )
 
                     else:
 
                         skipped_count += 1
-
-
-                        _logger.warning(
-
-                            f"[PDF EXISTS] "
-
-                            f"{variant_group} "
-
-                            f"| vendor={vendor_id}"
-                        )
-
-
-                    # ==========================================
-                    # FALLBACK VARIANT
-                    # ==========================================
 
                     if not variants:
 
@@ -6402,10 +7978,10 @@ class VendorImportJob(models.Model):
 
                         }]
 
-
-                    # =========================================
-                    # VARIANTS
-                    # =========================================
+                    # =======================================
+                    # PASS 1:
+                    # BUILD ALL ATTRIBUTE LINES FIRST
+                    # =======================================
 
                     for variant in variants:
 
@@ -6414,13 +7990,10 @@ class VendorImportJob(models.Model):
                             {}
                         )
 
-
                         for attr_name, attr_value in attributes.items():
 
                             if not attr_value:
-
                                 continue
-
 
                             attribute = self.env[
                                 'product.attribute'
@@ -6434,7 +8007,6 @@ class VendorImportJob(models.Model):
 
                             ], limit=1)
 
-
                             if not attribute:
 
                                 attribute = self.env[
@@ -6444,7 +8016,6 @@ class VendorImportJob(models.Model):
                                     'name': attr_name
 
                                 })
-
 
                             value = self.env[
                                 'product.attribute.value'
@@ -6464,7 +8035,6 @@ class VendorImportJob(models.Model):
 
                             ], limit=1)
 
-
                             if not value:
 
                                 value = self.env[
@@ -6476,56 +8046,6 @@ class VendorImportJob(models.Model):
                                     'attribute_id':
                                         attribute.id
                                 })
-
-
-                                # =========================================
-                                # TRANSLATE VARIANT VALUE
-                                # =========================================
-
-                                try:
-
-                                    for lang_code in ['ru_RU', 'az_AZ']:
-
-                                        translated_variant = self._force_translate(
-
-                                            str(attr_value),
-
-                                            lang_code
-                                        )
-
-
-                                        if translated_variant:
-
-                                            value.with_context(
-                                                lang=lang_code
-                                            ).write({
-
-                                                'name': translated_variant
-                                            })
-
-
-                                            _logger.warning(
-
-                                                f"[PDF VARIANT TRANSLATED] "
-
-                                                f"{attr_value} "
-
-                                                f"-> "
-
-                                                f"{translated_variant} "
-
-                                                f"({lang_code})"
-                                            )
-
-                                except Exception as e:
-
-                                    _logger.warning(
-
-                                        f"[PDF VARIANT TRANSLATION ERROR] "
-
-                                        f"{str(e)}"
-                                    )
-
 
                             line = self.env[
                                 'product.template.attribute.line'
@@ -6544,7 +8064,6 @@ class VendorImportJob(models.Model):
                                 )
 
                             ], limit=1)
-
 
                             if not line:
 
@@ -6583,66 +8102,146 @@ class VendorImportJob(models.Model):
 
                                     ]
 
+                    # =======================================
+                    # PASS 2:
+                    # GENERATE ALL VARIANTS ONCE
+                    # =======================================
+
+                    product._create_variant_ids()
+
+                    used_asset_indexes = set()
+
+                    # =======================================
+                    # PASS 3:
+                    # MATCH REAL VARIANTS TO IMAGES
+                    # =======================================
+
+                    for variant in variants:
 
                         # =====================================
-                        # VARIANT IMAGE
+                        # MATCH REAL GENERATED VARIANT
                         # =====================================
 
-                        image_index = variant.get(
-                            "image_index",
-                            0
+                        variant_record = False
+
+                        product_variants = (
+                            product.product_variant_ids
                         )
 
+                        variant_name = ""
 
-                        variant_record = self.env[
-                            'product.product'
-                        ].search([
-
-                            (
-                                'product_tmpl_id',
-                                '=',
-                                product.id
-                            )
-
-                        ], limit=1)
-
-                        variant_image_index = (
-                            variant.get("image_index")
+                        attributes = variant.get(
+                            "attributes",
+                            {}
                         )
+
+                        if isinstance(attributes, dict):
+
+                            variant_name = " ".join([
+
+                                str(v)
+
+                                for v in attributes.values()
+
+                            ]).lower()
+
+                        for pv in product_variants:
+
+                            combo = " ".join([
+
+                                v.name.lower()
+
+                                for v in (
+                                    pv.product_template_variant_value_ids
+                                )
+
+                            ])
+
+                            if combo:
+
+                                combo_words = combo.split()
+
+                                variant_words = (
+                                    variant_name.split()
+                                )
+
+                                match_count = 0
+
+                                for word in variant_words:
+
+                                    if word in combo_words:
+
+                                        match_count += 1
+
+                                if (
+
+                                    variant_words
+
+                                    and
+
+                                    match_count >= 1
+                                ):
+
+                                    variant_record = pv
+                                    break
+
+                        # ---------------------------------
+                        # SAFE FALLBACK
+                        # ---------------------------------
 
                         if (
 
-                            variant_record
+                            not variant_record
 
                             and
 
-                            variant_image_index is not None
-
+                            product_variants
                         ):
 
+                            variant_record = (
+                                product_variants[0]
+                            )
+                      
+                        # =====================================
+                        # PROFESSIONAL VARIANT IMAGE MATCHING
+                        # =====================================
+
+                        if variant_record:
+
                             try:
+                                
+                                matched_asset = self._match_variant_image(
 
-                                variant_image = (
-                                    self._resolve_asset_image(
+                                    variant,
 
-                                        asset_pool,
+                                    asset_pool,
 
-                                        variant_image_index
-                                    )
+                                    used_asset_indexes
                                 )
 
-                                if variant_image:
+                                # =====================================
+                                # APPLY
+                                # =====================================
+
+                                if matched_asset:
 
                                     variant_record.image_1920 = (
-                                        variant_image
+                                        matched_asset.get(
+                                            "image"
+                                        )
+                                    )
+
+                                    used_asset_indexes.add(
+                                        matched_asset.get("index")
                                     )
 
                                     _logger.warning(
 
-                                        f"[VARIANT IMAGE SET] "
+                                        f"[VARIANT IMAGE APPLIED] "
 
-                                        f"{variant_record.display_name}"
+                                        f"{variant_name} "
 
+                                        f"| asset={matched_asset.get('index')}"
                                     )
 
                             except Exception as e:
@@ -6653,7 +8252,6 @@ class VendorImportJob(models.Model):
 
                                     f"{str(e)}"
                                 )
-
 
                 except Exception as e:
 
@@ -6666,117 +8264,22 @@ class VendorImportJob(models.Model):
 
                     continue
 
-            # =====================================
-            # STOCK QTY
-            # =====================================
+            try:
 
-            stock_qty = int(
+                self.last_created_page = (
+                    page_index + 1
+                )
 
-                product_data.get(
-                    "stock_qty",
-                    0
-                ) or 0
-            )
+                self._safe_commit_progress()
 
-            if (
+            except Exception as e:
 
-                stock_qty > 0
+                _logger.exception(
 
-                and
+                    f"[PAGE COMMIT FAILED] "
 
-                variant_record
-
-                and
-
-                stock_location
-            ):
-
-                try:
-
-                    quant = stock_quant_obj.search([
-
-                        (
-                            'product_id',
-                            '=',
-                            variant_record.id
-                        ),
-
-                        (
-                            'location_id',
-                            '=',
-                            stock_location.id
-                        )
-
-                    ], limit=1)
-
-                    if quant:
-
-                        quant.inventory_quantity = (
-                            stock_qty
-                        )
-
-                        quant.action_apply_inventory()
-
-                    else:
-
-                        quant = stock_quant_obj.create({
-
-                            'product_id':
-                                variant_record.id,
-
-                            'location_id':
-                                stock_location.id,
-
-                            'inventory_quantity':
-                                stock_qty
-                        })
-
-                        quant.action_apply_inventory()
-
-                    _logger.warning(
-
-                        f"[PDF STOCK SET] "
-
-                        f"{variant_record.display_name} "
-
-                        f"-> {stock_qty}"
-                    )
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"[PDF STOCK FAILED] "
-
-                        f"{str(e)}"
-                    )
-            # =================================================
-            # SAVE PAGE PROGRESS
-            # =================================================
-
-            self.last_created_page = (
-                page_index + 1
-            )
-
-
-            _logger.warning(
-
-                f"[PDF TRACK] "
-
-                f"last_created_page="
-
-                f"{self.last_created_page}"
-            )
-
-
-            self.flush_recordset()
-
-            self.env.cr.commit()
-
-
-        # =====================================================
-        # FINAL LOG
-        # =====================================================
+                    f"{str(e)}"
+                )
 
         _logger.warning(
 
@@ -6787,35 +8290,461 @@ class VendorImportJob(models.Model):
             f"| skipped={skipped_count}"
         )
 
-
-        # =====================================================
-        # NEXT STATE
-        # =====================================================
-
         if self.last_created_page >= len(ai_pages):
-
-            _logger.warning(
-                "[PDF FLOW] DONE ✅"
-            )
 
             self.state = 'done'
 
         else:
 
-            _logger.warning(
-                "[PDF FLOW] CONTINUE"
-            )
-
             self.state = 'pdf_creating'
 
-
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
-    #=========product duplicate helper=======================
+    #==========create pdf CATEGORY RESOLVER====================================
+    
+    def _get_or_create_pdf_category(
 
+        self,
+
+        raw_category,
+
+        category_obj,
+
+        parent_category,
+
+        category_mapping
+    ):
+
+        mapped_category = "General"
+
+        raw_category = (
+            raw_category or ""
+        ).lower()
+
+        for key, val in category_mapping.items():
+
+            if key in raw_category:
+
+                mapped_category = val
+
+                break
+
+        category = category_obj.search([
+
+            ('name', '=ilike', mapped_category),
+
+            (
+                'parent_id',
+                '=',
+                parent_category.id
+            )
+
+        ], limit=1)
+
+        if not category:
+
+            category = category_obj.create({
+
+                'name': mapped_category,
+
+                'parent_id': parent_category.id
+            })
+
+        return category
+
+
+    #==========pdf product PRODUCT CREATE/GET====================================
+    def _get_or_create_pdf_product(
+
+        self,
+
+        product_data,
+
+        variant_group,
+
+        vendor_id,
+
+        vendor_fingerprint,
+
+        category,
+
+        asset_pool,
+
+        product_obj
+    ):
+
+        product = product_obj.search([
+
+            (
+                'vendor_fingerprint',
+                '=',
+                vendor_fingerprint
+            )
+
+        ], limit=1)
+
+        if product:
+
+            return product, False
+
+        vals = {
+
+            'name': (
+                product_data.get("name")
+                or ""
+            ).strip(),
+
+            'default_code': variant_group,
+
+            'description_sale': (
+                product_data.get(
+                    "description"
+                ) or ""
+            ),
+
+            'type': 'consu',
+
+            'categ_id': category.id,
+
+            'sale_ok': True,
+
+            'website_published': False,
+
+            'vendor_id': vendor_id,
+
+            'vendor_fingerprint':
+                vendor_fingerprint,
+
+            'vendor_import_job_id':
+                self.id,
+
+            'vendor_stock_qty': int(
+
+                product_data.get(
+                    "stock_qty",
+                    0
+                ) or 0
+            ),
+        }
+
+
+
+        hero_index = product_data.get(
+            "hero_image_index"
+        )
+        
+
+
+        # =====================================
+        # PROFESSIONAL HERO IMAGE SELECTION
+        # =====================================
+
+        hero_asset = None
+
+        # =====================================
+        # AI SELECTED HERO
+        # =====================================
+
+        if hero_index is not None:
+
+            for asset in asset_pool:
+
+                if asset.get("clean_index") == hero_index:
+
+                    # reject collages as hero
+                    if asset.get("is_collage"):
+
+                        continue
+
+                    hero_asset = asset
+
+                    break
+
+        # =====================================
+        # FALLBACK TO BEST CLEAN IMAGE
+        # =====================================
+
+        if not hero_asset:
+
+            sorted_assets = sorted(
+
+                asset_pool,
+
+                key=lambda x: x.get(
+                    "score",
+                    0
+                ),
+
+                reverse=True
+            )
+
+            for asset in sorted_assets:
+
+                # reject collage sheets
+                if asset.get("is_collage"):
+                    continue
+
+                # require strong quality
+                if asset.get("score", 0) >= 45:
+
+                    hero_asset = asset
+
+                    break
+
+        # =====================================
+        # FINAL SAFE FALLBACK
+        # =====================================
+
+        if not hero_asset and asset_pool:
+
+            for asset in asset_pool:
+
+                if not asset.get("is_collage"):
+
+                    hero_asset = asset
+
+                    break
+
+            if not hero_asset:
+
+                hero_asset = asset_pool[0]
+
+        # =====================================
+        # APPLY HERO IMAGE
+        # =====================================
+
+        if hero_asset:
+
+            vals['image_1920'] = hero_asset.get(
+                "image"
+            )
+
+            _logger.warning(
+
+                f"[PDF HERO APPLIED] "
+
+                f"score={hero_asset.get('score')} "
+
+                f"color={hero_asset.get('dominant_color')}"
+            )
+
+        product = product_obj.with_context(
+
+            mail_create_nolog=True,
+
+            mail_notify_force_send=False,
+
+            tracking_disable=True
+
+        ).create(vals)
+
+        return product, True
+
+
+    #=========pdf product GALLERY CREATOR=======================
+    def _create_pdf_gallery(
+
+        self,
+
+        product,
+
+        product_data,
+
+        asset_pool
+    ):
+
+        gallery_indexes = product_data.get(
+            "gallery_image_indexes",
+            []
+        )
+
+        # =====================================
+        # FALLBACK GALLERY EXPANSION
+        # =====================================
+
+        if (
+
+            len(gallery_indexes) < 3
+
+            and
+
+            asset_pool
+        ):
+
+            extra_indexes = [
+
+                a.get("index")
+
+                for a in asset_pool
+
+                if a.get("score", 0) >= 45
+            ]
+
+            gallery_indexes.extend(
+                extra_indexes
+            )
+
+            gallery_indexes = list(
+
+                dict.fromkeys(
+                    gallery_indexes
+                )
+            )[:6]
+
+        used_images = set()
+        used_hashes = set()
+
+        if product.image_1920:
+
+            used_images.add(
+                product.image_1920
+            )
+
+        for index in gallery_indexes:
+
+            try:
+
+                gallery_image = (
+                    self._resolve_asset_image(
+
+                        asset_pool,
+
+                        index
+                    )
+                )
+
+                if not gallery_image:
+                    continue
+
+                image_hash = hashlib.md5(
+
+                    gallery_image.encode('utf-8')
+
+                ).hexdigest()
+
+                if image_hash in used_hashes:
+                    continue
+
+                self.env[
+                    'product.image'
+                ].create({
+
+                    'name':
+                        f"{product.name} Gallery",
+
+                    'product_tmpl_id':
+                        product.id,
+
+                    'image_1920':
+                        gallery_image
+                })
+
+                used_hashes.add(
+                    image_hash
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[GALLERY IMAGE FAILED] "
+
+                    f"{product.name} "
+
+                    f"| {str(e)}"
+                )
+    
+    #=========pdf product STOCK APPLY=======================
+    def _apply_pdf_stock(
+
+        self,
+
+        variant_record,
+
+        stock_qty,
+
+        stock_quant_obj,
+
+        stock_location
+    ):
+
+        if (
+
+            not stock_qty
+
+            or
+
+            not variant_record
+
+            or
+
+            not stock_location
+        ):
+
+            return
+
+        try:
+
+            quant = stock_quant_obj.search([
+
+                (
+                    'product_id',
+                    '=',
+                    variant_record.id
+                ),
+
+                (
+                    'location_id',
+                    '=',
+                    stock_location.id
+                )
+
+            ], limit=1)
+
+            if quant:
+
+                quant.inventory_quantity = (
+                    stock_qty
+                )
+
+                quant.action_apply_inventory()
+
+            else:
+
+                quant = stock_quant_obj.create({
+
+                    'product_id':
+                        variant_record.id,
+
+                    'location_id':
+                        stock_location.id,
+
+                    'inventory_quantity':
+                            stock_qty
+                })
+
+                quant.action_apply_inventory()
+
+            _logger.warning(
+
+                f"[PDF STOCK SET] "
+
+                f"{variant_record.display_name} "
+
+                f"-> {stock_qty}"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[PDF STOCK FAILED] "
+
+                f"{str(e)}"
+            )
+
+    #===============fingerprint================================
     def _build_vendor_fingerprint(self, product_data):
 
         import re
@@ -7034,9 +8963,7 @@ class VendorImportJob(models.Model):
 
                     self.excel_url_index = idx + 1
 
-                    self.flush_recordset()
-
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     continue
 
@@ -7081,11 +9008,7 @@ class VendorImportJob(models.Model):
 
                 self.excel_url_index = idx + 1
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
-
-                #self.env.invalidate_all()
+                self._safe_commit_progress()
 
 
             except Exception as e:
@@ -7113,9 +9036,7 @@ class VendorImportJob(models.Model):
 
             self.excel_url_index = 0
 
-            self.flush_recordset()
-
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             self.env.invalidate_all()
 
@@ -7582,6 +9503,8 @@ class VendorImportJob(models.Model):
                         'description_sale':
                             description,
 
+                       'type': 'consu',
+
                         'categ_id':
                             category.id,
 
@@ -7603,6 +9526,8 @@ class VendorImportJob(models.Model):
                             ),
 
                         'vendor_fingerprint': fingerprint,
+
+                        'vendor_import_job_id': self.id,
                     }
 
 
@@ -8005,9 +9930,7 @@ class VendorImportJob(models.Model):
                 )
 
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
+                self._safe_commit_progress()
                 
 
                 _logger.warning(
@@ -8123,9 +10046,7 @@ class VendorImportJob(models.Model):
             self.state = 'excel_creating'
 
 
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #====Excel variant mapping==================================
@@ -8323,6 +10244,12 @@ class VendorImportJob(models.Model):
             'url_scraping',
             'url_ai',
             'url_creating',
+
+            # =====================================
+            # AUTO-RECOVER INTERRUPTED JOBS
+            # =====================================
+
+            'failed',
         ]
 
 
@@ -8356,11 +10283,63 @@ class VendorImportJob(models.Model):
             'vendor.import.job'
         ]
 
-
         for j in jobs:
 
-            sig = j.upload_signature
+            # =====================================
+            # AUTO RECOVER FAILED JOBS
+            # =====================================
 
+            if j.state == 'failed':
+
+                _logger.warning(
+
+                    f"[AUTO RECOVER] "
+
+                    f"job={j.id}"
+                )
+
+                try:
+
+                    if j.last_created_page:
+
+                        j.state = 'pdf_creating'
+
+                    elif j.last_ai_page:
+
+                        j.state = 'pdf_ai'
+
+                    elif j.current_page:
+
+                        j.state = 'pdf_extracting'
+
+                    else:
+
+                        j.state = 'draft'
+
+                    j.lock = False
+
+                    self.env.cr.commit()
+
+                    _logger.warning(
+
+                        f"[AUTO RECOVER OK] "
+
+                        f"job={j.id} "
+
+                        f"| state={j.state}"
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"[AUTO RECOVER FAILED] "
+
+                        f"{str(e)}"
+                    )
+
+            sig = j.upload_signature
+           
             if not sig:
 
                 continue
@@ -8574,12 +10553,7 @@ class VendorImportJob(models.Model):
                 # STOP STATES
                 # =========================================
 
-                if job.state in [
-
-                    'done',
-                    'failed'
-
-                ]:
+                if job.state == 'done':
 
                     _logger.warning(
 
@@ -9345,7 +11319,7 @@ class VendorImportJob(models.Model):
             _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
 
             self.state = 'done'   # 🔥 STOP LOOP COMPLETELY
-            self.env.cr.commit()
+            self._safe_commit_progress()
             return
 
         # 🔥 CLEAN UP (IMPORTANT)
@@ -9443,4 +11417,3 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
-
