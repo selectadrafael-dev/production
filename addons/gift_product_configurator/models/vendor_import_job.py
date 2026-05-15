@@ -259,8 +259,7 @@ class VendorImportJob(models.Model):
 
             self.state = "failed"
 
-            self.flush_recordset()
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             return
 
@@ -306,8 +305,7 @@ class VendorImportJob(models.Model):
                 self.state = 'url_scraping'
 
 
-            self.flush_recordset()
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             return
 
@@ -670,8 +668,7 @@ class VendorImportJob(models.Model):
 
                 self.state = 'excel_parsing'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -764,8 +761,7 @@ class VendorImportJob(models.Model):
                         self.state = 'excel_parsing'
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -789,8 +785,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -824,8 +819,7 @@ class VendorImportJob(models.Model):
                 )
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -868,8 +862,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -880,8 +873,7 @@ class VendorImportJob(models.Model):
                     f"{self.state}"
                 )
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
 
             # =============================================
@@ -912,8 +904,7 @@ class VendorImportJob(models.Model):
 
                 self.state = 'pdf_extracting'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -937,8 +928,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -975,8 +965,7 @@ class VendorImportJob(models.Model):
                     self.state = 'pdf_ai'
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -1000,8 +989,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -1055,8 +1043,7 @@ class VendorImportJob(models.Model):
                     self.state = 'pdf_creating'
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -1080,8 +1067,7 @@ class VendorImportJob(models.Model):
 
                     self.state = 'failed'
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     return
 
@@ -1133,8 +1119,7 @@ class VendorImportJob(models.Model):
                         self.send_completion_email()
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -2405,7 +2390,7 @@ class VendorImportJob(models.Model):
 
                     is_collage = False
 
-                    if len(contours) >= 4:
+                    if len(filtered_contours) >= 6:
 
                         is_collage = True
 
@@ -2448,23 +2433,83 @@ class VendorImportJob(models.Model):
                     # =====================================
                     # SCORE
                     # =====================================
-
+                    human_penalty = 0
                     score = 0
 
-                    # big product bonus
+                    # big clean product bonus
                     score += int(
-                        coverage_ratio * 100
+                        coverage_ratio * 140
                     )
 
-                    # center hero bonus
+                    # centered ecommerce product
                     if centered_object:
+                        score += 55
 
-                        score += 40
-
-                    # collage penalty
+                    # strong collage penalty
                     if is_collage:
+                        score -= 70
 
-                        score -= 35
+                    # portrait product bonus
+                    if crop_height > crop_width:
+                        score += 18
+
+                    # isolated product bonus
+                    edge_density = cv2.Canny(
+                        crop_arr,
+                        80,
+                        160
+                    ).mean()
+
+
+                    # =====================================
+                    # HUMAN / LIFESTYLE APPROXIMATION
+                    # =====================================
+
+                    human_penalty = 0
+
+                    rgb_arr = np.array(crop)
+
+                    r = rgb_arr[:, :, 0]
+                    g = rgb_arr[:, :, 1]
+                    b = rgb_arr[:, :, 2]
+
+                    skin_mask = (
+
+                        (r > 95)
+
+                        &
+
+                        (g > 40)
+
+                        &
+
+                        (b > 20)
+
+                        &
+
+                        (r > g)
+
+                        &
+
+                        (r > b)
+
+                        &
+
+                        (np.abs(r - g) > 15)
+                    )
+
+                    skin_ratio = np.mean(skin_mask)
+
+                    if skin_ratio > 0.28:
+
+                        human_penalty = 40
+
+                    score -= human_penalty
+
+                    score -= human_penalty
+
+                    if 8 < edge_density < 35:
+                        score += 25
 
                     # =====================================
                     # SAVE
@@ -2481,6 +2526,7 @@ class VendorImportJob(models.Model):
                     encoded = base64.b64encode(
                         buffer.getvalue()
                     ).decode("utf-8")
+
 
                     candidate_crops.append({
 
@@ -2519,7 +2565,14 @@ class VendorImportJob(models.Model):
                         buffer.getvalue()
                     ).decode("utf-8")
 
-                    candidate_crops.append(encoded)
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": 10,
+
+                        "is_collage": False
+                    })
 
                 segmented_images.extend(
                     candidate_crops
@@ -2536,30 +2589,7 @@ class VendorImportJob(models.Model):
         # =============================================
 
         deduped = []
-        hashes = set()
-
-        # for img in segmented_images:
-
-        #     try:
-
-        #         image_hash = hashlib.md5(
-        #             img.encode("utf-8")
-        #         ).hexdigest()
-
-        #         if image_hash in hashes:
-        #             continue
-
-        #         hashes.add(image_hash)
-
-        #         deduped.append(img)
-
-        #     except Exception:
-        #         continue
-
-        # _logger.warning(
-        #     f"[SEGMENTATION RESULT] "
-        #     f"{len(deduped)} clean assets"
-        # )
+        hashes = {}
 
         for asset in segmented_images:
 
@@ -2571,10 +2601,19 @@ class VendorImportJob(models.Model):
                     img.encode("utf-8")
                 ).hexdigest()
 
-                if image_hash in hashes:
+
+                existing_score = hashes.get(
+                    image_hash
+                )
+
+                if existing_score == asset.get(
+                    "score"
+                ):
                     continue
 
-                hashes.add(image_hash)
+                hashes[image_hash] = asset.get(
+                    "score"
+                )
 
                 deduped.append(asset)
 
@@ -2705,6 +2744,42 @@ class VendorImportJob(models.Model):
 
             return False
 
+    #=========VALIDATE AI IMAGE====================================
+    def _is_valid_ai_image(self, image_data):
+
+        try:
+
+            if not image_data:
+                return False
+
+            import base64
+            import io
+
+            from PIL import Image
+
+            # remove data url prefix
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
+
+            decoded = base64.b64decode(image_data)
+
+            img = Image.open(
+                io.BytesIO(decoded)
+            )
+
+            img.verify()
+
+            return True
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[INVALID AI IMAGE] {str(e)}"
+            )
+
+            return False
+        
     # ---------------- Extract PDF ----------------
  
     def extract_pdf(self):
@@ -3117,7 +3192,7 @@ class VendorImportJob(models.Model):
                                 block.get("images", [])
                             )
 
-                            self.env.cr.commit()
+                            self._safe_commit_progress()
 
                         self.env[
                             'vendor.import.page'
@@ -3212,9 +3287,7 @@ class VendorImportJob(models.Model):
 
             try:
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 _logger.warning(
                     f"[PDF SAVE] "
@@ -3699,11 +3772,10 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         # 🔥 IMPORTANT: COMMIT FOR CRON CONTINUITY
-        # self.env.cr.commit()
 
         try:
 
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
         except Exception as commit_error:
 
@@ -3884,9 +3956,7 @@ class VendorImportJob(models.Model):
 
             self.state = "pdf_creating"
 
-            self.flush_recordset()
-
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             return
 
@@ -3970,6 +4040,59 @@ class VendorImportJob(models.Model):
                 p.get("images", [])
             )
 
+        # =====================================================
+        # VALIDATE PAGE IMAGES
+        # =====================================================
+
+        valid_page_images = []
+
+        for asset in page_images:
+
+            try:
+
+                # segmented assets are now dicts
+                if isinstance(asset, dict):
+
+                    image_data = asset.get(
+                        "image"
+                    )
+
+                else:
+
+                    image_data = asset
+
+                if not image_data:
+                    continue
+
+                if not self._is_valid_ai_image(
+                    image_data
+                ):
+
+                    _logger.warning(
+
+                        f"[PDF AI] INVALID IMAGE "
+
+                        f"| PAGE "
+
+                        f"{next_record.page_number}"
+                    )
+
+                    continue
+
+                valid_page_images.append(
+                    asset
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI IMAGE ERROR] "
+
+                    f"{str(e)}"
+                )
+
+        page_images = valid_page_images
 
         page_price = ""
 
@@ -4598,9 +4721,7 @@ class VendorImportJob(models.Model):
             self.state = "pdf_creating"
 
 
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
         return
     
@@ -5275,9 +5396,7 @@ class VendorImportJob(models.Model):
             )
 
 
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
         return
     
@@ -5367,9 +5486,9 @@ class VendorImportJob(models.Model):
 
         prepared = []
 
-        seen = set()
+        seen = {}
 
-        for idx, asset in enumerate(images or []):
+        for asset in (images or []):
 
             try:
 
@@ -5384,7 +5503,10 @@ class VendorImportJob(models.Model):
 
                     img = asset.get("image")
 
-                    score = asset.get("score", 0)
+                    score = asset.get(
+                        "score",
+                        0
+                    )
 
                     is_collage = asset.get(
                         "is_collage",
@@ -5408,18 +5530,19 @@ class VendorImportJob(models.Model):
 
                 ).hexdigest()
 
-                if image_hash in seen:
+                existing_color = seen.get(image_hash)
+
+                if existing_color == dominant_color:
                     continue
 
                 dominant_color = (
+
                     self._detect_dominant_color(
                         img
                     )
                 )
 
                 prepared.append({
-
-                    "index": len(prepared),
 
                     "image": img,
 
@@ -5431,7 +5554,8 @@ class VendorImportJob(models.Model):
                         dominant_color
                 })
 
-                seen.add(image_hash)
+                # seen.add(image_hash)
+                seen[image_hash] = dominant_color
 
             except Exception as e:
 
@@ -5450,13 +5574,26 @@ class VendorImportJob(models.Model):
 
             prepared,
 
-            key=lambda x: x.get(
-                "score",
-                0
+            key=lambda x: (
+
+                x.get("score", 0),
+
+                not x.get(
+                    "is_collage",
+                    False
+                )
             ),
 
             reverse=True
         )
+
+        # =====================================
+        # REBUILD INDEXES AFTER SORT
+        # =====================================
+
+        for idx, asset in enumerate(prepared):
+
+            asset["index"] = idx
 
         _logger.warning(
 
@@ -5548,6 +5685,220 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
+
+    # =====================================
+    # PROFESSIONAL VARIANT IMAGE MATCHER
+    # =====================================
+
+    def _match_variant_image(
+
+        self,
+
+        variant,
+
+        asset_pool,
+
+        used_asset_indexes=None
+    ):
+
+        try:
+
+            if not asset_pool:
+                return False
+
+            best_asset = None
+
+            best_score = -999
+
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+            variant_text = ""
+
+            attributes = variant.get(
+                "attributes",
+                {}
+            )
+
+            if isinstance(attributes, dict):
+
+                variant_text = " ".join([
+
+                    str(v)
+
+                    for v in attributes.values()
+
+                ]).lower()
+
+            # =====================================
+            # SCORE ASSETS
+            # =====================================
+
+            for asset in asset_pool:
+                asset_index = asset.get(
+                    "index"
+                )
+
+                if asset_index in used_asset_indexes:
+                    continue
+
+                asset_score = asset.get(
+                    "score",
+                    0
+                )
+
+                dominant_color = asset.get(
+                    "dominant_color",
+                    ""
+                )
+
+                if dominant_color == "unknown":
+
+                    asset_score -= 45
+
+                # ---------------------------------
+                # COLLAGE PENALTY
+                # ---------------------------------
+
+                if asset.get("is_collage"):
+
+                    asset_score -= 80
+
+                # ---------------------------------
+                # COLOR MATCHING
+                # ---------------------------------
+
+                color_map = [
+
+                    "red",
+                    "blue",
+                    "green",
+                    "lime",
+                    "yellow",
+                    "orange",
+                    "white",
+                    "black",
+                    "gray",
+                    "grey",
+                    "purple",
+                    "pink",
+                    "brown"
+                ]
+
+
+                for color in color_map:
+
+                    if color not in variant_text:
+                        continue
+
+                    # exact match
+                    if color == dominant_color:
+
+                        asset_score += 180
+
+                    # gray/grey normalization
+                    elif (
+
+                        color in ["gray", "grey"]
+
+                        and
+
+                        dominant_color in [
+                            "gray",
+                            "grey",
+                            "black"
+                        ]
+                    ):
+
+                        asset_score += 120
+
+                    # white/silver/light handling
+                    elif (
+
+                        color == "white"
+
+                        and
+
+                        dominant_color in [
+                            "white",
+                            "gray"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                    # dark product approximation
+                    elif (
+
+                        color == "black"
+
+                        and
+
+                        dominant_color in [
+                            "black",
+                            "gray"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                # ---------------------------------
+                # HERO BONUS
+                # ---------------------------------
+
+                if asset.get("score", 0) >= 70:
+
+                    asset_score += 10
+
+                # ---------------------------------
+                # BEST MATCH
+                # ---------------------------------
+
+                if asset_score > best_score:
+
+                    best_score = asset_score
+
+                    best_asset = asset
+
+            # =====================================
+            # SAFE FALLBACK
+            # =====================================
+
+            if not best_asset:
+
+                best_asset = sorted(
+
+                    asset_pool,
+
+                    key=lambda x: x.get(
+                        "score",
+                        0
+                    ),
+
+                    reverse=True
+
+                )[0]
+
+            if best_asset:
+
+                used_asset_indexes.add(
+
+                    best_asset.get("index")
+                )
+
+            return best_asset
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[VARIANT MATCH FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
+
 
     #======score_segmented_image ==========================
     def _score_segmented_image(
@@ -5744,13 +6095,15 @@ class VendorImportJob(models.Model):
 
                 if asset.get("index") == index:
 
-                    return asset.get("image")
+                    return asset.get(
+                        "image"
+                    )
 
         except Exception as e:
 
             _logger.warning(
 
-                f"[ASSET RESOLVE ERROR] "
+                f"[ASSET RESOLVE FAILED] "
 
                 f"{str(e)}"
             )
@@ -6763,7 +7116,7 @@ class VendorImportJob(models.Model):
                 continue
 
             if created_count % 10 == 0:
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
         # ================= SAVE PROGRESS =================
         self.last_processed_product_index = end_index
@@ -6779,7 +7132,7 @@ class VendorImportJob(models.Model):
             _logger.warning("MORE PRODUCTS REMAIN → CONTINUE CREATION")
             self.state = "url_creating"
 
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #==========create pdf product====================================
@@ -7093,7 +7446,7 @@ class VendorImportJob(models.Model):
 
                     product._create_variant_ids()
 
-
+                    used_asset_indexes = set()
                     for variant in variants:
 
                         attributes = variant.get(
@@ -7305,118 +7658,15 @@ class VendorImportJob(models.Model):
                         if variant_record:
 
                             try:
+                                
+                                matched_asset = self._match_variant_image(
 
-                                matched_asset = None
+                                    variant,
 
-                                best_score = -999
+                                    asset_pool,
 
-                                variant_name = ""
-
-                                attributes = variant.get(
-                                    "attributes",
-                                    {}
+                                    used_asset_indexes
                                 )
-
-                                if isinstance(attributes, dict):
-
-                                    variant_name = " ".join([
-
-                                        str(v)
-
-                                        for v in attributes.values()
-
-                                    ]).lower()
-
-                                # =====================================
-                                # SCORE ALL ASSETS
-                                # =====================================
-
-                                for asset in asset_pool:
-
-                                    asset_score = asset.get(
-                                        "score",
-                                        0
-                                    )
-
-                                    asset_string = str(asset).lower()
-
-                                    # ---------------------------------
-                                    # COLLAGE PENALTY
-                                    # ---------------------------------
-
-                                    if asset.get("is_collage"):
-
-                                        asset_score -= 35
-
-                                    # ---------------------------------
-                                    # HERO BONUS
-                                    # ---------------------------------
-
-                                    if asset.get("score", 0) >= 70:
-
-                                        asset_score += 20
-
-                                    # ---------------------------------
-                                    # COLOR MATCHING
-                                    # ---------------------------------
-
-                                    color_boosts = [
-
-                                        "red",
-                                        "blue",
-                                        "green",
-                                        "lime",
-                                        "white",
-                                        "black",
-                                        "gray",
-                                        "grey",
-                                        "orange",
-                                        "purple",
-                                        "pink",
-                                        "yellow"
-                                    ]
-
-                                    for color in color_boosts:
-
-                                        if (
-
-                                            color in variant_name
-
-                                            and
-
-                                            color in asset_string
-                                        ):
-
-                                            asset_score += 120
-
-                                    # ---------------------------------
-                                    # BEST MATCH
-                                    # ---------------------------------
-
-                                    if asset_score > best_score:
-
-                                        best_score = asset_score
-
-                                        matched_asset = asset
-
-                                # =====================================
-                                # SAFE FALLBACK
-                                # =====================================
-
-                                if not matched_asset and asset_pool:
-
-                                    matched_asset = sorted(
-
-                                        asset_pool,
-
-                                        key=lambda x: x.get(
-                                            "score",
-                                            0
-                                        ),
-
-                                        reverse=True
-
-                                    )[0]
 
                                 # =====================================
                                 # APPLY
@@ -7463,9 +7713,7 @@ class VendorImportJob(models.Model):
                 page_index + 1
             )
 
-            self.flush_recordset()
-
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
         _logger.warning(
 
@@ -7484,9 +7732,7 @@ class VendorImportJob(models.Model):
 
             self.state = 'pdf_creating'
 
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #==========create pdf CATEGORY RESOLVER====================================
@@ -8145,9 +8391,7 @@ class VendorImportJob(models.Model):
 
                     self.excel_url_index = idx + 1
 
-                    self.flush_recordset()
-
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     continue
 
@@ -8192,11 +8436,7 @@ class VendorImportJob(models.Model):
 
                 self.excel_url_index = idx + 1
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
-
-                #self.env.invalidate_all()
+                self._safe_commit_progress()
 
 
             except Exception as e:
@@ -8224,9 +8464,7 @@ class VendorImportJob(models.Model):
 
             self.excel_url_index = 0
 
-            self.flush_recordset()
-
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             self.env.invalidate_all()
 
@@ -9120,9 +9358,7 @@ class VendorImportJob(models.Model):
                 )
 
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
+                self._safe_commit_progress()
                 
 
                 _logger.warning(
@@ -9238,9 +9474,7 @@ class VendorImportJob(models.Model):
             self.state = 'excel_creating'
 
 
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #====Excel variant mapping==================================
@@ -9511,7 +9745,7 @@ class VendorImportJob(models.Model):
 
                 duplicates.unlink()
 
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 _logger.warning(
                     "[CRON] DUPLICATES REMOVED"
@@ -9582,7 +9816,7 @@ class VendorImportJob(models.Model):
 
                     stale.lock = False
 
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                 except Exception as e:
 
@@ -9637,7 +9871,7 @@ class VendorImportJob(models.Model):
 
             job.lock = True
 
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
 
             _logger.warning(
@@ -9827,7 +10061,7 @@ class VendorImportJob(models.Model):
 
                             job.state = 'failed'
 
-                            self.env.cr.commit()
+                            self._safe_commit_progress()
 
                     except Exception:
 
@@ -10145,7 +10379,7 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     _logger.warning(
                         "[CHAIN] COMMIT OK"
@@ -10213,7 +10447,7 @@ class VendorImportJob(models.Model):
 
                     job.lock = False
 
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
 
                     _logger.warning(
@@ -10500,7 +10734,7 @@ class VendorImportJob(models.Model):
             _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
 
             self.state = 'done'   # 🔥 STOP LOOP COMPLETELY
-            self.env.cr.commit()
+            self._safe_commit_progress()
             return
 
         # 🔥 CLEAN UP (IMPORTANT)
