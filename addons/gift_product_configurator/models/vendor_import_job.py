@@ -7515,7 +7515,7 @@ class VendorImportJob(models.Model):
                 )
 
 
-            segmented_assets = self._segment_product_images(
+            segmented_assets = self._segment_catalog_images(
                 product_data.get("images", [])
             )
 
