@@ -4033,12 +4033,32 @@ class VendorImportJob(models.Model):
 
         page_images = []
 
-
         for p in page_blocks:
 
-            page_images.extend(
-                p.get("images", [])
-            )
+            raw_images = p.get("images", [])
+
+            # =====================================
+            # NORMALIZE STRUCTURED ASSETS
+            # =====================================
+
+            for img in raw_images:
+
+                if isinstance(img, dict):
+
+                    if img.get("image"):
+
+                        page_images.append(img)
+
+                elif isinstance(img, str):
+
+                    page_images.append({
+
+                        "image": img,
+
+                        "score": 0,
+
+                        "is_collage": False
+                    })
 
         # =====================================================
         # VALIDATE PAGE IMAGES
@@ -4093,6 +4113,31 @@ class VendorImportJob(models.Model):
                 )
 
         page_images = valid_page_images
+        # =========================================
+        # REBUILD CLEAN IMAGE INDEX MAP
+        # =========================================
+
+        normalized_page_images = []
+
+        for idx, asset in enumerate(page_images):
+
+            if isinstance(asset, dict):
+
+                asset["clean_index"] = idx
+
+                normalized_page_images.append(asset)
+
+
+        page_images = normalized_page_images
+
+        _logger.warning(
+
+            f"[PDF AI IMAGES] "
+
+            f"PAGE={next_record.page_number} "
+
+            f"| valid={len(page_images)}"
+        )
 
         page_price = ""
 
@@ -4488,7 +4533,19 @@ class VendorImportJob(models.Model):
 
             image_inputs = []
 
-            for asset in page_images[:MAX_IMAGES]:
+            sorted_page_images = sorted(
+
+                page_images,
+
+                key=lambda x: x.get(
+                    "score",
+                    0
+                ),
+
+                reverse=True
+            )
+
+            for asset in sorted_page_images[:MAX_IMAGES]:
 
                 try:
 
@@ -4667,12 +4724,30 @@ class VendorImportJob(models.Model):
                     "hero_image_index"
                 )
 
+                # =====================================
+                # VALIDATE CLEAN INDEX
+                # =====================================
+
+                valid_indexes = [
+
+                    a.get("clean_index")
+
+                    for a in page_images
+
+                    if isinstance(a, dict)
+                ]
+
                 if (
+
                     best_index is None
+
                     or
+
                     not isinstance(best_index, int)
+
                     or
-                    best_index >= len(page_images)
+
+                    best_index not in valid_indexes
                 ):
 
                     best_index = (
@@ -4681,6 +4756,23 @@ class VendorImportJob(models.Model):
                             page_images
                         )
                     )
+
+                    if isinstance(best_index, int):
+
+                        try:
+
+                            matched_asset = page_images[
+                                best_index
+                            ]
+
+                            if isinstance(matched_asset, dict):
+
+                                best_index = matched_asset.get(
+                                    "clean_index"
+                                )
+
+                        except Exception:
+                            pass
 
                 if best_index is not None:
 
@@ -7413,6 +7505,25 @@ class VendorImportJob(models.Model):
 
                 product_data.get("images", [])
             )
+
+            segmented_assets = []
+
+            for img in images:
+
+                if isinstance(img, dict):
+
+                    segmented_assets.append(img)
+
+                elif isinstance(img, str):
+
+                    segmented_assets.append({
+
+                        "image": img,
+
+                        "score": 0,
+
+                        "is_collage": False
+                    })
 
             asset_pool = self._prepare_asset_pool(
                 segmented_assets
