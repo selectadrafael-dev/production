@@ -4486,14 +4486,46 @@ class VendorImportJob(models.Model):
             
             MAX_IMAGES = 15
 
-            image_inputs = [
-                {
-                    "type": "input_image",
-                    "image_url": f"data:image/jpeg;base64,{img}"
-                }
-            
-                for img in page_images[:MAX_IMAGES]
-            ]
+            image_inputs = []
+
+            for asset in page_images[:MAX_IMAGES]:
+
+                try:
+
+                    # =====================================
+                    # SUPPORT DICT ASSETS
+                    # =====================================
+
+                    if isinstance(asset, dict):
+
+                        image_data = asset.get(
+                            "image"
+                        )
+
+                    else:
+
+                        image_data = asset
+
+                    if not image_data:
+                        continue
+
+                    image_inputs.append({
+
+                        "type": "input_image",
+
+                        "image_url":
+
+                            f"data:image/jpeg;base64,{image_data}"
+                    })
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[IMAGE INPUT BUILD FAILED] "
+
+                        f"{str(e)}"
+                    )
 
 
             response = client.responses.create(
