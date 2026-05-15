@@ -7516,13 +7516,10 @@ class VendorImportJob(models.Model):
 
 
             segmented_assets = self._segment_product_images(
-
                 product_data.get("images", [])
             )
 
-            segmented_assets = []
-
-            for img in images:
+            for img in segmented_assets:
 
                 if isinstance(img, dict):
 
