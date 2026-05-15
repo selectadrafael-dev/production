@@ -3789,7 +3789,7 @@ class VendorImportJob(models.Model):
 
         try:
 
-            self._safe_commit_progress()
+            self.env.cr.commit()
 
         except Exception as commit_error:
 
@@ -5588,7 +5588,9 @@ class VendorImportJob(models.Model):
             )
 
 
-        self._safe_commit_progress()
+        self.flush_recordset()
+
+        self.env.cr.commit()
 
         return
     
@@ -5892,19 +5894,18 @@ class VendorImportJob(models.Model):
     # =====================================
     # PROFESSIONAL VARIANT IMAGE MATCHER
     # =====================================
-
+  
     def _match_variant_image(
-
-        self,
-
+         self,
         variant,
-
         asset_pool,
-
         used_asset_indexes=None
     ):
 
         try:
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
 
             if not asset_pool:
                 return False
@@ -5938,6 +5939,9 @@ class VendorImportJob(models.Model):
             # =====================================
 
             for asset in asset_pool:
+                if asset.get("index") in used_asset_indexes:
+                    continue
+
                 asset_index = asset.get(
                     "index"
                 )
@@ -6284,34 +6288,40 @@ class VendorImportJob(models.Model):
     #=================Centralized Rusable Image resolver=======================
 
     def _resolve_asset_image(
-
         self,
-
         asset_pool,
-
         index
     ):
 
         try:
 
+            if index is None:
+                return False
+
             for asset in asset_pool:
 
-                if asset.get("index") == index:
+                if isinstance(asset, dict):
 
-                    return asset.get(
-                        "image"
-                    )
+                    if asset.get("index") == index:
+
+                        return asset.get("image")
+
+                elif isinstance(asset, str):
+
+                    return asset
+
+            return False
 
         except Exception as e:
 
             _logger.warning(
 
-                f"[ASSET RESOLVE FAILED] "
+                f"[RESOLVE ASSET ERROR] "
 
                 f"{str(e)}"
             )
 
-        return False
+            return False
 
     #============marchin AI===================================================
     # =====================================================
@@ -7534,14 +7544,74 @@ class VendorImportJob(models.Model):
                     []
                 )
 
-                segmented_assets = (
-                    self._segment_catalog_images(
-                        product_images
-                    )
+                _logger.warning(
+
+                    f"[PRODUCT IMAGE COUNT] "
+
+                    f"{product_data.get('name')} "
+
+                    f"| images={len(product_images)}"
                 )
+
+                # =====================================
+                # FALLBACK TO PAGE IMAGES
+                # =====================================
+
+                if not product_images:
+
+                    product_images = page_images
+
+                    _logger.warning(
+
+                        f"[PAGE IMAGE FALLBACK] "
+
+                        f"{product_data.get('name')}"
+                    )
+
+                segmented_assets = []
+
+                for img in product_images:
+
+                    # ---------------------------------
+                    # ALREADY STRUCTURED
+                    # ---------------------------------
+
+                    if isinstance(img, dict):
+
+                        if img.get("image"):
+
+                            segmented_assets.append(img)
+
+                    # ---------------------------------
+                    # RAW BASE64 FALLBACK
+                    # ---------------------------------
+
+                    elif isinstance(img, str):
+
+                        segmented_assets.append({
+
+                            "image": img,
+
+                            "score": 0,
+
+                            "is_collage": False
+                        })
+
+                # =====================================
+                # BUILD ASSET POOL
+                # =====================================
 
                 asset_pool = self._prepare_asset_pool(
                     segmented_assets
+                )
+
+                _logger.warning(
+
+                    f"[PDF ASSET POOL] "
+
+                    f"product={product_data.get('name')} "
+
+                    f"| assets={len(asset_pool)}"
                 )
 
                 try:
@@ -7658,12 +7728,10 @@ class VendorImportJob(models.Model):
                         }]
 
                     # =======================================
-                    # GENERATE ODOO VARIANTS ONCE
+                    # PASS 1:
+                    # BUILD ALL ATTRIBUTE LINES FIRST
                     # =======================================
 
-                    product._create_variant_ids()
-
-                    used_asset_indexes = set()
                     for variant in variants:
 
                         attributes = variant.get(
@@ -7783,6 +7851,21 @@ class VendorImportJob(models.Model):
 
                                     ]
 
+                    # =======================================
+                    # PASS 2:
+                    # GENERATE ALL VARIANTS ONCE
+                    # =======================================
+
+                    product._create_variant_ids()
+
+                    used_asset_indexes = set()
+
+                    # =======================================
+                    # PASS 3:
+                    # MATCH REAL VARIANTS TO IMAGES
+                    # =======================================
+
+                    for variant in variants:
 
                         # =====================================
                         # MATCH REAL GENERATED VARIANT
