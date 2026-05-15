@@ -2474,6 +2474,40 @@ class VendorImportJob(models.Model):
                         160
                     ).mean()
 
+                    # =====================================
+                    # CLEAN CENTER HERO DETECTION
+                    # =====================================
+
+                    background_ratio = np.mean(
+                        crop_arr > 235
+                    )
+
+                    # strong ecommerce isolated render
+                    if (
+                        centered_object
+                        and
+                        background_ratio > 0.45
+                        and
+                        not is_collage
+                    ):
+                        score += 120
+
+                    # medium clean product
+                    elif (
+                        background_ratio > 0.30
+                        and
+                        not is_collage
+                    ):
+                        score += 60
+
+                    # dark/lifestyle penalty
+                    if background_ratio < 0.12:
+                        score -= 55
+
+                    # excessive visual noise
+                    if edge_density > 55:
+                        score -= 35
+
 
                     # =====================================
                     # HUMAN / LIFESTYLE APPROXIMATION
@@ -5753,23 +5787,34 @@ class VendorImportJob(models.Model):
                     )
 
                 # =====================================
-                # DUPLICATE CONTROL
+                # ONLY REMOVE TRUE DUPLICATES
                 # =====================================
 
-                existing_color = seen.get(
+                existing_asset = seen.get(
                     image_hash
                 )
 
-                if existing_color == dominant_color:
+                # SAME HASH + SAME SCORE + SAME COLLAGE
+                # = real duplicate only
 
-                    _logger.warning(
+                if existing_asset:
 
-                        f"[ASSET SKIPPED] "
+                    if (
 
-                        f"DUPLICATE HASH+COLOR"
-                    )
+                        existing_asset.get("score") == score
 
-                    continue
+                        and
+
+                        existing_asset.get("is_collage") == is_collage
+
+                    ):
+
+                        _logger.warning(
+
+                            f"[ASSET SKIPPED] TRUE DUPLICATE"
+                        )
+
+                        continue
 
                 _logger.warning(
 
@@ -5796,7 +5841,14 @@ class VendorImportJob(models.Model):
                         dominant_color
                 })
 
-                seen[image_hash] = dominant_color
+                seen[image_hash] = {
+
+                    "score": score,
+
+                    "is_collage": is_collage,
+
+                    "dominant_color": dominant_color
+                }
 
                 _logger.warning(
 
