@@ -4569,9 +4569,58 @@ class VendorImportJob(models.Model):
                 )
 
 
-            parsed = json.loads(
-                result
-            )
+            # parsed = json.loads(
+            #     result
+            # )
+
+            try:
+
+                parsed = json.loads(result)
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI JSON FAILED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| {str(e)}"
+                )
+
+                _logger.warning(
+
+                    f"[PDF AI RAW OUTPUT] "
+
+                    f"{result[:1200]}"
+                )
+
+                next_record.write({
+
+                    'state': 'failed'
+                })
+
+                self._safe_commit_progress()
+
+                return
+
+            if not parsed:
+
+                _logger.warning(
+
+                    f"[PDF AI EMPTY RESPONSE] "
+
+                    f"PAGE={next_record.page_number}"
+                )
+
+                next_record.write({
+
+                    'state': 'failed'
+                })
+
+                self._safe_commit_progress()
+
+                return
 
 
             if not isinstance(
@@ -4678,7 +4727,9 @@ class VendorImportJob(models.Model):
 
             "page": next_record.page_number,
 
-            "products": parsed
+            "products": parsed,
+
+            "images": page_images
         }
 
 
@@ -7325,28 +7376,26 @@ class VendorImportJob(models.Model):
 
             ], limit=1)
 
-            page_images = []
 
-            if page_record:
+            # =====================================
+            # LOAD AI-PERSISTED IMAGES
+            # =====================================
 
-                try:
+            page_images = page_data.get(
+                "images",
+                []
+            )
 
-                    page_images = json.loads(
+            if not page_images:
 
-                        page_record.page_images_json
-                        or "[]"
-                    )
+                _logger.warning(
 
-                except Exception as e:
+                    f"[PDF CREATE] "
 
-                    _logger.warning(
+                    f"NO IMAGES FOUND "
 
-                        f"[PAGE IMAGE LOAD FAILED] "
-
-                        f"page={page_number} "
-
-                        f"| {str(e)}"
-                    )
+                    f"| PAGE {page_number}"
+                )
 
             asset_pool = self._prepare_asset_pool(
                 page_images
@@ -7718,7 +7767,7 @@ class VendorImportJob(models.Model):
 
                                         f"{variant_name} "
 
-                                        f"| score={best_score}"
+                                        f"| asset={matched_asset.get('index')}"
                                     )
 
                             except Exception as e:
