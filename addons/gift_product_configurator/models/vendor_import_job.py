@@ -7929,11 +7929,22 @@ class VendorImportJob(models.Model):
 
                     continue
 
-            self.last_created_page = (
-                page_index + 1
-            )
+            try:
 
-            self._safe_commit_progress()
+                self.last_created_page = (
+                    page_index + 1
+                )
+
+                self._safe_commit_progress()
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[PAGE COMMIT FAILED] "
+
+                    f"{str(e)}"
+                )
 
         _logger.warning(
 
@@ -9898,6 +9909,12 @@ class VendorImportJob(models.Model):
             'url_scraping',
             'url_ai',
             'url_creating',
+
+            # =====================================
+            # AUTO-RECOVER INTERRUPTED JOBS
+            # =====================================
+
+            'failed',
         ]
 
 
@@ -9931,11 +9948,63 @@ class VendorImportJob(models.Model):
             'vendor.import.job'
         ]
 
-
         for j in jobs:
 
-            sig = j.upload_signature
+            # =====================================
+            # AUTO RECOVER FAILED JOBS
+            # =====================================
 
+            if j.state == 'failed':
+
+                _logger.warning(
+
+                    f"[AUTO RECOVER] "
+
+                    f"job={j.id}"
+                )
+
+                try:
+
+                    if j.last_created_page:
+
+                        j.state = 'pdf_creating'
+
+                    elif j.last_ai_page:
+
+                        j.state = 'pdf_ai'
+
+                    elif j.current_page:
+
+                        j.state = 'pdf_extracting'
+
+                    else:
+
+                        j.state = 'draft'
+
+                    j.lock = False
+
+                    self.env.cr.commit()
+
+                    _logger.warning(
+
+                        f"[AUTO RECOVER OK] "
+
+                        f"job={j.id} "
+
+                        f"| state={j.state}"
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"[AUTO RECOVER FAILED] "
+
+                        f"{str(e)}"
+                    )
+
+            sig = j.upload_signature
+           
             if not sig:
 
                 continue
@@ -10149,12 +10218,7 @@ class VendorImportJob(models.Model):
                 # STOP STATES
                 # =========================================
 
-                if job.state in [
-
-                    'done',
-                    'failed'
-
-                ]:
+                if job.state == 'done':
 
                     _logger.warning(
 
