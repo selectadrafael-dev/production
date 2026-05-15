@@ -5624,6 +5624,17 @@ class VendorImportJob(models.Model):
                         img
                     )
                 )
+                
+                _logger.warning(
+
+                    f"[ASSET DEBUG] "
+
+                    f"type={type(asset)} "
+
+                    f"score={score} "
+
+                    f"collage={is_collage}"
+                )
 
                 prepared.append({
 
@@ -7397,8 +7408,14 @@ class VendorImportJob(models.Model):
                     f"| PAGE {page_number}"
                 )
 
+
+            segmented_assets = self._segment_product_images(
+
+                product_data.get("images", [])
+            )
+
             asset_pool = self._prepare_asset_pool(
-                page_images
+                segmented_assets
             )
 
             products = page_data.get(
