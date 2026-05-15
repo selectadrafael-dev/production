@@ -5675,7 +5675,6 @@ class VendorImportJob(models.Model):
                 return best_img
 
     #=================Centralized Rusable Image=======================
-
     def _prepare_asset_pool(self, images):
 
         prepared = []
@@ -5716,6 +5715,11 @@ class VendorImportJob(models.Model):
                     is_collage = False
 
                 if not img:
+
+                    _logger.warning(
+                        "[ASSET SKIPPED] EMPTY IMAGE"
+                    )
+
                     continue
 
                 image_hash = hashlib.md5(
@@ -5724,18 +5728,49 @@ class VendorImportJob(models.Model):
 
                 ).hexdigest()
 
-                existing_color = seen.get(image_hash)
+                # =====================================
+                # SAFE COLOR DETECTION
+                # =====================================
+
+                dominant_color = ""
+
+                try:
+
+                    dominant_color = (
+
+                        self._detect_dominant_color(
+                            img
+                        ) or ""
+                    )
+
+                except Exception as color_error:
+
+                    _logger.warning(
+
+                        f"[COLOR DETECT FAILED] "
+
+                        f"{str(color_error)}"
+                    )
+
+                # =====================================
+                # DUPLICATE CONTROL
+                # =====================================
+
+                existing_color = seen.get(
+                    image_hash
+                )
 
                 if existing_color == dominant_color:
+
+                    _logger.warning(
+
+                        f"[ASSET SKIPPED] "
+
+                        f"DUPLICATE HASH+COLOR"
+                    )
+
                     continue
 
-                dominant_color = (
-
-                    self._detect_dominant_color(
-                        img
-                    )
-                )
-                
                 _logger.warning(
 
                     f"[ASSET DEBUG] "
@@ -5744,7 +5779,9 @@ class VendorImportJob(models.Model):
 
                     f"score={score} "
 
-                    f"collage={is_collage}"
+                    f"collage={is_collage} "
+
+                    f"color={dominant_color}"
                 )
 
                 prepared.append({
@@ -5759,8 +5796,18 @@ class VendorImportJob(models.Model):
                         dominant_color
                 })
 
-                # seen.add(image_hash)
                 seen[image_hash] = dominant_color
+
+                _logger.warning(
+
+                    f"[ASSET ADDED] "
+
+                    f"score={score} "
+
+                    f"collage={is_collage} "
+
+                    f"color={dominant_color}"
+                )
 
             except Exception as e:
 
