@@ -7518,37 +7518,31 @@ class VendorImportJob(models.Model):
                 )
 
 
-            segmented_assets = self._segment_catalog_images(
-                product_data.get("images", [])
-            )
-
-            for img in segmented_assets:
-
-                if isinstance(img, dict):
-
-                    segmented_assets.append(img)
-
-                elif isinstance(img, str):
-
-                    segmented_assets.append({
-
-                        "image": img,
-
-                        "score": 0,
-
-                        "is_collage": False
-                    })
-
-            asset_pool = self._prepare_asset_pool(
-                segmented_assets
-            )
-
             products = page_data.get(
                 "products",
                 []
             )
 
             for product_data in products:
+
+                # =====================================
+                # PRODUCT IMAGE PREP
+                # =====================================
+
+                product_images = product_data.get(
+                    "images",
+                    []
+                )
+
+                segmented_assets = (
+                    self._segment_catalog_images(
+                        product_images
+                    )
+                )
+
+                asset_pool = self._prepare_asset_pool(
+                    segmented_assets
+                )
 
                 try:
 
@@ -7901,6 +7895,10 @@ class VendorImportJob(models.Model):
                                         matched_asset.get(
                                             "image"
                                         )
+                                    )
+
+                                    used_asset_indexes.add(
+                                        matched_asset.get("index")
                                     )
 
                                     _logger.warning(
