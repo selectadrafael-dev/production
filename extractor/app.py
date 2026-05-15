@@ -132,180 +132,254 @@ def extract():
     # 🔒 MUST remain 1 (Odoo sends one page)
     MAX_PAGES = 1
 
+    # for page_number, page in enumerate(doc):
+
+    #     if page_number >= MAX_PAGES:
+    #         break
+
+    #     text = page.get_text("text") or ""
+    #     image_list = []
+
+    # pix = page.get_pixmap(
+    #     matrix=fitz.Matrix(2, 2)
+    # )
+
+    # img = Image.frombytes(
+
+    #     "RGB",
+
+    #     [pix.width, pix.height],
+
+    #     pix.samples
+    # )
+
     for page_number, page in enumerate(doc):
 
         if page_number >= MAX_PAGES:
             break
 
         text = page.get_text("text") or ""
+
         image_list = []
 
-    pix = page.get_pixmap(
-        matrix=fitz.Matrix(2, 2)
-    )
+        # =====================================
+        # PROFESSIONAL PAGE RENDER
+        # =====================================
 
-    img = Image.frombytes(
+        pix = page.get_pixmap(
 
-        "RGB",
+            matrix=fitz.Matrix(2, 2),
 
-        [pix.width, pix.height],
-
-        pix.samples
-    )
-
-    page_np = np.array(img)
-
-    gray = cv2.cvtColor(
-        page_np,
-        cv2.COLOR_RGB2GRAY
-    )
-
-    # ===============================
-    # THRESHOLD
-    # ===============================
-
-    thresh = cv2.threshold(
-
-        gray,
-
-        240,
-
-        255,
-
-        cv2.THRESH_BINARY_INV
-
-    )[1]
-
-    # ===============================
-    # FIND CONTOURS
-    # ===============================
-
-    contours, _ = cv2.findContours(
-
-        thresh,
-
-        cv2.RETR_EXTERNAL,
-
-        cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    candidate_images = []
-
-    # ===============================
-    # EXTRACT CROPS
-    # ===============================
-
-    for contour in contours:
-
-        x, y, w, h = cv2.boundingRect(
-            contour
+            alpha=False
         )
 
-        # skip tiny areas
-        if w < 180 or h < 180:
-            continue
+        img = Image.frombytes(
 
-        # skip full-page blocks
-        if w > page_np.shape[1] * 0.95:
-            continue
+            "RGB",
 
-        if h > page_np.shape[0] * 0.95:
-            continue
+            [pix.width, pix.height],
 
-        crop = page_np[
-            y:y+h,
-            x:x+w
-        ]
-
-        # =================================
-        # TEXT FILTER
-        # =================================
-
-        text_ratio = np.mean(
-
-            crop < 80
+            pix.samples
         )
 
-        if text_ratio > 0.45:
-            continue
+        img = img.convert("RGB")
+        # =====================================
+        # SAFE RESIZE
+        # =====================================
 
-        # =================================
-        # HUMAN FILTER
-        # =================================
+        max_width = 1800
 
-        aspect_ratio = h / float(w)
+        if img.width > max_width:
 
-        # portrait human-like layout
-        if aspect_ratio > 1.7 and w < 400:
-            continue
+            ratio = max_width / img.width
 
-        candidate_images.append({
+            img = img.resize(
 
-            "crop": crop,
+                (
 
-            "score": (w * h)
-        })
+                    int(img.width * ratio),
 
-    # ===============================
-    # SORT BEST FIRST
-    # ===============================
+                    int(img.height * ratio)
+                ),
 
-    candidate_images = sorted(
-
-        candidate_images,
-
-        key=lambda x: x["score"],
-
-        reverse=True
-    )
-
-    MAX_IMAGES_PER_PAGE = 10
-
-    image_list = []
-
-    for item in candidate_images[
-        :MAX_IMAGES_PER_PAGE
-    ]:
-
-        try:
-
-            crop = item["crop"]
-
-            crop_img = Image.fromarray(
-                crop
-            ).convert("RGB")
-
-            crop_img.thumbnail((800, 800))
-
-            buffer = io.BytesIO()
-
-            crop_img.save(
-
-                buffer,
-
-                format="JPEG",
-
-                quality=85
+                Image.LANCZOS
             )
 
-            image_base64 = base64.b64encode(
+        # =====================================
+        # PAGE DEBUG
+        # =====================================
 
-                buffer.getvalue()
+        _logger.warning(
 
-            ).decode("utf-8")
+            f"[PDF IMAGE READY] "
 
-            image_list.append(
-                image_base64
+            f"page={page_number + 1} "
+
+            f"width={img.width} "
+
+            f"height={img.height}"
+        )
+
+        page_np = np.array(img)
+
+        gray = cv2.cvtColor(
+            page_np,
+            cv2.COLOR_RGB2GRAY
+        )
+
+        # ===============================
+        # THRESHOLD
+        # ===============================
+
+        thresh = cv2.threshold(
+
+            gray,
+
+            240,
+
+            255,
+
+            cv2.THRESH_BINARY_INV
+
+        )[1]
+
+        # ===============================
+        # FIND CONTOURS
+        # ===============================
+
+        contours, _ = cv2.findContours(
+
+            thresh,
+
+            cv2.RETR_EXTERNAL,
+
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        candidate_images = []
+
+        # ===============================
+        # EXTRACT CROPS
+        # ===============================
+
+        for contour in contours:
+
+            x, y, w, h = cv2.boundingRect(
+                contour
             )
 
-        except Exception:
-            continue
+            # skip tiny areas
+            if w < 180 or h < 180:
+                continue
+
+            # skip full-page blocks
+            if w > page_np.shape[1] * 0.95:
+                continue
+
+            if h > page_np.shape[0] * 0.95:
+                continue
+
+            crop = page_np[
+                y:y+h,
+                x:x+w
+            ]
+
+            # =================================
+            # TEXT FILTER
+            # =================================
+
+            text_ratio = np.mean(
+
+                crop < 80
+            )
+
+            if text_ratio > 0.45:
+                continue
+
+            # =================================
+            # HUMAN FILTER
+            # =================================
+
+            aspect_ratio = h / float(w)
+
+            # portrait human-like layout
+            if aspect_ratio > 1.7 and w < 400:
+                continue
+
+            candidate_images.append({
+
+                "crop": crop,
+
+                "score": (w * h)
+            })
+
+        # ===============================
+        # SORT BEST FIRST
+        # ===============================
+
+        candidate_images = sorted(
+
+            candidate_images,
+
+            key=lambda x: x["score"],
+
+            reverse=True
+        )
+
+        MAX_IMAGES_PER_PAGE = 10
+
+        image_list = []
+
+        for item in candidate_images[
+            :MAX_IMAGES_PER_PAGE
+        ]:
+
+            try:
+
+                crop = item["crop"]
+
+                crop_img = Image.fromarray(
+                    crop
+                ).convert("RGB")
+
+                crop_img.thumbnail((800, 800))
+
+                buffer = io.BytesIO()
+
+                crop_img.save(
+
+                    buffer,
+
+                    format="JPEG",
+
+                    quality=85
+                )
+
+                image_base64 = base64.b64encode(
+
+                    buffer.getvalue()
+
+                ).decode("utf-8")
+
+                image_list.append(
+                    image_base64
+                )
+
+            except Exception:
+                continue
 
         # 🔒 limit text
         text = text[:2000]
 
-        f"PAGE {page_number+1} → SEGMENTS: {len(candidate_images)} | KEPT: {len(image_list)}"
-        
+        _logger.warning(
+
+            f"PAGE {page_number+1} "
+
+            f"→ SEGMENTS: {len(candidate_images)} "
+
+            f"| KEPT: {len(image_list)}"
+        )
+
         pages_data.append({
             "page": page_number + 1,
             "text": text,
