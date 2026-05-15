@@ -6332,7 +6332,7 @@ class VendorImportJob(models.Model):
 
             return "unknown"
 
-    #=================Centralized Rusable Image resolver=======================
+    #=================Centralized Rusable Image resolver==============
 
     def _resolve_asset_image(
         self,
