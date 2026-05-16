@@ -26,6 +26,7 @@ from PIL import (
 
 import cv2
 import numpy as np
+
  
 
 _logger = logging.getLogger(__name__)
@@ -239,7 +240,6 @@ class VendorImportJob(models.Model):
         self.completion_email_sent = True
 
     #============Processing Jobs===================================================
-
     def _process_step(self):
 
         import json
@@ -2385,6 +2385,183 @@ class VendorImportJob(models.Model):
                         continue
 
                     # =====================================
+                    # IMAGE ANALYSIS
+                    # =====================================
+
+                    crop_width, crop_height = crop.size
+
+                    crop_area = crop_width * crop_height
+
+                    page_area = (
+                        original_width * original_height
+                    )
+
+                    coverage_ratio = (
+                        crop_area / float(page_area)
+                    )
+
+                    # =====================================
+                    # COLLAGE DETECTION
+                    # =====================================
+
+                    is_collage = False
+
+                    if len(filtered_contours) >= 6:
+
+                        is_collage = True
+
+                    # =====================================
+                    # CENTER DETECTION
+                    # =====================================
+
+                    centered_object = False
+
+                    crop_center_x = x + (w / 2.0)
+                    crop_center_y = y + (h / 2.0)
+
+                    page_center_x = (
+                        original_width / 2.0
+                    )
+
+                    page_center_y = (
+                        original_height / 2.0
+                    )
+
+                    distance_x = abs(
+                        crop_center_x - page_center_x
+                    )
+
+                    distance_y = abs(
+                        crop_center_y - page_center_y
+                    )
+
+                    if (
+
+                        distance_x < original_width * 0.18
+
+                        and
+
+                        distance_y < original_height * 0.18
+                    ):
+
+                        centered_object = True
+
+                    # =====================================
+                    # SCORE
+                    # =====================================
+                    human_penalty = 0
+                    score = 0
+
+                    # big clean product bonus
+                    score += int(
+                        coverage_ratio * 140
+                    )
+
+                    # centered ecommerce product
+                    if centered_object:
+                        score += 55
+
+                    # strong collage penalty
+                    if is_collage:
+                        score -= 70
+
+                    # portrait product bonus
+                    if crop_height > crop_width:
+                        score += 18
+
+                    # isolated product bonus
+                    edge_density = cv2.Canny(
+                        crop_arr,
+                        80,
+                        160
+                    ).mean()
+
+                    # =====================================
+                    # CLEAN CENTER HERO DETECTION
+                    # =====================================
+
+                    background_ratio = np.mean(
+                        crop_arr > 235
+                    )
+
+                    # strong ecommerce isolated render
+                    if (
+                        centered_object
+                        and
+                        background_ratio > 0.45
+                        and
+                        not is_collage
+                    ):
+                        score += 120
+
+                    # medium clean product
+                    elif (
+                        background_ratio > 0.30
+                        and
+                        not is_collage
+                    ):
+                        score += 60
+
+                    # dark/lifestyle penalty
+                    if background_ratio < 0.12:
+                        score -= 55
+
+                    # excessive visual noise
+                    if edge_density > 55:
+                        score -= 35
+
+
+                    # =====================================
+                    # HUMAN / LIFESTYLE APPROXIMATION
+                    # =====================================
+
+                    human_penalty = 0
+
+                    rgb_arr = np.array(crop)
+
+                    r = rgb_arr[:, :, 0]
+                    g = rgb_arr[:, :, 1]
+                    b = rgb_arr[:, :, 2]
+
+                    skin_mask = (
+
+                        (r > 95)
+
+                        &
+
+                        (g > 40)
+
+                        &
+
+                        (b > 20)
+
+                        &
+
+                        (r > g)
+
+                        &
+
+                        (r > b)
+
+                        &
+
+                        (np.abs(r - g) > 15)
+                    )
+
+                    skin_ratio = np.mean(skin_mask)
+
+                    if skin_ratio > 0.28:
+
+                        human_penalty = 40
+
+                    score -= human_penalty
+
+                    score -= human_penalty
+
+                    if 8 < edge_density < 35:
+                        score += 25
+
+                    # =====================================
                     # SAVE
                     # =====================================
 
@@ -2400,10 +2577,25 @@ class VendorImportJob(models.Model):
                         buffer.getvalue()
                     ).decode("utf-8")
 
-                    candidate_crops.append(encoded)
+
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": score,
+
+                        "is_collage": is_collage
+                    })
+
                     _logger.warning(
+
                         f"[CROP DETECTED] "
-                        f"{w}x{h}"
+
+                        f"{w}x{h} "
+
+                        f"| score={score} "
+
+                        f"| collage={is_collage}"
                     )
 
                 # =========================================
@@ -2423,7 +2615,14 @@ class VendorImportJob(models.Model):
                         buffer.getvalue()
                     ).decode("utf-8")
 
-                    candidate_crops.append(encoded)
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": 10,
+
+                        "is_collage": False
+                    })
 
                 segmented_images.extend(
                     candidate_crops
@@ -2440,32 +2639,39 @@ class VendorImportJob(models.Model):
         # =============================================
 
         deduped = []
-        hashes = set()
+        hashes = {}
 
-        for img in segmented_images:
+        for asset in segmented_images:
 
             try:
+
+                img = asset.get("image")
 
                 image_hash = hashlib.md5(
                     img.encode("utf-8")
                 ).hexdigest()
 
-                if image_hash in hashes:
+
+                existing_score = hashes.get(
+                    image_hash
+                )
+
+                if existing_score == asset.get(
+                    "score"
+                ):
                     continue
 
-                hashes.add(image_hash)
+                hashes[image_hash] = asset.get(
+                    "score"
+                )
 
-                deduped.append(img)
+                deduped.append(asset)
 
             except Exception:
                 continue
 
-        _logger.warning(
-            f"[SEGMENTATION RESULT] "
-            f"{len(deduped)} clean assets"
-        )
-
         return deduped
+
 
     # =====================================================
     # VARIANTS IMAGES CONTROLLER/DETECTOR
@@ -2588,6 +2794,42 @@ class VendorImportJob(models.Model):
 
             return False
 
+    #=========VALIDATE AI IMAGE====================================
+    def _is_valid_ai_image(self, image_data):
+
+        try:
+
+            if not image_data:
+                return False
+
+            import base64
+            import io
+
+            from PIL import Image
+
+            # remove data url prefix
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
+
+            decoded = base64.b64decode(image_data)
+
+            img = Image.open(
+                io.BytesIO(decoded)
+            )
+
+            img.verify()
+
+            return True
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[INVALID AI IMAGE] {str(e)}"
+            )
+
+            return False
+        
     # ---------------- Extract PDF ----------------
  
     def extract_pdf(self):
@@ -3000,7 +3242,7 @@ class VendorImportJob(models.Model):
                                 block.get("images", [])
                             )
 
-                            self.env.cr.commit()
+                            self._safe_commit_progress()
 
                         self.env[
                             'vendor.import.page'
@@ -3095,9 +3337,7 @@ class VendorImportJob(models.Model):
 
             try:
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 _logger.warning(
                     f"[PDF SAVE] "
@@ -3582,7 +3822,6 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         # 🔥 IMPORTANT: COMMIT FOR CRON CONTINUITY
-        # self.env.cr.commit()
 
         try:
 
@@ -3846,13 +4085,111 @@ class VendorImportJob(models.Model):
 
         page_images = []
 
-
         for p in page_blocks:
 
-            page_images.extend(
-                p.get("images", [])
-            )
+            raw_images = p.get("images", [])
 
+            # =====================================
+            # NORMALIZE STRUCTURED ASSETS
+            # =====================================
+
+            for img in raw_images:
+
+                if isinstance(img, dict):
+
+                    if img.get("image"):
+
+                        page_images.append(img)
+
+                elif isinstance(img, str):
+
+                    page_images.append({
+
+                        "image": img,
+
+                        "score": 0,
+
+                        "is_collage": False
+                    })
+
+        # =====================================================
+        # VALIDATE PAGE IMAGES
+        # =====================================================
+
+        valid_page_images = []
+
+        for asset in page_images:
+
+            try:
+
+                # segmented assets are now dicts
+                if isinstance(asset, dict):
+
+                    image_data = asset.get(
+                        "image"
+                    )
+
+                else:
+
+                    image_data = asset
+
+                if not image_data:
+                    continue
+
+                if not self._is_valid_ai_image(
+                    image_data
+                ):
+
+                    _logger.warning(
+
+                        f"[PDF AI] INVALID IMAGE "
+
+                        f"| PAGE "
+
+                        f"{next_record.page_number}"
+                    )
+
+                    continue
+
+                valid_page_images.append(
+                    asset
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI IMAGE ERROR] "
+
+                    f"{str(e)}"
+                )
+
+        page_images = valid_page_images
+        # =========================================
+        # REBUILD CLEAN IMAGE INDEX MAP
+        # =========================================
+
+        normalized_page_images = []
+
+        for idx, asset in enumerate(page_images):
+
+            if isinstance(asset, dict):
+
+                asset["clean_index"] = idx
+
+                normalized_page_images.append(asset)
+
+
+        page_images = normalized_page_images
+
+        _logger.warning(
+
+            f"[PDF AI IMAGES] "
+
+            f"PAGE={next_record.page_number} "
+
+            f"| valid={len(page_images)}"
+        )
 
         page_price = ""
 
@@ -4246,14 +4583,58 @@ class VendorImportJob(models.Model):
             
             MAX_IMAGES = 15
 
-            image_inputs = [
-                {
-                    "type": "input_image",
-                    "image_url": f"data:image/jpeg;base64,{img}"
-                }
-            
-                for img in page_images[:MAX_IMAGES]
-            ]
+            image_inputs = []
+
+            sorted_page_images = sorted(
+
+                page_images,
+
+                key=lambda x: x.get(
+                    "score",
+                    0
+                ),
+
+                reverse=True
+            )
+
+            for asset in sorted_page_images[:MAX_IMAGES]:
+
+                try:
+
+                    # =====================================
+                    # SUPPORT DICT ASSETS
+                    # =====================================
+
+                    if isinstance(asset, dict):
+
+                        image_data = asset.get(
+                            "image"
+                        )
+
+                    else:
+
+                        image_data = asset
+
+                    if not image_data:
+                        continue
+
+                    image_inputs.append({
+
+                        "type": "input_image",
+
+                        "image_url":
+
+                            f"data:image/jpeg;base64,{image_data}"
+                    })
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[IMAGE INPUT BUILD FAILED] "
+
+                        f"{str(e)}"
+                    )
 
 
             response = client.responses.create(
@@ -4297,9 +4678,58 @@ class VendorImportJob(models.Model):
                 )
 
 
-            parsed = json.loads(
-                result
-            )
+            # parsed = json.loads(
+            #     result
+            # )
+
+            try:
+
+                parsed = json.loads(result)
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI JSON FAILED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| {str(e)}"
+                )
+
+                _logger.warning(
+
+                    f"[PDF AI RAW OUTPUT] "
+
+                    f"{result[:1200]}"
+                )
+
+                next_record.write({
+
+                    'state': 'failed'
+                })
+
+                self._safe_commit_progress()
+
+                return
+
+            if not parsed:
+
+                _logger.warning(
+
+                    f"[PDF AI EMPTY RESPONSE] "
+
+                    f"PAGE={next_record.page_number}"
+                )
+
+                next_record.write({
+
+                    'state': 'failed'
+                })
+
+                self._safe_commit_progress()
+
+                return
 
 
             if not isinstance(
@@ -4346,12 +4776,30 @@ class VendorImportJob(models.Model):
                     "hero_image_index"
                 )
 
+                # =====================================
+                # VALIDATE CLEAN INDEX
+                # =====================================
+
+                valid_indexes = [
+
+                    a.get("clean_index")
+
+                    for a in page_images
+
+                    if isinstance(a, dict)
+                ]
+
                 if (
+
                     best_index is None
+
                     or
+
                     not isinstance(best_index, int)
+
                     or
-                    best_index >= len(page_images)
+
+                    best_index not in valid_indexes
                 ):
 
                     best_index = (
@@ -4360,6 +4808,23 @@ class VendorImportJob(models.Model):
                             page_images
                         )
                     )
+
+                    if isinstance(best_index, int):
+
+                        try:
+
+                            matched_asset = page_images[
+                                best_index
+                            ]
+
+                            if isinstance(matched_asset, dict):
+
+                                best_index = matched_asset.get(
+                                    "clean_index"
+                                )
+
+                        except Exception:
+                            pass
 
                 if best_index is not None:
 
@@ -4406,7 +4871,9 @@ class VendorImportJob(models.Model):
 
             "page": next_record.page_number,
 
-            "products": parsed
+            "products": parsed,
+
+            "images": page_images
         }
 
 
@@ -4482,7 +4949,6 @@ class VendorImportJob(models.Model):
 
 
         self.flush_recordset()
-
         self.env.cr.commit()
 
         return
@@ -5245,18 +5711,51 @@ class VendorImportJob(models.Model):
                 return best_img
 
     #=================Centralized Rusable Image=======================
-
     def _prepare_asset_pool(self, images):
 
         prepared = []
 
-        seen = set()
+        seen = {}
 
-        for idx, img in enumerate(images or []):
+        for asset in (images or []):
 
             try:
 
+                if not asset:
+                    continue
+
+                # =====================================
+                # SUPPORT OLD + NEW FORMAT
+                # =====================================
+
+                if isinstance(asset, dict):
+
+                    img = asset.get("image")
+
+                    score = asset.get(
+                        "score",
+                        0
+                    )
+
+                    is_collage = asset.get(
+                        "is_collage",
+                        False
+                    )
+
+                else:
+
+                    img = asset
+
+                    score = 0
+
+                    is_collage = False
+
                 if not img:
+
+                    _logger.warning(
+                        "[ASSET SKIPPED] EMPTY IMAGE"
+                    )
+
                     continue
 
                 image_hash = hashlib.md5(
@@ -5265,37 +5764,104 @@ class VendorImportJob(models.Model):
 
                 ).hexdigest()
 
-                if image_hash in seen:
-                    continue
+                # =====================================
+                # SAFE COLOR DETECTION
+                # =====================================
 
-                # ==========================================
-                # IMAGE SCORE
-                # ==========================================
+                dominant_color = ""
 
-                score = self._score_segmented_image(
-                    img
+                try:
+
+                    dominant_color = (
+
+                        self._detect_dominant_color(
+                            img
+                        ) or ""
+                    )
+
+                except Exception as color_error:
+
+                    _logger.warning(
+
+                        f"[COLOR DETECT FAILED] "
+
+                        f"{str(color_error)}"
+                    )
+
+                # =====================================
+                # ONLY REMOVE TRUE DUPLICATES
+                # =====================================
+
+                existing_asset = seen.get(
+                    image_hash
                 )
 
-                # reject very poor images
-                if score <= -500:
-                    continue
+                # SAME HASH + SAME SCORE + SAME COLLAGE
+                # = real duplicate only
 
-                dominant_color = self._get_dominant_color_name(
-                    img
+                if existing_asset:
+
+                    if (
+
+                        existing_asset.get("score") == score
+
+                        and
+
+                        existing_asset.get("is_collage") == is_collage
+
+                    ):
+
+                        _logger.warning(
+
+                            f"[ASSET SKIPPED] TRUE DUPLICATE"
+                        )
+
+                        continue
+
+                _logger.warning(
+
+                    f"[ASSET DEBUG] "
+
+                    f"type={type(asset)} "
+
+                    f"score={score} "
+
+                    f"collage={is_collage} "
+
+                    f"color={dominant_color}"
                 )
 
                 prepared.append({
-
-                    "index": len(prepared),
 
                     "image": img,
 
                     "score": score,
 
-                    "dominant_color": dominant_color
+                    "is_collage": is_collage,
+
+                    "dominant_color":
+                        dominant_color
                 })
 
-                seen.add(image_hash)
+                seen[image_hash] = {
+
+                    "score": score,
+
+                    "is_collage": is_collage,
+
+                    "dominant_color": dominant_color
+                }
+
+                _logger.warning(
+
+                    f"[ASSET ADDED] "
+
+                    f"score={score} "
+
+                    f"collage={is_collage} "
+
+                    f"color={dominant_color}"
+                )
 
             except Exception as e:
 
@@ -5306,33 +5872,342 @@ class VendorImportJob(models.Model):
                     f"{str(e)}"
                 )
 
-        # ==========================================
-        # SORT BEST IMAGES FIRST
-        # ==========================================
+        # =====================================
+        # SORT BEST FIRST
+        # =====================================
 
         prepared = sorted(
 
             prepared,
 
-            key=lambda x: x.get(
-                "score",
-                0
+            key=lambda x: (
+
+                x.get("score", 0),
+
+                not x.get(
+                    "is_collage",
+                    False
+                )
             ),
 
             reverse=True
         )
 
-        # ==========================================
-        # REBUILD CLEAN INDEXES
-        # ==========================================
+        # =====================================
+        # REBUILD INDEXES AFTER SORT
+        # =====================================
 
-        for new_index, item in enumerate(prepared):
+        for idx, asset in enumerate(prepared):
 
-            item["index"] = new_index
+            asset["index"] = idx
+
+        _logger.warning(
+
+            f"[ASSET POOL READY] "
+
+            f"{len(prepared)} assets"
+        )
 
         return prepared
 
-    
+    # =====================================
+    # DOMINANT COLOR DETECTION
+    # =====================================
+
+    def _detect_dominant_color(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            image_data = base64.b64decode(
+                image_base64
+            )
+
+            image = Image.open(
+
+                BytesIO(image_data)
+
+            ).convert("RGB")
+
+            image = image.resize((80, 80))
+
+            pixels = np.array(image)
+
+            pixels = pixels.reshape(
+                -1,
+                3
+            )
+
+            avg = pixels.mean(axis=0)
+
+            r, g, b = avg
+
+            # =====================================
+            # COLOR CLASSIFICATION
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "white"
+
+            if r < 60 and g < 60 and b < 60:
+                return "black"
+
+            if abs(r - g) < 18 and abs(g - b) < 18:
+                return "gray"
+
+            if r > g and r > b:
+
+                if g > 120:
+                    return "orange"
+
+                return "red"
+
+            if g > r and g > b:
+
+                if r > 120:
+                    return "yellow"
+
+                return "green"
+
+            if b > r and b > g:
+                return "blue"
+
+            if r > 120 and b > 120:
+                return "purple"
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[DOMINANT COLOR FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return "unknown"
+
+    # =====================================
+    # PROFESSIONAL VARIANT IMAGE MATCHER
+    # =====================================
+  
+    def _match_variant_image(
+         self,
+        variant,
+        asset_pool,
+        used_asset_indexes=None
+    ):
+
+        try:
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+
+            if not asset_pool:
+                return False
+
+            best_asset = None
+
+            best_score = -999
+
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+            variant_text = ""
+
+            attributes = variant.get(
+                "attributes",
+                {}
+            )
+
+            if isinstance(attributes, dict):
+
+                variant_text = " ".join([
+
+                    str(v)
+
+                    for v in attributes.values()
+
+                ]).lower()
+
+            # =====================================
+            # SCORE ASSETS
+            # =====================================
+
+            for asset in asset_pool:
+                if asset.get("index") in used_asset_indexes:
+                    continue
+
+                asset_index = asset.get(
+                    "index"
+                )
+
+                if asset_index in used_asset_indexes:
+                    continue
+
+                asset_score = asset.get(
+                    "score",
+                    0
+                )
+
+                dominant_color = asset.get(
+                    "dominant_color",
+                    ""
+                )
+
+                if dominant_color == "unknown":
+
+                    asset_score -= 45
+
+                # ---------------------------------
+                # COLLAGE PENALTY
+                # ---------------------------------
+
+                if asset.get("is_collage"):
+
+                    asset_score -= 80
+
+                # ---------------------------------
+                # COLOR MATCHING
+                # ---------------------------------
+
+                color_map = [
+
+                    "red",
+                    "blue",
+                    "green",
+                    "lime",
+                    "yellow",
+                    "orange",
+                    "white",
+                    "black",
+                    "gray",
+                    "grey",
+                    "purple",
+                    "pink",
+                    "brown"
+                ]
+
+
+                for color in color_map:
+
+                    if color not in variant_text:
+                        continue
+
+                    # exact match
+                    if color == dominant_color:
+
+                        asset_score += 180
+
+                    # gray/grey normalization
+                    elif (
+
+                        color in ["gray", "grey"]
+
+                        and
+
+                        dominant_color in [
+                            "gray",
+                            "grey",
+                            "black"
+                        ]
+                    ):
+
+                        asset_score += 120
+
+                    # white/silver/light handling
+                    elif (
+
+                        color == "white"
+
+                        and
+
+                        dominant_color in [
+                            "white",
+                            "gray"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                    # dark product approximation
+                    elif (
+
+                        color == "black"
+
+                        and
+
+                        dominant_color in [
+                            "black",
+                            "gray"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                # ---------------------------------
+                # HERO BONUS
+                # ---------------------------------
+
+                if asset.get("score", 0) >= 70:
+
+                    asset_score += 10
+
+                # ---------------------------------
+                # BEST MATCH
+                # ---------------------------------
+
+                if asset_score > best_score:
+
+                    best_score = asset_score
+
+                    best_asset = asset
+
+            # =====================================
+            # SAFE FALLBACK
+            # =====================================
+
+            if not best_asset:
+
+                best_asset = sorted(
+
+                    asset_pool,
+
+                    key=lambda x: x.get(
+                        "score",
+                        0
+                    ),
+
+                    reverse=True
+
+                )[0]
+
+            if best_asset:
+
+                used_asset_indexes.add(
+
+                    best_asset.get("index")
+                )
+
+            return best_asset
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[VARIANT MATCH FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
+
+
     #======score_segmented_image ==========================
     def _score_segmented_image(
 
@@ -5511,50 +6386,43 @@ class VendorImportJob(models.Model):
 
             return "unknown"
 
-    #=================Centralized Rusable Image resolver=======================
+    #=================Centralized Rusable Image resolver==============
 
-    def _resolve_asset_image( self, asset_pool, index):
+    def _resolve_asset_image(
+        self,
+        asset_pool,
+        index
+    ):
 
         try:
 
             if index is None:
-                return None
-
-            if not isinstance(index, int):
-                return None
-
-            if index < 0:
-                return None
+                return False
 
             for asset in asset_pool:
 
-                if asset["index"] == index:
+                if isinstance(asset, dict):
 
-                    image = asset.get(
-                        "image"
-                    )
+                    if asset.get("index") == index:
 
-                    if not image:
-                        return None
+                        return asset.get("image")
 
-                    if not isinstance(
-                        image,
-                        str
-                    ):
-                        return None
+                elif isinstance(asset, str):
 
-                    return image
+                    return asset
+
+            return False
 
         except Exception as e:
 
             _logger.warning(
 
-                f"[ASSET RESOLVE FAILED] "
+                f"[RESOLVE ASSET ERROR] "
 
                 f"{str(e)}"
             )
 
-        return None
+            return False
 
     #============marchin AI===================================================
     # =====================================================
@@ -6562,7 +7430,7 @@ class VendorImportJob(models.Model):
                 continue
 
             if created_count % 10 == 0:
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
         # ================= SAVE PROGRESS =================
         self.last_processed_product_index = end_index
@@ -6578,7 +7446,7 @@ class VendorImportJob(models.Model):
             _logger.warning("MORE PRODUCTS REMAIN → CONTINUE CREATION")
             self.state = "url_creating"
 
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #==========create pdf product====================================
@@ -6739,32 +7607,27 @@ class VendorImportJob(models.Model):
 
             ], limit=1)
 
-            page_images = []
 
-            if page_record:
+            # =====================================
+            # LOAD AI-PERSISTED IMAGES
+            # =====================================
 
-                try:
-
-                    page_images = json.loads(
-
-                        page_record.page_images_json
-                        or "[]"
-                    )
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"[PAGE IMAGE LOAD FAILED] "
-
-                        f"page={page_number} "
-
-                        f"| {str(e)}"
-                    )
-
-            asset_pool = self._prepare_asset_pool(
-                page_images
+            page_images = page_data.get(
+                "images",
+                []
             )
+
+            if not page_images:
+
+                _logger.warning(
+
+                    f"[PDF CREATE] "
+
+                    f"NO IMAGES FOUND "
+
+                    f"| PAGE {page_number}"
+                )
+
 
             products = page_data.get(
                 "products",
@@ -6772,6 +7635,85 @@ class VendorImportJob(models.Model):
             )
 
             for product_data in products:
+
+                # =====================================
+                # PRODUCT IMAGE PREP
+                # =====================================
+
+                product_images = product_data.get(
+                    "images",
+                    []
+                )
+
+                _logger.warning(
+
+                    f"[PRODUCT IMAGE COUNT] "
+
+                    f"{product_data.get('name')} "
+
+                    f"| images={len(product_images)}"
+                )
+
+                # =====================================
+                # FALLBACK TO PAGE IMAGES
+                # =====================================
+
+                if not product_images:
+
+                    product_images = page_images
+
+                    _logger.warning(
+
+                        f"[PAGE IMAGE FALLBACK] "
+
+                        f"{product_data.get('name')}"
+                    )
+
+                segmented_assets = []
+
+                for img in product_images:
+
+                    # ---------------------------------
+                    # ALREADY STRUCTURED
+                    # ---------------------------------
+
+                    if isinstance(img, dict):
+
+                        if img.get("image"):
+
+                            segmented_assets.append(img)
+
+                    # ---------------------------------
+                    # RAW BASE64 FALLBACK
+                    # ---------------------------------
+
+                    elif isinstance(img, str):
+
+                        segmented_assets.append({
+
+                            "image": img,
+
+                            "score": 0,
+
+                            "is_collage": False
+                        })
+
+                # =====================================
+                # BUILD ASSET POOL
+                # =====================================
+
+                asset_pool = self._prepare_asset_pool(
+                    segmented_assets
+                )
+
+                _logger.warning(
+
+                    f"[PDF ASSET POOL] "
+
+                    f"product={product_data.get('name')} "
+
+                    f"| assets={len(asset_pool)}"
+                )
 
                 try:
 
@@ -6887,11 +7829,9 @@ class VendorImportJob(models.Model):
                         }]
 
                     # =======================================
-                    # GENERATE ODOO VARIANTS ONCE
+                    # PASS 1:
+                    # BUILD ALL ATTRIBUTE LINES FIRST
                     # =======================================
-
-                    product._create_variant_ids()
-
 
                     for variant in variants:
 
@@ -7012,6 +7952,21 @@ class VendorImportJob(models.Model):
 
                                     ]
 
+                    # =======================================
+                    # PASS 2:
+                    # GENERATE ALL VARIANTS ONCE
+                    # =======================================
+
+                    product._create_variant_ids()
+
+                    used_asset_indexes = set()
+
+                    # =======================================
+                    # PASS 3:
+                    # MATCH REAL VARIANTS TO IMAGES
+                    # =======================================
+
+                    for variant in variants:
 
                         # =====================================
                         # MATCH REAL GENERATED VARIANT
@@ -7098,99 +8053,25 @@ class VendorImportJob(models.Model):
                             )
                       
                         # =====================================
-                        # SMART VARIANT IMAGE MATCHING
+                        # PROFESSIONAL VARIANT IMAGE MATCHING
                         # =====================================
 
                         if variant_record:
 
                             try:
+                                
+                                matched_asset = self._match_variant_image(
 
-                                matched_asset = None
+                                    variant,
 
-                                variant_name = ""
+                                    asset_pool,
 
-                                attributes = variant.get(
-                                    "attributes",
-                                    {}
+                                    used_asset_indexes
                                 )
 
-                                if isinstance(attributes, dict):
-
-                                    variant_name = " ".join([
-
-                                        str(v)
-
-                                        for v in attributes.values()
-
-                                    ]).lower()
-
-                                # ---------------------------------
-                                # COLOR MATCH FIRST
-                                # ---------------------------------
-
-                                for asset in asset_pool:
-
-                                    asset_color = str(
-
-                                        asset.get(
-                                            "dominant_color",
-                                            ""
-                                        )
-
-                                    ).lower()
-
-                                    if (
-
-                                        asset_color
-
-                                        and
-
-                                        asset_color in variant_name
-
-                                    ):
-
-                                        matched_asset = asset
-
-                                        break
-
-                                # ---------------------------------
-                                # AI IMAGE INDEX FALLBACK
-                                # ---------------------------------
-
-                                if not matched_asset:
-
-                                    variant_image_index = (
-                                        variant.get("image_index")
-                                    )
-
-                                    if variant_image_index is not None:
-
-                                        for asset in asset_pool:
-
-                                            if (
-
-                                                asset.get("index")
-
-                                                ==
-
-                                                variant_image_index
-                                            ):
-
-                                                matched_asset = asset
-
-                                                break
-
-                                # ---------------------------------
-                                # FINAL SAFE FALLBACK
-                                # ---------------------------------
-
-                                if not matched_asset and asset_pool:
-
-                                    matched_asset = asset_pool[0]
-
-                                # ---------------------------------
+                                # =====================================
                                 # APPLY
-                                # ---------------------------------
+                                # =====================================
 
                                 if matched_asset:
 
@@ -7200,15 +8081,17 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
+                                    used_asset_indexes.add(
+                                        matched_asset.get("index")
+                                    )
+
                                     _logger.warning(
 
                                         f"[VARIANT IMAGE APPLIED] "
 
                                         f"{variant_name} "
 
-                                        f"-> "
-
-                                        f"{matched_asset.get('dominant_color')}"
+                                        f"| asset={matched_asset.get('index')}"
                                     )
 
                             except Exception as e:
@@ -7231,13 +8114,22 @@ class VendorImportJob(models.Model):
 
                     continue
 
-            self.last_created_page = (
-                page_index + 1
-            )
+            try:
 
-            self.flush_recordset()
+                self.last_created_page = (
+                    page_index + 1
+                )
 
-            self.env.cr.commit()
+                self._safe_commit_progress()
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[PAGE COMMIT FAILED] "
+
+                    f"{str(e)}"
+                )
 
         _logger.warning(
 
@@ -7256,12 +8148,11 @@ class VendorImportJob(models.Model):
 
             self.state = 'pdf_creating'
 
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #==========create pdf CATEGORY RESOLVER====================================
+    
     def _get_or_create_pdf_category(
 
         self,
@@ -7401,23 +8292,28 @@ class VendorImportJob(models.Model):
 
         hero_asset = None
 
-        # ---------------------------------
+        # =====================================
         # AI SELECTED HERO
-        # ---------------------------------
+        # =====================================
 
         if hero_index is not None:
 
             for asset in asset_pool:
 
-                if asset.get("index") == hero_index:
+                if asset.get("clean_index") == hero_index:
+
+                    # reject collages as hero
+                    if asset.get("is_collage"):
+
+                        continue
 
                     hero_asset = asset
 
                     break
 
-        # ---------------------------------
-        # FALLBACK TO BEST SCORE
-        # ---------------------------------
+        # =====================================
+        # FALLBACK TO BEST CLEAN IMAGE
+        # =====================================
 
         if not hero_asset:
 
@@ -7435,33 +8331,38 @@ class VendorImportJob(models.Model):
 
             for asset in sorted_assets:
 
-                if (
+                # reject collage sheets
+                if asset.get("is_collage"):
+                    continue
 
-                    asset.get("score", 0) >= 60
-
-                    and
-
-                    asset.get(
-                        "dominant_color"
-                    ) != "unknown"
-
-                ):
+                # require strong quality
+                if asset.get("score", 0) >= 45:
 
                     hero_asset = asset
 
                     break
 
-        # ---------------------------------
-        # FINAL FALLBACK
-        # ---------------------------------
+        # =====================================
+        # FINAL SAFE FALLBACK
+        # =====================================
 
         if not hero_asset and asset_pool:
 
-            hero_asset = asset_pool[0]
+            for asset in asset_pool:
 
-        # ---------------------------------
-        # APPLY TO CREATE VALS
-        # ---------------------------------
+                if not asset.get("is_collage"):
+
+                    hero_asset = asset
+
+                    break
+
+            if not hero_asset:
+
+                hero_asset = asset_pool[0]
+
+        # =====================================
+        # APPLY HERO IMAGE
+        # =====================================
 
         if hero_asset:
 
@@ -7912,9 +8813,7 @@ class VendorImportJob(models.Model):
 
                     self.excel_url_index = idx + 1
 
-                    self.flush_recordset()
-
-                    self.env.cr.commit()
+                    self._safe_commit_progress()
 
                     continue
 
@@ -7959,11 +8858,7 @@ class VendorImportJob(models.Model):
 
                 self.excel_url_index = idx + 1
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
-
-                #self.env.invalidate_all()
+                self._safe_commit_progress()
 
 
             except Exception as e:
@@ -7991,9 +8886,7 @@ class VendorImportJob(models.Model):
 
             self.excel_url_index = 0
 
-            self.flush_recordset()
-
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             self.env.invalidate_all()
 
@@ -8887,9 +9780,7 @@ class VendorImportJob(models.Model):
                 )
 
 
-                self.flush_recordset()
-
-                self.env.cr.commit()
+                self._safe_commit_progress()
                 
 
                 _logger.warning(
@@ -9005,9 +9896,7 @@ class VendorImportJob(models.Model):
             self.state = 'excel_creating'
 
 
-        self.flush_recordset()
-
-        self.env.cr.commit()
+        self._safe_commit_progress()
 
 
     #====Excel variant mapping==================================
@@ -9205,6 +10094,12 @@ class VendorImportJob(models.Model):
             'url_scraping',
             'url_ai',
             'url_creating',
+
+            # =====================================
+            # AUTO-RECOVER INTERRUPTED JOBS
+            # =====================================
+
+            'failed',
         ]
 
 
@@ -9238,11 +10133,63 @@ class VendorImportJob(models.Model):
             'vendor.import.job'
         ]
 
-
         for j in jobs:
 
-            sig = j.upload_signature
+            # =====================================
+            # AUTO RECOVER FAILED JOBS
+            # =====================================
 
+            if j.state == 'failed':
+
+                _logger.warning(
+
+                    f"[AUTO RECOVER] "
+
+                    f"job={j.id}"
+                )
+
+                try:
+
+                    if j.last_created_page:
+
+                        j.state = 'pdf_creating'
+
+                    elif j.last_ai_page:
+
+                        j.state = 'pdf_ai'
+
+                    elif j.current_page:
+
+                        j.state = 'pdf_extracting'
+
+                    else:
+
+                        j.state = 'draft'
+
+                    j.lock = False
+
+                    self.env.cr.commit()
+
+                    _logger.warning(
+
+                        f"[AUTO RECOVER OK] "
+
+                        f"job={j.id} "
+
+                        f"| state={j.state}"
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+
+                        f"[AUTO RECOVER FAILED] "
+
+                        f"{str(e)}"
+                    )
+
+            sig = j.upload_signature
+           
             if not sig:
 
                 continue
@@ -9456,12 +10403,7 @@ class VendorImportJob(models.Model):
                 # STOP STATES
                 # =========================================
 
-                if job.state in [
-
-                    'done',
-                    'failed'
-
-                ]:
+                if job.state == 'done':
 
                     _logger.warning(
 
@@ -9535,39 +10477,9 @@ class VendorImportJob(models.Model):
                 # PROCESS
                 # =========================================
 
-
                 try:
 
                     job._process_step()
-
-                # =========================================
-                # HOT RELOAD / CURSOR CLOSED
-                # =========================================
-
-                except psycopg2.InterfaceError as e:
-
-                    _logger.warning(
-
-                        f"[CURSOR CLOSED] "
-
-                        f"job={job.id} "
-
-                        f"| {str(e)}"
-                    )
-
-                    try:
-
-                        self.env.cr.rollback()
-
-                    except Exception:
-
-                        pass
-
-                    break
-
-                # =========================================
-                # NORMAL ERRORS
-                # =========================================
 
                 except Exception as e:
 
@@ -9582,19 +10494,9 @@ class VendorImportJob(models.Model):
 
                     try:
 
-                        self.env.cr.rollback()
+                        job.state = 'failed'
 
-                    except Exception:
-
-                        pass
-
-                    try:
-
-                        if job.exists():
-
-                            job.state = 'failed'
-
-                            self.env.cr.commit()
+                        self.env.cr.commit()
 
                     except Exception:
 
@@ -10267,7 +11169,7 @@ class VendorImportJob(models.Model):
             _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
 
             self.state = 'done'   # 🔥 STOP LOOP COMPLETELY
-            self.env.cr.commit()
+            self._safe_commit_progress()
             return
 
         # 🔥 CLEAN UP (IMPORTANT)
@@ -10366,17 +11268,7 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
 
-
-
-
-
-
-
-
-
-
-
-
+                
 
 
 

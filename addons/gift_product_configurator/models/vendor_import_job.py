@@ -730,15 +730,6 @@ class VendorImportJob(models.Model):
                     )
 
 
-                    # parser itself decides completion
-                    # if self.is_excel_parsed:
-
-                    #     _logger.warning(
-                    #         "[EXCEL PARSE] FULLY COMPLETE"
-                    #     )
-
-                    #     self.state = 'done'
-
                     if self.is_excel_parsed:
 
                         _logger.warning(
@@ -5909,7 +5900,7 @@ class VendorImportJob(models.Model):
         return prepared
 
     # =====================================
-    # DOMINANT COLOR DETECTION
+    # ADVANCED DOMINANT COLOR DETECTION
     # =====================================
 
     def _detect_dominant_color(
@@ -5921,6 +5912,13 @@ class VendorImportJob(models.Model):
 
         try:
 
+            import base64
+            import colorsys
+            import numpy as np
+
+            from io import BytesIO
+            from PIL import Image
+
             image_data = base64.b64decode(
                 image_base64
             )
@@ -5931,51 +5929,130 @@ class VendorImportJob(models.Model):
 
             ).convert("RGB")
 
-            image = image.resize((80, 80))
+            image = image.resize((120, 120))
 
             pixels = np.array(image)
 
-            pixels = pixels.reshape(
-                -1,
-                3
-            )
+            # =====================================
+            # REMOVE VERY BRIGHT BACKGROUND
+            # =====================================
+
+            pixels = pixels.reshape(-1, 3)
+
+            filtered_pixels = []
+
+            for r, g, b in pixels:
+
+                # remove white bg
+                if r > 235 and g > 235 and b > 235:
+                    continue
+
+                filtered_pixels.append([r, g, b])
+
+            if not filtered_pixels:
+                return "white"
+
+            pixels = np.array(filtered_pixels)
 
             avg = pixels.mean(axis=0)
 
             r, g, b = avg
 
             # =====================================
-            # COLOR CLASSIFICATION
+            # RGB → HSV
             # =====================================
 
-            if r > 200 and g > 200 and b > 200:
-                return "white"
+            h, s, v = colorsys.rgb_to_hsv(
 
-            if r < 60 and g < 60 and b < 60:
+                r / 255.0,
+                g / 255.0,
+                b / 255.0
+            )
+
+            h = h * 360
+            s = s * 100
+            v = v * 100
+
+            # =====================================
+            # BLACK
+            # =====================================
+
+            if v < 18:
                 return "black"
 
-            if abs(r - g) < 18 and abs(g - b) < 18:
-                return "gray"
+            # =====================================
+            # WHITE
+            # =====================================
 
-            if r > g and r > b:
+            if v > 92 and s < 10:
+                return "white"
 
-                if g > 120:
-                    return "orange"
+            # =====================================
+            # GRAY / GREY
+            # =====================================
 
+            if s < 15:
+
+                if v < 55:
+                    return "gray"
+
+                return "grey"
+
+            # =====================================
+            # RED
+            # =====================================
+
+            if h < 15 or h >= 345:
                 return "red"
 
-            if g > r and g > b:
+            # =====================================
+            # ORANGE
+            # =====================================
 
-                if r > 120:
-                    return "yellow"
+            if 15 <= h < 40:
+                return "orange"
 
+            # =====================================
+            # YELLOW
+            # =====================================
+
+            if 40 <= h < 70:
+                return "yellow"
+
+            # =====================================
+            # GREEN
+            # =====================================
+
+            if 70 <= h < 170:
                 return "green"
 
-            if b > r and b > g:
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if 170 <= h < 260:
+
+                if v < 45:
+                    return "navy"
+
+                if s < 35:
+                    return "light blue"
+
                 return "blue"
 
-            if r > 120 and b > 120:
+            # =====================================
+            # PURPLE
+            # =====================================
+
+            if 260 <= h < 320:
                 return "purple"
+
+            # =====================================
+            # PINK
+            # =====================================
+
+            if 320 <= h < 345:
+                return "pink"
 
             return "unknown"
 
@@ -7794,6 +7871,7 @@ class VendorImportJob(models.Model):
                         )
                     )
 
+
                     if created:
 
                         self._apply_product_translation(
@@ -7808,6 +7886,80 @@ class VendorImportJob(models.Model):
 
                             asset_pool
                         )
+
+                        # =====================================
+                        # APPLY REAL INVENTORY STOCK
+                        # =====================================
+
+                        try:
+
+                            stock_qty = int(
+
+                                product_data.get(
+                                    "stock_qty",
+                                    0
+                                ) or 0
+                            )
+
+                            if stock_qty > 0:
+
+                                quant = stock_quant_obj.search([
+
+                                    (
+                                        'product_id',
+                                        '=',
+                                        product.product_variant_id.id
+                                    ),
+
+                                    (
+                                        'location_id',
+                                        '=',
+                                        stock_location.id
+                                    )
+
+                                ], limit=1)
+
+                                if quant:
+
+                                    quant.inventory_quantity = (
+                                        stock_qty
+                                    )
+
+                                    quant.action_apply_inventory()
+
+                                else:
+
+                                    quant = stock_quant_obj.create({
+
+                                        'product_id':
+                                            product.product_variant_id.id,
+
+                                        'location_id':
+                                            stock_location.id,
+
+                                        'inventory_quantity':
+                                            stock_qty
+                                    })
+
+                                    quant.action_apply_inventory()
+
+                                _logger.warning(
+
+                                    f"[STOCK APPLIED] "
+
+                                    f"{product.name} "
+
+                                    f"| qty={stock_qty}"
+                                )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[STOCK APPLY FAILED] "
+
+                                f"{str(e)}"
+                            )
 
                         created_count += 1
 
@@ -11089,8 +11241,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        #ACTOR_ID = "selectad~my-actor"
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
