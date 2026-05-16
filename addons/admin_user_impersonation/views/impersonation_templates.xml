@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<odoo>
+
+    <template id="impersonation_banner"
+              inherit_id="portal.frontend_layout"
+              name="Impersonation Banner">
+
+        <xpath expr="//body" position="inside">
+
+            <t t-if="request.session.get('impersonator_id')">
+
+                <div class="impersonation-banner">
+
+                    You are impersonating this user.
+
+                    <a href="/impersonate/stop">
+                        Return to Admin
+                    </a>
+
+                </div>
+
+            </t>
+
+        </xpath>
+
+    </template>
+
+</odoo>

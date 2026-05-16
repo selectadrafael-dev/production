@@ -1,0 +1,18 @@
+.impersonation-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: #dc3545;
+    color: white;
+    text-align: center;
+    padding: 12px;
+    z-index: 99999;
+    font-weight: bold;
+}
+
+.impersonation-banner a {
+    color: #fff;
+    margin-left: 15px;
+    text-decoration: underline;
+}
