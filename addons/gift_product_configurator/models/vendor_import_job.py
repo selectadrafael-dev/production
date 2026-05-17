@@ -2303,7 +2303,7 @@ class VendorImportJob(models.Model):
 
                     filtered_contours.append(contour)
 
-                contours = filtered_contours[:12]
+                contours = filtered_contours[:24]
 
                 candidate_crops = []
 
@@ -2311,9 +2311,9 @@ class VendorImportJob(models.Model):
 
                     x, y, w, h = cv2.boundingRect(contour)
 
-                    # =====================================
+                    # ======================================
                     # SIZE FILTERS
-                    # =====================================
+                    # ======================================
 
                     if w < 120 or h < 120:
                         continue
@@ -2370,8 +2370,8 @@ class VendorImportJob(models.Model):
                         crop_arr < 90
                     )
 
-                    if dark_pixels < 0.01:
-                        continue
+                    if dark_pixels < 0.002:
+                            continue
 
                     # =====================================
                     # IMAGE ANALYSIS
@@ -2545,8 +2545,6 @@ class VendorImportJob(models.Model):
 
                     score -= human_penalty
 
-                    score -= human_penalty
-
                     if 8 < edge_density < 35:
                         score += 25
 
@@ -2566,6 +2564,28 @@ class VendorImportJob(models.Model):
                         buffer.getvalue()
                     ).decode("utf-8")
 
+                    _logger.warning(
+
+                        f"[IMAGE SCORE DEBUG] "
+
+                        f"size={crop_width}x{crop_height} "
+
+                        f"| coverage={coverage_ratio:.3f} "
+
+                        f"| bg={background_ratio:.3f} "
+
+                        f"| edge={edge_density:.2f} "
+
+                        f"| centered={centered_object} "
+
+                        f"| collage={is_collage} "
+
+                        f"| skin={skin_ratio:.3f} "
+
+                        f"| human_penalty={human_penalty} "
+
+                        f"| final={score}"
+                    )
 
                     candidate_crops.append({
 
@@ -2574,6 +2594,17 @@ class VendorImportJob(models.Model):
                         "score": score,
 
                         "is_collage": is_collage
+                    })
+
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": score,
+
+                        "is_collage": False,
+
+                        "fallback_fullpage": True
                     })
 
                     _logger.warning(
@@ -2608,7 +2639,7 @@ class VendorImportJob(models.Model):
 
                         "image": encoded,
 
-                        "score": 10,
+                        "score": 45,
 
                         "is_collage": False
                     })
@@ -4667,10 +4698,6 @@ class VendorImportJob(models.Model):
                 )
 
 
-            # parsed = json.loads(
-            #     result
-            # )
-
             try:
 
                 parsed = json.loads(result)
@@ -4727,6 +4754,26 @@ class VendorImportJob(models.Model):
             ):
 
                 parsed = []
+
+            _logger.warning(
+                f"[PDF AI PARSED COUNT] "
+                f"{len(parsed)} products"
+            )
+
+            for product in parsed:
+
+                _logger.warning(
+
+                    f"[PDF AI PRODUCT] "
+
+                    f"name={product.get('name')} "
+
+                    f"| hero={product.get('hero_image_index')} "
+
+                    f"| gallery={len(product.get('gallery_image_indexes', []))} "
+
+                    f"| variants={len(product.get('variants', []))}"
+                )
 
 
         except Exception as e:
@@ -6122,9 +6169,6 @@ class VendorImportJob(models.Model):
                     "index"
                 )
 
-                if asset_index in used_asset_indexes:
-                    continue
-
                 asset_score = asset.get(
                     "score",
                     0
@@ -6182,18 +6226,51 @@ class VendorImportJob(models.Model):
                     # gray/grey normalization
                     elif (
 
-                        color in ["gray", "grey"]
+                        color in [
+
+                            "blue",
+                            "royal blue",
+                            "navy",
+                            "light blue"
+                        ]
 
                         and
 
                         dominant_color in [
-                            "gray",
-                            "grey",
-                            "black"
+
+                            "blue",
+                            "navy",
+                            "light blue"
                         ]
+
                     ):
 
-                        asset_score += 120
+                        asset_score += 180
+
+                    # strong mismatch penalty
+
+                    elif (
+
+                        color in [
+
+                            "blue",
+                            "royal blue",
+                            "light blue"
+                        ]
+
+                        and
+
+                        dominant_color in [
+
+                            "green",
+                            "lime",
+                            "yellow",
+                            "orange"
+                        ]
+
+                    ):
+
+                        asset_score -= 220
 
                     # white/silver/light handling
                     elif (
@@ -6316,7 +6393,7 @@ class VendorImportJob(models.Model):
             # REJECT VERY SMALL CROPS
             # ==========================================
 
-            if width < 180 or height < 180:
+            if width < 120 or height < 120:
 
                 return -999
 
@@ -6500,12 +6577,11 @@ class VendorImportJob(models.Model):
             return False
 
     #============marchin AI===================================================
-    # =====================================================
     # LEGACY IMAGE PAYLOAD MATCHER
     # Deprecated after migration to
     # index-based asset orchestration.
     # Keep temporarily for rollback safety.
-    # =====================================================
+    # ========================================================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
