@@ -13989,7 +13989,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"TOTAL BLOCK BATCHES → {total_batches}")
         _logger.warning(f"CURRENT BATCH → {current_batch}")
 
-        # ================= STOP IF DONE =================
+        # ================= STOP IF DONE ======================
         if current_batch >= total_batches:
             _logger.warning("ALL URL BATCHES PROCESSED ✅")
             self.state = "url_creating"
