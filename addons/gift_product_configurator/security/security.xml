@@ -4,9 +4,7 @@
     <record id="group_product_vendor"
             model="res.groups">
 
-        <field name="name">
-            Product Vendor
-        </field>
+        <field name="name">Product Vendor</field>
 
     </record>
 
