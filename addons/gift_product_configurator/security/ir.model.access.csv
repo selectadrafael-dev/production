@@ -1,5 +1,2 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_quote_config,access_quote_config,model_quote_config,base.group_user,1,1,1,1
-access_quote_order,access_quote_order,model_quote_order,base.group_user,1,1,1,1
-access_quote_order_line,access_quote_order_line,model_quote_order_line,base.group_user,1,1,1,1
 access_vendor_import_page,vendor.import.page,model_vendor_import_page,,1,1,1,1
