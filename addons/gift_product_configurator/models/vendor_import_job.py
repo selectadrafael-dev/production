@@ -62,6 +62,7 @@ class ResPartner(models.Model):
         default=False
     )
 
+
 class VendorImportJob(models.Model):
 
     _name = "vendor.import.job"
@@ -1625,7 +1626,7 @@ class VendorImportJob(models.Model):
                         "vendor_id": (
                             self.partner_id.id
                             if self.partner_id
-                            else self.env.user.partner_id.id
+                            else False
                         ),
                     })
 
@@ -7045,8 +7046,7 @@ class VendorImportJob(models.Model):
         }
 
         parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
-        #vendor_id = self.partner_id.id if self.partner_id else False
-        vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
+        vendor_id = self.partner_id.id if self.partner_id else False
 
         if not parent_category:
             parent_category = category_obj.create({'name': "All Products"})
@@ -7627,8 +7627,10 @@ class VendorImportJob(models.Model):
         vendor_id = (
 
             self.partner_id.id
+
             if self.partner_id
-            else self.env.user.partner_id.id
+
+            else False
         )
 
         BATCH_SIZE = 3
@@ -8910,9 +8912,9 @@ class VendorImportJob(models.Model):
         )
 
         vendor_id = (
-             self.partner_id.id
+            self.partner_id.id
             if self.partner_id
-            else self.env.user.partner_id.id
+            else False
         )
 
         for idx in range(start, end):
@@ -9393,8 +9395,7 @@ class VendorImportJob(models.Model):
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                #vendor_id = self.partner_id.id if self.partner_id else False
-                vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
+                vendor_id = self.partner_id.id if self.partner_id else False
 
                 product = False
 
