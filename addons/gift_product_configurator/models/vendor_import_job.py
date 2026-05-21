@@ -126,7 +126,7 @@ class VendorImportJob(models.Model):
     ])
 
 
-    excel_url_queue = fields.Text()
+    # excel_url_queue = fields.Text()
 
     excel_url_index = fields.Integer(
         default=0
@@ -720,7 +720,6 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NEW BATCH READY → excel_ai"
                     )
 
-                    self.state = 'excel_ai'
 
                 else:
 
@@ -822,24 +821,6 @@ class VendorImportJob(models.Model):
             # CREATE
             # =============================================
 
-           
-            #-----------EXCEL URL QUEUE PROCESSOR-------------
-          
-            if self.excel_url_processing:
-
-                try:
-
-                    _logger.warning(
-                        "[URL QUEUE PROCESSING]"
-                    )
-
-                    self.process_excel_url_queue()
-
-                except Exception as e:
-
-                    _logger.exception(
-                        f"[URL QUEUE ERROR] {str(e)}"
-                    )
 
             #-----------EXCEL ROW PROCESSOR-------------
 
@@ -1568,90 +1549,6 @@ class VendorImportJob(models.Model):
                     continue
 
                 # =================================
-                # EARLY URL INTERCEPTION
-                # =================================
-
-                detected_url = None
-
-                for part in row_text_parts:
-
-                    part = str(part or "")
-
-                    urls = re.findall(
-
-                        r'https?://[^\s|]+',
-
-                        part
-                    )
-
-                    if urls:
-
-                        detected_url = urls[0].strip()
-
-                        break
-
-
-                if detected_url:
-
-                    _logger.warning(
-
-                        f"[URL ROW DETECTED] "
-
-                        f"{detected_url}"
-                    )
-
-
-                    existing_queue = []
-
-                    if self.excel_url_queue:
-
-                        try:
-
-                            existing_queue = json.loads(
-                                self.excel_url_queue
-                            )
-
-                        except Exception:
-
-                            existing_queue = []
-
-
-                    existing_queue.append({
-
-                        "detected_url": detected_url,
-
-                        "row_index": global_index + 1,
-
-                        "vendor_id": (
-                            self.partner_id.id
-                            if self.partner_id
-                            else self.env.user.partner_id.id
-                        ),
-                    })
-
-
-                    self.excel_url_queue = json.dumps(
-                        existing_queue
-                    )
-
-                    self.excel_url_processing = True
-
-
-                    _logger.warning(
-
-                        f"[URL QUEUED] "
-
-                        f"total={len(existing_queue)}"
-                    )
-
-
-                    global_index += 1
-
-                    current_count += 1
-
-                    continue
-
-                # =================================
                 # GLOBAL INDEX TRACKING
                 # =================================
 
@@ -2175,6 +2072,7 @@ class VendorImportJob(models.Model):
 
 
         wb.close()
+
 
     # =====================================================
     # REMOVE TEXT AREAS
@@ -9287,6 +9185,7 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROCESS GROUPS
         # =====================================================
+        url_cache = {}
 
         for group_idx in range(start, end):
 
@@ -9315,6 +9214,76 @@ class VendorImportJob(models.Model):
                     group_items[0]
                 )
 
+                # =========================================
+                # SAFE URL EXTRACTION (NON-BLOCKING)
+                # =========================================
+
+                group_url = ""
+
+                for item in group_items:
+
+                    possible_url = (
+                        item.get("url")
+                        or
+                        item.get("product_url")
+                        or
+                        ""
+                    ).strip()
+
+                    if possible_url:
+
+                        group_url = possible_url
+
+                        break
+
+                url_data = {}
+
+                if group_url:
+
+                    if group_url in url_cache:
+
+                        url_data = url_cache[group_url]
+
+                        _logger.warning(
+
+                            f"[URL CACHE HIT] "
+
+                            f"{group_url}"
+                        )
+
+                    else:
+
+                        try:
+
+                            _logger.warning(
+
+                                f"[URL ENRICHMENT START] "
+
+                                f"{group_url}"
+                            )
+
+                            url_data = self._extract_url_product_data(
+                                group_url
+                            ) or {}
+
+                            url_cache[group_url] = url_data
+
+                            _logger.warning(
+
+                                f"[URL ENRICHMENT SUCCESS] "
+
+                                f"{group_url}"
+                            )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[URL ENRICHMENT FAILED] "
+
+                                f"{str(e)}"
+                            )
+
                 fingerprint = self._build_vendor_fingerprint(
                     main_product
                 )
@@ -9336,6 +9305,34 @@ class VendorImportJob(models.Model):
                     ) or ""
                 )
 
+                # =====================================
+                # URL DATA ENRICHMENT
+                # =====================================
+
+                if url_data:
+
+                    description = (
+
+                        url_data.get("description")
+
+                        or description
+                    )
+
+                    if not name:
+
+                        name = (
+
+                            url_data.get("name")
+
+                            or name
+                        )
+
+                    _logger.warning(
+
+                        f"[URL DATA APPLIED] "
+
+                        f"{group_id}"
+                    )
 
                 raw_category = (
 
