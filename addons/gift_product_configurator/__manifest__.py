@@ -8,8 +8,7 @@
 "depends": [
    'website',
    'website_sale',
-   'sale_management',
-   'gift_product_configurator'
+   'sale_management'
 ],
 "data": [
     "views/product_page.xml",
