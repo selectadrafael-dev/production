@@ -25,6 +25,10 @@
      'data/cron.xml',
      'views/res_partner_view.xml',
      'views/portal_vendor_button.xml',
+    'security/security.xml',
+    'security/product_vendor_rule.xml',
+    'security/ir.model.access.csv',
+    'views/product_template_views.xml',
 ],
 "assets": {
     "web.assets_frontend": [

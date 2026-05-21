@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Vendors only see their own products -->
-
     <record id="product_vendor_visibility_rule"
             model="ir.rule">
 
@@ -14,8 +12,7 @@
                ref="product.model_product_template"/>
 
         <field name="groups"
-               eval="[(4, ref(
-               'product_vendor_visibility.group_product_vendor'))]"/>
+               eval="[(4, ref('gift_product_configurator.group_product_vendor'))]"/>
 
         <field name="domain_force">
 

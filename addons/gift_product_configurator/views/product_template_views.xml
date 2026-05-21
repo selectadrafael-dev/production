@@ -14,7 +14,6 @@
         <field name="arch"
                type="xml">
 
-            <!-- SEARCH -->
             <xpath expr="//search"
                    position="inside">
 
@@ -24,7 +23,6 @@
 
             </xpath>
 
-            <!-- GROUP BY -->
             <xpath expr="//group"
                    position="inside">
 

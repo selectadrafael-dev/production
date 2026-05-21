@@ -1,2 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_product_vendor_template,product.vendor.template,product.model_product_template,product_vendor_visibility.group_product_vendor,1,1,1,1
