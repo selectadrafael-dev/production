@@ -21,13 +21,21 @@
             ref="product.model_product_template"
         />
 
+        <!-- IMPORTANT -->
+        <field name="binding_type">
+            action
+        </field>
+
+        <!-- IMPORTANT -->
         <field name="binding_view_types">
-            list
+            list,form
         </field>
 
         <field name="state">code</field>
 
-        <field name="code">action = records.action_purge_imported_products()</field>
+        <field name="code">
+action = records.action_purge_imported_products()
+        </field>
 
     </record>
 
