@@ -4,66 +4,64 @@ import logging
 _logger = logging.getLogger(__name__)
 
 
-class ProductTemplate(models.Model):
+class ProductProduct(models.Model):
 
-    _inherit = 'product.template'
+    _inherit = 'product.product'
 
 
     def unlink(self):
 
-        for template in self:
+        try:
 
-            # ONLY imported products
-            if template.vendor_import_job_id:
+            imported_products = self.filtered(
+                lambda p:
+                    p.product_tmpl_id.vendor_import_job_id
+            )
 
-                try:
+            if imported_products:
 
-                    variants = template.product_variant_ids
+                _logger.warning(
+                    f"[SAFE DELETE] PRODUCTS={imported_products.ids}"
+                )
 
-                    _logger.warning(
-                        f"[SAFE DELETE] TEMPLATE={template.id}"
-                    )
+                # ====================================
+                # DELETE STOCK QUANTS
+                # ====================================
 
-                    # =========================
-                    # DELETE STOCK QUANTS
-                    # =========================
+                self.env['stock.quant'].sudo().search([
 
-                    self.env['stock.quant'].sudo().search([
+                    ('product_id', 'in', imported_products.ids)
 
-                        ('product_id', 'in', variants.ids)
+                ]).unlink()
 
-                    ]).unlink()
+                # ====================================
+                # DELETE MOVE LINES
+                # ====================================
 
-                    # =========================
-                    # DELETE MOVE LINES
-                    # =========================
+                self.env['stock.move.line'].sudo().search([
 
-                    self.env['stock.move.line'].sudo().search([
+                    ('product_id', 'in', imported_products.ids)
 
-                        ('product_id', 'in', variants.ids)
+                ]).unlink()
 
-                    ]).unlink()
+                # ====================================
+                # DELETE STOCK MOVES
+                # ====================================
 
-                    # =========================
-                    # DELETE STOCK MOVES
-                    # =========================
+                self.env['stock.move'].sudo().search([
 
-                    self.env['stock.move'].sudo().search([
+                    ('product_id', 'in', imported_products.ids)
 
-                        ('product_id', 'in', variants.ids)
+                ]).unlink()
 
-                    ]).unlink()
+                _logger.warning(
+                    "[SAFE DELETE] STOCK CLEANED"
+                )
 
-                    # =========================
-                    # DELETE VARIANTS
-                    # =========================
+        except Exception as e:
 
-                    variants.sudo().unlink()
-
-                except Exception as e:
-
-                    _logger.warning(
-                        f"[SAFE DELETE ERROR] {str(e)}"
-                    )
+            _logger.warning(
+                f"[SAFE DELETE ERROR] {str(e)}"
+            )
 
         return super().unlink()
