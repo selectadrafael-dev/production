@@ -11,57 +11,106 @@ class ProductProduct(models.Model):
 
     def unlink(self):
 
-        try:
+        imported_products = self.filtered(
+            lambda p:
+                p.product_tmpl_id.vendor_import_job_id
+        )
 
-            imported_products = self.filtered(
-                lambda p:
-                    p.product_tmpl_id.vendor_import_job_id
-            )
+        if imported_products:
 
-            if imported_products:
+            try:
 
                 _logger.warning(
-                    f"[SAFE DELETE] PRODUCTS={imported_products.ids}"
+                    f"[SAFE DELETE START] "
+                    f"{imported_products.ids}"
                 )
 
                 # ====================================
-                # DELETE STOCK QUANTS
+                # RESET QUANT INVENTORY FIRST
                 # ====================================
 
-                self.env['stock.quant'].sudo().search([
+                quants = self.env[
+                    'stock.quant'
+                ].sudo().search([
 
-                    ('product_id', 'in', imported_products.ids)
+                    (
+                        'product_id',
+                        'in',
+                        imported_products.ids
+                    )
 
-                ]).unlink()
+                ])
+
+                for quant in quants:
+
+                    try:
+
+                        quant.sudo().write({
+
+                            'inventory_quantity': 0
+                        })
+
+                        quant.sudo().action_apply_inventory()
+
+                    except Exception as e:
+
+                        _logger.warning(
+                            f"[QUANT RESET ERROR] "
+                            f"{str(e)}"
+                        )
+
+                # ====================================
+                # DELETE QUANTS
+                # ====================================
+
+                quants.unlink()
 
                 # ====================================
                 # DELETE MOVE LINES
                 # ====================================
 
-                self.env['stock.move.line'].sudo().search([
+                self.env[
+                    'stock.move.line'
+                ].sudo().search([
 
-                    ('product_id', 'in', imported_products.ids)
+                    (
+                        'product_id',
+                        'in',
+                        imported_products.ids
+                    )
 
                 ]).unlink()
 
                 # ====================================
-                # DELETE STOCK MOVES
+                # DELETE MOVES
                 # ====================================
 
-                self.env['stock.move'].sudo().search([
+                self.env[
+                    'stock.move'
+                ].sudo().search([
 
-                    ('product_id', 'in', imported_products.ids)
+                    (
+                        'product_id',
+                        'in',
+                        imported_products.ids
+                    )
 
-                ]).unlink()
+                ]).filtered(
+
+                    lambda m:
+                        m.state != 'done'
+
+                ).unlink()
 
                 _logger.warning(
-                    "[SAFE DELETE] STOCK CLEANED"
+                    "[SAFE DELETE COMPLETE]"
                 )
 
-        except Exception as e:
+            except Exception as e:
 
-            _logger.warning(
-                f"[SAFE DELETE ERROR] {str(e)}"
-            )
+                _logger.warning(
+                    f"[SAFE DELETE ERROR] "
+                    f"{str(e)}"
+                )
 
         return super().unlink()
