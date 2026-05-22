@@ -20,6 +20,20 @@ class ProductTemplate(models.Model):
 
             _logger.warning(
 
+                f"[PURGE SELECTED IDS] "
+
+                f"{self.ids}"
+            )
+
+            _logger.warning(
+
+                f"[PURGE FILTERED IDS] "
+
+                f"{imported_products.ids}"
+            )
+
+            _logger.warning(
+
                 f"[PURGE PRODUCTS] "
 
                 f"{len(imported_products)}"

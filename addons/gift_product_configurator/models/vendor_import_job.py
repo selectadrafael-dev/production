@@ -52,143 +52,6 @@ class ProductTemplate(models.Model):
 
     vendor_stock_qty = fields.Integer()
 
-    # =====================================================
-    # SAFE IMPORTED PRODUCT PURGE (delete stock products)
-    # =====================================================
-
-    def action_delete_imported_products(self):
-
-        for job in self:
-
-            try:
-
-                _logger.warning(
-
-                    f"[PURGE START] JOB={job.id}"
-                )
-
-                products = self.env[
-                    'product.template'
-                ].search([
-
-                    (
-                        'vendor_import_job_id',
-                        '=',
-                        job.id
-                    )
-
-                ])
-
-                _logger.warning(
-
-                    f"[PURGE PRODUCTS] "
-
-                    f"{len(products)}"
-                )
-
-                variants = products.mapped(
-                    'product_variant_ids'
-                )
-
-                # =====================================
-                # DELETE STOCK QUANTS
-                # =====================================
-
-                quants = self.env[
-                    'stock.quant'
-                ].sudo().search([
-
-                    (
-                        'product_id',
-                        'in',
-                        variants.ids
-                    )
-
-                ])
-
-                quants.unlink()
-
-                _logger.warning(
-                    "[PURGE] QUANTS REMOVED"
-                )
-
-                # =====================================
-                # DELETE MOVE LINES
-                # =====================================
-
-                move_lines = self.env[
-                    'stock.move.line'
-                ].sudo().search([
-
-                    (
-                        'product_id',
-                        'in',
-                        variants.ids
-                    )
-
-                ])
-
-                move_lines.unlink()
-
-                _logger.warning(
-                    "[PURGE] MOVE LINES REMOVED"
-                )
-
-                # =====================================
-                # DELETE DRAFT MOVES
-                # =====================================
-
-                moves = self.env[
-                    'stock.move'
-                ].sudo().search([
-
-                    (
-                        'product_id',
-                        'in',
-                        variants.ids
-                    )
-
-                ]).filtered(
-
-                    lambda m:
-                        m.state != 'done'
-                )
-
-                moves.unlink()
-
-                _logger.warning(
-                    "[PURGE] MOVES REMOVED"
-                )
-
-                # =====================================
-                # ARCHIVE PRODUCTS FIRST
-                # =====================================
-
-                products.write({
-
-                    'active': False
-                })
-
-                # =====================================
-                # DELETE PRODUCTS
-                # =====================================
-
-                products.unlink()
-
-                _logger.warning(
-
-                    f"[PURGE COMPLETE] JOB={job.id}"
-                )
-
-            except Exception as e:
-
-                _logger.warning(
-
-                    f"[PURGE ERROR] "
-
-                    f"{str(e)}"
-                )
-
 # ✅ Extend existing model
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -11757,3 +11620,167 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
 
+
+    # =====================================================
+    # SAFE IMPORTED PRODUCT PURGE (delete stock products)
+    # =====================================================
+
+    def action_delete_imported_products(self):
+
+        for job in self:
+
+            try:
+
+                _logger.warning(
+                    f"[PURGE START] JOB={job.id}"
+                )
+
+                # =====================================
+                # FIND IMPORTED PRODUCTS
+                # =====================================
+
+                products = self.env[
+                    'product.template'
+                ].sudo().search([
+
+                    (
+                        'vendor_import_job_id',
+                        '=',
+                        job.id
+                    )
+
+                ])
+
+                _logger.warning(
+                    f"[PURGE PRODUCTS FOUND] "
+                    f"{len(products)}"
+                )
+
+                # =====================================
+                # NOTHING FOUND
+                # =====================================
+
+                if not products:
+
+                    _logger.warning(
+                        f"[PURGE EMPTY] "
+                        f"NO PRODUCTS FOUND "
+                        f"FOR JOB {job.id}"
+                    )
+
+                    continue
+
+                # =====================================
+                # GET VARIANTS
+                # =====================================
+
+                variants = products.mapped(
+                    'product_variant_ids'
+                )
+
+                _logger.warning(
+                    f"[PURGE VARIANTS] "
+                    f"{len(variants)}"
+                )
+
+                # =====================================
+                # DELETE STOCK QUANTS
+                # =====================================
+
+                quants = self.env[
+                    'stock.quant'
+                ].sudo().search([
+
+                    (
+                        'product_id',
+                        'in',
+                        variants.ids
+                    )
+
+                ])
+
+                _logger.warning(
+                    f"[PURGE QUANTS] "
+                    f"{len(quants)}"
+                )
+
+                quants.unlink()
+
+                # =====================================
+                # DELETE MOVE LINES
+                # =====================================
+
+                move_lines = self.env[
+                    'stock.move.line'
+                ].sudo().search([
+
+                    (
+                        'product_id',
+                        'in',
+                        variants.ids
+                    )
+
+                ])
+
+                _logger.warning(
+                    f"[PURGE MOVE LINES] "
+                    f"{len(move_lines)}"
+                )
+
+                move_lines.unlink()
+
+                # =====================================
+                # DELETE STOCK MOVES
+                # =====================================
+
+                moves = self.env[
+                    'stock.move'
+                ].sudo().search([
+
+                    (
+                        'product_id',
+                        'in',
+                        variants.ids
+                    )
+
+                ]).filtered(
+
+                    lambda m:
+                        m.state != 'done'
+                )
+
+                _logger.warning(
+                    f"[PURGE MOVES] "
+                    f"{len(moves)}"
+                )
+
+                moves.unlink()
+
+                # =====================================
+                # ARCHIVE FIRST
+                # =====================================
+
+                products.write({
+                    'active': False
+                })
+
+                _logger.warning(
+                    "[PURGE ARCHIVE DONE]"
+                )
+
+                # =====================================
+                # DELETE PRODUCTS
+                # =====================================
+
+                products.unlink()
+
+                _logger.warning(
+                    f"[PURGE COMPLETE] "
+                    f"JOB={job.id}"
+                )
+
+            except Exception as e:
+
+                _logger.exception(
+                    f"[PURGE ERROR] {str(e)}"
+                )

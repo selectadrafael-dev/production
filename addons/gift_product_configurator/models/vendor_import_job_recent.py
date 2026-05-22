@@ -1450,6 +1450,7 @@ class VendorImportJob(models.Model):
                 'categ_id': category.id,
                 'sale_ok': True,
                 'website_published': False,
+                'vendor_import_job_id': self.id,
             }
 
             # ================= IMAGE =======================
@@ -1634,6 +1635,7 @@ class VendorImportJob(models.Model):
                             'categ_id': category.id,
                             'sale_ok': True,
                             'website_published': False,
+                            'vendor_import_job_id': self.id,
                         }
 
                         image = main_product.get("image")
