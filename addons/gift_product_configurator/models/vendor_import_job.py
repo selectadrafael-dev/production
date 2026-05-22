@@ -1422,6 +1422,156 @@ class VendorImportJob(models.Model):
 
         self.state = "url_ai"
 
+    # =====================================================
+    # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
+    # =====================================================
+
+    def _extract_excel_url_data(
+
+        self,
+
+        product_url
+    ):
+
+        try:
+
+            _logger.warning(
+
+                f"[EXCEL URL ENRICHMENT START] "
+
+                f"{product_url}"
+            )
+
+            raw_data = self._run_apify_actor(
+                product_url
+            )
+
+            # =========================================
+            # APIFY STILL RUNNING
+            # =========================================
+
+            if raw_data is None:
+
+                _logger.warning(
+
+                    "[EXCEL URL ENRICHMENT] "
+
+                    "APIFY NOT READY"
+                )
+
+                return {}
+
+            if not raw_data:
+
+                _logger.warning(
+
+                    "[EXCEL URL ENRICHMENT] "
+
+                    "EMPTY RESPONSE"
+                )
+
+                return {}
+
+            first = raw_data[0] if raw_data else {}
+
+            # =========================================
+            # BLOCKED / EMPTY
+            # =========================================
+
+            if first.get("type") in [
+
+                "BLOCKED",
+
+                "EMPTY"
+            ]:
+
+                _logger.warning(
+
+                    f"[EXCEL URL ENRICHMENT] "
+
+                    f"INVALID TYPE "
+
+                    f"{first.get('type')}"
+                )
+
+                return {}
+
+            # =========================================
+            # NORMALIZE
+            # =========================================
+
+            structured_data = []
+
+            for block in raw_data:
+
+                if block.get("text"):
+
+                    structured_data.append({
+
+                        "text": block.get("text"),
+
+                        "image": block.get("image")
+                    })
+
+                    continue
+
+                if block.get("type") == "PRODUCTS":
+
+                    structured_data.extend(
+
+                        block.get("items", [])
+                    )
+
+            normalized = self._normalize_url_data(
+                structured_data
+            )
+
+            if not normalized:
+
+                return {}
+
+            first_product = normalized[0]
+
+            _logger.warning(
+
+                f"[EXCEL URL ENRICHMENT SUCCESS] "
+
+                f"{product_url}"
+            )
+
+            return {
+
+                "name":
+                    first_product.get("name"),
+
+                "description":
+                    first_product.get(
+                        "description"
+                    ),
+
+                "category":
+                    first_product.get(
+                        "category"
+                    ),
+
+                "images":
+                    first_product.get(
+                        "images",
+                        []
+                    )
+            }
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[EXCEL URL ENRICHMENT FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return {}
+
     #------excel parsing method---------------
     
     def parse_excel(self):
@@ -8936,6 +9086,88 @@ class VendorImportJob(models.Model):
 
             self.env.invalidate_all()
 
+    #=====excel group url update====================================
+
+    def _enrich_group_with_url_data(
+
+        self,
+
+        group_items,
+
+        url_cache=None
+    ):
+
+        if url_cache is None:
+
+            url_cache = {}
+
+        group_url = ""
+
+        for item in group_items:
+
+            possible_url = (
+                item.get("url")
+                or
+                item.get("product_url")
+                or
+                ""
+            ).strip()
+
+            if possible_url:
+
+                group_url = possible_url
+
+                break
+
+        if not group_url:
+
+            return {}
+
+        if group_url in url_cache:
+
+            _logger.warning(
+
+                f"[URL CACHE HIT] "
+
+                f"{group_url}"
+            )
+
+            return url_cache[group_url]
+
+        try:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT START] "
+
+                f"{group_url}"
+            )
+
+            url_data = self._extract_url_product_data(
+                group_url
+            ) or {}
+
+            url_cache[group_url] = url_data
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT SUCCESS] "
+
+                f"{group_url}"
+            )
+
+            return url_data
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return {}
 
     #==========create excel product===========================
     def create_products_excel(self):
@@ -9218,76 +9450,16 @@ class VendorImportJob(models.Model):
                 # SAFE URL EXTRACTION (NON-BLOCKING)
                 # =========================================
 
-                group_url = ""
+                url_data = self._enrich_group_with_url_data(
 
-                for item in group_items:
+                    group_items,
 
-                    possible_url = (
-                        item.get("url")
-                        or
-                        item.get("product_url")
-                        or
-                        ""
-                    ).strip()
-
-                    if possible_url:
-
-                        group_url = possible_url
-
-                        break
-
-                url_data = {}
-
-                if group_url:
-
-                    if group_url in url_cache:
-
-                        url_data = url_cache[group_url]
-
-                        _logger.warning(
-
-                            f"[URL CACHE HIT] "
-
-                            f"{group_url}"
-                        )
-
-                    else:
-
-                        try:
-
-                            _logger.warning(
-
-                                f"[URL ENRICHMENT START] "
-
-                                f"{group_url}"
-                            )
-
-                            url_data = self._extract_url_product_data(
-                                group_url
-                            ) or {}
-
-                            url_cache[group_url] = url_data
-
-                            _logger.warning(
-
-                                f"[URL ENRICHMENT SUCCESS] "
-
-                                f"{group_url}"
-                            )
-
-                        except Exception as e:
-
-                            _logger.warning(
-
-                                f"[URL ENRICHMENT FAILED] "
-
-                                f"{str(e)}"
-                            )
+                    url_cache
+                )
 
                 fingerprint = self._build_vendor_fingerprint(
                     main_product
                 )
-
 
                 name = (
 
@@ -9304,6 +9476,35 @@ class VendorImportJob(models.Model):
                         "description"
                     ) or ""
                 )
+
+                # =====================================
+                # SAFE URL ENRICHMENT
+                # =====================================
+
+                if url_data:
+
+                    description = (
+
+                        url_data.get("description")
+
+                        or description
+                    )
+
+                    if not name:
+
+                        name = (
+
+                            url_data.get("name")
+
+                            or name
+                        )
+
+                    _logger.warning(
+
+                        f"[URL DATA APPLIED] "
+
+                        f"{group_id}"
+                    )
 
                 # =====================================
                 # URL DATA ENRICHMENT
@@ -10453,604 +10654,609 @@ class VendorImportJob(models.Model):
                         f"{str(e)}"
                     )
 
+        # =================================================
+        # CONTINUOUS QUEUE PROCESSOR
+        # =================================================
+
+        while True:
 
         # =================================================
         # GET NEXT JOB
         # =================================================
 
-        job = self.search(
+            job = self.search(
 
-            [
+                [
 
-                ('state', 'in', active_states),
+                    ('state', 'in', active_states),
 
-                ('lock', '=', False)
+                    ('lock', '=', False)
 
-            ],
+                ],
 
-            order="create_date asc, id asc",
+                order="create_date asc, id asc",
 
-            limit=1
-        )
-
-
-        if not job:
-
-            _logger.warning(
-
-                "[CRON] NO AVAILABLE JOBS "
-                "(all locked or done)"
-            )
-
-            return
-
-
-        # =================================================
-        # PROCESS
-        # =================================================
-
-        try:
-
-            # =============================================
-            # LOCK
-            # =============================================
-
-            job.lock = True
-
-            self.env.cr.commit()
-
-
-            _logger.warning(
-
-                f"[CRON] JOB LOCKED "
-
-                f"| job={job.id}"
+                limit=1
             )
 
 
-            # =============================================
-            # SAFER CHAIN
-            # =============================================
+            if not job:
 
-            MAX_CHAIN = 1
+                _logger.warning(
 
+                    "[CRON] NO AVAILABLE JOBS "
+                    "(all locked or done)"
+                )
 
-            for step in range(MAX_CHAIN):
-
-                # =========================================
-                # REFRESH
-                # =========================================
-
-                try:
-
-                    job.invalidate_cache()
-
-                except Exception:
-
-                    pass
+                return
 
 
-                job = self.env[
-                    'vendor.import.job'
-                ].browse(job.id)
+            # =================================================
+            # PROCESS
+            # =================================================
+
+            try:
+
+                # =============================================
+                # LOCK
+                # =============================================
+
+                job.lock = True
+
+                self.env.cr.commit()
 
 
                 _logger.warning(
 
-                    f"[CHAIN] STEP "
+                    f"[CRON] JOB LOCKED "
 
-                    f"{step + 1} "
-
-                    f"| state={job.state}"
+                    f"| job={job.id}"
                 )
 
 
-                # =========================================
-                # STOP STATES
-                # =========================================
+                # =============================================
+                # SAFER CHAIN
+                # =============================================
 
-                if job.state == 'done':
-
-                    _logger.warning(
-
-                        f"[CHAIN STOP] "
-
-                        f"terminal state "
-
-                        f"→ {job.state}"
-                    )
-
-                    break
+                MAX_CHAIN = 1
 
 
-                # =========================================
-                # TRACK BEFORE
-                # =========================================
+                for step in range(MAX_CHAIN):
 
-                previous_state = (
-                    job.state
-                )
-
-                previous_page = (
-                    job.current_page or 0
-                )
-
-                previous_ai_page = (
-                    job.last_ai_page or 0
-                )
-
-                previous_created = (
-                    job.last_created_page or 0
-                )
-
-                previous_excel_ai = (
-                    job.excel_ai_index or 0
-                )
-
-                previous_excel_created = (
-                    job.excel_created_index or 0
-                )
-
-            
-                previous_url_batch = (
-                    job.url_batch_index or 0
-                )
-
-                previous_url_created = (
-                    job.last_processed_product_index or 0
-                )
-             
-
-                _logger.warning(
-
-                    f"[CHAIN BEFORE] "
-
-                    f"state={previous_state} "
-
-                    f"| extract={previous_page} "
-
-                    f"| ai={previous_ai_page} "
-
-                    f"| create={previous_created} "
-
-                    f"| excel_ai={previous_excel_ai} "
-
-                    f"| excel_create={previous_excel_created}"
-                )
-
-
-                # =========================================
-                # PROCESS
-                # =========================================
-
-                try:
-
-                    job._process_step()
-
-                except Exception as e:
-
-                    _logger.exception(
-
-                        f"[PROCESS ERROR] "
-
-                        f"job={job.id} "
-
-                        f"| {str(e)}"
-                    )
+                    # =========================================
+                    # REFRESH
+                    # =========================================
 
                     try:
 
-                        job.state = 'failed'
-
-                        self.env.cr.commit()
+                        job.invalidate_cache()
 
                     except Exception:
 
+                        pass
+
+
+                    job = self.env[
+                        'vendor.import.job'
+                    ].browse(job.id)
+
+
+                    _logger.warning(
+
+                        f"[CHAIN] STEP "
+
+                        f"{step + 1} "
+
+                        f"| state={job.state}"
+                    )
+
+
+                    # =========================================
+                    # STOP STATES
+                    # =========================================
+
+                    if job.state == 'done':
+
                         _logger.warning(
 
-                            "[PROCESS ERROR] "
+                            f"[CHAIN STOP] "
 
-                            "FAILED SAVE FAILED"
+                            f"terminal state "
+
+                            f"→ {job.state}"
                         )
 
-                    break
+                        break
 
 
-                # =========================================
-                # REFRESH AFTER
-                # =========================================
+                    # =========================================
+                    # TRACK BEFORE
+                    # =========================================
+
+                    previous_state = (
+                        job.state
+                    )
+
+                    previous_page = (
+                        job.current_page or 0
+                    )
+
+                    previous_ai_page = (
+                        job.last_ai_page or 0
+                    )
+
+                    previous_created = (
+                        job.last_created_page or 0
+                    )
+
+                    previous_excel_ai = (
+                        job.excel_ai_index or 0
+                    )
+
+                    previous_excel_created = (
+                        job.excel_created_index or 0
+                    )
+
+                
+                    previous_url_batch = (
+                        job.url_batch_index or 0
+                    )
+
+                    previous_url_created = (
+                        job.last_processed_product_index or 0
+                    )
+                
+
+                    _logger.warning(
+
+                        f"[CHAIN BEFORE] "
+
+                        f"state={previous_state} "
+
+                        f"| extract={previous_page} "
+
+                        f"| ai={previous_ai_page} "
+
+                        f"| create={previous_created} "
+
+                        f"| excel_ai={previous_excel_ai} "
+
+                        f"| excel_create={previous_excel_created}"
+                    )
+
+
+                    # =========================================
+                    # PROCESS
+                    # =========================================
+
+                    try:
+
+                        job._process_step()
+
+                    except Exception as e:
+
+                        _logger.exception(
+
+                            f"[PROCESS ERROR] "
+
+                            f"job={job.id} "
+
+                            f"| {str(e)}"
+                        )
+
+                        try:
+
+                            job.state = 'failed'
+
+                            self.env.cr.commit()
+
+                        except Exception:
+
+                            _logger.warning(
+
+                                "[PROCESS ERROR] "
+
+                                "FAILED SAVE FAILED"
+                            )
+
+                        break
+
+
+                    # =========================================
+                    # REFRESH AFTER
+                    # =========================================
+
+                    try:
+
+                        job.invalidate_cache()
+
+                    except Exception:
+
+                        pass
+
+
+                    job = self.env[
+                        'vendor.import.job'
+                    ].browse(job.id)
+
+
+                    _logger.warning(
+
+                        f"[CHAIN AFTER] "
+
+                        f"state={job.state} "
+
+                        f"| extract={job.current_page} "
+
+                        f"| ai={job.last_ai_page} "
+
+                        f"| create={job.last_created_page} "
+
+                        f"| excel_ai={job.excel_ai_index} "
+
+                        f"| excel_create={job.excel_created_index}"
+                    )
+
+
+                    # =========================================
+                    # PROGRESS DETECTION
+                    # =========================================
+
+                    progress_detected = False
+
+
+                    # PDF extract progress
+
+                    if (
+
+                        (job.current_page or 0)
+
+                        >
+
+                        previous_page
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] PDF "
+
+                            f"{previous_page}"
+
+                            f" → "
+
+                            f"{job.current_page}"
+                        )
+
+
+                    # PDF AI progress
+
+                    if (
+
+                        (job.last_ai_page or 0)
+
+                        >
+
+                        previous_ai_page
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] PDF AI "
+
+                            f"{previous_ai_page}"
+
+                            f" → "
+
+                            f"{job.last_ai_page}"
+                        )
+
+
+                    # PDF create progress
+
+                    if (
+
+                        (job.last_created_page or 0)
+
+                        !=
+
+                        previous_created
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] PDF CREATE "
+
+                            f"{previous_created}"
+
+                            f" → "
+
+                            f"{job.last_created_page}"
+                        )
+
+
+                    # PDF create state continuation
+
+                    elif job.state == 'pdf_creating':
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            "[PROGRESS] PDF CREATE LOOP ACTIVE"
+                        )
+                
+
+                    # Excel AI progress
+
+                    if (
+
+                        (job.excel_ai_index or 0)
+
+                        >
+
+                        previous_excel_ai
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] EXCEL AI "
+
+                            f"{previous_excel_ai}"
+
+                            f" → "
+
+                            f"{job.excel_ai_index}"
+                        )
+
+
+                    # Excel create progress
+
+                    if (
+
+                        (job.excel_created_index or 0)
+
+                        >
+
+                        previous_excel_created
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] EXCEL CREATE "
+
+                            f"{previous_excel_created}"
+
+                            f" → "
+
+                            f"{job.excel_created_index}"
+                        )
+
+                
+                    # =========================================
+                    # URL AI progress
+                    # =========================================
+
+                    if (
+
+                        (job.url_batch_index or 0)
+
+                        >
+
+                        previous_url_batch
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] URL AI "
+
+                            f"{previous_url_batch}"
+
+                            f" → "
+
+                            f"{job.url_batch_index}"
+                        )
+
+
+                    # =========================================
+                    # URL create progress
+                    # =========================================
+
+                    if (
+
+                        (job.last_processed_product_index or 0)
+
+                        >
+
+                        previous_url_created
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] URL CREATE "
+
+                            f"{previous_url_created}"
+
+                            f" → "
+
+                            f"{job.last_processed_product_index}"
+                        )
+
+
+                    # =========================================
+                    # APIFY WAIT STATE
+                    # =========================================
+
+                    if job.state == 'url_scraping':
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            "[PROGRESS] APIFY WAITING"
+                        )
+                
+
+
+                    # state transition
+
+                    if previous_state != job.state:
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] STATE "
+
+                            f"{previous_state}"
+
+                            f" → "
+
+                            f"{job.state}"
+                        )
+
+
+                    # =========================================
+                    # STOP IF NO PROGRESS
+                    # =========================================
+
+                    if not progress_detected:
+
+                        _logger.warning(
+
+                            "[CHAIN STOP] "
+
+                            "NO PROGRESS DETECTED"
+                        )
+
+                        break
+
+
+                    _logger.warning(
+
+                        "[CHAIN CONTINUE] "
+
+                        "PROGRESS DETECTED"
+                    )
+
+
+                    # =========================================
+                    # COMMIT
+                    # =========================================
+
+                    try:
+
+                        self.env.cr.commit()
+
+                        _logger.warning(
+                            "[CHAIN] COMMIT OK"
+                        )
+
+                    except Exception as e:
+
+                        _logger.exception(
+
+                            f"[CHAIN COMMIT ERROR] "
+
+                            f"{str(e)}"
+                        )
+
+                        break
+
+
+                _logger.warning(
+                    "[CRON] PROCESS LOOP COMPLETE"
+                )
+
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[CRON FATAL ERROR] "
+
+                    f"{str(e)}"
+                )
+
 
                 try:
 
-                    job.invalidate_cache()
+                    self.env.cr.rollback()
+
+                    _logger.warning(
+                        "[CRON] ROLLBACK OK"
+                    )
 
                 except Exception:
 
-                    pass
-
-
-                job = self.env[
-                    'vendor.import.job'
-                ].browse(job.id)
-
-
-                _logger.warning(
-
-                    f"[CHAIN AFTER] "
-
-                    f"state={job.state} "
-
-                    f"| extract={job.current_page} "
-
-                    f"| ai={job.last_ai_page} "
-
-                    f"| create={job.last_created_page} "
-
-                    f"| excel_ai={job.excel_ai_index} "
-
-                    f"| excel_create={job.excel_created_index}"
-                )
-
-
-                # =========================================
-                # PROGRESS DETECTION
-                # =========================================
-
-                progress_detected = False
-
-
-                # PDF extract progress
-
-                if (
-
-                    (job.current_page or 0)
-
-                    >
-
-                    previous_page
-
-                ):
-
-                    progress_detected = True
-
                     _logger.warning(
-
-                        f"[PROGRESS] PDF "
-
-                        f"{previous_page}"
-
-                        f" → "
-
-                        f"{job.current_page}"
+                        "[CRON] ROLLBACK FAILED"
                     )
 
 
-                # PDF AI progress
-
-                if (
-
-                    (job.last_ai_page or 0)
-
-                    >
-
-                    previous_ai_page
-
-                ):
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        f"[PROGRESS] PDF AI "
-
-                        f"{previous_ai_page}"
-
-                        f" → "
-
-                        f"{job.last_ai_page}"
-                    )
-
-
-                # PDF create progress
-
-                if (
-
-                    (job.last_created_page or 0)
-
-                    !=
-
-                    previous_created
-
-                ):
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        f"[PROGRESS] PDF CREATE "
-
-                        f"{previous_created}"
-
-                        f" → "
-
-                        f"{job.last_created_page}"
-                    )
-
-
-                # PDF create state continuation
-
-                elif job.state == 'pdf_creating':
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        "[PROGRESS] PDF CREATE LOOP ACTIVE"
-                    )
-            
-
-                # Excel AI progress
-
-                if (
-
-                    (job.excel_ai_index or 0)
-
-                    >
-
-                    previous_excel_ai
-
-                ):
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        f"[PROGRESS] EXCEL AI "
-
-                        f"{previous_excel_ai}"
-
-                        f" → "
-
-                        f"{job.excel_ai_index}"
-                    )
-
-
-                # Excel create progress
-
-                if (
-
-                    (job.excel_created_index or 0)
-
-                    >
-
-                    previous_excel_created
-
-                ):
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        f"[PROGRESS] EXCEL CREATE "
-
-                        f"{previous_excel_created}"
-
-                        f" → "
-
-                        f"{job.excel_created_index}"
-                    )
-
-             
-                # =========================================
-                # URL AI progress
-                # =========================================
-
-                if (
-
-                    (job.url_batch_index or 0)
-
-                    >
-
-                    previous_url_batch
-
-                ):
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        f"[PROGRESS] URL AI "
-
-                        f"{previous_url_batch}"
-
-                        f" → "
-
-                        f"{job.url_batch_index}"
-                    )
-
-
-                # =========================================
-                # URL create progress
-                # =========================================
-
-                if (
-
-                    (job.last_processed_product_index or 0)
-
-                    >
-
-                    previous_url_created
-
-                ):
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        f"[PROGRESS] URL CREATE "
-
-                        f"{previous_url_created}"
-
-                        f" → "
-
-                        f"{job.last_processed_product_index}"
-                    )
-
-
-                # =========================================
-                # APIFY WAIT STATE
-                # =========================================
-
-                if job.state == 'url_scraping':
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        "[PROGRESS] APIFY WAITING"
-                    )
-              
-
-
-                # state transition
-
-                if previous_state != job.state:
-
-                    progress_detected = True
-
-                    _logger.warning(
-
-                        f"[PROGRESS] STATE "
-
-                        f"{previous_state}"
-
-                        f" → "
-
-                        f"{job.state}"
-                    )
-
-
-                # =========================================
-                # STOP IF NO PROGRESS
-                # =========================================
-
-                if not progress_detected:
-
-                    _logger.warning(
-
-                        "[CHAIN STOP] "
-
-                        "NO PROGRESS DETECTED"
-                    )
-
-                    break
-
-
-                _logger.warning(
-
-                    "[CHAIN CONTINUE] "
-
-                    "PROGRESS DETECTED"
-                )
-
-
-                # =========================================
-                # COMMIT
-                # =========================================
+            finally:
+
+                # =============================================
+                # UNLOCK
+                # =============================================
 
                 try:
 
-                    self.env.cr.commit()
+                    if (
+
+                        job
+
+                        and
+
+                        job.exists()
+
+                    ):
+
+                        job.lock = False
+
+                        self.env.cr.commit()
+
+
+                        _logger.warning(
+
+                            f"[CRON] JOB UNLOCKED "
+
+                            f"| job={job.id}"
+                        )
+
+                except Exception:
 
                     _logger.warning(
-                        "[CHAIN] COMMIT OK"
+
+                        "[CRON] UNLOCK FAILED"
                     )
-
-                except Exception as e:
-
-                    _logger.exception(
-
-                        f"[CHAIN COMMIT ERROR] "
-
-                        f"{str(e)}"
-                    )
-
-                    break
 
 
             _logger.warning(
-                "[CRON] PROCESS LOOP COMPLETE"
+                "[CRON] RUN COMPLETE"
             )
 
-
-        except Exception as e:
-
-            _logger.exception(
-
-                f"[CRON FATAL ERROR] "
-
-                f"{str(e)}"
-            )
-
-
-            try:
-
-                self.env.cr.rollback()
-
-                _logger.warning(
-                    "[CRON] ROLLBACK OK"
-                )
-
-            except Exception:
-
-                _logger.warning(
-                    "[CRON] ROLLBACK FAILED"
-                )
-
-
-        finally:
-
-            # =============================================
-            # UNLOCK
-            # =============================================
-
-            try:
-
-                if (
-
-                    job
-
-                    and
-
-                    job.exists()
-
-                ):
-
-                    job.lock = False
-
-                    self.env.cr.commit()
-
-
-                    _logger.warning(
-
-                        f"[CRON] JOB UNLOCKED "
-
-                        f"| job={job.id}"
-                    )
-
-            except Exception:
-
-                _logger.warning(
-
-                    "[CRON] UNLOCK FAILED"
-                )
-
-
-        _logger.warning(
-            "[CRON] RUN COMPLETE"
-        )
-
-        return
+            break
 
 
    #=============flask setup/installation=================== 
