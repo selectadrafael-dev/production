@@ -94,17 +94,26 @@ class ProductTemplate(models.Model):
             # DELETE PRODUCTS
             # =====================================
 
-            imported_products.unlink()
-
             _logger.warning(
                 "[PURGE COMPLETE]"
             )
 
+            
+            imported_products.unlink()
+            self.env.cr.commit()
+
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'reload',
+            }
+
         except Exception as e:
 
-            _logger.warning(
+            _logger.exception(
 
                 f"[PURGE ERROR] "
 
                 f"{str(e)}"
             )
+
+            raise
