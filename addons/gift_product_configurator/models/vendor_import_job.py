@@ -52,6 +52,143 @@ class ProductTemplate(models.Model):
 
     vendor_stock_qty = fields.Integer()
 
+    # =====================================================
+    # SAFE IMPORTED PRODUCT PURGE (delete stock products)
+    # =====================================================
+
+    def action_delete_imported_products(self):
+
+        for job in self:
+
+            try:
+
+                _logger.warning(
+
+                    f"[PURGE START] JOB={job.id}"
+                )
+
+                products = self.env[
+                    'product.template'
+                ].search([
+
+                    (
+                        'vendor_import_job_id',
+                        '=',
+                        job.id
+                    )
+
+                ])
+
+                _logger.warning(
+
+                    f"[PURGE PRODUCTS] "
+
+                    f"{len(products)}"
+                )
+
+                variants = products.mapped(
+                    'product_variant_ids'
+                )
+
+                # =====================================
+                # DELETE STOCK QUANTS
+                # =====================================
+
+                quants = self.env[
+                    'stock.quant'
+                ].sudo().search([
+
+                    (
+                        'product_id',
+                        'in',
+                        variants.ids
+                    )
+
+                ])
+
+                quants.unlink()
+
+                _logger.warning(
+                    "[PURGE] QUANTS REMOVED"
+                )
+
+                # =====================================
+                # DELETE MOVE LINES
+                # =====================================
+
+                move_lines = self.env[
+                    'stock.move.line'
+                ].sudo().search([
+
+                    (
+                        'product_id',
+                        'in',
+                        variants.ids
+                    )
+
+                ])
+
+                move_lines.unlink()
+
+                _logger.warning(
+                    "[PURGE] MOVE LINES REMOVED"
+                )
+
+                # =====================================
+                # DELETE DRAFT MOVES
+                # =====================================
+
+                moves = self.env[
+                    'stock.move'
+                ].sudo().search([
+
+                    (
+                        'product_id',
+                        'in',
+                        variants.ids
+                    )
+
+                ]).filtered(
+
+                    lambda m:
+                        m.state != 'done'
+                )
+
+                moves.unlink()
+
+                _logger.warning(
+                    "[PURGE] MOVES REMOVED"
+                )
+
+                # =====================================
+                # ARCHIVE PRODUCTS FIRST
+                # =====================================
+
+                products.write({
+
+                    'active': False
+                })
+
+                # =====================================
+                # DELETE PRODUCTS
+                # =====================================
+
+                products.unlink()
+
+                _logger.warning(
+
+                    f"[PURGE COMPLETE] JOB={job.id}"
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PURGE ERROR] "
+
+                    f"{str(e)}"
+                )
+
 # ✅ Extend existing model
 class ResPartner(models.Model):
     _inherit = 'res.partner'
@@ -11619,3 +11756,4 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+

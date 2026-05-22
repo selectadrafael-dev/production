@@ -28,6 +28,7 @@
     'security/product_vendor_rule.xml',
     #'security/ir.model.access.csv',
     'views/product_template_views.xml',
+    'views/product_purge_action.xml',
 ],
 "assets": {
     "web.assets_frontend": [
