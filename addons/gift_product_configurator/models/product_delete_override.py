@@ -108,16 +108,6 @@ class ProductTemplate(models.Model):
         # DELETE TEMPLATES
         # ======================================
 
-        _logger.warning(
-            f"[PURGE TEMPLATES DELETE] {templates.ids}"
-        )
-
-        templates.with_context(
-
-            active_test=False
-
-        ).sudo().unlink()
-
         self.env.cr.commit()
 
         _logger.warning(
