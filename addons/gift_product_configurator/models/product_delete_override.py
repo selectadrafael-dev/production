@@ -104,9 +104,9 @@ class ProductTemplate(models.Model):
 
         ).sudo().unlink()
 
-        # =====================================
+        # ======================================
         # DELETE TEMPLATES
-        # =====================================
+        # ======================================
 
         _logger.warning(
             f"[PURGE TEMPLATES DELETE] {templates.ids}"
