@@ -125,6 +125,11 @@ class ProductTemplate(models.Model):
         )
 
         return {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
+            'type': 'ir.actions.act_window',
+
+            'res_model': 'product.template',
+
+            'view_mode': 'list,form',
+
+            'target': 'current',
         }
