@@ -30,26 +30,10 @@ class ProductTemplate(models.Model):
                 f"job={t.vendor_import_job_id.id}"
             )
 
-        templates = templates.filtered(
-
-            lambda t:
-                t.vendor_import_job_id
-        )
 
         _logger.warning(
-            f"[PURGE TEMPLATES] {templates.ids}"
+            f"[PURGE SELECTED TEMPLATES] {templates.ids}"
         )
-
-        if not templates:
-
-            _logger.warning(
-                "[PURGE EMPTY]"
-            )
-
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'reload',
-            }
 
         products = templates.mapped(
             'product_variant_ids'
@@ -72,22 +56,6 @@ class ProductTemplate(models.Model):
         quants.sudo().unlink()
 
         # =====================================
-        # DELETE STOCK MOVES
-        # =====================================
-
-        moves = self.env['stock.move'].search([
-
-            ('product_id', 'in', products.ids)
-
-        ])
-
-        _logger.warning(
-            f"[PURGE MOVES] {moves.ids}"
-        )
-
-        moves.sudo().unlink()
-
-        # =====================================
         # DELETE MOVE LINES
         # =====================================
 
@@ -102,6 +70,25 @@ class ProductTemplate(models.Model):
         )
 
         move_lines.sudo().unlink()
+
+        # =====================================
+        # DELETE STOCK MOVES
+        # =====================================
+
+
+        moves = self.env['stock.move'].search([
+
+            ('product_id', 'in', products.ids),
+
+            ('state', '!=', 'done')
+
+        ])
+
+        _logger.warning(
+            f"[PURGE MOVES] {moves.ids}"
+        )
+
+        moves.sudo().unlink()
 
         # =====================================
         # DELETE VARIANTS
