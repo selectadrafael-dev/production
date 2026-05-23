@@ -49,8 +49,13 @@ class ProductTemplate(models.Model):
         index=True,
         ondelete='set null'
     )
+    
 
     vendor_stock_qty = fields.Integer()
+
+    is_vendor_purged = fields.Boolean(
+        default=False
+    )
 
 # ✅ Extend existing model
 class ResPartner(models.Model):

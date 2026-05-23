@@ -8,152 +8,136 @@ class ProductTemplate(models.Model):
 
     _inherit = 'product.template'
 
+    #====== method====================
+    def action_purge_imported_products(self):
 
-    def action_delete_imported_products(self):
+        _logger.warning(
+            f"[PURGE SELF IDS] {self.ids}"
+        )
 
-        try:
+        templates = self.mapped(
+            'product_tmpl_id'
+        )
 
-            products = self.filtered(
-                lambda p:
-                    p.vendor_import_job_id
-            )
-
-            _logger.warning(
-                f"[PURGE PRODUCTS] "
-                f"{products.ids}"
-            )
+        for t in templates:
 
             _logger.warning(
-                f"[PURGE SELF IDS] {self.ids}"
+
+                f"[PURGE TEMPLATE CHECK] "
+
+                f"template={t.id} "
+
+                f"name={t.name} "
+
+                f"job={t.vendor_import_job_id.id}"
             )
 
-            for p in self:
+        templates = templates.filtered(
 
-                _logger.warning(
+            lambda t:
+                t.vendor_import_job_id
+        )
 
-                    f"[PURGE CHECK] "
+        _logger.warning(
+            f"[PURGE TEMPLATES] {templates.ids}"
+        )
 
-                    f"product={p.id} "
-
-                    f"name={p.name} "
-
-                    f"job={p.vendor_import_job_id.id if p.vendor_import_job_id else None}"
-                )
-
-            if not products:
-
-                _logger.warning(
-                    "[PURGE EMPTY]"
-                )
-
-                return {
-                    'type': 'ir.actions.client',
-                    'tag': 'reload',
-                }
-
-            variants = products.mapped(
-                'product_variant_ids'
-            )
-
-            # =====================================
-            # DELETE STOCK QUANTS
-            # =====================================
-
-            quants = self.env[
-                'stock.quant'
-            ].sudo().search([
-
-                (
-                    'product_id',
-                    'in',
-                    variants.ids
-                )
-
-            ])
+        if not templates:
 
             _logger.warning(
-                f"[PURGE QUANTS] "
-                f"{quants.ids}"
+                "[PURGE EMPTY]"
             )
 
-            quants.unlink()
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'reload',
+            }
 
-            # =====================================
-            # DELETE MOVE LINES
-            # =====================================
+        products = templates.mapped(
+            'product_variant_ids'
+        )
 
-            move_lines = self.env[
-                'stock.move.line'
-            ].sudo().search([
+        # =====================================
+        # DELETE STOCK QUANTS
+        # =====================================
 
-                (
-                    'product_id',
-                    'in',
-                    variants.ids
-                )
+        quants = self.env['stock.quant'].search([
 
-            ])
+            ('product_id', 'in', products.ids)
 
-            move_lines.unlink()
+        ])
 
-            # =====================================
-            # DELETE DRAFT MOVES
-            # =====================================
+        _logger.warning(
+            f"[PURGE QUANTS] {quants.ids}"
+        )
 
-            moves = self.env[
-                'stock.move'
-            ].sudo().search([
+        quants.sudo().unlink()
 
-                (
-                    'product_id',
-                    'in',
-                    variants.ids
-                )
+        # =====================================
+        # DELETE STOCK MOVES
+        # =====================================
 
-            ]).filtered(
+        moves = self.env['stock.move'].search([
 
-                lambda m:
-                    m.state != 'done'
-            )
+            ('product_id', 'in', products.ids)
 
-            moves.unlink()
+        ])
 
-            # =====================================
-            # ARCHIVE
-            # =====================================
+        _logger.warning(
+            f"[PURGE MOVES] {moves.ids}"
+        )
 
-            products.write({
-                'active': False
-            })
+        moves.sudo().unlink()
 
-            # =====================================
-            # DELETE
-            # =====================================
-            _logger.warning(
-                f"[PURGE BEFORE DELETE] "
-                f"{products.ids}"
-            )
+        # =====================================
+        # DELETE MOVE LINES
+        # =====================================
 
-            products.unlink()
-            _logger.warning(
-                "[PURGE DELETE SUCCESS]"
-            )
+        move_lines = self.env['stock.move.line'].search([
 
-            _logger.warning(
-                "[PURGE COMPLETE]"
-            )
+            ('product_id', 'in', products.ids)
 
-        except Exception as e:
+        ])
 
-            import traceback
+        _logger.warning(
+            f"[PURGE MOVE LINES] {move_lines.ids}"
+        )
 
-            _logger.error(
-                traceback.format_exc()
-            )
+        move_lines.sudo().unlink()
 
-            raise
+        # =====================================
+        # DELETE VARIANTS
+        # =====================================
+
+        _logger.warning(
+            f"[PURGE VARIANTS] {products.ids}"
+        )
+
+        products.with_context(
+
+            active_test=False
+
+        ).sudo().unlink()
+
+        # =====================================
+        # DELETE TEMPLATES
+        # =====================================
+
+        _logger.warning(
+            f"[PURGE TEMPLATES DELETE] {templates.ids}"
+        )
+
+        templates.with_context(
+
+            active_test=False
+
+        ).sudo().unlink()
 
         self.env.cr.commit()
+
+        _logger.warning(
+            "[PURGE COMPLETE]"
+        )
 
         return {
             'type': 'ir.actions.client',
