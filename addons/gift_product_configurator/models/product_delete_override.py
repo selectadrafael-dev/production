@@ -125,11 +125,6 @@ class ProductTemplate(models.Model):
         )
 
         return {
-            'type': 'ir.actions.act_window',
-
-            'res_model': 'product.template',
-
-            'view_mode': 'list,form',
-
-            'target': 'current',
+            'type': 'ir.actions.client',
+            'tag': 'history_back',
         }
