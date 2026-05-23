@@ -125,6 +125,19 @@ class ProductTemplate(models.Model):
         )
 
         return {
-            'type': 'ir.actions.client',
-            'tag': 'history_back',
+            'type': 'ir.actions.act_window',
+
+            'name': 'Products',
+
+            'res_model': 'product.template',
+
+            'view_mode': 'list',
+
+            'views': [(False, 'list')],
+
+            'target': 'main',
+
+            'context': {
+                'search_default_filter_to_sell': 1,
+            },
         }
