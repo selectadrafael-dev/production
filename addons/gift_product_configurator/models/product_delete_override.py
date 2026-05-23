@@ -124,20 +124,10 @@ class ProductTemplate(models.Model):
             "[PURGE COMPLETE]"
         )
 
-        return {
-            'type': 'ir.actions.act_window',
+        action = self.env.ref(
+            'product.product_template_action_all'
+        ).read()[0]
 
-            'name': 'Products',
+        action['target'] = 'main'
 
-            'res_model': 'product.template',
-
-            'view_mode': 'list',
-
-            'views': [(False, 'list')],
-
-            'target': 'main',
-
-            'context': {
-                'search_default_filter_to_sell': 1,
-            },
-        }
+        return action
