@@ -29,8 +29,7 @@
 
         <field name="code"><![CDATA[
         records.action_purge_imported_products()
-        action = {'type': 'ir.actions.act_window_close'}
-        ]]></field>
+        action = {'type': 'ir.actions.act_window_close'}]]></field>
 
     </record>
 
