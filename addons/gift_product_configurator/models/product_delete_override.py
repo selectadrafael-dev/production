@@ -124,10 +124,12 @@ class ProductTemplate(models.Model):
             "[PURGE COMPLETE]"
         )
 
-        action = self.env.ref(
-            'product.product_template_action_all'
-        ).read()[0]
-
-        action['target'] = 'main'
-
-        return action
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+            'params': {
+                'menu_id': self.env.ref(
+                    'sale.sale_menu_root'
+                ).id,
+            }
+        }

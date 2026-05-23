@@ -27,7 +27,7 @@
 
         <field name="state">code</field>
 
-        <field name="state">object_write</field>
+        <field name="code">action = records.action_purge_imported_products()</field>
 
     </record>
 
