@@ -124,12 +124,4 @@ class ProductTemplate(models.Model):
             "[PURGE COMPLETE]"
         )
 
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
-            'params': {
-                'menu_id': self.env.ref(
-                    'sale.sale_menu_root'
-                ).id,
-            }
-        }
+        return True
