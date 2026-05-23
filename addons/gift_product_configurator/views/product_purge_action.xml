@@ -27,7 +27,7 @@
 
         <field name="state">code</field>
 
-        <field name="code">action = records.action_purge_imported_products()</field>
+        <field name="code">action = records.action_delete_imported_products()</field>
 
     </record>
 

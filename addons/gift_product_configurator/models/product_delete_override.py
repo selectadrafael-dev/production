@@ -9,37 +9,49 @@ class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
 
-    def action_purge_imported_products(self):
+    def action_delete_imported_products(self):
 
         try:
 
-            imported_products = self.filtered(
+            products = self.filtered(
                 lambda p:
                     p.vendor_import_job_id
             )
 
             _logger.warning(
-
-                f"[PURGE SELECTED IDS] "
-
-                f"{self.ids}"
-            )
-
-            _logger.warning(
-
-                f"[PURGE FILTERED IDS] "
-
-                f"{imported_products.ids}"
-            )
-
-            _logger.warning(
-
                 f"[PURGE PRODUCTS] "
-
-                f"{len(imported_products)}"
+                f"{products.ids}"
             )
 
-            variants = imported_products.mapped(
+            _logger.warning(
+                f"[PURGE SELF IDS] {self.ids}"
+            )
+
+            for p in self:
+
+                _logger.warning(
+
+                    f"[PURGE CHECK] "
+
+                    f"product={p.id} "
+
+                    f"name={p.name} "
+
+                    f"job={p.vendor_import_job_id.id if p.vendor_import_job_id else None}"
+                )
+
+            if not products:
+
+                _logger.warning(
+                    "[PURGE EMPTY]"
+                )
+
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'reload',
+                }
+
+            variants = products.mapped(
                 'product_variant_ids'
             )
 
@@ -47,7 +59,7 @@ class ProductTemplate(models.Model):
             # DELETE STOCK QUANTS
             # =====================================
 
-            self.env[
+            quants = self.env[
                 'stock.quant'
             ].sudo().search([
 
@@ -57,13 +69,20 @@ class ProductTemplate(models.Model):
                     variants.ids
                 )
 
-            ]).unlink()
+            ])
+
+            _logger.warning(
+                f"[PURGE QUANTS] "
+                f"{quants.ids}"
+            )
+
+            quants.unlink()
 
             # =====================================
             # DELETE MOVE LINES
             # =====================================
 
-            self.env[
+            move_lines = self.env[
                 'stock.move.line'
             ].sudo().search([
 
@@ -73,13 +92,15 @@ class ProductTemplate(models.Model):
                     variants.ids
                 )
 
-            ]).unlink()
+            ])
+
+            move_lines.unlink()
 
             # =====================================
             # DELETE DRAFT MOVES
             # =====================================
 
-            self.env[
+            moves = self.env[
                 'stock.move'
             ].sudo().search([
 
@@ -93,41 +114,39 @@ class ProductTemplate(models.Model):
 
                 lambda m:
                     m.state != 'done'
-            ).unlink()
+            )
+
+            moves.unlink()
 
             # =====================================
-            # ARCHIVE FIRST
+            # ARCHIVE
             # =====================================
 
-            imported_products.write({
-
+            products.write({
                 'active': False
             })
 
             # =====================================
-            # DELETE PRODUCTS
+            # DELETE
             # =====================================
+
+            products.unlink()
 
             _logger.warning(
                 "[PURGE COMPLETE]"
             )
 
-            
-            imported_products.unlink()
-            self.env.cr.commit()
-
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'reload',
-            }
-
         except Exception as e:
 
             _logger.exception(
-
-                f"[PURGE ERROR] "
-
-                f"{str(e)}"
+                f"[PURGE ERROR] {str(e)}"
             )
 
             raise
+
+        self.env.cr.commit()
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'reload',
+        }
