@@ -15,9 +15,7 @@ class ProductTemplate(models.Model):
             f"[PURGE SELF IDS] {self.ids}"
         )
 
-        templates = self.mapped(
-            'product_tmpl_id'
-        )
+        templates = self
 
         for t in templates:
 
