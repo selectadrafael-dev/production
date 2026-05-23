@@ -27,9 +27,7 @@
 
         <field name="state">code</field>
 
-        <field name="code"><![CDATA[
-        records.action_purge_imported_products()
-        action = {'type': 'ir.actions.act_window_close'}]]></field>
+        <field name="code">records.action_purge_imported_products(); action={'type':'ir.actions.act_window_close'}</field>
 
     </record>
 
