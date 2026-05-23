@@ -129,8 +129,15 @@ class ProductTemplate(models.Model):
             # =====================================
             # DELETE
             # =====================================
+            _logger.warning(
+                f"[PURGE BEFORE DELETE] "
+                f"{products.ids}"
+            )
 
             products.unlink()
+            _logger.warning(
+                "[PURGE DELETE SUCCESS]"
+            )
 
             _logger.warning(
                 "[PURGE COMPLETE]"
@@ -138,8 +145,10 @@ class ProductTemplate(models.Model):
 
         except Exception as e:
 
-            _logger.exception(
-                f"[PURGE ERROR] {str(e)}"
+            import traceback
+
+            _logger.error(
+                traceback.format_exc()
             )
 
             raise
