@@ -1,33 +1,52 @@
-odoo.define('gift_product_configurator.vendor_user_menu_hide', function (require) {
+(function () {
+
     'use strict';
 
-    console.log('Vendor menu JS loaded');
+    console.log('Vendor menu script loaded');
 
-    const session = require('web.session');
+    document.addEventListener('DOMContentLoaded', function () {
 
-    session.user_has_group(
-        'gift_product_configurator.group_product_vendor'
-    ).then(function (isVendor) {
-
-        console.log('Is Vendor:', isVendor);
-
-        if (!isVendor) {
-            return;
-        }
-
-        // Hide menu items
+        // Delay slightly to ensure menu renders
         setTimeout(function () {
 
-            $('div[data-menu="documentation"]').hide();
-            $('div[data-menu="support"]').hide();
-            $('div[data-menu="onboarding"]').hide();
-            $('div[data-menu="odoo_account"]').hide();
-            $('div[data-menu="preferences"]').hide();
+            // Detect vendor by checking body data or visible UI
+            const bodyText = document.body.innerText || '';
 
-            console.log('Vendor dropdown menus hidden');
+            // OPTIONAL:
+            // Safer vendor detection can later be improved via backend variable
+
+            const isVendor =
+                bodyText.includes('Website') &&
+                !bodyText.includes('Apps');
+
+            console.log('Vendor detected:', isVendor);
+
+            if (!isVendor) {
+                return;
+            }
+
+            // Hide dropdown menu items
+            document.querySelectorAll('.dropdown-item').forEach(function (item) {
+
+                const text = item.innerText.trim();
+
+                if (
+                    text === 'Documentation' ||
+                    text === 'Support' ||
+                    text === 'Onboarding' ||
+                    text === 'Preferences' ||
+                    text === 'My Odoo.com account' ||
+                    text === 'Shortcuts'
+                ) {
+                    item.style.display = 'none';
+                }
+
+            });
+
+            console.log('Vendor menu items hidden');
 
         }, 1000);
 
     });
 
-});
+})();
