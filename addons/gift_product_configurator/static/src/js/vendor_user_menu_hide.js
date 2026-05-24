@@ -7,7 +7,7 @@
     document.addEventListener('DOMContentLoaded', function () {
 
         setTimeout(function () {
-
+            //get vendor
             const isVendor =
                 document.body.classList.contains('vendor-user');
 
