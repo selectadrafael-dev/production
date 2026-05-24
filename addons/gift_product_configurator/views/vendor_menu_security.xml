@@ -19,15 +19,6 @@
 
     </record>
 
-    <!-- HIDE DASHBOARD -->
-    <record id="board.menu_board_root"
-            model="ir.ui.menu">
-
-        <field name="groups_id"
-               eval="[(3, ref('gift_product_configurator.group_product_vendor'))]"/>
-
-    </record>
-
     <!-- HIDE APPS -->
     <record id="base.menu_administration"
             model="ir.ui.menu">
