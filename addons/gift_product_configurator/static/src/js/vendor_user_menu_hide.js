@@ -1,28 +1,32 @@
-odoo.define('gift_product_configurator.vendor_user_menu_hide', function (require) {
-    'use strict';
+/** @odoo-module **/
 
-    const session = require('web.session');
-    const registry = require('@web/core/registry');
+import { registry } from "@web/core/registry";
+import { session } from "@web/session";
 
-    const userMenuRegistry = registry.registry.category('user_menuitems');
+console.log("Vendor menu JS loaded");
 
-    session.user_has_group(
-        'gift_product_configurator.group_product_vendor'
-    ).then(function (isVendor) {
+const userMenuRegistry = registry.category("user_menuitems");
 
-        if (!isVendor) {
-            return;
-        }
+async function hideVendorMenus() {
 
-        // Remove menu items
-        userMenuRegistry.remove('documentation');
-        userMenuRegistry.remove('support');
-        userMenuRegistry.remove('shortcuts');
-        userMenuRegistry.remove('odoo_account');
-        userMenuRegistry.remove('account');
-        userMenuRegistry.remove('preferences');
-        userMenuRegistry.remove('onboarding');
+    const isVendor = await session.user_has_group(
+        "gift_product_configurator.group_product_vendor"
+    );
 
-    });
+    console.log("Is Vendor:", isVendor);
 
-});
+    if (!isVendor) {
+        return;
+    }
+
+    userMenuRegistry.remove("documentation");
+    userMenuRegistry.remove("support");
+    userMenuRegistry.remove("shortcuts");
+    userMenuRegistry.remove("preferences");
+    userMenuRegistry.remove("odoo_account");
+    userMenuRegistry.remove("onboarding");
+
+    console.log("Vendor menus removed");
+}
+
+hideVendorMenus();
