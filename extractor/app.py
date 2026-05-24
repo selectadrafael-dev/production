@@ -132,27 +132,6 @@ def extract():
     # 🔒 MUST remain 1 (Odoo sends one page)
     MAX_PAGES = 1
 
-    # for page_number, page in enumerate(doc):
-
-    #     if page_number >= MAX_PAGES:
-    #         break
-
-    #     text = page.get_text("text") or ""
-    #     image_list = []
-
-    # pix = page.get_pixmap(
-    #     matrix=fitz.Matrix(2, 2)
-    # )
-
-    # img = Image.frombytes(
-
-    #     "RGB",
-
-    #     [pix.width, pix.height],
-
-    #     pix.samples
-    # )
-
     for page_number, page in enumerate(doc):
 
         if page_number >= MAX_PAGES:
@@ -235,13 +214,25 @@ def extract():
 
             gray,
 
-            240,
+            248,
 
             255,
 
             cv2.THRESH_BINARY_INV
 
         )[1]
+
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            (3, 3)
+        )
+
+        thresh = cv2.morphologyEx(
+            thresh,
+            cv2.MORPH_CLOSE,
+            kernel,
+            iterations=1
+        )
 
         # ===============================
         # FIND CONTOURS
@@ -269,7 +260,7 @@ def extract():
             )
 
             # skip tiny areas
-            if w < 180 or h < 180:
+            if w < 90 or h < 90:
                 continue
 
             # skip full-page blocks
@@ -310,7 +301,11 @@ def extract():
 
                 "crop": crop,
 
-                "score": (w * h)
+                "score": (
+                    (w * h)
+                    *
+                    (1.15 if h > w else 1.0)
+                )
             })
 
         # ===============================
@@ -326,7 +321,7 @@ def extract():
             reverse=True
         )
 
-        MAX_IMAGES_PER_PAGE = 10
+        MAX_IMAGES_PER_PAGE = 18
 
         image_list = []
 
@@ -365,6 +360,17 @@ def extract():
                     image_base64
                 )
 
+                _logger.warning(
+
+                    f"[EXTRACTOR IMAGE] "
+
+                    f"page={page_number + 1} "
+
+                    f"w={crop_img.width} "
+
+                    f"h={crop_img.height}"
+                )
+
             except Exception:
                 continue
 
@@ -395,7 +401,7 @@ def extract():
             _logger.warning("RESPONSE TOO LARGE → reducing images per page")
 
             for p in pages_data:
-               p["images"] = p["images"][:6]  # keep at least some images
+                p["images"] = p["images"][:10]
 
     except Exception:
         pass
