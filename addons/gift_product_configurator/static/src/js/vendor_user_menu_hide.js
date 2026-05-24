@@ -14,9 +14,13 @@ odoo.define('gift_product_configurator.vendor_user_menu_hide', function (require
             return;
         }
 
+        // Remove menu items
         userMenuRegistry.remove('documentation');
         userMenuRegistry.remove('support');
+        userMenuRegistry.remove('shortcuts');
         userMenuRegistry.remove('odoo_account');
+        userMenuRegistry.remove('account');
+        userMenuRegistry.remove('preferences');
         userMenuRegistry.remove('onboarding');
 
     });
