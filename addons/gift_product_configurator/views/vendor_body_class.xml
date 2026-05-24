@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <template id="vendor_body_class"
+              inherit_id="web.layout">
+
+        <xpath expr="//body"
+               position="attributes">
+
+            <attribute name="t-att-class">
+                "'vendor-user' if request.env.user.has_group('gift_product_configurator.group_product_vendor') else ''"
+            </attribute>
+
+        </xpath>
+
+    </template>
+
+</odoo>

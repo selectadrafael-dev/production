@@ -6,18 +6,10 @@
 
     document.addEventListener('DOMContentLoaded', function () {
 
-        // Delay slightly to ensure menu renders
         setTimeout(function () {
 
-            // Detect vendor by checking body data or visible UI
-            const bodyText = document.body.innerText || '';
-
-            // OPTIONAL:
-            // Safer vendor detection can later be improved via backend variable
-
             const isVendor =
-                bodyText.includes('Website') &&
-                !bodyText.includes('Apps');
+                document.body.classList.contains('vendor-user');
 
             console.log('Vendor detected:', isVendor);
 
@@ -25,7 +17,6 @@
                 return;
             }
 
-            // Hide dropdown menu items
             document.querySelectorAll('.dropdown-item').forEach(function (item) {
 
                 const text = item.innerText.trim();
