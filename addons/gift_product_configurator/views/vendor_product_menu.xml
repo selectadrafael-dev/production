@@ -11,15 +11,20 @@
 
         <field name="view_mode">kanban,tree,form</field>
 
+        <!-- Optional safer domain -->
+        <field name="domain">
+            [('vendor_id', '=', user.partner_id.id)]
+        </field>
+
     </record>
 
-    <!-- Vendor Menu -->
+    <!-- Vendor Products Menu -->
     <menuitem
         id="menu_vendor_products"
-        name="Vendor Products"
-        parent="website.menu_website"
+        name="Products"
+        parent="website_sale.menu_ecommerce"
         action="action_vendor_products"
-        sequence="5"
+        sequence="1"
         groups="gift_product_configurator.group_product_vendor"
     />
 
