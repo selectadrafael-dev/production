@@ -2338,13 +2338,13 @@ class VendorImportJob(models.Model):
 
                     area = cv2.contourArea(contour)
 
-                    if area < 8000:
+                    if area < 2500:
                         continue
 
                     x, y, w, h = cv2.boundingRect(contour)
 
                     # reject ultra-thin text columns
-                    if w < 120 or h < 120:
+                    if w < 65 or h < 65:
                         continue
 
                     ratio = w / float(h)
@@ -2355,7 +2355,7 @@ class VendorImportJob(models.Model):
 
                     filtered_contours.append(contour)
 
-                contours = filtered_contours[:12]
+                contours = filtered_contours[:40]
 
                 candidate_crops = []
 
@@ -2486,31 +2486,37 @@ class VendorImportJob(models.Model):
                     ):
 
                         centered_object = True
+                   
+                    # =====================================
+                    # HERO SCORE
+                    # =====================================
+
+                    human_penalty = 0
+
+                    hero_score = 0
+                    gallery_score = 0
 
                     # =====================================
-                    # SCORE
+                    # HERO IMAGE PRIORITY
                     # =====================================
-                    human_penalty = 0
-                    score = 0
 
                     # big clean product bonus
-                    score += int(
+                    hero_score += int(
                         coverage_ratio * 140
                     )
 
                     # centered ecommerce product
                     if centered_object:
-                        score += 55
-
-                    # strong collage penalty
-                    if is_collage:
-                        score -= 70
+                        hero_score += 55
 
                     # portrait product bonus
                     if crop_height > crop_width:
-                        score += 18
+                        hero_score += 18
 
-                    # isolated product bonus
+                    # =====================================
+                    # EDGE DENSITY
+                    # =====================================
+
                     edge_density = cv2.Canny(
                         crop_arr,
                         80,
@@ -2518,12 +2524,16 @@ class VendorImportJob(models.Model):
                     ).mean()
 
                     # =====================================
-                    # CLEAN CENTER HERO DETECTION
+                    # BACKGROUND ANALYSIS
                     # =====================================
 
                     background_ratio = np.mean(
                         crop_arr > 235
                     )
+
+                    # =====================================
+                    # CLEAN HERO DETECTION
+                    # =====================================
 
                     # strong ecommerce isolated render
                     if (
@@ -2533,7 +2543,7 @@ class VendorImportJob(models.Model):
                         and
                         not is_collage
                     ):
-                        score += 120
+                        hero_score += 120
 
                     # medium clean product
                     elif (
@@ -2541,22 +2551,19 @@ class VendorImportJob(models.Model):
                         and
                         not is_collage
                     ):
-                        score += 60
+                        hero_score += 60
 
                     # dark/lifestyle penalty
                     if background_ratio < 0.12:
-                        score -= 55
+                        hero_score -= 55
 
                     # excessive visual noise
                     if edge_density > 55:
-                        score -= 35
-
+                        hero_score -= 35
 
                     # =====================================
-                    # HUMAN / LIFESTYLE APPROXIMATION
+                    # HUMAN / LIFESTYLE DETECTION
                     # =====================================
-
-                    human_penalty = 0
 
                     rgb_arr = np.array(crop)
 
@@ -2595,12 +2602,52 @@ class VendorImportJob(models.Model):
 
                         human_penalty = 40
 
-                    score -= human_penalty
+                    hero_score -= human_penalty
 
-                    score -= human_penalty
-
+                    # balanced edge density
                     if 8 < edge_density < 35:
-                        score += 25
+                        hero_score += 25
+
+                    # =====================================
+                    # GALLERY SCORE
+                    # =====================================
+
+                    gallery_score = 0
+
+                    # gallery accepts collages/grids
+                    if is_collage:
+                        gallery_score += 45
+
+                    # preserve useful thumbnails
+                    gallery_score += int(
+                        coverage_ratio * 90
+                    )
+
+                    # clean product bonus
+                    if background_ratio > 0.18:
+                        gallery_score += 35
+
+                    # acceptable noise
+                    if edge_density < 75:
+                        gallery_score += 20
+
+                    # retain portrait products
+                    if crop_height > crop_width:
+                        gallery_score += 12
+
+                    # moderate penalty only
+                    if skin_ratio > 0.38:
+                        gallery_score -= 20
+
+                    # avoid total garbage
+                    if background_ratio < 0.05:
+                        gallery_score -= 40
+
+                    # =====================================
+                    # FINAL SCORE
+                    # =====================================
+
+                    score = hero_score
 
                     # =====================================
                     # SAVE
@@ -2623,9 +2670,17 @@ class VendorImportJob(models.Model):
 
                         "image": encoded,
 
-                        "score": score,
+                        "score": hero_score,
 
-                        "is_collage": is_collage
+                        "hero_score": hero_score,
+
+                        "gallery_score": gallery_score,
+
+                        "is_collage": is_collage,
+
+                        "centered_object": centered_object,
+
+                        "background_ratio": background_ratio
                     })
 
                     _logger.warning(
@@ -2634,7 +2689,9 @@ class VendorImportJob(models.Model):
 
                         f"{w}x{h} "
 
-                        f"| score={score} "
+                        f"| hero={hero_score} "
+
+                        f"| gallery={gallery_score} "
 
                         f"| collage={is_collage}"
                     )
