@@ -7,7 +7,6 @@ class VendorImportPage(models.Model):
 
     _description = 'Vendor Import PDF Pages'
 
-
     job_id = fields.Many2one(
         'vendor.import.job',
         ondelete='cascade'
