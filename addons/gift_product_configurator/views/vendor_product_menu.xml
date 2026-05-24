@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Allow vendors access to Ecommerce Products -->
+
+    <record id="website_sale.menu_catalog_products"
+            model="ir.ui.menu">
+
+        <field name="groups_id"
+               eval="[
+                   (4, ref('gift_product_configurator.group_product_vendor'))
+               ]"/>
+
+    </record>
+
+</odoo>

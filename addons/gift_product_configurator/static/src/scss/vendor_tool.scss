@@ -271,3 +271,11 @@
 
     resize: vertical;
 }
+
+/*vendor admin dashboard*/
+a[data-menu="documentation"],
+a[data-menu="onboarding"],
+a[data-menu="odoo_account"],
+a[data-menu="preferences"] {
+    display: none !important;
+}
