@@ -107,7 +107,7 @@
                         </a>
 
                         <a class="dropdown-item"
-                           href="/web#model=product.template&view_type=list">
+                           href="/web#model=product.template&amp;view_type=list">
 
                             Add Product
                         </a>
