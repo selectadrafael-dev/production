@@ -210,37 +210,249 @@ class VendorImportJob(models.Model):
 
 
     #========vendor email notification==========
-    def send_completion_email(self):
+    def send_completion_email(self, failed=False, error_message=None):
+
+        self.ensure_one()
+
+        _logger.warning(
+            f"[EMAIL] START → job={self.id}"
+        )
+
+        # ============================================
+        # VALIDATE VENDOR EMAIL
+        # ============================================
+
+        if not self.partner_id:
+
+            _logger.error(
+                f"[EMAIL] FAILED → NO PARTNER | job={self.id}"
+            )
+
+            return False
 
         if not self.partner_id.email:
-            return
 
-        subject = f"Import Completed - {self.name}"
+            _logger.error(
+                f"[EMAIL] FAILED → NO VENDOR EMAIL "
+                f"| vendor={self.partner_id.id}"
+            )
+
+            return False
+
+        # ============================================
+        # DETECT ENVIRONMENT
+        # ============================================
+
+        base_url = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param('web.base.url', '')
+
+        is_staging = (
+            'staging' in (base_url or '').lower()
+        )
+
+        _logger.warning(
+            f"[EMAIL] ENVIRONMENT → "
+            f"{'STAGING' if is_staging else 'PRODUCTION'}"
+        )
+
+        # ============================================
+        # STAGING SKIP
+        # ============================================
+
+        if is_staging:
+
+            _logger.warning(
+                f"[EMAIL] SKIPPED → STAGING ENVIRONMENT "
+                f"| vendor={self.partner_id.email}"
+            )
+
+            return False
+
+        # ============================================
+        # FIND SMTP SERVER
+        # ============================================
+
+        mail_server = self.env[
+            'ir.mail_server'
+        ].sudo().search([
+            ('active', '=', True)
+        ], limit=1)
+
+        if not mail_server:
+
+            _logger.error(
+                "[EMAIL] FAILED → "
+                "NO ACTIVE OUTGOING MAIL SERVER"
+            )
+
+            return False
+
+        _logger.warning(
+            f"[EMAIL] SMTP SERVER → "
+            f"{mail_server.name}"
+        )
+
+        # ============================================
+        # SUBJECT
+        # ============================================
+
+        if failed:
+
+            subject = (
+                f"Import Failed - {self.name}"
+            )
+
+            status_text = "Failed"
+
+            error_html = f"""
+                <br/><br/>
+                <b>Error:</b><br/>
+                {error_message or 'Unknown processing error'}
+            """
+
+        else:
+
+            subject = (
+                f"Import Completed - {self.name}"
+            )
+
+            status_text = "Completed"
+
+            error_html = ""
+
+        # ============================================
+        # EMAIL BODY
+        # ============================================
 
         body = f"""
-        Hello {self.partner_id.name},
+            <div>
+                <p>
+                    Hello {self.partner_id.name},
+                </p>
 
-        Your import job has completed successfully.
+                <p>
+                    Your vendor import job has finished processing.
+                </p>
 
-        File: {self.name}
-        Source: {self.source_type}
-        Upload Date: {self.create_date}
+                <table border="1" cellpadding="6" cellspacing="0">
 
-        Status: Completed
+                    <tr>
+                        <td><b>Job</b></td>
+                        <td>{self.name}</td>
+                    </tr>
 
-        Regards
+                    <tr>
+                        <td><b>Source</b></td>
+                        <td>{self.source_type}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Status</b></td>
+                        <td>{status_text}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Date</b></td>
+                        <td>{self.create_date}</td>
+                    </tr>
+
+                </table>
+
+                {error_html}
+
+                <br/><br/>
+
+                Regards
+            </div>
         """
 
-        mail = self.env['mail.mail'].create({
-            'subject': subject,
-            'body_html': body,
-            'email_to': self.partner_id.email,
-        })
+        # ============================================
+        # CREATE MAIL
+        # ============================================
 
-        mail.send()
+        try:
 
-        self.completion_email_sent = True
+            mail_values = {
 
+                'subject': subject,
+
+                'body_html': body,
+
+                'email_to': self.partner_id.email,
+
+                'email_from': mail_server.smtp_user or self.env.user.email,
+
+                'auto_delete': False,
+            }
+
+            _logger.warning(
+                f"[EMAIL] CREATING MAIL → "
+                f"{self.partner_id.email}"
+            )
+
+            mail = self.env[
+                'mail.mail'
+            ].sudo().create(mail_values)
+
+            _logger.warning(
+                f"[EMAIL] MAIL CREATED → "
+                f"mail_id={mail.id}"
+            )
+
+        except Exception as create_error:
+
+            _logger.exception(
+                f"[EMAIL] CREATE FAILED → "
+                f"{str(create_error)}"
+            )
+
+            return False
+
+        # ============================================
+        # SEND
+        # ============================================
+
+        try:
+
+            _logger.warning(
+                f"[EMAIL] SENDING → mail_id={mail.id}"
+            )
+
+            mail.sudo().send()
+
+            self.env.cr.commit()
+
+            _logger.warning(
+                f"[EMAIL] SUCCESS → "
+                f"{self.partner_id.email}"
+            )
+
+            self.completion_email_sent = True
+
+            self.env.cr.commit()
+
+            return True
+
+        except Exception as send_error:
+
+            _logger.exception(
+                f"[EMAIL] SEND FAILED → "
+                f"{str(send_error)}"
+            )
+
+            try:
+
+                mail.write({
+                    'state': 'exception'
+                })
+
+                self.env.cr.commit()
+
+            except Exception:
+                pass
+
+            return False
     #============Processing Jobs===================================================
     def _process_step(self):
 
