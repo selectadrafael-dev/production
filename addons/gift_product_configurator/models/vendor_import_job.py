@@ -1,4 +1,4 @@
-from odoo import models, fields
+from odoo import models, fields, api
 import base64
 import logging
 import io
@@ -24,6 +24,7 @@ from PIL import (
 
 import cv2
 import numpy as np
+from odoo.exceptions import AccessError
 
  
 
@@ -57,7 +58,82 @@ class ProductTemplate(models.Model):
         default=False
     )
 
-# ✅ Extend existing model
+
+    # ==========================================
+    # AUTO ASSIGN VENDOR DURING CREATE
+    # ==========================================
+
+    @api.model
+    def create(self, vals):
+
+        user = self.env.user
+
+        # Vendor user creating manually from UI
+        if (
+            user.has_group(
+                'gift_product_configurator.group_product_vendor'
+            )
+            and not vals.get('vendor_id')
+        ):
+
+            vals['vendor_id'] = user.partner_id.id
+
+        return super().create(vals)
+
+    # ==========================================
+    # PROTECT OTHER VENDOR PRODUCTS
+    # ==========================================
+
+    def write(self, vals):
+
+        user = self.env.user
+
+        if user.has_group(
+            'gift_product_configurator.group_product_vendor'
+        ):
+
+            for product in self:
+
+                if (
+                    product.vendor_id
+                    and
+                    product.vendor_id != user.partner_id
+                ):
+
+                    raise AccessError(
+                        "You can only edit your own products."
+                    )
+
+        return super().write(vals)
+
+    # ==========================================
+    # PROTECT DELETE
+    # ==========================================
+
+    def unlink(self):
+
+        user = self.env.user
+
+        if user.has_group(
+            'gift_product_configurator.group_product_vendor'
+        ):
+
+            for product in self:
+
+                if (
+                    product.vendor_id
+                    and
+                    product.vendor_id != user.partner_id
+                ):
+
+                    raise AccessError(
+                        "You can only delete your own products."
+                    )
+
+        return super().unlink()
+    
+
+#=========== ✅ Extend existing model=================
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
