@@ -101,13 +101,13 @@
                           </button>
                         </t>
                         <a class="dropdown-item"
-                           href="/web#action=website_sale.product_template_action">
+                           href="/web#model=product.template&amp;view_type=list">
 
                             My Products
                         </a>
 
                         <a class="dropdown-item"
-                           href="/web#model=product.template&amp;view_type=form">
+                           href="/web#model=product.template&view_type=list">
 
                             Add Product
                         </a>
