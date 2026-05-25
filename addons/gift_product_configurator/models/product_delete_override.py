@@ -5,34 +5,16 @@ _logger = logging.getLogger(__name__)
 
 
 class ProductTemplate(models.Model):
-
     _inherit = 'product.template'
 
-    #====== method====================
     def action_purge_imported_products(self):
 
-        _logger.warning(
-            f"[PURGE SELF IDS] {self.ids}"
+        templates = self.filtered(
+            lambda t: t.vendor_import_job_id
         )
 
-        templates = self
-
-        for t in templates:
-
-            _logger.warning(
-
-                f"[PURGE TEMPLATE CHECK] "
-
-                f"template={t.id} "
-
-                f"name={t.name} "
-
-                f"job={t.vendor_import_job_id.id}"
-            )
-
-
         _logger.warning(
-            f"[PURGE SELECTED TEMPLATES] {templates.ids}"
+            f"[PURGE PRODUCTS] {templates.ids}"
         )
 
         products = templates.mapped(
@@ -40,73 +22,126 @@ class ProductTemplate(models.Model):
         )
 
         # =====================================
-        # DELETE STOCK QUANTS
+        # STOCK MOVES
         # =====================================
 
-        quants = self.env['stock.quant'].search([
-
+        moves = self.env['stock.move'].search([
             ('product_id', 'in', products.ids)
-
         ])
 
         _logger.warning(
-            f"[PURGE QUANTS] {quants.ids}"
+            f"[PURGE MOVES FOUND] {moves.ids}"
         )
 
-        quants.sudo().unlink()
+        # =====================================
+        # RESET DONE MOVES
+        # =====================================
+
+        done_moves = moves.filtered(
+            lambda m: m.state == 'done'
+        )
+
+        for move in done_moves:
+
+            try:
+
+                move._action_cancel()
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[MOVE CANCEL FAILED] "
+                    f"{move.id} => {str(e)}"
+                )
 
         # =====================================
         # DELETE MOVE LINES
         # =====================================
 
-        move_lines = self.env['stock.move.line'].search([
+        move_lines = self.env[
+            'stock.move.line'
+        ].search([
 
             ('product_id', 'in', products.ids)
 
         ])
 
         _logger.warning(
-            f"[PURGE MOVE LINES] {move_lines.ids}"
+            f"[PURGE MOVE LINES] "
+            f"{move_lines.ids}"
         )
 
         move_lines.sudo().unlink()
 
         # =====================================
-        # DELETE STOCK MOVES
+        # DELETE MOVES
         # =====================================
 
+        moves.sudo().unlink()
 
-        moves = self.env['stock.move'].search([
+        # =====================================
+        # DELETE VALUATION
+        # =====================================
 
-            ('product_id', 'in', products.ids),
+        valuation_layers = self.env[
+            'stock.valuation.layer'
+        ].search([
 
-            ('state', '!=', 'done')
+            ('product_id', 'in', products.ids)
 
         ])
 
         _logger.warning(
-            f"[PURGE MOVES] {moves.ids}"
+            f"[PURGE VALUATION] "
+            f"{valuation_layers.ids}"
         )
 
-        moves.sudo().unlink()
+        valuation_layers.sudo().unlink()
+
+        # =====================================
+        # DELETE QUANTS
+        # =====================================
+
+        quants = self.env[
+            'stock.quant'
+        ].search([
+
+            ('product_id', 'in', products.ids)
+
+        ])
+
+        _logger.warning(
+            f"[PURGE QUANTS] "
+            f"{quants.ids}"
+        )
+
+        quants.sudo().unlink()
 
         # =====================================
         # DELETE VARIANTS
         # =====================================
 
         _logger.warning(
-            f"[PURGE VARIANTS] {products.ids}"
+            f"[PURGE VARIANTS] "
+            f"{products.ids}"
         )
 
         products.with_context(
-
             active_test=False
-
         ).sudo().unlink()
 
-        # ======================================
+        # =====================================
         # DELETE TEMPLATES
-        # ======================================
+        # =====================================
+
+        _logger.warning(
+            f"[PURGE TEMPLATES] "
+            f"{templates.ids}"
+        )
+
+        templates.with_context(
+            active_test=False
+        ).sudo().unlink()
 
         self.env.cr.commit()
 
