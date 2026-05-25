@@ -1,4 +1,4 @@
-from odoo import models, fields
+from odoo import models, fields, api
 import base64
 import logging
 import io
@@ -24,6 +24,7 @@ from PIL import (
 
 import cv2
 import numpy as np
+from odoo.exceptions import AccessError
 
  
 
@@ -57,7 +58,82 @@ class ProductTemplate(models.Model):
         default=False
     )
 
-# ✅ Extend existing model
+
+    # ===========================================
+    # AUTO ASSIGN VENDOR DURING CREATE
+    # ===========================================
+
+    @api.model
+    def create(self, vals):
+
+        user = self.env.user
+
+        # Vendor user creating manually from UI
+        if (
+            user.has_group(
+                'gift_product_configurator.group_product_vendor'
+            )
+            and not vals.get('vendor_id')
+        ):
+
+            vals['vendor_id'] = user.partner_id.id
+
+        return super().create(vals)
+
+    # ==========================================
+    # PROTECT OTHER VENDOR PRODUCTS
+    # ==========================================
+
+    def write(self, vals):
+
+        user = self.env.user
+
+        if user.has_group(
+            'gift_product_configurator.group_product_vendor'
+        ):
+
+            for product in self:
+
+                if (
+                    product.vendor_id
+                    and
+                    product.vendor_id != user.partner_id
+                ):
+
+                    raise AccessError(
+                        "You can only edit your own products."
+                    )
+
+        return super().write(vals)
+
+    # ==========================================
+    # PROTECT DELETE
+    # ==========================================
+
+    def unlink(self):
+
+        user = self.env.user
+
+        if user.has_group(
+            'gift_product_configurator.group_product_vendor'
+        ):
+
+            for product in self:
+
+                if (
+                    product.vendor_id
+                    and
+                    product.vendor_id != user.partner_id
+                ):
+
+                    raise AccessError(
+                        "You can only delete your own products."
+                    )
+
+        return super().unlink()
+    
+
+#=========== ✅ Extend existing model=================
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
@@ -210,37 +286,249 @@ class VendorImportJob(models.Model):
 
 
     #========vendor email notification==========
-    def send_completion_email(self):
+    def send_completion_email(self, failed=False, error_message=None):
+
+        self.ensure_one()
+
+        _logger.warning(
+            f"[EMAIL] START → job={self.id}"
+        )
+
+        # =============================================
+        # VALIDATE VENDOR EMAIL
+        # =============================================
+
+        if not self.partner_id:
+
+            _logger.error(
+                f"[EMAIL] FAILED → NO PARTNER | job={self.id}"
+            )
+
+            return False
 
         if not self.partner_id.email:
-            return
 
-        subject = f"Import Completed - {self.name}"
+            _logger.error(
+                f"[EMAIL] FAILED → NO VENDOR EMAIL "
+                f"| vendor={self.partner_id.id}"
+            )
+
+            return False
+
+        # ============================================
+        # DETECT ENVIRONMENT
+        # ============================================
+
+        base_url = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param('web.base.url', '')
+
+        is_staging = (
+            'staging' in (base_url or '').lower()
+        )
+
+        _logger.warning(
+            f"[EMAIL] ENVIRONMENT → "
+            f"{'STAGING' if is_staging else 'PRODUCTION'}"
+        )
+
+        # ============================================
+        # STAGING SKIP
+        # ============================================
+
+        if is_staging:
+
+            _logger.warning(
+                f"[EMAIL] SKIPPED → STAGING ENVIRONMENT "
+                f"| vendor={self.partner_id.email}"
+            )
+
+            return False
+
+        # ============================================
+        # FIND SMTP SERVER
+        # ============================================
+
+        mail_server = self.env[
+            'ir.mail_server'
+        ].sudo().search([
+            ('active', '=', True)
+        ], limit=1)
+
+        if not mail_server:
+
+            _logger.error(
+                "[EMAIL] FAILED → "
+                "NO ACTIVE OUTGOING MAIL SERVER"
+            )
+
+            return False
+
+        _logger.warning(
+            f"[EMAIL] SMTP SERVER → "
+            f"{mail_server.name}"
+        )
+
+        # ============================================
+        # SUBJECT
+        # ============================================
+
+        if failed:
+
+            subject = (
+                f"Import Failed - {self.name}"
+            )
+
+            status_text = "Failed"
+
+            error_html = f"""
+                <br/><br/>
+                <b>Error:</b><br/>
+                {error_message or 'Unknown processing error'}
+            """
+
+        else:
+
+            subject = (
+                f"Import Completed - {self.name}"
+            )
+
+            status_text = "Completed"
+
+            error_html = ""
+
+        # ============================================
+        # EMAIL BODY
+        # ============================================
 
         body = f"""
-        Hello {self.partner_id.name},
+            <div>
+                <p>
+                    Hello {self.partner_id.name},
+                </p>
 
-        Your import job has completed successfully.
+                <p>
+                    Your vendor import job has finished processing.
+                </p>
 
-        File: {self.name}
-        Source: {self.source_type}
-        Upload Date: {self.create_date}
+                <table border="1" cellpadding="6" cellspacing="0">
 
-        Status: Completed
+                    <tr>
+                        <td><b>Job</b></td>
+                        <td>{self.name}</td>
+                    </tr>
 
-        Regards
+                    <tr>
+                        <td><b>Source</b></td>
+                        <td>{self.source_type}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Status</b></td>
+                        <td>{status_text}</td>
+                    </tr>
+
+                    <tr>
+                        <td><b>Date</b></td>
+                        <td>{self.create_date}</td>
+                    </tr>
+
+                </table>
+
+                {error_html}
+
+                <br/><br/>
+
+                Regards
+            </div>
         """
 
-        mail = self.env['mail.mail'].create({
-            'subject': subject,
-            'body_html': body,
-            'email_to': self.partner_id.email,
-        })
+        # ============================================
+        # CREATE MAIL
+        # ============================================
 
-        mail.send()
+        try:
 
-        self.completion_email_sent = True
+            mail_values = {
 
+                'subject': subject,
+
+                'body_html': body,
+
+                'email_to': self.partner_id.email,
+
+                'email_from': mail_server.smtp_user or self.env.user.email,
+
+                'auto_delete': False,
+            }
+
+            _logger.warning(
+                f"[EMAIL] CREATING MAIL → "
+                f"{self.partner_id.email}"
+            )
+
+            mail = self.env[
+                'mail.mail'
+            ].sudo().create(mail_values)
+
+            _logger.warning(
+                f"[EMAIL] MAIL CREATED → "
+                f"mail_id={mail.id}"
+            )
+
+        except Exception as create_error:
+
+            _logger.exception(
+                f"[EMAIL] CREATE FAILED → "
+                f"{str(create_error)}"
+            )
+
+            return False
+
+        # ============================================
+        # SEND
+        # ============================================
+
+        try:
+
+            _logger.warning(
+                f"[EMAIL] SENDING → mail_id={mail.id}"
+            )
+
+            mail.sudo().send()
+
+            self.env.cr.commit()
+
+            _logger.warning(
+                f"[EMAIL] SUCCESS → "
+                f"{self.partner_id.email}"
+            )
+
+            self.completion_email_sent = True
+
+            self.env.cr.commit()
+
+            return True
+
+        except Exception as send_error:
+
+            _logger.exception(
+                f"[EMAIL] SEND FAILED → "
+                f"{str(send_error)}"
+            )
+
+            try:
+
+                mail.write({
+                    'state': 'exception'
+                })
+
+                self.env.cr.commit()
+
+            except Exception:
+                pass
+
+            return False
     #============Processing Jobs===================================================
     def _process_step(self):
 
@@ -2234,13 +2522,38 @@ class VendorImportJob(models.Model):
     # =====================================================
 
     def _trim_catalog_whitespace(self, pil_image):
+        
+        original_image = pil_image
 
         try:
+
+            # =====================================
+            # SAFE BACKGROUND ESTIMATION
+            # =====================================
+
+            corners = [
+
+                pil_image.getpixel((0, 0)),
+                pil_image.getpixel((pil_image.width - 1, 0)),
+                pil_image.getpixel((0, pil_image.height - 1)),
+                pil_image.getpixel((
+                    pil_image.width - 1,
+                    pil_image.height - 1
+                )),
+            ]
+
+            # average corner color
+            avg_corner = tuple(
+
+                int(sum(c[i] for c in corners) / 4)
+
+                for i in range(len(corners[0]))
+            )
 
             bg = Image.new(
                 pil_image.mode,
                 pil_image.size,
-                pil_image.getpixel((0, 0))
+                avg_corner
             )
 
             diff = ImageChops.difference(
@@ -2248,16 +2561,67 @@ class VendorImportJob(models.Model):
                 bg
             )
 
+            # =====================================
+            # REDUCE OVER-TRIMMING
+            # =====================================
+
+            # convert to grayscale for stable trim mask
+            diff = diff.convert("L")
+
+            diff = diff.point(
+
+                lambda p: 255 if p > 18 else 0
+            )
+
             bbox = diff.getbbox()
 
             if bbox:
-                pil_image = pil_image.crop(bbox)
+
+                left, top, right, bottom = bbox
+
+                padding = 12
+
+                left = max(0, left - padding)
+                top = max(0, top - padding)
+
+                right = min(
+                    pil_image.width,
+                    right + padding
+                )
+
+                bottom = min(
+                    pil_image.height,
+                    bottom + padding
+                )
+
+                pil_image = pil_image.crop(
+
+                    (left, top, right, bottom)
+                )
+
+            # =====================================
+            # POST-TRIM SAFETY
+            # =====================================
+
+            if (
+                pil_image.width < 60
+                or
+                pil_image.height < 60
+            ):
+
+                return None
 
             return pil_image
 
-        except Exception:
+        except Exception as e:
 
-            return pil_image
+            _logger.warning(
+
+                f"[TRIM FAILED] {str(e)}"
+            )
+
+            return original_image
+
 
     # =====================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
@@ -2338,13 +2702,13 @@ class VendorImportJob(models.Model):
 
                     area = cv2.contourArea(contour)
 
-                    if area < 8000:
+                    if area < 2500:
                         continue
 
                     x, y, w, h = cv2.boundingRect(contour)
 
                     # reject ultra-thin text columns
-                    if w < 120 or h < 120:
+                    if w < 65 or h < 65:
                         continue
 
                     ratio = w / float(h)
@@ -2355,7 +2719,7 @@ class VendorImportJob(models.Model):
 
                     filtered_contours.append(contour)
 
-                contours = filtered_contours[:12]
+                contours = filtered_contours[:40]
 
                 candidate_crops = []
 
@@ -2486,31 +2850,37 @@ class VendorImportJob(models.Model):
                     ):
 
                         centered_object = True
+                   
+                    # =====================================
+                    # HERO SCORE
+                    # =====================================
+
+                    human_penalty = 0
+
+                    hero_score = 0
+                    gallery_score = 0
 
                     # =====================================
-                    # SCORE
+                    # HERO IMAGE PRIORITY
                     # =====================================
-                    human_penalty = 0
-                    score = 0
 
                     # big clean product bonus
-                    score += int(
+                    hero_score += int(
                         coverage_ratio * 140
                     )
 
                     # centered ecommerce product
                     if centered_object:
-                        score += 55
-
-                    # strong collage penalty
-                    if is_collage:
-                        score -= 70
+                        hero_score += 55
 
                     # portrait product bonus
                     if crop_height > crop_width:
-                        score += 18
+                        hero_score += 18
 
-                    # isolated product bonus
+                    # =====================================
+                    # EDGE DENSITY
+                    # =====================================
+
                     edge_density = cv2.Canny(
                         crop_arr,
                         80,
@@ -2518,12 +2888,16 @@ class VendorImportJob(models.Model):
                     ).mean()
 
                     # =====================================
-                    # CLEAN CENTER HERO DETECTION
+                    # BACKGROUND ANALYSIS
                     # =====================================
 
                     background_ratio = np.mean(
                         crop_arr > 235
                     )
+
+                    # =====================================
+                    # CLEAN HERO DETECTION
+                    # =====================================
 
                     # strong ecommerce isolated render
                     if (
@@ -2533,7 +2907,7 @@ class VendorImportJob(models.Model):
                         and
                         not is_collage
                     ):
-                        score += 120
+                        hero_score += 120
 
                     # medium clean product
                     elif (
@@ -2541,22 +2915,19 @@ class VendorImportJob(models.Model):
                         and
                         not is_collage
                     ):
-                        score += 60
+                        hero_score += 60
 
                     # dark/lifestyle penalty
                     if background_ratio < 0.12:
-                        score -= 55
+                        hero_score -= 55
 
                     # excessive visual noise
                     if edge_density > 55:
-                        score -= 35
-
+                        hero_score -= 35
 
                     # =====================================
-                    # HUMAN / LIFESTYLE APPROXIMATION
+                    # HUMAN / LIFESTYLE DETECTION
                     # =====================================
-
-                    human_penalty = 0
 
                     rgb_arr = np.array(crop)
 
@@ -2595,12 +2966,52 @@ class VendorImportJob(models.Model):
 
                         human_penalty = 40
 
-                    score -= human_penalty
+                    hero_score -= human_penalty
 
-                    score -= human_penalty
-
+                    # balanced edge density
                     if 8 < edge_density < 35:
-                        score += 25
+                        hero_score += 25
+
+                    # =====================================
+                    # GALLERY SCORE
+                    # =====================================
+
+                    gallery_score = 0
+
+                    # gallery accepts collages/grids
+                    if is_collage:
+                        gallery_score += 45
+
+                    # preserve useful thumbnails
+                    gallery_score += int(
+                        coverage_ratio * 90
+                    )
+
+                    # clean product bonus
+                    if background_ratio > 0.18:
+                        gallery_score += 35
+
+                    # acceptable noise
+                    if edge_density < 75:
+                        gallery_score += 20
+
+                    # retain portrait products
+                    if crop_height > crop_width:
+                        gallery_score += 12
+
+                    # moderate penalty only
+                    if skin_ratio > 0.38:
+                        gallery_score -= 20
+
+                    # avoid total garbage
+                    if background_ratio < 0.05:
+                        gallery_score -= 40
+
+                    # =====================================
+                    # FINAL SCORE
+                    # =====================================
+
+                    score = hero_score
 
                     # =====================================
                     # SAVE
@@ -2623,9 +3034,17 @@ class VendorImportJob(models.Model):
 
                         "image": encoded,
 
-                        "score": score,
+                        "score": hero_score,
 
-                        "is_collage": is_collage
+                        "hero_score": hero_score,
+
+                        "gallery_score": gallery_score,
+
+                        "is_collage": is_collage,
+
+                        "centered_object": centered_object,
+
+                        "background_ratio": background_ratio
                     })
 
                     _logger.warning(
@@ -2634,7 +3053,9 @@ class VendorImportJob(models.Model):
 
                         f"{w}x{h} "
 
-                        f"| score={score} "
+                        f"| hero={hero_score} "
+
+                        f"| gallery={gallery_score} "
 
                         f"| collage={is_collage}"
                     )
@@ -2736,8 +3157,8 @@ class VendorImportJob(models.Model):
                 255,
                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                 cv2.THRESH_BINARY_INV,
-                21,
-                5
+                15,
+                3
             )
 
             contours, _ = cv2.findContours(
@@ -2746,30 +3167,56 @@ class VendorImportJob(models.Model):
                 cv2.CHAIN_APPROX_SIMPLE
             )
 
+            kernel = cv2.getStructuringElement(
+                cv2.MORPH_RECT,
+                (3, 3)
+            )
+
+            thresh = cv2.morphologyEx(
+                thresh,
+                cv2.MORPH_CLOSE,
+                kernel,
+                iterations=1
+            )
+
             results = []
 
             for contour in contours:
 
                 area = cv2.contourArea(contour)
 
-                if area < 3500:
+                if area < 1600:
                     continue
 
                 x, y, w, h = cv2.boundingRect(contour)
 
-                if w < 80 or h < 80:
+                if w < 55 or h < 55:
                     continue
 
                 ratio = w / float(h)
 
                 # reject text strips
-                if ratio > 4.0 or ratio < 0.25:
+                if ratio > 6.5 or ratio < 0.12:
                     continue
 
                 sub = image[
                     y:y+h,
                     x:x+w
                 ]
+
+                from PIL import Image
+
+                pil_sub = Image.fromarray(
+                    cv2.cvtColor(
+                        sub,
+                        cv2.COLOR_BGR2RGB
+                    )
+                )
+
+                if not self._is_valid_product_crop(
+                    pil_sub
+                ):
+                    continue
 
                 success, buffer = cv2.imencode(
                     '.jpg',
@@ -2779,13 +3226,40 @@ class VendorImportJob(models.Model):
                 if not success:
                     continue
 
-                results.append(
-                    base64.b64encode(
-                        buffer
-                    ).decode()
+                encoded = base64.b64encode(
+                    buffer
+                ).decode()
+
+                score = self._score_segmented_image(
+                    encoded
                 )
 
-            return results[:12]
+                results.append({
+
+                    "image": encoded,
+
+                    "score": score,
+
+                    "width": w,
+
+                    "height": h,
+
+                    "is_collage": False
+                })
+
+            results = sorted(
+
+                results,
+
+                key=lambda x: x.get(
+                    "score",
+                    0
+                ),
+
+                reverse=True
+            )
+
+            return results[:20]
 
         except Exception as e:
 
@@ -2794,6 +3268,7 @@ class VendorImportJob(models.Model):
             )
 
             return []
+
 
     # =====================================================
     # VALIDATE CROPPED IMAGE
@@ -2806,13 +3281,18 @@ class VendorImportJob(models.Model):
             width, height = pil_image.size
 
             # too tiny
-            if width < 120 or height < 120:
+    
+            if width < 75 or height < 75:
                 return False
 
             # aspect safety
             ratio = width / float(height)
 
-            if ratio > 5 or ratio < 0.15:
+            if ratio > 7 or ratio < 0.10:
+                return False
+
+            # reject ultra-thin strips
+            if width < 40 or height < 40:
                 return False
 
             gray = pil_image.convert("L")
@@ -2820,13 +3300,26 @@ class VendorImportJob(models.Model):
             arr = np.array(gray)
 
             # blank image rejection
-            if arr.std() < 14:
+            if arr.std() < 7:
                 return False
 
             # excessive dark block rejection
-            dark_ratio = np.mean(arr < 25)
+    
+            dark_pixels = np.mean(
+                arr < 12
+            )
 
-            if dark_ratio > 0.92:
+            # only reject nearly solid dark blocks
+            if dark_pixels > 0.985:
+                return False
+
+            # =====================================
+            # TEXTURE VALIDATION
+            # =====================================
+
+            pixel_std = np.std(arr)
+
+            if pixel_std < 5:
                 return False
 
             return True
@@ -2835,10 +3328,12 @@ class VendorImportJob(models.Model):
 
             return False
 
+
     #=========VALIDATE AI IMAGE====================================
     def _is_valid_ai_image(self, image_data):
-
+        
         try:
+            import numpy as np
 
             if not image_data:
                 return False
@@ -2854,11 +3349,96 @@ class VendorImportJob(models.Model):
 
             decoded = base64.b64decode(image_data)
 
+            # =====================================
+            # SAFETY LIMIT
+            # =====================================
+
+            if len(decoded) > 15 * 1024 * 1024:
+
+                _logger.warning(
+
+                    "[INVALID AI IMAGE] image too large"
+                )
+
+                return False
+
             img = Image.open(
                 io.BytesIO(decoded)
             )
 
             img.verify()
+            
+            # reopen after verify
+            img = Image.open(
+                io.BytesIO(decoded)
+            ).convert("RGB")
+
+            width, height = img.size
+
+            # =====================================
+            # REJECT VERY SMALL IMAGES
+            # =====================================
+
+            if width < 80 or height < 80:
+
+                _logger.warning(
+
+                    f"[INVALID AI IMAGE] "
+
+                    f"tiny image {width}x{height}"
+                )
+
+                return False
+
+            np_img = np.array(img)
+
+            # =====================================
+            # REJECT MOSTLY BLANK IMAGES
+            # =====================================
+
+            # white_ratio = np.mean(
+            #     np_img > 245
+            # )
+
+            white_pixels = np.all(
+                np_img > 245,
+                axis=2
+            )
+
+            white_ratio = np.mean(
+                white_pixels
+            )
+
+            if white_ratio > 0.985:
+
+                _logger.warning(
+
+                    "[INVALID AI IMAGE] blank image"
+                )
+
+                return False
+            
+            # =====================================
+            # REJECT EXTREME DARK FRAMES
+            # =====================================
+
+            dark_pixels = np.all(
+                np_img < 8,
+                axis=2
+            )
+
+            dark_ratio = np.mean(
+                dark_pixels
+            )
+
+            if dark_ratio > 0.985:
+
+                _logger.warning(
+
+                    "[INVALID AI IMAGE] dark frame"
+                )
+
+                return False
 
             return True
 
@@ -2866,7 +3446,9 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"[INVALID AI IMAGE] {str(e)}"
+                f"[AI IMAGE VALIDATION FAILED] "
+
+                f"{str(e)}"
             )
 
             return False
@@ -4327,13 +4909,37 @@ class VendorImportJob(models.Model):
         Then:
         extract them as SEPARATE products.
 
+        CRITICAL:
+
+        Supplier catalog pages frequently contain:
+
+        - many isolated product thumbnails
+        - many color variants
+        - grouped apparel grids
+        - multiple visible colors
+        - multiple visible SKU presentations
+
+        You MUST aggressively detect ALL visible products.
+
+        If 8 visible shirt colors exist:
+        extract 8 variants.
+
+        If 10 visible caps exist:
+        extract 10 variants.
+
+        NEVER reduce visible product colors
+        to only 2-3 variants.
+
         IMPORTANT:
 
-        If unsure:
-        it is BETTER to slightly over-detect
-        than to miss products.
+        It is FAR BETTER to slightly over-detect
+        than to miss visible ecommerce variants.
 
-        NEVER silently ignore visible products.
+        NEVER silently ignore:
+        - isolated products
+        - visible color variants
+        - clean thumbnails
+        - alternate product colors
 
         ==================================================
         STOCK EXTRACTION RULES:
@@ -4401,6 +5007,22 @@ class VendorImportJob(models.Model):
 
             "image_index": null
         }}
+
+        IMPORTANT:
+
+        Variant images should ALSO be reused
+        inside gallery_image_indexes whenever useful.
+
+        A professional ecommerce product page
+        should contain:
+
+        - hero image
+        - variant thumbnails
+        - alternate isolated product renders
+        - supporting clean product images
+
+        Do NOT return empty galleries
+        when clean isolated product thumbnails exist.
 
         ==================================================
         ECOMMERCE IMAGE UNDERSTANDING RULES
@@ -4485,7 +5107,7 @@ class VendorImportJob(models.Model):
         GALLERY IMAGE RULES
         ==================================================
 
-        gallery_image_indexes should contain ONLY:
+        gallery_image_indexes should contain:
 
         - isolated alternate angles
         - isolated closeups
@@ -4622,21 +5244,106 @@ class VendorImportJob(models.Model):
 
         try:
             
-            MAX_IMAGES = 15
+
+            MAX_IMAGES = 24
 
             image_inputs = []
+
+
+            def ai_visibility_score(asset):
+
+                base = asset.get(
+                    "score",
+                    0
+                )
+
+                # =====================================
+                # BOOST CLEAN ISOLATED PRODUCTS
+                # =====================================
+
+                if not asset.get("is_collage"):
+
+                    base *= 1.35
+
+                # =====================================
+                # BOOST SMALL/MEDIUM PRODUCT SHOTS
+                # =====================================
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    )
+
+                    or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    )
+
+                    or 0
+                )
+
+                area = width * height
+
+                if area < 350000:
+
+                    base *= 1.25
+
+                # =====================================
+                # PENALIZE HUMAN/LIFESTYLE IMAGES
+                # =====================================
+
+                dominant = str(
+
+                    asset.get(
+                        "dominant_color"
+                    )
+
+                    or ""
+
+                ).lower()
+
+                if dominant in [
+                    "skin",
+                    "beige"
+                ]:
+
+                    base *= 0.7
+
+                return base
+
 
             sorted_page_images = sorted(
 
                 page_images,
 
-                key=lambda x: x.get(
-                    "score",
-                    0
-                ),
+                key=ai_visibility_score,
 
                 reverse=True
             )
+
+            for idx, asset in enumerate(
+                sorted_page_images[:MAX_IMAGES]
+            ):
+
+                _logger.warning(
+
+                    f"[AI IMAGE INPUT] "
+
+                    f"rank={idx} "
+
+                    f"score={asset.get('score')} "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"collage={asset.get('is_collage')}"
+                )
 
             for asset in sorted_page_images[:MAX_IMAGES]:
 
@@ -5799,6 +6506,14 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                # =====================================
+                # SKIP EXTREMELY LOW SCORES
+                # =====================================
+
+                if score <= -500:
+
+                    continue
+
                 image_hash = hashlib.md5(
 
                     img.encode('utf-8')
@@ -5811,6 +6526,12 @@ class VendorImportJob(models.Model):
 
                 dominant_color = ""
 
+                # =====================================
+                # SAFE DEFAULT SCORES
+                # =====================================
+                hero_score = score
+                gallery_score = score
+
                 try:
 
                     dominant_color = (
@@ -5819,6 +6540,22 @@ class VendorImportJob(models.Model):
                             img
                         ) or ""
                     )
+
+                    # =====================================
+                    # CLEAN PRODUCT BOOST
+                    # =====================================
+
+                    if not is_collage:
+
+                        gallery_score += 25
+
+                    # =====================================
+                    # COLLAGE SUPPRESSION
+                    # =====================================
+
+                    if is_collage:
+
+                        hero_score -= 30
 
                 except Exception as color_error:
 
@@ -5844,11 +6581,26 @@ class VendorImportJob(models.Model):
 
                     if (
 
-                        existing_asset.get("score") == score
+                        abs(
+
+                            existing_asset.get(
+                                "score",
+                                0
+                            ) - score
+
+                        ) <= 5
 
                         and
 
-                        existing_asset.get("is_collage") == is_collage
+                        existing_asset.get(
+                            "is_collage"
+                        ) == is_collage
+
+                        and
+
+                        existing_asset.get(
+                            "dominant_color"
+                        ) == dominant_color
 
                     ):
 
@@ -5872,16 +6624,47 @@ class VendorImportJob(models.Model):
                     f"color={dominant_color}"
                 )
 
+
                 prepared.append({
 
                     "image": img,
 
                     "score": score,
 
+                    # =====================================
+                    # SEPARATED SCORING SYSTEM
+                    # =====================================
+
+                    "hero_score": hero_score,
+
+                    "gallery_score": gallery_score,
+
                     "is_collage": is_collage,
 
                     "dominant_color":
-                        dominant_color
+                        dominant_color,
+
+                    # =====================================
+                    # DIMENSIONS
+                    # =====================================
+
+                    "width": (
+
+                        asset.get("width", 0)
+
+                        if isinstance(asset, dict)
+
+                        else 0
+                    ),
+
+                    "height": (
+
+                        asset.get("height", 0)
+
+                        if isinstance(asset, dict)
+
+                        else 0
+                    ),
                 })
 
                 seen[image_hash] = {
@@ -5923,12 +6706,24 @@ class VendorImportJob(models.Model):
 
             key=lambda x: (
 
-                x.get("score", 0),
+                x.get(
+                    "gallery_score",
+                    x.get(
+                        "score",
+                        0
+                    )
+                ),
+
+                x.get(
+                    "hero_score",
+                    0
+                ),
 
                 not x.get(
                     "is_collage",
                     False
                 )
+
             ),
 
             reverse=True
@@ -5940,7 +6735,9 @@ class VendorImportJob(models.Model):
 
         for idx, asset in enumerate(prepared):
 
-            asset["index"] = idx
+           asset["index"] = idx
+
+           asset["clean_index"] = idx
 
         _logger.warning(
 
@@ -5950,6 +6747,7 @@ class VendorImportJob(models.Model):
         )
 
         return prepared
+
 
     # =====================================
     # ADVANCED DOMINANT COLOR DETECTION
@@ -6167,29 +6965,71 @@ class VendorImportJob(models.Model):
             # =====================================
 
             for asset in asset_pool:
-                if asset.get("index") in used_asset_indexes:
-                    continue
 
-                asset_index = asset.get(
-                    "index"
+                if asset.get("clean_index") in used_asset_indexes:
+                        continue
+
+                asset_score = 0
+
+                # =====================================
+                # UNUSED ASSET BONUS
+                # =====================================
+
+                asset_score += 25
+
+                # =====================================
+                # START FROM GALLERY SCORE
+                # =====================================
+
+                asset_score += asset.get(
+                    "gallery_score",
+                    asset.get(
+                        "score",
+                        0
+                    )
                 )
 
-                if asset_index in used_asset_indexes:
-                    continue
 
-                asset_score = asset.get(
-                    "score",
-                    0
+                dominant_color = str(
+
+                    asset.get(
+                        "dominant_color",
+                        ""
+                    )
+
+                    or ""
+
+                ).lower()
+
+                # =====================================
+                # BOOST CLEAN ISOLATED PRODUCTS
+                # =====================================
+
+                if not asset.get("is_collage"):
+
+                    asset_score += 35
+
+                # =====================================
+                # SMALL/MEDIUM PRODUCT BOOST
+                # =====================================
+
+                width = int(
+                    asset.get("width", 0) or 0
                 )
 
-                dominant_color = asset.get(
-                    "dominant_color",
-                    ""
+                height = int(
+                    asset.get("height", 0) or 0
                 )
+
+                area = width * height
+
+                if 10000 < area < 350000:
+
+                    asset_score += 55
 
                 if dominant_color == "unknown":
 
-                    asset_score -= 45
+                    asset_score -= 18
 
                 # ---------------------------------
                 # COLLAGE PENALTY
@@ -6197,7 +7037,7 @@ class VendorImportJob(models.Model):
 
                 if asset.get("is_collage"):
 
-                    asset_score -= 80
+                    asset_score -= 12
 
                 # ---------------------------------
                 # COLOR MATCHING
@@ -6220,10 +7060,19 @@ class VendorImportJob(models.Model):
                     "brown"
                 ]
 
+                normalized_variant_text = (
+                    variant_text
+                    .replace("navy", "blue")
+                    .replace("sky blue", "blue")
+                    .replace("light blue", "blue")
+                    .replace("charcoal", "gray")
+                    .replace("silver", "gray")
+                    .replace("off white", "white")
+                )
 
                 for color in color_map:
 
-                    if color not in variant_text:
+                    if color not in normalized_variant_text:
                         continue
 
                     # exact match
@@ -6283,7 +7132,7 @@ class VendorImportJob(models.Model):
 
                 if asset.get("score", 0) >= 70:
 
-                    asset_score += 10
+                    asset_score += 4
 
                 # ---------------------------------
                 # BEST MATCH
@@ -6301,13 +7150,43 @@ class VendorImportJob(models.Model):
 
             if not best_asset:
 
+                remaining_assets = [
+
+                    a
+
+                    for a in asset_pool
+
+                    if (
+                        a.get("clean_index")
+                        not in used_asset_indexes
+                    )
+                ]
+
+                fallback_assets = (
+                    remaining_assets
+                    if remaining_assets
+                    else asset_pool
+                )
+
                 best_asset = sorted(
 
-                    asset_pool,
+                    fallback_assets,
 
-                    key=lambda x: x.get(
-                        "score",
-                        0
+                    key=lambda x: (
+
+                        x.get(
+                            "gallery_score",
+                            0
+                        ),
+
+                        x.get(
+                            "hero_score",
+                            x.get(
+                                "score",
+                                0
+                            )
+                        )
+
                     ),
 
                     reverse=True
@@ -6318,7 +7197,7 @@ class VendorImportJob(models.Model):
 
                 used_asset_indexes.add(
 
-                    best_asset.get("index")
+                    best_asset.get("clean_index")
                 )
 
             return best_asset
@@ -6368,7 +7247,8 @@ class VendorImportJob(models.Model):
             # REJECT VERY SMALL CROPS
             # ==========================================
 
-            if width < 180 or height < 180:
+
+            if width < 110 or height < 110:
 
                 return -999
 
@@ -6380,19 +7260,42 @@ class VendorImportJob(models.Model):
             # LARGE IMAGE BONUS
             # ==========================================
 
-            score += (
-                width * height
-            ) / 10000
+            area = width * height
 
             # ==========================================
-            # TEXT HEAVY PENALTY
+            # MODERATE SIZE PREFERENCE
             # ==========================================
 
-            dark_ratio = np.mean(
-                np_img < 70
+            if 15000 <= area <= 450000:
+
+                score += 75
+
+            elif area > 450000:
+
+                score += 35
+
+            else:
+
+                score += 15
+
+
+            # ==========================================
+            # TEXT-LIKE DENSITY PENALTY
+            # ==========================================
+
+            gray_img = np.mean(
+                np_img,
+                axis=2
             )
 
-            score -= dark_ratio * 200
+            very_dark_ratio = np.mean(
+                gray_img < 35
+            )
+
+            # only punish extreme dense darkness
+            if very_dark_ratio > 0.55:
+
+                score -= 55
 
             # ==========================================
             # GOOD PRODUCT ASPECT BONUS
@@ -6400,7 +7303,7 @@ class VendorImportJob(models.Model):
 
             aspect = width / float(height)
 
-            if 0.7 <= aspect <= 1.5:
+            if 0.45 <= aspect <= 2.2:
 
                 score += 50
 
@@ -6412,7 +7315,20 @@ class VendorImportJob(models.Model):
                 np_img > 230
             )
 
-            score += white_ratio * 80
+            score += white_ratio * 38
+            # ==========================================
+            # DETAIL / TEXTURE BONUS
+            # ==========================================
+
+            pixel_std = np.std(np_img)
+
+            if pixel_std > 45:
+
+                score += 28
+
+            elif pixel_std > 30:
+
+                score += 15
 
             return score
 
@@ -6426,7 +7342,8 @@ class VendorImportJob(models.Model):
             )
 
             return 0    
-        
+
+
     #=============variant color enhancement 1=================
     def _get_dominant_color_name(
 
@@ -6461,7 +7378,41 @@ class VendorImportJob(models.Model):
                 (-1, 3)
             )
 
-            avg = pixels.mean(axis=0)
+            # =====================================
+            # REMOVE VERY LIGHT BACKGROUND PIXELS
+            # =====================================
+
+            filtered_pixels = []
+
+            for px in pixels:
+
+                pr, pg, pb = px
+
+                # skip white/light background
+                if (
+                    pr > 235
+                    and
+                    pg > 235
+                    and
+                    pb > 235
+                ):
+
+                    continue
+
+                filtered_pixels.append(px)
+
+            # fallback if filtering too aggressive
+            if not filtered_pixels:
+
+                filtered_pixels = pixels
+
+            filtered_pixels = np.array(
+                filtered_pixels
+            )
+
+            avg = filtered_pixels.mean(
+                axis=0
+            )
 
             r, g, b = avg
 
@@ -6472,8 +7423,9 @@ class VendorImportJob(models.Model):
             if r > 200 and g > 200 and b > 200:
                 return "white"
 
-            if r < 60 and g < 60 and b < 60:
-                return "black"
+
+            if r < 85 and g < 85 and b < 85:
+                    return "black"
 
             if r > 160 and g < 120 and b < 120:
                 return "red"
@@ -6481,22 +7433,38 @@ class VendorImportJob(models.Model):
             if r > 180 and g > 180 and b < 120:
                 return "yellow"
 
-            if b > r and b > g:
+
+            if (
+                b > r * 1.08
+                and
+                b > g * 1.05
+            ):
                 return "blue"
 
-            if g > r and g > b:
+
+            if (
+                g > r * 1.05
+                and
+                g > b * 1.03
+            ):
                 return "green"
 
-            if r > 120 and b > 120:
+            if (
+                r > 110
+                and
+                b > 110
+                and
+                abs(r - b) < 60
+            ):
                 return "purple"
 
             if r > 150 and g > 120 and b < 100:
                 return "orange"
 
             if (
-                abs(r - g) < 20
+                abs(r - g) < 35
                 and
-                abs(g - b) < 20
+                abs(g - b) < 35
             ):
                 return "grey"
 
@@ -6512,6 +7480,7 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
+
 
     #=================Centralized Rusable Image resolver==============
 
@@ -7786,13 +8755,53 @@ class VendorImportJob(models.Model):
 
                 if not product_images:
 
-                    product_images = page_images
+                    # -----------------------------------------
+                    # SAFE PAGE FALLBACK
+                    # -----------------------------------------
+
+                    product_images = []
+
+                    variant_count = max(
+                        len(product_data.get("variants", [])),
+                        1
+                    )
+
+                    # prefer highest gallery assets
+                    sorted_page_assets = sorted(
+
+                        page_images,
+
+                        key=lambda x: (
+
+                            x.get("gallery_score", 0),
+
+                            x.get("hero_score", 0)
+
+                        ),
+
+                        reverse=True
+                    )
+
+                    # allocate enough assets
+                    allocation_size = min(
+
+                        max(variant_count * 2, 4),
+
+                        len(sorted_page_assets)
+                    )
+
+                    product_images = sorted_page_assets[
+                        :allocation_size
+                    ]
 
                     _logger.warning(
 
-                        f"[PAGE IMAGE FALLBACK] "
+                        f"[SMART PAGE FALLBACK] "
 
-                        f"{product_data.get('name')}"
+                        f"{product_data.get('name')} "
+
+                        f"| allocated={len(product_images)}"
+
                     )
 
                 segmented_assets = []
@@ -8224,13 +9233,24 @@ class VendorImportJob(models.Model):
 
                                         match_count += 1
 
+
+                                required_matches = max(
+
+                                    1,
+
+                                    min(
+                                        len(variant_words),
+                                        2
+                                    )
+                                )
+
                                 if (
 
                                     variant_words
 
                                     and
 
-                                    match_count >= 1
+                                    match_count >= required_matches
                                 ):
 
                                     variant_record = pv
@@ -8239,20 +9259,17 @@ class VendorImportJob(models.Model):
                         # ---------------------------------
                         # SAFE FALLBACK
                         # ---------------------------------
-
+                      
                         if (
-
                             not variant_record
-
                             and
-
-                            product_variants
+                            len(product_variants) == 1
                         ):
 
                             variant_record = (
                                 product_variants[0]
                             )
-                      
+
                         # =====================================
                         # PROFESSIONAL VARIANT IMAGE MATCHING
                         # =====================================
@@ -8282,9 +9299,19 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
-                                    used_asset_indexes.add(
-                                        matched_asset.get("index")
+                                    # used_asset_indexes.add(
+                                    #     matched_asset.get("index")
+                                    # )
+
+                                    asset_index = (
+                                        matched_asset.get("clean_index")
+                                        if matched_asset.get("clean_index") is not None
+                                        else matched_asset.get("index")
                                     )
+
+                                    if asset_index is not None:
+
+                                        used_asset_indexes.add(asset_index)
 
                                     _logger.warning(
 
@@ -8623,13 +9650,47 @@ class VendorImportJob(models.Model):
             asset_pool
         ):
 
+            sorted_gallery_assets = sorted(
+
+                asset_pool,
+
+                key=lambda x: (
+
+                    x.get(
+                        "gallery_score",
+                        x.get(
+                            "score",
+                            0
+                        )
+                    ),
+
+                    x.get(
+                        "hero_score",
+                        0
+                    )
+
+                ),
+
+                reverse=True
+            )
+
             extra_indexes = [
 
-                a.get("index")
+                a.get("clean_index")
 
-                for a in asset_pool
+                for a in sorted_gallery_assets
 
-                if a.get("score", 0) >= 45
+                if (
+
+                    a.get(
+                        "gallery_score",
+                        a.get(
+                            "score",
+                            0
+                        )
+                    ) >= 28
+
+                )
             ]
 
             gallery_indexes.extend(
@@ -8641,16 +9702,84 @@ class VendorImportJob(models.Model):
                 dict.fromkeys(
                     gallery_indexes
                 )
-            )[:6]
+            )[:10]
 
         used_images = set()
         used_hashes = set()
+
+        existing_gallery = self.env[
+            'product.image'
+        ].search([
+
+            ('product_tmpl_id', '=', product.id)
+
+        ])
+
+        for g in existing_gallery:
+
+            if g.image_1920:
+
+                used_hashes.add(
+
+                    hashlib.md5(
+
+                        g.image_1920.encode('utf-8')
+
+                    ).hexdigest()
+
+                )
 
         if product.image_1920:
 
             used_images.add(
                 product.image_1920
             )
+
+        # =====================================
+        # ENSURE MINIMUM GALLERY RICHNESS
+        # =====================================
+
+        if len(gallery_indexes) < 4:
+
+            fallback_indexes = [
+
+                a.get("clean_index")
+
+                for a in sorted(
+
+                    asset_pool,
+
+                    key=lambda x: (
+
+                        x.get(
+                            "gallery_score",
+                            0
+                        ),
+
+                        x.get(
+                            "score",
+                            0
+                        )
+
+                    ),
+
+                    reverse=True
+
+                )
+
+            ]
+
+            gallery_indexes.extend(
+                fallback_indexes
+            )
+
+            gallery_indexes = list(
+
+                dict.fromkeys(
+                    gallery_indexes
+                )
+
+            )[:10]
 
         for index in gallery_indexes:
 

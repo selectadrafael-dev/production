@@ -4,7 +4,13 @@
     <record id="group_product_vendor"
             model="res.groups">
 
-        <field name="name">Product Vendor</field>
+        <field name="name">
+            Product Vendor
+        </field>
+
+        <!-- INTERNAL USER -->
+        <field name="implied_ids"
+               eval="[(4, ref('base.group_user'))]"/>
 
     </record>
 
