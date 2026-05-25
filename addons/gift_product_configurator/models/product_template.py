@@ -1,5 +1,5 @@
 from odoo import models
-
+from odoo.exceptions import UserError
 
 class ProductTemplate(models.Model):
 
@@ -8,67 +8,29 @@ class ProductTemplate(models.Model):
 
     def unlink(self):
 
-        for template in self:
+        imported = self.filtered(
+            lambda p: p.vendor_import_job_id
+        )
 
-            # =====================================
-            # ONLY IMPORTED PRODUCTS
-            # =====================================
+        normal = self - imported
 
-            if not template.vendor_import_job_id:
-                continue
+        # =====================================
+        # PURGE IMPORTED PRODUCTS SAFELY
+        # =====================================
 
-            variants = template.product_variant_ids
+        if imported:
 
-            # =====================================
-            # DELETE STOCK MOVE LINES
-            # =====================================
+            imported.action_purge_imported_products()
 
-            move_lines = self.env[
-                'stock.move.line'
-            ].search([
+        # =====================================
+        # NORMAL PRODUCTS
+        # =====================================
 
-                ('product_id', 'in', variants.ids)
-            ])
+        if normal:
 
-            move_lines.unlink()
+            return super(
+                ProductTemplate,
+                normal
+            ).unlink()
 
-            # =====================================
-            # DELETE STOCK MOVES
-            # =====================================
-
-            moves = self.env[
-                'stock.move'
-            ].search([
-
-                ('product_id', 'in', variants.ids)
-            ])
-
-            moves.unlink()
-
-            # =====================================
-            # DELETE STOCK QUANTS
-            # =====================================
-
-            quants = self.env[
-                'stock.quant'
-            ].search([
-
-                ('product_id', 'in', variants.ids)
-            ])
-
-            quants.unlink()
-
-            # =====================================
-            # DELETE VALUATION
-            # =====================================
-
-            valuation = self.env[
-                'stock.valuation.layer'
-            ].search([
-
-                ('product_id', 'in', variants.ids)
-            ])
-
-            valuation.unlink()
-
-        return super().unlink()
+        return True

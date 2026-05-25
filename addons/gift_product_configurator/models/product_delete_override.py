@@ -139,9 +139,12 @@ class ProductTemplate(models.Model):
             f"{templates.ids}"
         )
 
-        templates.with_context(
-            active_test=False
-        ).sudo().unlink()
+        self.env.cr.execute("""
+
+            DELETE FROM product_template
+            WHERE id IN %s
+
+        """, [tuple(templates.ids)])
 
         self.env.cr.commit()
 
