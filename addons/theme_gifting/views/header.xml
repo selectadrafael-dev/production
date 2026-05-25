@@ -100,18 +100,18 @@
                             Vendor Data
                           </button>
                         </t>
+                       
                         <a class="dropdown-item"
-                           href="/web#model=product.template&amp;view_type=list">
+                            href="/web#action=stock.product_template_action_product&amp;model=product.template&amp;view_type=list">
 
-                            My Products
-                        </a>
+                              My Products
+                          </a>
 
-                        <a class="dropdown-item"
-                           href="/web#model=product.template&amp;view_type=list">
+                          <a class="dropdown-item"
+                            href="/web#action=stock.product_template_action_product&amp;model=product.template&amp;view_type=form">
 
-                            Add Product
-                        </a>
-
+                              Add Product
+                          </a>
 
                         <a href="/web/session/logout">Logout</a>
 
