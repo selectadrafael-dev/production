@@ -207,8 +207,6 @@ class VendorImportJob(models.Model):
     ])
 
 
-    # excel_url_queue = fields.Text()
-
     excel_url_index = fields.Integer(
         default=0
     )
@@ -233,6 +231,8 @@ class VendorImportJob(models.Model):
         string="Last Known State",
         default=""
     )
+
+    failure_reason = fields.Text()
    
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -297,7 +297,7 @@ class VendorImportJob(models.Model):
             )
 
 
-    #========vendor email notification==========
+    #========vendor completion email notification==========
     def send_completion_email(self, failed=False, error_message=None):
 
         self.ensure_one()
@@ -541,7 +541,86 @@ class VendorImportJob(models.Model):
                 pass
 
             return False
-        
+    
+    #========vendor failed notification==============
+    def _send_failed_processing_email(
+
+        self,
+
+        error_message=None
+    ):
+
+        self.ensure_one()
+
+        try:
+
+            # =====================================
+            # FAILURE CONTEXT
+            # =====================================
+
+            stage = (
+
+                self.last_known_state
+
+                or
+
+                self.state
+
+                or
+
+                "unknown"
+            )
+
+            retry_count = (
+
+                self.retry_count
+
+                or
+
+                0
+            )
+
+            full_error = f"""
+
+    Stage:
+    {stage}
+
+    Retries:
+    {retry_count}
+
+    Error:
+    {error_message or 'Unknown processing failure'}
+    """
+
+            _logger.warning(
+
+                f"[FAILED EMAIL] "
+
+                f"job={self.id} "
+
+                f"stage={stage} "
+
+                f"retry={retry_count}"
+            )
+
+            return self.send_completion_email(
+
+                failed=True,
+
+                error_message=full_error
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+
+                f"[FAILED EMAIL ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return False
+
     #============Processing Jobs===================================================
     def _process_step(self):
 
@@ -549,27 +628,6 @@ class VendorImportJob(models.Model):
         import re
 
         self.ensure_one()
-
-        # =================================================
-        # HARD FAILURE LIMIT
-        # =================================================
-
-        if self.stage_retry_count >= 5:
-
-            _logger.error(
-
-                f"[JOB FAILED PERMANENTLY] "
-
-                f"job={self.id}"
-            )
-
-            self.state = 'failed'
-
-            self.failed_at = fields.Datetime.now()
-
-            self._safe_commit_progress()
-
-            return
 
         # =================================================
         # SAFETY
@@ -583,8 +641,7 @@ class VendorImportJob(models.Model):
 
             self.state = "failed"
 
-            self.flush_recordset()
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             return
 
@@ -684,7 +741,7 @@ class VendorImportJob(models.Model):
 
                 self.stage_retry_count = 0
 
-                self.last_known_state = 'url_ai'
+                self.last_known_state = 'url_scraping'
                 self.state = 'url_scraping'
 
                 self._safe_commit_progress()
@@ -713,8 +770,8 @@ class VendorImportJob(models.Model):
 
                     self.stage_retry_count = 0
 
-                    self.last_known_state = 'url_ai'
-                    self.state = 'url_ai'
+                    self.last_known_state = 'url_scraping'
+                    self.state = 'url_scraping'
 
                     self._safe_commit_progress()
 
@@ -1123,11 +1180,11 @@ class VendorImportJob(models.Model):
 
                     else:
 
-                        self.state = 'excel_parsing'
+                       self.last_error = "Excel parse stalled"
 
+                       self.state = 'review'       
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -3320,17 +3377,42 @@ class VendorImportJob(models.Model):
                 area = cv2.contourArea(contour)
 
                 if area < 1600:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"small area={area}"
+                    )
+
                     continue
 
                 x, y, w, h = cv2.boundingRect(contour)
 
                 if w < 55 or h < 55:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"tiny size={w}x{h}"
+                    )
+
                     continue
 
                 ratio = w / float(h)
 
                 # reject text strips
+
                 if ratio > 6.5 or ratio < 0.12:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"ratio={ratio}"
+                    )
+
                     continue
 
                 sub = image[
@@ -3347,9 +3429,19 @@ class VendorImportJob(models.Model):
                     )
                 )
 
+
                 if not self._is_valid_product_crop(
                     pil_sub
                 ):
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"invalid crop "
+                        f"size={w}x{h}"
+                    )
+
                     continue
 
                 success, buffer = cv2.imencode(
@@ -3357,7 +3449,16 @@ class VendorImportJob(models.Model):
                     sub
                 )
 
+              
                 if not success:
+
+                    _logger.warning(
+
+                        "[GRID REJECT] "
+
+                        "encode failed"
+                    )
+
                     continue
 
                 encoded = base64.b64encode(
@@ -3366,6 +3467,21 @@ class VendorImportJob(models.Model):
 
                 score = self._score_segmented_image(
                     encoded
+                )
+
+                dominant = self._get_dominant_color_name(
+                    encoded
+                )
+
+                _logger.warning(
+
+                    f"[GRID ACCEPT] "
+
+                    f"score={score} "
+
+                    f"color={dominant} "
+
+                    f"size={w}x{h}"
                 )
 
                 results.append({
@@ -3381,6 +3497,35 @@ class VendorImportJob(models.Model):
                     "is_collage": False
                 })
 
+
+            # =====================================
+            # DEBUG BEFORE SORT
+            # =====================================
+
+            _logger.warning(
+
+                f"[GRID SPLIT RAW] "
+
+                f"total={len(results)}"
+            )
+
+            for idx, item in enumerate(results):
+
+                _logger.warning(
+
+                    f"[GRID RAW ITEM] "
+
+                    f"idx={idx} "
+
+                    f"score={item.get('score')} "
+
+                    f"size={item.get('width')}x{item.get('height')}"
+                )
+
+            # =====================================
+            # SORT BEST FIRST
+            # =====================================
+
             results = sorted(
 
                 results,
@@ -3393,7 +3538,33 @@ class VendorImportJob(models.Model):
                 reverse=True
             )
 
-            return results[:20]
+            # =====================================
+            # DEBUG AFTER SORT
+            # =====================================
+
+            for idx, item in enumerate(results):
+
+                _logger.warning(
+
+                    f"[GRID SORTED ITEM] "
+
+                    f"idx={idx} "
+
+                    f"score={item.get('score')} "
+                )
+
+            # =====================================
+            # NEVER HARD-TRIM VALID VARIANTS
+            # =====================================
+
+            _logger.warning(
+
+                f"[GRID FINAL COUNT] "
+
+                f"returned={len(results)}"
+            )
+
+            return results
 
         except Exception as e:
 
@@ -7461,7 +7632,6 @@ class VendorImportJob(models.Model):
             # ==========================================
             # CLEAN BACKGROUND BONUS
             # ==========================================
-
             white_pixels = np.all(
                 np_img > 230,
                 axis=2
@@ -7470,6 +7640,32 @@ class VendorImportJob(models.Model):
             white_ratio = np.mean(
                 white_pixels
             )
+
+            # moderate ecommerce bonus only
+            if white_ratio > 0.45:
+
+                score += 14
+
+            elif white_ratio > 0.25:
+
+                score += 8
+
+            # ==========================================
+            # DARK PRODUCT PRESERVATION
+            # ==========================================
+
+            dark_presence = np.mean(
+                gray_img < 55
+            )
+
+            # preserve legitimate dark apparel
+            if (
+                0.18 < dark_presence < 0.75
+                and
+                pixel_std_gray > 16
+            ):
+
+                score += 18
 
             score += white_ratio * 24
            
@@ -11765,6 +11961,7 @@ class VendorImportJob(models.Model):
         active_states = [
 
             'draft',
+            'review',
 
             'excel_parsing',
             'excel_ai',
@@ -11778,11 +11975,6 @@ class VendorImportJob(models.Model):
             'url_ai',
             'url_creating',
 
-            # =====================================
-            # AUTO-RECOVER INTERRUPTED JOBS
-            # =====================================
-
-            'failed',
         ]
 
 
@@ -11817,59 +12009,6 @@ class VendorImportJob(models.Model):
         ]
 
         for j in jobs:
-
-            # =====================================
-            # AUTO RECOVER FAILED JOBS
-            # =====================================
-
-            if j.state == 'failed':
-
-                _logger.warning(
-
-                    f"[AUTO RECOVER] "
-
-                    f"job={j.id}"
-                )
-
-                try:
-
-                    if j.last_created_page:
-
-                        j.state = 'pdf_creating'
-
-                    elif j.last_ai_page:
-
-                        j.state = 'pdf_ai'
-
-                    elif j.current_page:
-
-                        j.state = 'pdf_extracting'
-
-                    else:
-
-                        j.state = 'draft'
-
-                    j.lock = False
-
-                    self.env.cr.commit()
-
-                    _logger.warning(
-
-                        f"[AUTO RECOVER OK] "
-
-                        f"job={j.id} "
-
-                        f"| state={j.state}"
-                    )
-
-                except Exception as e:
-
-                    _logger.exception(
-
-                        f"[AUTO RECOVER FAILED] "
-
-                        f"{str(e)}"
-                    )
 
             sig = j.upload_signature
            
@@ -12167,7 +12306,17 @@ class VendorImportJob(models.Model):
 
                     try:
 
+                        # =========================================
+                        # REAL PROCESSING
+                        # =========================================
+
                         job._process_step()
+
+                        # =========================================
+                        # SUCCESS RESET
+                        # =========================================
+
+                        self.env.cr.commit()
 
                     except Exception as e:
 
@@ -12180,11 +12329,124 @@ class VendorImportJob(models.Model):
                             f"| {str(e)}"
                         )
 
+                        # =====================================
+                        # INFRASTRUCTURE FAILURE DETECTION
+                        # =====================================
+
+                        dead_cursor = any(
+
+                            x in str(e).lower()
+
+                            for x in [
+
+                                "cursor already closed",
+
+                                "connection already closed",
+
+                                "closed cursor",
+
+                                "interfaceerror"
+                            ]
+                        )
+
+                        # =====================================
+                        # DO NOT CONSUME BUSINESS RETRIES
+                        # =====================================
+
+                        if dead_cursor:
+
+                            _logger.warning(
+
+                                f"[INFRA FAILURE] "
+
+                                f"job={job.id} "
+
+                                f"| retry preserved"
+                            )
+
+                            return
+
                         try:
 
-                            job.state = 'failed'
+                            # =====================================
+                            # RETRY TRACKING
+                            # =====================================
 
-                            self.env.cr.commit()
+                            job.stage_retry_count += 1
+
+                            _logger.warning(
+
+                                f"[JOB RETRY] "
+
+                                f"job={job.id} "
+
+                                f"| retry={job.stage_retry_count}/5"
+                            )
+
+                            # =====================================
+                            # TERMINAL FAILURE
+                            # =====================================
+
+                            if job.stage_retry_count >= 6:
+
+                                _logger.error(
+
+                                    f"[JOB FAILED PERMANENTLY] "
+
+                                    f"job={job.id}"
+                                )
+
+                                job.state = 'failed'
+
+                                job.failed_at = fields.Datetime.now()
+
+                                job.failure_reason = str(e)
+
+                                self.env.cr.commit()
+
+                                # =================================
+                                # FAILED EMAIL NOTIFICATION
+                                # =================================
+
+                                try:
+
+                                    _logger.warning(
+
+                                        f"[FAILED EMAIL] "
+
+                                        f"START → job={job.id}"
+                                    )
+
+                                    job._send_failed_processing_email(
+
+                                        error_message=str(e)
+                                    )
+
+                                    _logger.warning(
+
+                                        f"[FAILED EMAIL] "
+
+                                        f"COMPLETE → job={job.id}"
+                                    )
+
+                                except Exception as email_error:
+
+                                    _logger.exception(
+
+                                        f"[FAILED EMAIL ERROR] "
+
+                                        f"{str(email_error)}"
+                                    )
+
+                            else:
+
+                                # =================================
+                                # RECOVERY STATE
+                                # =================================
+
+                                job.state = 'review'
+
+                                self.env.cr.commit()
 
                         except Exception:
 
@@ -12196,7 +12458,6 @@ class VendorImportJob(models.Model):
                             )
 
                         break
-
 
                     # =========================================
                     # REFRESH AFTER
@@ -12558,27 +12819,42 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    if (
+                    # =============================================
+                    # DEAD CURSOR SAFETY
+                    # =============================================
 
-                        job
-
-                        and
-
-                        job.exists()
-
-                    ):
-
-                        job.lock = False
-
-                        self.env.cr.commit()
-
+                    if self.env.cr.closed:
 
                         _logger.warning(
 
-                            f"[CRON] JOB UNLOCKED "
+                            "[CRON] SKIP UNLOCK "
 
-                            f"| job={job.id}"
+                            "CURSOR CLOSED"
                         )
+
+                    else:
+
+                        if (
+
+                            job
+
+                            and
+
+                            job.exists()
+
+                        ):
+
+                            job.lock = False
+
+                            self.env.cr.commit()
+
+
+                            _logger.warning(
+
+                                f"[CRON] JOB UNLOCKED "
+
+                                f"| job={job.id}"
+                            )
 
                 except Exception:
 
