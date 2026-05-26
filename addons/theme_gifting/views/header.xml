@@ -150,13 +150,13 @@
                               </a>
 
                              <!-- INVENTORY -->
-                              <a class="dropdown-item"
+                              <!--a class="dropdown-item"
                                 href="/web#action=stock.quantsact&amp;model=stock.quant&amp;view_type=list">
 
                                   <t t-translate="on">
                                       Inventory
                                   </t>
-                              </a>
+                              </a-->
 
                           </t>
 
