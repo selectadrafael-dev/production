@@ -133,6 +133,8 @@ class ProductTemplate(models.Model):
 
             """, [tuple(product_ids or [0])])
 
+            self.env.cr.commit()
+
             # =========================
             # VALUATION
             # =========================
