@@ -5247,6 +5247,85 @@ class VendorImportJob(models.Model):
         - alternate product colors
 
         ==================================================
+        MAIN TITLE UNDERSTANDING RULES
+        ==================================================
+
+        CRITICAL:
+
+        Supplier catalogs contain:
+        - product titles
+        - subtitles
+        - materials
+        - marketing text
+        - feature blocks
+        - specifications
+        - dimensions
+
+        You MUST correctly identify the TRUE MAIN PRODUCT TITLE.
+
+        MAIN PRODUCT TITLE is usually:
+        - largest bold heading
+        - top-level heading
+        - dominant product headline
+        - catalog product name
+
+        NEVER use as product title:
+        - material descriptions
+        - feature paragraphs
+        - bullet lists
+        - dimensions
+        - capacities
+        - marketing text
+        - print method text
+        - specification text
+        - eco labels
+        - fabric composition text
+
+        GOOD TITLE EXAMPLES:
+        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
+        - 5 PANEL CAP
+        - RAISE Glass Sport Bottle
+        - Wireless Charging Pad
+
+        BAD TITLE EXAMPLES:
+        - Heavy Brushed 100% Cotton
+        - Rib 1x1 collar and cuffs
+        - Stainless steel capacity 520ml
+
+        If both exist:
+        ALWAYS prioritize the MAIN heading.
+
+        ==================================================
+        RICH PRODUCT DESCRIPTION RULES
+        ==================================================
+
+        You MUST extract and preserve ALL valuable ecommerce content.
+
+        Combine into rich product_description:
+        - subtitle
+        - marketing text
+        - feature text
+        - bullet lists
+        - material composition
+        - dimensions
+        - capacity
+        - specifications
+        - print area
+        - packaging info
+        - branding info
+        - eco information
+
+        DO NOT keep descriptions too short.
+
+        Professional ecommerce product pages require:
+        - meaningful content
+        - readable specifications
+        - rich product information
+
+        If multiple useful text blocks exist:
+        combine them cleanly into one rich description.
+
+        ==================================================
         STOCK EXTRACTION RULES:
         ==================================================
 
@@ -5481,19 +5560,52 @@ class VendorImportJob(models.Model):
         over:
         visually dominant lifestyle graphics.
 
-        ==================================================
+       ==================================================
         PRICE/STOCK RULES
         ==================================================
+
+        PRICE EXTRACTION IS CRITICAL.
+
+        Catalog prices may appear:
+        - near title
+        - inside text
+        - inside specification blocks
+        - beside variants
+        - inside tables
+        - at page corners
+        - in small text
+        - separated from products
+
+        You MUST aggressively search for:
+        - $
+        - €
+        - £
+        - ₦
+        - USD
+        - EUR
+        - GBP
+
+        Examples:
+        - $2.99
+        - USD 4.25
+        - €8,50
+        - From $3.10
+
+        If multiple prices exist:
+        prefer:
+        1. standard/base product price
+        2. visible selling price
+        3. "from" price
+
+        DO NOT invent prices.
+
+        If no price exists:
+        return empty string.
 
         Extract:
         - visible product price
         - visible stock quantity
         - visible product code
-
-        If stock/price belongs to a specific variant:
-        assign it to that variant.
-
-        DO NOT invent prices or stock.
 
         ==================================================
         OUTPUT FORMAT
@@ -5504,9 +5616,14 @@ class VendorImportJob(models.Model):
         [
             {{
                 "name": "",
+                "subtitle": "",
                 "description": "",
+                "bullet_features": [],
+                "material": "",
+                "dimensions": "",
                 "stock_qty": 0,
                 "price": "",
+                "currency": "",
                 "product_code": "",
                 "hero_image_index": null,
                 "gallery_image_indexes": [],
@@ -9861,6 +9978,103 @@ class VendorImportJob(models.Model):
 
             return product, False
 
+        # =====================================
+        # BUILD PROFESSIONAL DESCRIPTION
+        # =====================================
+
+        subtitle = (
+            product_data.get("subtitle")
+            or ""
+        ).strip()
+
+        description = (
+            product_data.get("description")
+            or ""
+        ).strip()
+
+        material = (
+            product_data.get("material")
+            or ""
+        ).strip()
+
+        dimensions = (
+            product_data.get("dimensions")
+            or ""
+        ).strip()
+
+        bullet_features = (
+            product_data.get("bullet_features")
+            or []
+        )
+
+        # =====================================
+        # CLEAN BULLETS
+        # =====================================
+
+        clean_bullets = []
+
+        for bullet in bullet_features:
+
+            if not bullet:
+                continue
+
+            bullet = str(bullet).strip()
+
+            if len(bullet) < 2:
+                continue
+
+            clean_bullets.append(bullet)
+
+        # =====================================
+        # BUILD HTML DESCRIPTION
+        # =====================================
+
+        description_parts = []
+
+        if subtitle:
+
+            description_parts.append(
+                f"<h4>{subtitle}</h4>"
+            )
+
+        if description:
+
+            description_parts.append(
+                f"<p>{description}</p>"
+            )
+
+        if material:
+
+            description_parts.append(
+                f"<p><strong>Material:</strong> "
+                f"{material}</p>"
+            )
+
+        if dimensions:
+
+            description_parts.append(
+                f"<p><strong>Dimensions:</strong> "
+                f"{dimensions}</p>"
+            )
+
+        if clean_bullets:
+
+            bullet_html = "".join([
+
+                f"<li>{b}</li>"
+
+                for b in clean_bullets
+            ])
+
+            description_parts.append(
+
+                f"<ul>{bullet_html}</ul>"
+            )
+
+        rich_description = "<br/>".join(
+            description_parts
+        )
+
         vals = {
 
             'name': (
@@ -9868,13 +10082,12 @@ class VendorImportJob(models.Model):
                 or ""
             ).strip(),
 
-            'default_code': variant_group,
-
-            'description_sale': (
-                product_data.get(
-                    "description"
-                ) or ""
+           'default_code': (
+                product_data.get("product_code")
+                or variant_group
             ),
+
+           'description_sale': rich_description,
 
             'type': 'consu',
 
@@ -9899,9 +10112,11 @@ class VendorImportJob(models.Model):
                     0
                 ) or 0
             ),
+
+            'list_price': self._safe_parse_price(
+                product_data.get("price")
+            ),
         }
-
-
 
         hero_index = product_data.get(
             "hero_image_index"
@@ -13231,3 +13446,27 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+
+#===============pdf price helper====================
+    def _safe_parse_price(self, value):
+
+        try:
+
+            import re
+
+            if not value:
+                return 1.0
+
+            cleaned = re.sub(
+                r'[^0-9.,]',
+                '',
+                str(value)
+            )
+
+            cleaned = cleaned.replace(',', '.')
+
+            return float(cleaned)
+
+        except Exception:
+
+            return 1.0
