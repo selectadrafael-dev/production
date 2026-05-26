@@ -221,6 +221,13 @@ class VendorImportJob(models.Model):
         default=False
     )
 
+    stage_retry_count = fields.Integer(
+        default=0
+    )
+
+    last_error = fields.Text()
+
+    failed_at = fields.Datetime()
    
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -529,6 +536,7 @@ class VendorImportJob(models.Model):
                 pass
 
             return False
+        
     #============Processing Jobs===================================================
     def _process_step(self):
 
@@ -537,6 +545,26 @@ class VendorImportJob(models.Model):
 
         self.ensure_one()
 
+        # =================================================
+        # HARD FAILURE LIMIT
+        # =================================================
+
+        if self.stage_retry_count >= 5:
+
+            _logger.error(
+
+                f"[JOB FAILED PERMANENTLY] "
+
+                f"job={self.id}"
+            )
+
+            self.state = 'failed'
+
+            self.failed_at = fields.Datetime.now()
+
+            self._safe_commit_progress()
+
+            return
 
         # =================================================
         # SAFETY
@@ -581,24 +609,48 @@ class VendorImportJob(models.Model):
         if self.state == 'review':
 
             _logger.warning(
-                "REVIEW → RESET TO START"
+
+                f"[REVIEW RECOVERY] "
+
+                f"retry={self.stage_retry_count}/5 "
+
+                f"last_state={self.last_known_state}"
             )
 
-            if self.pdf_file:
+            # =============================================
+            # HARD FAILURE LIMIT
+            # =============================================
 
-                self.state = 'pdf_extracting'
+            if self.stage_retry_count >= 5:
 
-            elif self.excel_file and not self.pdf_file:
+                _logger.error(
 
-                self.state = 'excel_parsing'
+                    f"[JOB FAILED PERMANENTLY] "
 
-            elif self.data_url:
+                    f"job={self.id}"
+                )
 
-                self.state = 'url_scraping'
+                self.state = 'failed'
 
+                self.failed_at = fields.Datetime.now()
 
-            self.flush_recordset()
-            self.env.cr.commit()
+                self._safe_commit_progress()
+
+                return
+
+            # =============================================
+            # RESTORE LAST KNOWN STATE
+            # =============================================
+
+            if self.last_known_state:
+
+                self.state = self.last_known_state
+
+            else:
+
+                self.state = 'failed'
+
+            self._safe_commit_progress()
 
             return
 
@@ -625,6 +677,9 @@ class VendorImportJob(models.Model):
                     "[URL FLOW] START"
                 )
 
+                self.stage_retry_count = 0
+
+                self.last_known_state = 'url_ai'
                 self.state = 'url_scraping'
 
                 self._safe_commit_progress()
@@ -651,6 +706,9 @@ class VendorImportJob(models.Model):
                         "USING SAVED BLOCKS"
                     )
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'url_ai'
                     self.state = 'url_ai'
 
                     self._safe_commit_progress()
@@ -714,7 +772,9 @@ class VendorImportJob(models.Model):
                     _logger.warning(
                         "URL EXTRACTION SUCCESS → url_ai"
                     )
+                    self.stage_retry_count = 0
 
+                    self.last_known_state = 'url_ai'
                     self.state = 'url_ai'
 
                     self._safe_commit_progress()
@@ -778,8 +838,13 @@ class VendorImportJob(models.Model):
                         f"URL AI FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'url_ai'
+
+                    self.state = 'review'
 
                     self._safe_commit_progress()
 
@@ -867,7 +932,13 @@ class VendorImportJob(models.Model):
                         f"URL CREATE FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'url_creating'
+
+                    self.state = 'review'
 
                     self._safe_commit_progress()
 
@@ -909,7 +980,7 @@ class VendorImportJob(models.Model):
 
 
                 if new_index >= total:
-
+                    self.stage_retry_count = 0
                     self.state = 'done'
 
                     _logger.warning(
@@ -922,6 +993,9 @@ class VendorImportJob(models.Model):
 
                 elif new_index > previous_index:
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'url_creating'
                     self.state = 'url_creating'
 
                     _logger.warning(
@@ -959,10 +1033,13 @@ class VendorImportJob(models.Model):
 
             if self.state == 'draft':
 
+                self.stage_retry_count = 0
+
+                self.last_known_state = 'excel_parsing'
+
                 self.state = 'excel_parsing'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -1020,23 +1097,22 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NO NEW ROWS"
                     )
 
-
                     if self.is_excel_parsed:
 
                         _logger.warning(
-                            "[EXCEL IMPORT COMPLETE] ✅"
+                            "[EXCEL PARSE COMPLETE] → excel_ai"
                         )
 
-                        self.state = 'done'
+                        # successful stage transition
+                      
+                        self.stage_retry_count = 0
 
-                        if not self.completion_email_sent:
+                        self.last_known_state = 'excel_ai'
 
-                            self.send_completion_email()
+                        self.state = 'excel_ai'
 
-                        # cleanup URL queue
+                        # cleanup optional URL enrichment state
                         self.excel_url_processing = False
-
-                        #self.excel_url_queue = False
 
                         self.excel_url_index = 0
 
@@ -1068,10 +1144,15 @@ class VendorImportJob(models.Model):
                         f"EXCEL AI FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'excel_ai'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1104,6 +1185,21 @@ class VendorImportJob(models.Model):
                     f"{self.state}"
                 )
 
+                # ==========================================
+                # AI COMPLETE → CREATE
+                # ==========================================
+
+                if self.state != 'failed':
+
+                    _logger.warning(
+                        "[EXCEL AI COMPLETE] → excel_creating"
+                    )
+
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'excel_creating'
+
+                    self.state = 'excel_creating'
 
                 self.flush_recordset()
                 self.env.cr.commit()
@@ -1116,23 +1212,28 @@ class VendorImportJob(models.Model):
 
 
             #-----------EXCEL ROW PROCESSOR-------------
-
+        
             if self.state == 'excel_creating':
 
                 try:
 
                     self.create_products_excel()
-
+                  
                 except Exception as e:
 
                     _logger.exception(
                         f"EXCEL CREATE FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'excel_creating'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1173,10 +1274,13 @@ class VendorImportJob(models.Model):
 
             if self.state == 'draft':
 
+                self.stage_retry_count = 0
+
+                self.last_known_state = 'pdf_extracting'
+
                 self.state = 'pdf_extracting'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -1198,10 +1302,15 @@ class VendorImportJob(models.Model):
                         f"PDF EXTRACT FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'pdf_extracting'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1258,13 +1367,18 @@ class VendorImportJob(models.Model):
 
                     _logger.exception(
 
-                        f"PDF AI FAILED → {str(e)}"
+                       f"PDF AI FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'pdf_ai'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1307,6 +1421,10 @@ class VendorImportJob(models.Model):
                         f"{page_total}"
                     )
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'pdf_ai'
+
                     self.state = 'pdf_ai'
 
                 else:
@@ -1315,6 +1433,10 @@ class VendorImportJob(models.Model):
                         "PDF AI COMPLETE → pdf_creating"
                     )
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'pdf_creating'
+                    
                     self.state = 'pdf_creating'
 
 
@@ -1337,17 +1459,20 @@ class VendorImportJob(models.Model):
                 except Exception as e:
 
                     _logger.exception(
-
                         f"PDF CREATE FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'pdf_creating'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
-
 
                 try:
 
@@ -1381,6 +1506,9 @@ class VendorImportJob(models.Model):
                         f"{total_ai_pages}"
                     )
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'pdf_creating'
                     self.state = 'pdf_creating'
 
                 else:
@@ -1389,6 +1517,7 @@ class VendorImportJob(models.Model):
                         "PDF COMPLETE ✅"
                     )
 
+                    self.stage_retry_count = 0
                     self.state = 'done'
 
                     if not self.completion_email_sent:
@@ -7285,7 +7414,7 @@ class VendorImportJob(models.Model):
 
 
             # ==========================================
-            # TEXT-LIKE DENSITY PENALTY
+            # DARK OBJECT ANALYSIS
             # ==========================================
 
             gray_img = np.mean(
@@ -7294,13 +7423,25 @@ class VendorImportJob(models.Model):
             )
 
             very_dark_ratio = np.mean(
-                gray_img < 35
+                gray_img < 22
             )
 
-            # only punish extreme dense darkness
-            if very_dark_ratio > 0.55:
+            # ==========================================
+            # ONLY REJECT TRUE SOLID DARK BLOCKS
+            # ==========================================
 
-                score -= 55
+            pixel_std_gray = np.std(gray_img)
+
+            if (
+
+                very_dark_ratio > 0.82
+
+                and
+
+                pixel_std_gray < 18
+            ):
+
+                score -= 35
 
             # ==========================================
             # GOOD PRODUCT ASPECT BONUS
@@ -7316,11 +7457,17 @@ class VendorImportJob(models.Model):
             # CLEAN BACKGROUND BONUS
             # ==========================================
 
-            white_ratio = np.mean(
-                np_img > 230
+            white_pixels = np.all(
+                np_img > 230,
+                axis=2
             )
 
-            score += white_ratio * 38
+            white_ratio = np.mean(
+                white_pixels
+            )
+
+            score += white_ratio * 24
+           
             # ==========================================
             # DETAIL / TEXTURE BONUS
             # ==========================================
@@ -7488,10 +7635,6 @@ class VendorImportJob(models.Model):
             if r < 85 and g < 85 and b < 85:
                 return "black"
 
-            # =====================================
-            # GREY
-            # =====================================
-
             if (
                 abs(r - g) < 22
                 and
@@ -7500,6 +7643,7 @@ class VendorImportJob(models.Model):
                 70 < r < 210
             ):
                 return "grey"
+
 
             return "unknown"
 
@@ -8982,6 +9126,7 @@ class VendorImportJob(models.Model):
 
                         # =====================================
                         # APPLY REAL INVENTORY STOCK
+                        # ONLY FOR STORABLE PRODUCTS
                         # =====================================
 
                         try:
@@ -8994,7 +9139,23 @@ class VendorImportJob(models.Model):
                                 ) or 0
                             )
 
-                            if stock_qty > 0:
+                            # =====================================
+                            # CONSUMABLE PRODUCTS:
+                            # SKIP STOCK QUANTS
+                            # =====================================
+
+                            if product.type != 'product':
+
+                                _logger.warning(
+
+                                    f"[STOCK SKIPPED] "
+
+                                    f"{product.name} "
+
+                                    f"| type={product.type}"
+                                )
+
+                            elif stock_qty > 0:
 
                                 quant = stock_quant_obj.search([
 
@@ -11369,11 +11530,14 @@ class VendorImportJob(models.Model):
                 self.ai_response = False
 
                 self.state = 'done'
+                
+                #=====email notification============
+                if not self.completion_email_sent:
+
+                    self.send_completion_email()
 
                 # cleanup URL queue
                 self.excel_url_processing = False
-
-                self.excel_url_queue = False
 
                 self.excel_url_index = 0
 
