@@ -7231,6 +7231,78 @@ class VendorImportJob(models.Model):
             r, g, b = avg
 
             # =====================================
+            # DARK COLOR ANALYSIS
+            # =====================================
+
+            brightness = np.mean(
+
+                pixels,
+
+                axis=1
+            )
+
+            dark_pixels_ratio = np.mean(
+                brightness < 75
+            )
+
+            very_dark_ratio = np.mean(
+                brightness < 45
+            )
+
+            # dominant blue inside dark pixels
+            dark_blue_ratio = np.mean(
+
+                (
+                    pixels[:, 2] > pixels[:, 0] * 1.15
+                )
+
+                &
+
+                (
+                    pixels[:, 2] > pixels[:, 1] * 1.10
+                )
+
+                &
+
+                (
+                    brightness < 90
+                )
+            )
+
+            # =====================================
+            # TRUE BLACK DETECTION
+            # =====================================
+
+            if (
+
+                very_dark_ratio > 0.24
+
+                or
+
+                (
+                    dark_pixels_ratio > 0.40
+
+                    and
+
+                    abs(r - g) < 24
+
+                    and
+
+                    abs(g - b) < 24
+                )
+            ):
+
+                return "black"
+
+            # =====================================
+            # DARK NAVY DETECTION
+            # =====================================
+
+            if dark_blue_ratio > 0.18:
+
+                return "navy"
+
+            # =====================================
             # RGB → HSV
             # =====================================
 
@@ -7259,14 +7331,12 @@ class VendorImportJob(models.Model):
             if v > 92 and s < 10:
                 return "white"
 
+         
             # =====================================
-            # GRAY / GREY
+            # GREY DETECTION
             # =====================================
 
             if s < 15:
-
-                if v < 55:
-                    return "gray"
 
                 return "grey"
 
@@ -7338,6 +7408,7 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
+
 
     # =====================================
     # PROFESSIONAL VARIANT IMAGE MATCHER
