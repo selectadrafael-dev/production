@@ -1,4 +1,4 @@
-from odoo import models, fields
+from odoo import models, fields, api
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -63,29 +63,88 @@ class ProductTemplate(models.Model):
 
     def unlink(self):
 
-        imported = self.filtered(
-            lambda p: p.vendor_import_job_id
-        )
+        for template in self:
 
-        normal = self - imported
+            # ==========================
+            # ONLY IMPORTED PRODUCTS
+            # ==========================
 
-        # =====================================
-        # PURGE IMPORTED PRODUCTS
-        # =====================================
+            if (
+                not template.vendor_import_job_id
+                and not template.vendor_id
+            ):
+                continue
 
-        if imported:
+            variants = template.product_variant_ids
 
-            imported.action_purge_imported_products()
+            product_ids = variants.ids
 
-        # =====================================
-        # NORMAL PRODUCTS
-        # =====================================
+            # =========================
+            # MOVE LINES
+            # =========================
 
-        if normal:
+            move_lines = self.env[
+                'stock.move.line'
+            ].sudo().search([
 
-            return super(
-                ProductTemplate,
-                normal
-            ).unlink()
+                ('product_id', 'in', product_ids)
 
-        return True
+            ])
+
+            move_lines.unlink()
+
+            # =========================
+            # STOCK MOVES
+            # =========================
+
+            moves = self.env[
+                'stock.move'
+            ].sudo().search([
+
+                ('product_id', 'in', product_ids),
+                ('state', '!=', 'done')
+
+            ])
+
+            moves.unlink()
+
+            # =========================
+            # QUANTS ORM DELETE
+            # =========================
+
+            quants = self.env[
+                'stock.quant'
+            ].sudo().search([
+
+                ('product_id', 'in', product_ids)
+
+            ])
+
+            quants.unlink()
+
+            # =========================
+            # FORCE SQL QUANT DELETE
+            # =========================
+
+            self.env.cr.execute("""
+
+                DELETE FROM stock_quant
+                WHERE product_id IN %s
+
+            """, [tuple(product_ids or [0])])
+
+            # =========================
+            # VALUATION
+            # =========================
+
+            valuation = self.env[
+                'stock.valuation.layer'
+            ].sudo().search([
+
+                ('product_id', 'in', product_ids)
+
+            ])
+
+            valuation.unlink()
+
+        return super().unlink()
