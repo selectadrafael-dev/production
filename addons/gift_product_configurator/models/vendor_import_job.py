@@ -7496,7 +7496,7 @@ class VendorImportJob(models.Model):
             return 0    
 
 
-    #=============variant color enhancement 1==============
+    #=============variant color enhancement 1=================
     def _get_dominant_color_name(
 
         self,
