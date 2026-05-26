@@ -30,44 +30,6 @@ class ProductTemplate(models.Model):
         )
 
         # =====================================
-        # INVENTORY LINES
-        # =====================================
-
-        inventory_lines = self.env[
-            'stock.inventory.line'
-        ].search([
-
-            ('product_id', 'in', products.ids)
-
-        ])
-
-        _logger.warning(
-            f"[PURGE INVENTORY LINES] "
-            f"{inventory_lines.ids}"
-        )
-
-        inventory_lines.sudo().unlink()
-
-        # =====================================
-        # INVENTORY ADJUSTMENTS
-        # =====================================
-
-        inventories = self.env[
-            'stock.inventory'
-        ].search([
-
-            ('line_ids.product_id', 'in', products.ids)
-
-        ])
-
-        _logger.warning(
-            f"[PURGE INVENTORIES] "
-            f"{inventories.ids}"
-        )
-
-        inventories.sudo().unlink()
-
-        # =====================================
         # STOCK MOVE LINES
         # =====================================
 
