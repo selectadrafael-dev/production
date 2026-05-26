@@ -7047,6 +7047,7 @@ class VendorImportJob(models.Model):
 
                     "red",
                     "blue",
+                    "navy",
                     "green",
                     "lime",
                     "yellow",
@@ -7055,20 +7056,15 @@ class VendorImportJob(models.Model):
                     "black",
                     "gray",
                     "grey",
+                    "light_grey",
+                    "charcoal",
+                    "silver",
                     "purple",
                     "pink",
                     "brown"
                 ]
 
-                normalized_variant_text = (
-                    variant_text
-                    .replace("navy", "blue")
-                    .replace("sky blue", "blue")
-                    .replace("light blue", "blue")
-                    .replace("charcoal", "gray")
-                    .replace("silver", "gray")
-                    .replace("off white", "white")
-                )
+                normalized_variant_text = variant_text.lower()
 
                 for color in color_map:
 
@@ -7080,7 +7076,16 @@ class VendorImportJob(models.Model):
 
                         asset_score += 180
 
+                    # navy/blue distinction
+                    elif (
+                        color == "navy"
+                        and
+                        dominant_color == "blue"
+                    ):
+                        asset_score += 40
+
                     # gray/grey normalization
+
                     elif (
 
                         color in ["gray", "grey"]
@@ -7090,7 +7095,7 @@ class VendorImportJob(models.Model):
                         dominant_color in [
                             "gray",
                             "grey",
-                            "black"
+                            "light_grey"
                         ]
                     ):
 
@@ -7105,7 +7110,7 @@ class VendorImportJob(models.Model):
 
                         dominant_color in [
                             "white",
-                            "gray"
+                            "light_grey"
                         ]
                     ):
 
@@ -7120,7 +7125,7 @@ class VendorImportJob(models.Model):
 
                         dominant_color in [
                             "black",
-                            "gray"
+                            "navy"
                         ]
                     ):
 
@@ -7410,29 +7415,48 @@ class VendorImportJob(models.Model):
                 filtered_pixels
             )
 
-            avg = filtered_pixels.mean(
+            # =====================================
+            # USE MEDIAN FOR STABILITY
+            # =====================================
+
+            median = np.median(
+                filtered_pixels,
                 axis=0
             )
 
-            r, g, b = avg
+            r, g, b = median
 
             # =====================================
             # COLOR CLASSIFICATION
             # =====================================
 
+  
             if r > 200 and g > 200 and b > 200:
                 return "white"
 
-
-            if r < 85 and g < 85 and b < 85:
-                    return "black"
-
+            if (
+                abs(r - g) < 18
+                and
+                abs(g - b) < 18
+                and
+                210 <= r <= 242
+            ):
+                return "light_grey"
+          
             if r > 160 and g < 120 and b < 120:
                 return "red"
 
             if r > 180 and g > 180 and b < 120:
                 return "yellow"
 
+            if (
+                b > r * 1.12
+                and
+                b > g * 1.08
+                and
+                b < 110
+            ):
+                return "navy"
 
             if (
                 b > r * 1.08
@@ -7440,15 +7464,15 @@ class VendorImportJob(models.Model):
                 b > g * 1.05
             ):
                 return "blue"
-
-
+            
+            
             if (
                 g > r * 1.05
                 and
                 g > b * 1.03
             ):
                 return "green"
-
+            
             if (
                 r > 110
                 and
@@ -7457,14 +7481,23 @@ class VendorImportJob(models.Model):
                 abs(r - b) < 60
             ):
                 return "purple"
-
+            
             if r > 150 and g > 120 and b < 100:
                 return "orange"
+            
+            if r < 85 and g < 85 and b < 85:
+                return "black"
+
+            # =====================================
+            # GREY
+            # =====================================
 
             if (
-                abs(r - g) < 35
+                abs(r - g) < 22
                 and
-                abs(g - b) < 35
+                abs(g - b) < 22
+                and
+                70 < r < 210
             ):
                 return "grey"
 
