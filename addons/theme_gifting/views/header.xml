@@ -84,38 +84,95 @@
                     <div class="account-dropdown">
                       <span class="icon">👤 ▾</span>
 
-                      <div class="dropdown-menu custom-acount-user-menu">
+                        <div class="dropdown-menu custom-acount-user-menu">
+                          <!-- MY ACCOUNT -->
+                          <a href="/my"
+                            class="dropdown-item">
 
-                        <a href="/my">My Account</a>
-                        <a href="/my/orders">Orders</a>
+                              <t t-translate="on">
+                                  My Account
+                              </t>
 
-                        <t t-set="user" t-value="request.env.user"/>
-
-                        <t t-if="not user._is_public() and 
-                                (user.has_group('base.group_system') or user.partner_id.is_vendor_user)">
-                          <button type="button"
-                                  class="vendor-data-link"
-                                  data-bs-toggle="modal"
-                                  data-bs-target="#vendorDataModal">
-                            Vendor Data
-                          </button>
-                        </t>
-                       
-                        <a class="dropdown-item"
-                            href="/web#action=stock.product_template_action_product&amp;model=product.template&amp;view_type=list">
-
-                              My Products
                           </a>
 
-                          <a class="dropdown-item"
-                            href="/web#action=stock.product_template_action_product&amp;model=product.template&amp;view_type=form">
+                          <!-- ORDERS -->
+                          <a href="/my/orders"
+                            class="dropdown-item">
 
-                              Add Product
+                              <t t-translate="on">
+                                  Orders
+                              </t>
+
                           </a>
 
-                        <a href="/web/session/logout">Logout</a>
+                          <t t-set="user"
+                            t-value="request.env.user"/>
+
+                          <!-- VENDOR SECTION -->
+                          <t t-if="
+                              not user._is_public()
+                              and (
+                                  user.has_group('base.group_system')
+                                  or user.partner_id.is_vendor_user
+                              )
+                          ">
+
+                              <!-- VENDOR DATA -->
+                              <button type="button"
+                                      class="dropdown-item vendor-data-link"
+                                      data-bs-toggle="modal"
+                                      data-bs-target="#vendorDataModal">
+
+                                  <t t-translate="on">
+                                      Vendor Data
+                                  </t>
+
+                              </button>
+
+                              <!-- MY PRODUCTS -->
+                              <a class="dropdown-item"
+                                href="/web#action=stock.product_template_action_product&amp;model=product.template&amp;view_type=list">
+
+                                  <t t-translate="on">
+                                      My Products
+                                  </t>
+
+                              </a>
+
+                              <!-- ADD PRODUCT -->
+                              <a class="dropdown-item"
+                                href="/web#action=stock.product_template_action_product&amp;model=product.template&amp;view_type=form">
+
+                                  <t t-translate="on">
+                                      Add Product
+                                  </t>
+
+                              </a>
+
+                              <!-- INVENTORY -->
+                              <a class="dropdown-item"
+                                href="/web#action=stock.stock_quant_action&amp;model=stock.quant&amp;view_type=list">
+
+                                  <t t-translate="on">
+                                      Inventory
+                                  </t>
+
+                              </a>
+
+                          </t>
+
+                          <!-- LOGOUT -->
+                          <a href="/web/session/logout"
+                            class="dropdown-item">
+
+                              <t t-translate="on">
+                                  Logout
+                              </t>
+
+                          </a>
 
                       </div>
+
                     </div>
                   </t>
 
