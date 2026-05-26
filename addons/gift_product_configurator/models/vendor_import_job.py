@@ -1036,7 +1036,7 @@ class VendorImportJob(models.Model):
                         # cleanup URL queue
                         self.excel_url_processing = False
 
-                        self.excel_url_queue = False
+                        #self.excel_url_queue = False
 
                         self.excel_url_index = 0
 
