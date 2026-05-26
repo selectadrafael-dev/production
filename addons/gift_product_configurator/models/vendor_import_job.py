@@ -228,6 +228,11 @@ class VendorImportJob(models.Model):
     last_error = fields.Text()
 
     failed_at = fields.Datetime()
+
+    last_known_state = fields.Char(
+        string="Last Known State",
+        default=""
+    )
    
     state = fields.Selection([
         ('draft', 'Draft'),
