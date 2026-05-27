@@ -259,15 +259,50 @@ def extract():
                 contour
             )
 
+            _logger.warning(
+
+                f"[EXTRACTOR CONTOUR] "
+
+                f"x={x} y={y} "
+
+                f"w={w} h={h}"
+            )
+
             # skip tiny areas
+
             if w < 90 or h < 90:
+
+                _logger.warning(
+
+                    f"[EXTRACTOR REJECT SMALL] "
+
+                    f"w={w} h={h}"
+                )
+
                 continue
 
             # skip full-page blocks
             if w > page_np.shape[1] * 0.95:
+
+                _logger.warning(
+
+                    f"[EXTRACTOR REJECT FULLWIDTH] "
+
+                    f"w={w}"
+                )
+
                 continue
 
+           
             if h > page_np.shape[0] * 0.95:
+
+                _logger.warning(
+
+                    f"[EXTRACTOR REJECT FULLHEIGHT] "
+
+                    f"h={h}"
+                )
+
                 continue
 
             crop = page_np[
@@ -276,15 +311,44 @@ def extract():
             ]
 
             # =================================
-            # TEXT FILTER
+            # SMART TEXT FILTER
             # =================================
 
-            text_ratio = np.mean(
+            crop_gray = cv2.cvtColor(
 
-                crop < 80
+                crop,
+
+                cv2.COLOR_RGB2GRAY
             )
 
-            if text_ratio > 0.45:
+            dark_pixels = np.mean(
+                crop_gray < 55
+            )
+
+            pixel_std = np.std(crop_gray)
+
+            # =================================
+            # REJECT TRUE TEXT BLOCKS ONLY
+            # =================================
+
+            if (
+
+                dark_pixels > 0.52
+
+                and
+
+                pixel_std < 32
+            ):
+
+                _logger.warning(
+
+                    f"[EXTRACTOR REJECT TEXT] "
+
+                    f"dark={dark_pixels:.2f} "
+
+                    f"std={pixel_std:.2f}"
+                )
+
                 continue
 
             # =================================
@@ -295,6 +359,16 @@ def extract():
 
             # portrait human-like layout
             if aspect_ratio > 1.7 and w < 400:
+
+                _logger.warning(
+
+                    f"[EXTRACTOR REJECT HUMAN] "
+
+                    f"aspect={aspect_ratio:.2f} "
+
+                    f"w={w} h={h}"
+                )
+
                 continue
 
             candidate_images.append({
