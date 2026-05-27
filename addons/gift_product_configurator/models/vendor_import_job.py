@@ -1222,8 +1222,25 @@ class VendorImportJob(models.Model):
             if self.state == 'excel_ai':
 
                 try:
+                    previous_ai_index = self.excel_ai_index or 0
+
+                    _logger.warning(
+
+                        f"[EXCEL AI BEFORE] "
+
+                        f"{previous_ai_index}"
+                    )
 
                     self.send_to_openai_excel()
+
+                    new_ai_index = self.excel_ai_index or 0
+
+                    _logger.warning(
+
+                        f"[EXCEL AI AFTER] "
+
+                        f"{new_ai_index}"
+                    )
 
                 except Exception as e:
 
@@ -10463,6 +10480,7 @@ class VendorImportJob(models.Model):
 
     
     #==========Excel URl queue logic========================
+    
     def _queue_excel_urls(self, url_products):
 
         import json
@@ -11679,7 +11697,7 @@ class VendorImportJob(models.Model):
             )
 
 
-           # =========================================
+            # =========================================
             # FULL IMPORT COMPLETION CHECK
             # =========================================
 
@@ -11699,6 +11717,10 @@ class VendorImportJob(models.Model):
                 and
 
                 all_ai_processed
+
+                and
+
+                not self.excel_url_processing
             ):
 
                 _logger.warning(
@@ -11737,10 +11759,6 @@ class VendorImportJob(models.Model):
                 )
 
                 self.state = 'excel_parsing'
-
-        else:
-
-            self.state = 'excel_creating'
 
 
         self._safe_commit_progress()
