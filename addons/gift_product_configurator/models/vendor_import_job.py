@@ -12922,14 +12922,14 @@ class VendorImportJob(models.Model):
 
                                 f"job={job.id} "
 
-                                f"| retry={job.stage_retry_count}/5"
+                                f"| retry={job.stage_retry_count}/8"
                             )
 
                             # =====================================
                             # TERMINAL FAILURE
                             # =====================================
 
-                            if job.stage_retry_count >= 6:
+                            if job.stage_retry_count >= 8:
 
                                 _logger.error(
 
