@@ -10646,90 +10646,6 @@ class VendorImportJob(models.Model):
 
             self.env.invalidate_all()
 
-    #=====excel group url update====================================
-
-    def _enrich_group_with_url_data(
-
-        self,
-
-        group_items,
-
-        url_cache=None
-    ):
-
-        if url_cache is None:
-
-            url_cache = {}
-
-        group_url = ""
-
-        for item in group_items:
-
-            possible_url = (
-                item.get("url")
-                or
-                item.get("product_url")
-                or
-                ""
-            ).strip()
-
-            if possible_url:
-
-                group_url = possible_url
-
-                break
-
-        if not group_url:
-
-            return {}
-
-        if group_url in url_cache:
-
-            _logger.warning(
-
-                f"[URL CACHE HIT] "
-
-                f"{group_url}"
-            )
-
-            return url_cache[group_url]
-
-        try:
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT START] "
-
-                f"{group_url}"
-            )
-
-            url_data = self._extract_url_product_data(
-                group_url
-            ) or {}
-
-            url_cache[group_url] = url_data
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT SUCCESS] "
-
-                f"{group_url}"
-            )
-
-            return url_data
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT FAILED] "
-
-                f"{str(e)}"
-            )
-
-            return {}
-
-
     #==========create excel product===========================
     def create_products_excel(self):
 
@@ -11038,62 +10954,63 @@ class VendorImportJob(models.Model):
                     ) or ""
                 )
 
+
                 # =====================================
                 # SAFE URL ENRICHMENT
                 # =====================================
 
                 if url_data:
 
-                    description = (
+                    url_description = (
 
                         url_data.get("description")
 
-                        or description
-                    )
+                        or ""
+                    ).strip()
 
-                    if not name:
+                    url_name = (
 
-                        name = (
+                        url_data.get("name")
 
-                            url_data.get("name")
+                        or ""
+                    ).strip()
 
-                            or name
-                        )
+                    # =====================================
+                    # SAFE DESCRIPTION MERGE
+                    # =====================================
+
+                    if url_description:
+
+                        if description:
+
+                            description = f"""
+
+                {description}
+
+                {url_description}
+                """.strip()
+
+                        else:
+
+                            description = url_description
+
+                    # =====================================
+                    # ONLY FILL EMPTY NAME
+                    # =====================================
+
+                    if not name and url_name:
+
+                        name = url_name
 
                     _logger.warning(
 
                         f"[URL DATA APPLIED] "
 
-                        f"{group_id}"
-                    )
+                        f"{group_id} "
 
-                # =====================================
-                # URL DATA ENRICHMENT
-                # =====================================
+                        f"| desc={'yes' if url_description else 'no'} "
 
-                if url_data:
-
-                    description = (
-
-                        url_data.get("description")
-
-                        or description
-                    )
-
-                    if not name:
-
-                        name = (
-
-                            url_data.get("name")
-
-                            or name
-                        )
-
-                    _logger.warning(
-
-                        f"[URL DATA APPLIED] "
-
-                        f"{group_id}"
+                        f"| name={'yes' if url_name else 'no'}"
                     )
 
                 raw_category = (
@@ -11809,6 +11726,135 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
+    #=====excel group url update====================================
+
+    def _enrich_group_with_url_data(
+
+        self,
+
+        group_items,
+
+        url_cache=None
+    ):
+
+        if url_cache is None:
+
+            url_cache = {}
+
+        group_url = ""
+
+        # =====================================
+        # FIND FIRST VALID GROUP URL
+        # =====================================
+
+        for item in group_items:
+
+            possible_url = (
+                item.get("url")
+                or
+                item.get("product_url")
+                or
+                ""
+            ).strip()
+
+            if possible_url:
+
+                group_url = possible_url
+
+                break
+
+        # =====================================
+        # NO URL FOUND
+        # =====================================
+
+        if not group_url:
+
+            _logger.warning(
+
+                "[URL ENRICHMENT SKIPPED] "
+
+                "NO URL FOUND"
+            )
+
+            return {}
+
+        _logger.warning(
+
+            f"[URL GROUP FOUND] "
+
+            f"{group_url}"
+        )
+
+        # =====================================
+        # CACHE HIT
+        # =====================================
+
+        if group_url in url_cache:
+
+            _logger.warning(
+
+                f"[URL CACHE HIT] "
+
+                f"{group_url}"
+            )
+
+            return url_cache[group_url]
+
+        try:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT START] "
+
+                f"{group_url}"
+            )
+
+            url_data = self._extract_url_product_data(
+                group_url
+            ) or {}
+
+            # =====================================
+            # EMPTY RESPONSE
+            # =====================================
+
+            if not url_data:
+
+                _logger.warning(
+
+                    f"[URL ENRICHMENT EMPTY] "
+
+                    f"{group_url}"
+                )
+
+                url_cache[group_url] = {}
+
+                return {}
+
+            url_cache[group_url] = url_data
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT SUCCESS] "
+
+                f"{group_url} "
+
+                f"| keys={list(url_data.keys())}"
+            )
+
+            return url_data
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT FAILED] "
+
+                f"{group_url} "
+
+                f"| {str(e)}"
+            )
+
+            return {}
 
     #====Excel variant mapping==================================
     def _detect_basic_image_color(self, image_data):
