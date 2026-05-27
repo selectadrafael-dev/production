@@ -1195,12 +1195,20 @@ class VendorImportJob(models.Model):
 
                         self.excel_url_index = 0
 
+                  
                     else:
 
-                       self.last_error = "Excel parse stalled"
+                        _logger.warning(
+                            "[EXCEL PARSE STALLED]"
+                        )
 
-                    #    self.state = 'review'    
-                    self.state = 'excel_parsing'   
+                        self.stage_retry_count += 1
+
+                        self.last_error = "Excel parse stalled"
+
+                        self.last_known_state = 'excel_parsing'
+
+                        self.state = 'review' 
 
                 self._safe_commit_progress()
 
