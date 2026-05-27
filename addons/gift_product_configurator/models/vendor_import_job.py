@@ -5159,540 +5159,6 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROMPT
         # =====================================================
-       
-        prompt = f"""
-        You are an advanced AI product extraction engine for catalog PDF pages.
-
-        You analyze BOTH:
-        - page text
-        - catalog product images
-
-        Your job:
-        extract ALL visible products accurately.
-
-        ==================================================
-        STRICT OUTPUT RULES
-        ==================================================
-
-        1. RETURN ONLY VALID JSON ARRAY
-        2. NO markdown
-        3. NO explanation
-        4. NO text outside JSON
-        5. NEVER invent products not visible
-        6. NEVER skip visible products
-        7. NEVER duplicate products
-        8. EACH product must appear ONLY ONCE
-        9. ALWAYS preserve product grouping correctly
-
-        ==================================================
-        CATALOG UNDERSTANDING RULES
-        ==================================================
-
-        This input represents ONLY ONE catalog page.
-
-        DO NOT:
-        - continue products from previous pages
-        - assume future pages
-        - merge unrelated products
-
-        A page may contain:
-        - one hero product
-        - multiple products
-        - one product with variants
-        - one product with gallery/supporting images
-
-        ==================================================
-        PRODUCT DETECTION RULES
-        ==================================================
-
-        If a page contains:
-        - visually separated products
-        - different product names
-        - different product codes
-        - different structures/shapes
-
-        Then:
-        extract them as SEPARATE products.
-
-        CRITICAL:
-
-        Supplier catalog pages frequently contain:
-
-        - many isolated product thumbnails
-        - many color variants
-        - grouped apparel grids
-        - multiple visible colors
-        - multiple visible SKU presentations
-
-        You MUST aggressively detect ALL visible products.
-
-        If 8 visible shirt colors exist:
-        extract 8 variants.
-
-        If 10 visible caps exist:
-        extract 10 variants.
-
-        NEVER reduce visible product colors
-        to only 2-3 variants.
-
-        IMPORTANT:
-
-        It is FAR BETTER to slightly over-detect
-        than to miss visible ecommerce variants.
-
-        NEVER silently ignore:
-        - isolated products
-        - visible color variants
-        - clean thumbnails
-        - alternate product colors
-
-        ==================================================
-        MAIN TITLE UNDERSTANDING RULES
-        ==================================================
-
-        CRITICAL:
-
-        Supplier catalogs contain:
-        - product titles
-        - subtitles
-        - materials
-        - marketing text
-        - feature blocks
-        - specifications
-        - dimensions
-
-        You MUST correctly identify the TRUE MAIN PRODUCT TITLE.
-
-        MAIN PRODUCT TITLE is usually:
-        - largest bold heading
-        - top-level heading
-        - dominant product headline
-        - catalog product name
-
-        NEVER use as product title:
-        - material descriptions
-        - feature paragraphs
-        - bullet lists
-        - dimensions
-        - capacities
-        - marketing text
-        - print method text
-        - specification text
-        - eco labels
-        - fabric composition text
-
-        GOOD TITLE EXAMPLES:
-        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
-        - 5 PANEL CAP
-        - RAISE Glass Sport Bottle
-        - Wireless Charging Pad
-
-        BAD TITLE EXAMPLES:
-        - Heavy Brushed 100% Cotton
-        - Rib 1x1 collar and cuffs
-        - Stainless steel capacity 520ml
-
-        If both exist:
-        ALWAYS prioritize the MAIN heading.
-
-        ==================================================
-        RICH PRODUCT DESCRIPTION RULES
-        ==================================================
-
-        You MUST extract and preserve ALL valuable ecommerce content.
-
-        Combine into rich product_description:
-        - subtitle
-        - marketing text
-        - feature text
-        - bullet lists
-        - material composition
-        - dimensions
-        - capacity
-        - specifications
-        - print area
-        - packaging info
-        - branding info
-        - eco information
-
-        DO NOT keep descriptions too short.
-
-        Professional ecommerce product pages require:
-        - meaningful content
-        - readable specifications
-        - rich product information
-
-        If multiple useful text blocks exist:
-        combine them cleanly into one rich description.
-
-        ==================================================
-        STOCK EXTRACTION RULES:
-        ==================================================
-
-        Extract stock quantity ONLY when
-        actual available inventory is explicitly stated.
-
-        Examples:
-        - "Stock: 11 pcs"
-        - "Available: 25"
-        - "In stock: 8"
-
-        DO NOT extract:
-        - delivery times
-        - MOQ
-        - carton quantity
-        - package quantity
-        - shipping quantity
-        - lead times
-        - dimensions
-        - capacity values
-
-        If no real stock quantity exists:
-        set:
-
-        "stock_qty": 0
-
-        ==================================================
-        VARIANT DETECTION RULES
-        ==================================================
-
-        VARIANT GROUPING RULES:
-
-        Products MUST be grouped as variants when:
-
-        - same product shape
-        - same structure
-        - same branding
-        - same dimensions
-        - same material
-        - only color changes
-        - only size changes
-        - only minor style changes
-
-        EXAMPLES:
-        - same cap in multiple colors
-        - same polo shirt in different colors
-        - same bottle with color variations
-
-        DO NOT create separate products for:
-        - color-only changes
-        - size-only changes
-
-        Instead:
-        create ONE parent product with variants.
-
-        Each variant should contain:
-
-        {{
-            "attributes": {{
-                "Color": "",
-                "Size": ""
-            }},
-
-            "image_index": null
-        }}
-
-        IMPORTANT:
-
-        Variant images should ALSO be reused
-        inside gallery_image_indexes whenever useful.
-
-        A professional ecommerce product page
-        should contain:
-
-        - hero image
-        - variant thumbnails
-        - alternate isolated product renders
-        - supporting clean product images
-
-        Do NOT return empty galleries
-        when clean isolated product thumbnails exist.
-
-        ==================================================
-        ECOMMERCE IMAGE UNDERSTANDING RULES
-        ==================================================
-
-        You are NOT selecting the most artistic image.
-
-        You are selecting the BEST PROFESSIONAL
-        ECOMMERCE PRODUCT IMAGE.
-
-        Your goal:
-        produce Amazon/Alibaba/Shopify-style
-        product merchandising quality.
-
-        --------------------------------------------------
-        PRIORITY ORDER (VERY IMPORTANT)
-        --------------------------------------------------
-
-        ALWAYS prioritize:
-
-        1. isolated standalone product
-        2. clean white/plain background
-        3. centered product
-        4. full product visibility
-        5. variant color visibility
-        6. clean catalog render
-        7. multiple isolated color options
-
-        NEVER prioritize:
-        - humans/models
-        - lifestyle scenes
-        - promotional layouts
-        - infographic compositions
-        - text-heavy blocks
-        - banners
-        - decorative graphics
-
-        ==================================================
-        HERO IMAGE RULES
-        ==================================================
-
-        hero_image_index MUST point to:
-
-        - ONE isolated product
-        - clean/plain background
-        - centered product
-        - professional ecommerce shot
-        - no text overlays
-        - no large text areas
-        - no promotional layout
-        - no infographic composition
-
-        DO NOT use:
-        - humans wearing products
-        - lifestyle photography
-        - catalog cover layouts
-        - multi-product collages
-        - pages with large text blocks
-        - specification layouts
-        - promotional graphics
-
-        VERY IMPORTANT:
-
-        If isolated product variants exist anywhere
-        on the page,
-        ALWAYS prefer them over:
-        - human/model photos
-        - lifestyle shots
-        - promotional scenes
-
-        Example:
-        If a cap page contains:
-        - woman wearing cap
-        - isolated cap colors
-
-        hero_image_index MUST use:
-        isolated cap color image
-
-        NOT the woman/model image.
-
-        ==================================================
-        GALLERY IMAGE RULES
-        ==================================================
-
-        gallery_image_indexes should contain:
-
-        - isolated alternate angles
-        - isolated closeups
-        - isolated detail shots
-        - isolated side/back views
-
-        DO NOT include:
-        - banners
-        - specification layouts
-        - infographic graphics
-        - text-heavy images
-        - decorative layouts
-        - icons
-        - logos
-        - promotional compositions
-
-        ==================================================
-        VARIANT IMAGE RULES
-        ==================================================
-
-        Variants MUST be created when:
-
-        - same product
-        - same shape
-        - same structure
-        - same dimensions
-        - only color/material/style changes
-
-        IMPORTANT:
-
-        If multiple isolated product colors exist,
-        they MUST become variants.
-
-        Example:
-        - black cap
-        - blue cap
-        - red cap
-
-        MUST become:
-        ONE product
-        with multiple color variants.
-
-        DO NOT create separate products.
-
-        Each variant should contain:
-        - correct Color/Material attribute
-        - correct image_index
-
-        ==================================================
-        COLLAGE UNDERSTANDING RULES
-        ==================================================
-
-        Supplier catalog pages often contain:
-        - one large lifestyle image
-        - multiple smaller isolated products
-
-        IMPORTANT:
-
-        The smaller isolated products are usually
-        the CORRECT ecommerce assets.
-
-        DO NOT automatically prefer the largest image.
-
-        Prefer:
-        isolated product renders
-        over:
-        visually dominant lifestyle graphics.
-
-       ==================================================
-        PRICE
-        ==================================================
-
-        PRICE EXTRACTION IS CRITICAL.
-
-        Catalog prices may appear:
-        - near title
-        - inside text
-        - inside specification blocks
-        - beside variants
-        - inside tables
-        - at page corners
-        - in small text
-        - separated from products
-
-        You MUST aggressively search for:
-        - $
-        - €
-        - £
-        - ₦
-        - USD
-        - EUR
-        - GBP
-
-        Examples:
-        - $2.99
-        - USD 4.25
-        - €8,50
-        - From $3.10
-
-        If multiple prices exist:
-        prefer:
-        1. standard/base product price
-        2. visible selling price
-        3. "from" price
-
-        DO NOT invent prices.
-
-        If no price exists:
-        return empty string.
-
-        Extract:
-        - visible product price
-        - visible product code
-
-        ==================================================
-        STOCK EXTRACTION RULES:
-        ==================================================
-        PRICE EXTRACTION IS CRITICAL.
-
-        Extract: 
-        - stock quantity ONLY when
-        actual available inventory is explicitly stated.
-
-        - visible stock quantity
-
-        Examples:
-        - "Stock: 11 pcs"
-        - "Available: 25"
-        - "In stock: 8"
-
-        DO NOT extract:
-        - delivery times
-        - MOQ
-
-        If no real stock quantity exists:
-        set:
-
-        "stock_qty": 0
-        ==================================================
-        MOST CRITICAL
-        ==================================================
-        NO PRODUCT SHOULD MISS OUT OR BE IGNORED EXCEPT BLANK PAGE, 
-        TOTAL NUMBER OF PAGES SHOULD GENERAGES SAME NUMBERS OF 
-        PRODUCTS WITH EACH PRODUCTS HAS IT'S VARIANTS WHERE 
-        MULTIPLE ITEMS APPEAR 
-        ON SINGLE PAGE ACCURATELY. 
-        
-        ==================================================
-        OUTPUT FORMAT
-        ==================================================
-
-        Return JSON ARRAY:
-
-        [
-            {{
-                "name": "",
-                "subtitle": "",
-                "description": "",
-                "bullet_features": [],
-                "material": "",
-                "dimensions": "",
-                "stock_qty": 0,
-                "price": "",
-                "currency": "",
-                "product_code": "",
-                "hero_image_index": null,
-                "gallery_image_indexes": [],
-                "variants": [
-                    {{
-                        "attributes": {{
-                            "Color": ""
-                        }},
-
-                        "image_index": null,
-                        "stock_qty": 0,
-                        "price": ""
-                    }}
-                ]
-            }}
-        ]
-
-        ==================================================
-        PAGE TEXT
-        ==================================================
-
-        {page_text}
-
-        ==================================================
-        DETECTED PRICE
-        ==================================================
-
-        {page_price}
-
-        ==================================================
-        DETECTED STOCK
-        ==================================================
-
-        {page_stock}
-        """
-
-
 
         prompt = f"""
         You are an AI ecommerce catalog extraction engine.
@@ -5804,10 +5270,10 @@ class VendorImportJob(models.Model):
         Combine useful text naturally.
 
         ==================================================
-        PRICE/STOCK RULES
+        PRICE RULES
         ==================================================
 
-        Aggressively search for price and stocks.
+        Aggressively search for price.
 
         Prices and stocks may appear:
         - near title
@@ -5837,7 +5303,14 @@ class VendorImportJob(models.Model):
         - visible product price
         - visible stock quantity
         - visible product code
-
+        ==================================================
+        MOST CRITICAL
+        ==================================================
+        NO PRODUCT SHOULD MISS OUT OR BE IGNORED EXCEPT BLANK PAGE, 
+        TOTAL NUMBER OF PAGES SHOULD GENERAGES SAME NUMBERS OF 
+        PRODUCTS WITH EACH PRODUCTS HAS IT'S VARIANTS WHERE 
+        MULTIPLE ITEMS APPEAR 
+        ON SINGLE PAGE ACCURATELY. 
         ==================================================
         IMAGE RULES
         ==================================================
@@ -5856,6 +5329,31 @@ class VendorImportJob(models.Model):
 
         If isolated variants exist:
         prefer them over model/lifestyle photos.
+
+        ==================================================
+        STOCK EXTRACTION RULES:
+        ==================================================
+        PRICE EXTRACTION IS CRITICAL.
+
+        Extract: 
+        - stock quantity ONLY when
+        actual available inventory is explicitly stated.
+
+        - visible stock quantity
+
+        Examples:
+        - "Stock: 11 pcs"
+        - "Available: 25"
+        - "In stock: 8"
+
+        DO NOT extract:
+        - delivery times
+        - MOQ
+
+        If no real stock quantity exists:
+        set:
+
+        "stock_qty": 0
 
         ==================================================
         VARIANT RULES
