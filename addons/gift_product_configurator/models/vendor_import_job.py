@@ -4764,7 +4764,10 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF OPENAI =========================
+     # =========== PDF OPENAI =========================
+
+  # =========== PDF OPENAI ================================
+
     def send_to_openai_pdf(self):
 
         import json
@@ -5213,13 +5216,37 @@ class VendorImportJob(models.Model):
         Then:
         extract them as SEPARATE products.
 
+        CRITICAL:
+
+        Supplier catalog pages frequently contain:
+
+        - many isolated product thumbnails
+        - many color variants
+        - grouped apparel grids
+        - multiple visible colors
+        - multiple visible SKU presentations
+
+        You MUST aggressively detect ALL visible products.
+
+        If 8 visible shirt colors exist:
+        extract 8 variants.
+
+        If 10 visible caps exist:
+        extract 10 variants.
+
+        NEVER reduce visible product colors
+        to only 2-3 variants.
+
         IMPORTANT:
 
-        If unsure:
-        it is BETTER to slightly over-detect
-        than to miss products.
+        It is FAR BETTER to slightly over-detect
+        than to miss visible ecommerce variants.
 
-        NEVER silently ignore visible products.
+        NEVER silently ignore:
+        - isolated products
+        - visible color variants
+        - clean thumbnails
+        - alternate product colors
 
         ==================================================
         STOCK EXTRACTION RULES:
@@ -5287,6 +5314,22 @@ class VendorImportJob(models.Model):
 
             "image_index": null
         }}
+
+        IMPORTANT:
+
+        Variant images should ALSO be reused
+        inside gallery_image_indexes whenever useful.
+
+        A professional ecommerce product page
+        should contain:
+
+        - hero image
+        - variant thumbnails
+        - alternate isolated product renders
+        - supporting clean product images
+
+        Do NOT return empty galleries
+        when clean isolated product thumbnails exist.
 
         ==================================================
         ECOMMERCE IMAGE UNDERSTANDING RULES
@@ -5371,7 +5414,7 @@ class VendorImportJob(models.Model):
         GALLERY IMAGE RULES
         ==================================================
 
-        gallery_image_indexes should contain ONLY:
+        gallery_image_indexes should contain:
 
         - isolated alternate angles
         - isolated closeups
@@ -5508,21 +5551,106 @@ class VendorImportJob(models.Model):
 
         try:
             
-            MAX_IMAGES = 15
+
+            MAX_IMAGES = 24
 
             image_inputs = []
+
+
+            def ai_visibility_score(asset):
+
+                base = asset.get(
+                    "score",
+                    0
+                )
+
+                # =====================================
+                # BOOST CLEAN ISOLATED PRODUCTS
+                # =====================================
+
+                if not asset.get("is_collage"):
+
+                    base *= 1.35
+
+                # =====================================
+                # BOOST SMALL/MEDIUM PRODUCT SHOTS
+                # =====================================
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    )
+
+                    or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    )
+
+                    or 0
+                )
+
+                area = width * height
+
+                if area < 350000:
+
+                    base *= 1.25
+
+                # =====================================
+                # PENALIZE HUMAN/LIFESTYLE IMAGES
+                # =====================================
+
+                dominant = str(
+
+                    asset.get(
+                        "dominant_color"
+                    )
+
+                    or ""
+
+                ).lower()
+
+                if dominant in [
+                    "skin",
+                    "beige"
+                ]:
+
+                    base *= 0.7
+
+                return base
+
 
             sorted_page_images = sorted(
 
                 page_images,
 
-                key=lambda x: x.get(
-                    "score",
-                    0
-                ),
+                key=ai_visibility_score,
 
                 reverse=True
             )
+
+            for idx, asset in enumerate(
+                sorted_page_images[:MAX_IMAGES]
+            ):
+
+                _logger.warning(
+
+                    f"[AI IMAGE INPUT] "
+
+                    f"rank={idx} "
+
+                    f"score={asset.get('score')} "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"collage={asset.get('is_collage')}"
+                )
 
             for asset in sorted_page_images[:MAX_IMAGES]:
 
@@ -5880,8 +6008,7 @@ class VendorImportJob(models.Model):
 
         return
     
-
-
+   
     #===========Excel Open AI================================
     def send_to_openai_excel(self):
 
@@ -6932,6 +7059,8 @@ class VendorImportJob(models.Model):
     # =====================================
     # ADVANCED DOMINANT COLOR DETECTION
     # =====================================
+    
+    
     def _detect_dominant_color(
 
         self,
@@ -6988,6 +7117,78 @@ class VendorImportJob(models.Model):
             r, g, b = avg
 
             # =====================================
+            # DARK COLOR ANALYSIS
+            # =====================================
+
+            brightness = np.mean(
+
+                pixels,
+
+                axis=1
+            )
+
+            dark_pixels_ratio = np.mean(
+                brightness < 75
+            )
+
+            very_dark_ratio = np.mean(
+                brightness < 45
+            )
+
+            # dominant blue inside dark pixels
+            dark_blue_ratio = np.mean(
+
+                (
+                    pixels[:, 2] > pixels[:, 0] * 1.15
+                )
+
+                &
+
+                (
+                    pixels[:, 2] > pixels[:, 1] * 1.10
+                )
+
+                &
+
+                (
+                    brightness < 90
+                )
+            )
+
+            # =====================================
+            # TRUE BLACK DETECTION
+            # =====================================
+
+            if (
+
+                very_dark_ratio > 0.24
+
+                or
+
+                (
+                    dark_pixels_ratio > 0.40
+
+                    and
+
+                    abs(r - g) < 24
+
+                    and
+
+                    abs(g - b) < 24
+                )
+            ):
+
+                return "black"
+
+            # =====================================
+            # DARK NAVY DETECTION
+            # =====================================
+
+            if dark_blue_ratio > 0.18:
+
+                return "navy"
+
+            # =====================================
             # RGB → HSV
             # =====================================
 
@@ -7016,14 +7217,12 @@ class VendorImportJob(models.Model):
             if v > 92 and s < 10:
                 return "white"
 
+         
             # =====================================
-            # GRAY / GREY
+            # GREY DETECTION
             # =====================================
 
             if s < 15:
-
-                if v < 55:
-                    return "gray"
 
                 return "grey"
 
@@ -7095,7 +7294,6 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
-
 
 
     # =====================================
