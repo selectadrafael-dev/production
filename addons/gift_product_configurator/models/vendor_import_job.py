@@ -8872,7 +8872,7 @@ class VendorImportJob(models.Model):
 
     
     #==========create pdf product====================================
-  
+
     def create_products_pdf(self):
 
         import json
@@ -9274,6 +9274,7 @@ class VendorImportJob(models.Model):
 
                         # =====================================
                         # APPLY REAL INVENTORY STOCK
+                        # ONLY FOR STORABLE PRODUCTS
                         # =====================================
 
                         try:
@@ -9285,6 +9286,11 @@ class VendorImportJob(models.Model):
                                     0
                                 ) or 0
                             )
+
+                            # =====================================
+                            # CONSUMABLE PRODUCTS:
+                            # SKIP STOCK QUANTS
+                            # =====================================
 
                             if stock_qty > 0:
 
@@ -9695,20 +9701,14 @@ class VendorImportJob(models.Model):
 
         if self.last_created_page >= len(ai_pages):
 
-            #====send email to vendor=========
-            if not self.completion_email_sent:
-
-                self.send_completion_email()
-
             self.state = 'done'
 
         else:
 
             self.state = 'pdf_creating'
 
-        self._safe_commit_progress()
+        self._safe_commit_progre
 
-   
     #==========pdf product PRODUCT CREATE/GET====================================
     
     def _get_or_create_pdf_product(
