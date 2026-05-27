@@ -4765,9 +4765,6 @@ class VendorImportJob(models.Model):
 
 
     # =========== PDF OPENAI =========================
-
-     # =========== PDF OPENAI =========================
-
     def send_to_openai_pdf(self):
 
         import json
