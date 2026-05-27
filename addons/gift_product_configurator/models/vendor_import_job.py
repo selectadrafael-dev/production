@@ -1043,15 +1043,19 @@ class VendorImportJob(models.Model):
 
                 if new_index >= total:
                     self.stage_retry_count = 0
+                   
+
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
+                   
+                   
                     self.state = 'done'
 
                     _logger.warning(
                         "URL COMPLETE ✅"
                     )
 
-                    if not self.completion_email_sent:
-
-                        self.send_completion_email()
 
                 elif new_index > previous_index:
 
@@ -9779,6 +9783,11 @@ class VendorImportJob(models.Model):
         )
 
         if self.last_created_page >= len(ai_pages):
+
+            #====send email to vendor=====
+            if not self.completion_email_sent:
+
+                self.send_completion_email()
 
             self.state = 'done'
 
