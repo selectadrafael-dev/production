@@ -9059,8 +9059,10 @@ class VendorImportJob(models.Model):
         vendor_id = (
 
             self.partner_id.id
+
             if self.partner_id
-            else self.env.user.partner_id.id
+
+            else False
         )
 
         BATCH_SIZE = 3
@@ -9165,53 +9167,13 @@ class VendorImportJob(models.Model):
 
                 if not product_images:
 
-                    # -----------------------------------------
-                    # SAFE PAGE FALLBACK
-                    # -----------------------------------------
-
-                    product_images = []
-
-                    variant_count = max(
-                        len(product_data.get("variants", [])),
-                        1
-                    )
-
-                    # prefer highest gallery assets
-                    sorted_page_assets = sorted(
-
-                        page_images,
-
-                        key=lambda x: (
-
-                            x.get("gallery_score", 0),
-
-                            x.get("hero_score", 0)
-
-                        ),
-
-                        reverse=True
-                    )
-
-                    # allocate enough assets
-                    allocation_size = min(
-
-                        max(variant_count * 2, 4),
-
-                        len(sorted_page_assets)
-                    )
-
-                    product_images = sorted_page_assets[
-                        :allocation_size
-                    ]
+                    product_images = page_images
 
                     _logger.warning(
 
-                        f"[SMART PAGE FALLBACK] "
+                        f"[PAGE IMAGE FALLBACK] "
 
-                        f"{product_data.get('name')} "
-
-                        f"| allocated={len(product_images)}"
-
+                        f"{product_data.get('name')}"
                     )
 
                 segmented_assets = []
@@ -9341,7 +9303,6 @@ class VendorImportJob(models.Model):
                         )
                     )
 
-
                     if created:
 
                         self._apply_product_translation(
@@ -9356,97 +9317,6 @@ class VendorImportJob(models.Model):
 
                             asset_pool
                         )
-
-                        # =====================================
-                        # APPLY REAL INVENTORY STOCK
-                        # ONLY FOR STORABLE PRODUCTS
-                        # =====================================
-
-                        try:
-
-                            stock_qty = int(
-
-                                product_data.get(
-                                    "stock_qty",
-                                    0
-                                ) or 0
-                            )
-
-                            # =====================================
-                            # CONSUMABLE PRODUCTS:
-                            # SKIP STOCK QUANTS
-                            # =====================================
-
-                            if product.type != 'product':
-
-                                _logger.warning(
-
-                                    f"[STOCK SKIPPED] "
-
-                                    f"{product.name} "
-
-                                    f"| type={product.type}"
-                                )
-
-                            elif stock_qty > 0:
-
-                                quant = stock_quant_obj.search([
-
-                                    (
-                                        'product_id',
-                                        '=',
-                                        product.product_variant_id.id
-                                    ),
-
-                                    (
-                                        'location_id',
-                                        '=',
-                                        stock_location.id
-                                    )
-
-                                ], limit=1)
-
-                                if quant:
-
-                                    quant.inventory_quantity = (
-                                        stock_qty
-                                    )
-
-                                    quant.action_apply_inventory()
-
-                                else:
-
-                                    quant = stock_quant_obj.create({
-
-                                        'product_id':
-                                            product.product_variant_id.id,
-
-                                        'location_id':
-                                            stock_location.id,
-
-                                        'inventory_quantity':
-                                            stock_qty
-                                    })
-
-                                    quant.action_apply_inventory()
-
-                                _logger.warning(
-
-                                    f"[STOCK APPLIED] "
-
-                                    f"{product.name} "
-
-                                    f"| qty={stock_qty}"
-                                )
-
-                        except Exception as e:
-
-                            _logger.warning(
-
-                                f"[STOCK APPLY FAILED] "
-
-                                f"{str(e)}"
-                            )
 
                         created_count += 1
 
@@ -9660,24 +9530,13 @@ class VendorImportJob(models.Model):
 
                                         match_count += 1
 
-
-                                required_matches = max(
-
-                                    1,
-
-                                    min(
-                                        len(variant_words),
-                                        2
-                                    )
-                                )
-
                                 if (
 
                                     variant_words
 
                                     and
 
-                                    match_count >= required_matches
+                                    match_count >= 1
                                 ):
 
                                     variant_record = pv
@@ -9686,17 +9545,20 @@ class VendorImportJob(models.Model):
                         # ---------------------------------
                         # SAFE FALLBACK
                         # ---------------------------------
-                      
+
                         if (
+
                             not variant_record
+
                             and
-                            len(product_variants) == 1
+
+                            product_variants
                         ):
 
                             variant_record = (
                                 product_variants[0]
                             )
-
+                      
                         # =====================================
                         # PROFESSIONAL VARIANT IMAGE MATCHING
                         # =====================================
@@ -9726,19 +9588,9 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
-                                    # used_asset_indexes.add(
-                                    #     matched_asset.get("index")
-                                    # )
-
-                                    asset_index = (
-                                        matched_asset.get("clean_index")
-                                        if matched_asset.get("clean_index") is not None
-                                        else matched_asset.get("index")
+                                    used_asset_indexes.add(
+                                        matched_asset.get("index")
                                     )
-
-                                    if asset_index is not None:
-
-                                        used_asset_indexes.add(asset_index)
 
                                     _logger.warning(
 
@@ -9804,59 +9656,6 @@ class VendorImportJob(models.Model):
             self.state = 'pdf_creating'
 
         self._safe_commit_progress()
-
-
-    #==========create pdf CATEGORY RESOLVER====================================
-    
-    def _get_or_create_pdf_category(
-
-        self,
-
-        raw_category,
-
-        category_obj,
-
-        parent_category,
-
-        category_mapping
-    ):
-
-        mapped_category = "General"
-
-        raw_category = (
-            raw_category or ""
-        ).lower()
-
-        for key, val in category_mapping.items():
-
-            if key in raw_category:
-
-                mapped_category = val
-
-                break
-
-        category = category_obj.search([
-
-            ('name', '=ilike', mapped_category),
-
-            (
-                'parent_id',
-                '=',
-                parent_category.id
-            )
-
-        ], limit=1)
-
-        if not category:
-
-            category = category_obj.create({
-
-                'name': mapped_category,
-
-                'parent_id': parent_category.id
-            })
-
-        return category
 
 
     #==========pdf product PRODUCT CREATE/GET====================================
@@ -10144,6 +9943,57 @@ class VendorImportJob(models.Model):
 
         return product, True
 
+    #==========create pdf CATEGORY RESOLVER====================================
+    
+    def _get_or_create_pdf_category(
+
+        self,
+
+        raw_category,
+
+        category_obj,
+
+        parent_category,
+
+        category_mapping
+    ):
+
+        mapped_category = "General"
+
+        raw_category = (
+            raw_category or ""
+        ).lower()
+
+        for key, val in category_mapping.items():
+
+            if key in raw_category:
+
+                mapped_category = val
+
+                break
+
+        category = category_obj.search([
+
+            ('name', '=ilike', mapped_category),
+
+            (
+                'parent_id',
+                '=',
+                parent_category.id
+            )
+
+        ], limit=1)
+
+        if not category:
+
+            category = category_obj.create({
+
+                'name': mapped_category,
+
+                'parent_id': parent_category.id
+            })
+
+        return category
 
     #=========pdf product GALLERY CREATOR=======================
     def _create_pdf_gallery(
