@@ -9784,7 +9784,7 @@ class VendorImportJob(models.Model):
 
         if self.last_created_page >= len(ai_pages):
 
-            #====send email to vendor=====
+            #====send email to vendor=========
             if not self.completion_email_sent:
 
                 self.send_completion_email()
