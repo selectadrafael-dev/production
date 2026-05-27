@@ -1199,7 +1199,8 @@ class VendorImportJob(models.Model):
 
                        self.last_error = "Excel parse stalled"
 
-                       self.state = 'review'       
+                    #    self.state = 'review'    
+                    self.state = 'excel_parsing'   
 
                 self._safe_commit_progress()
 
@@ -11669,11 +11670,28 @@ class VendorImportJob(models.Model):
                 "GROUP BATCH COMPLETE"
             )
 
-            # =========================================
-            # FULL IMPORT COMPLETED
+
+           # =========================================
+            # FULL IMPORT COMPLETION CHECK
             # =========================================
 
-            if self.is_excel_parsed:
+            all_ai_processed = (
+
+                self.excel_ai_index >= len(
+                    json.loads(
+                        self.extracted_text or "[]"
+                    )
+                )
+            )
+
+            if (
+
+                self.is_excel_parsed
+
+                and
+
+                all_ai_processed
+            ):
 
                 _logger.warning(
                     "[EXCEL IMPORT COMPLETE] ✅"
@@ -11690,7 +11708,7 @@ class VendorImportJob(models.Model):
                 self.ai_response = False
 
                 self.state = 'done'
-                
+
                 #=====email notification============
                 if not self.completion_email_sent:
 
@@ -11701,33 +11719,16 @@ class VendorImportJob(models.Model):
 
                 self.excel_url_index = 0
 
-            # =========================================
-            # MORE PARSE ROWS REMAIN
-            # =========================================
-
             else:
 
                 _logger.warning(
 
                     "[EXCEL FLOW] "
 
-                    "RETURN TO excel_parsing"
+                    "MORE AI/PARSE DATA REMAIN"
                 )
-
-                # IMPORTANT:
-                # KEEP CURRENT AI STATE
-                # for next parse batch
 
                 self.state = 'excel_parsing'
-
-                _logger.warning(
-
-                    "[EXCEL FLOW] "
-
-                    f"NEXT PARSE INDEX="
-
-                    f"{self.excel_parse_index}"
-                )
 
         else:
 
@@ -11735,6 +11736,7 @@ class VendorImportJob(models.Model):
 
 
         self._safe_commit_progress()
+
 
     #=====excel group url update====================================
 
