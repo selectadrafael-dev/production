@@ -4764,10 +4764,9 @@ class VendorImportJob(models.Model):
         return
 
 
-     # =========== PDF OPENAI =========================
-
   # =========== PDF OPENAI ================================
 
+    
     def send_to_openai_pdf(self):
 
         import json
@@ -5249,6 +5248,85 @@ class VendorImportJob(models.Model):
         - alternate product colors
 
         ==================================================
+        MAIN TITLE UNDERSTANDING RULES
+        ==================================================
+
+        CRITICAL:
+
+        Supplier catalogs contain:
+        - product titles
+        - subtitles
+        - materials
+        - marketing text
+        - feature blocks
+        - specifications
+        - dimensions
+
+        You MUST correctly identify the TRUE MAIN PRODUCT TITLE.
+
+        MAIN PRODUCT TITLE is usually:
+        - largest bold heading
+        - top-level heading
+        - dominant product headline
+        - catalog product name
+
+        NEVER use as product title:
+        - material descriptions
+        - feature paragraphs
+        - bullet lists
+        - dimensions
+        - capacities
+        - marketing text
+        - print method text
+        - specification text
+        - eco labels
+        - fabric composition text
+
+        GOOD TITLE EXAMPLES:
+        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
+        - 5 PANEL CAP
+        - RAISE Glass Sport Bottle
+        - Wireless Charging Pad
+
+        BAD TITLE EXAMPLES:
+        - Heavy Brushed 100% Cotton
+        - Rib 1x1 collar and cuffs
+        - Stainless steel capacity 520ml
+
+        If both exist:
+        ALWAYS prioritize the MAIN heading.
+
+        ==================================================
+        RICH PRODUCT DESCRIPTION RULES
+        ==================================================
+
+        You MUST extract and preserve ALL valuable ecommerce content.
+
+        Combine into rich product_description:
+        - subtitle
+        - marketing text
+        - feature text
+        - bullet lists
+        - material composition
+        - dimensions
+        - capacity
+        - specifications
+        - print area
+        - packaging info
+        - branding info
+        - eco information
+
+        DO NOT keep descriptions too short.
+
+        Professional ecommerce product pages require:
+        - meaningful content
+        - readable specifications
+        - rich product information
+
+        If multiple useful text blocks exist:
+        combine them cleanly into one rich description.
+
+        ==================================================
         STOCK EXTRACTION RULES:
         ==================================================
 
@@ -5483,19 +5561,52 @@ class VendorImportJob(models.Model):
         over:
         visually dominant lifestyle graphics.
 
-        ==================================================
+       ==================================================
         PRICE/STOCK RULES
         ==================================================
+
+        PRICE EXTRACTION IS CRITICAL.
+
+        Catalog prices may appear:
+        - near title
+        - inside text
+        - inside specification blocks
+        - beside variants
+        - inside tables
+        - at page corners
+        - in small text
+        - separated from products
+
+        You MUST aggressively search for:
+        - $
+        - €
+        - £
+        - ₦
+        - USD
+        - EUR
+        - GBP
+
+        Examples:
+        - $2.99
+        - USD 4.25
+        - €8,50
+        - From $3.10
+
+        If multiple prices exist:
+        prefer:
+        1. standard/base product price
+        2. visible selling price
+        3. "from" price
+
+        DO NOT invent prices.
+
+        If no price exists:
+        return empty string.
 
         Extract:
         - visible product price
         - visible stock quantity
         - visible product code
-
-        If stock/price belongs to a specific variant:
-        assign it to that variant.
-
-        DO NOT invent prices or stock.
 
         ==================================================
         OUTPUT FORMAT
@@ -5506,9 +5617,14 @@ class VendorImportJob(models.Model):
         [
             {{
                 "name": "",
+                "subtitle": "",
                 "description": "",
+                "bullet_features": [],
+                "material": "",
+                "dimensions": "",
                 "stock_qty": 0,
                 "price": "",
+                "currency": "",
                 "product_code": "",
                 "hero_image_index": null,
                 "gallery_image_indexes": [],
