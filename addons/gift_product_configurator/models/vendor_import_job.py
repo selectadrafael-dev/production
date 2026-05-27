@@ -5156,190 +5156,78 @@ class VendorImportJob(models.Model):
                 )
 
 
-        # =====================================================
+       # =====================================================
         # PROMPT
         # =====================================================
-
+       
         prompt = f"""
-        You are an AI ecommerce catalog extraction engine.
+        You are an advanced AI product extraction engine for catalog PDF pages.
 
-        Analyze:
-        - catalog page text
-        - detected catalog images
+        You analyze BOTH:
+        - page text
+        - catalog product images
 
-        Extract ALL visible products accurately.
-
-        ==================================================
-        OUTPUT RULES
-        ==================================================
-
-        Return ONLY valid JSON array.
-
-        No markdown.
-        No explanations.
-        No extra text.
+        Your job:
+        extract ALL visible products accurately.
 
         ==================================================
-        CORE EXTRACTION RULES
+        STRICT OUTPUT RULES
         ==================================================
 
-        This input represents ONE catalog page.
+        1. RETURN ONLY VALID JSON ARRAY
+        2. NO markdown
+        3. NO explanation
+        4. NO text outside JSON
+        5. NEVER invent products not visible
+        6. NEVER skip visible products
+        7. NEVER duplicate products
+        8. EACH product must appear ONLY ONCE
+        9. ALWAYS preserve product grouping correctly
+
+        ==================================================
+        CATALOG UNDERSTANDING RULES
+        ==================================================
+
+        This input represents ONLY ONE catalog page.
+
+        DO NOT:
+        - continue products from previous pages
+        - assume future pages
+        - merge unrelated products
 
         A page may contain:
-        - one product
+        - one hero product
         - multiple products
         - one product with variants
-        - isolated thumbnails
-        - grouped color variations
+        - one product with gallery/supporting images
+
+        ==================================================
+        PRODUCT DETECTION RULES
+        ==================================================
+
+        If a page contains:
+        - visually separated products
+        - different product names
+        - different product codes
+        - different structures/shapes
+
+        Then:
+        extract them as SEPARATE products.
 
         IMPORTANT:
 
-        Aggressively detect ALL visible ecommerce products.
+        If unsure:
+        it is BETTER to slightly over-detect
+        than to miss products.
 
-        If a catalog page shows:
-        - 8 shirts
-        - 10 caps
-        - 6 bottles
-
-        extract ALL visible variants.
-
-        Prefer over-detection rather than missing products.
-
-        ==================================================
-        PRODUCT GROUPING RULES
-        ==================================================
-
-        Group products as variants ONLY when:
-        - same product shape
-        - same structure
-        - same dimensions
-        - same branding
-        - only color/material/size changes
-
-        Examples:
-        - same cap in different colors
-        - same polo shirt in different colors
-        - same bottle in different colors
-
-        Otherwise:
-        create separate products.
-
-        ==================================================
-        TITLE RULES
-        ==================================================
-
-        Use the TRUE MAIN PRODUCT TITLE.
-
-        Main title is usually:
-        - largest heading
-        - top heading
-        - dominant catalog title
-        - visible product headline
-
-        DO NOT use:
-        - material-only text
-        - bullet features
-        - specifications
-        - dimensions
-        - marketing phrases
-
-        GOOD:
-        - 5 PANEL CAP
-        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
-        - Wireless Charging Pad
-
-        BAD:
-        - Heavy Brushed 100% Cotton
-        - Rib 1x1 collar and cuffs
-
-        ==================================================
-        DESCRIPTION RULES
-        ==================================================
-
-        Build rich ecommerce descriptions using:
-        - subtitle
-        - features
-        - specifications
-        - bullet points
-        - dimensions
-        - materials
-        - capacities
-        - branding info
-        - packaging info
-
-        Combine useful text naturally.
-
-        ==================================================
-        PRICE RULES
-        ==================================================
-
-        Aggressively search for price.
-
-        Prices and stocks may appear:
-        - near title
-        - beside variants
-        - inside tables
-        - inside text blocks
-        - in corners
-
-        Detect:
-        - $
-        - €
-        - £
-        - ₦
-        - USD
-        - EUR
-        - GBP
-
-        Examples:
-        - $2.99
-        - USD 4.25
-        - €8.50
-
-        If no price exists:
-        return empty string.
-
-        Extract:
-        - visible product price
-        - visible stock quantity
-        - visible product code
-        ==================================================
-        MOST CRITICAL
-        ==================================================
-        NO PRODUCT SHOULD MISS OUT OR BE IGNORED EXCEPT BLANK PAGE, 
-        TOTAL NUMBER OF PAGES SHOULD GENERAGES SAME NUMBERS OF 
-        PRODUCTS WITH EACH PRODUCTS HAS IT'S VARIANTS WHERE 
-        MULTIPLE ITEMS APPEAR 
-        ON SINGLE PAGE ACCURATELY. 
-        ==================================================
-        IMAGE RULES
-        ==================================================
-
-        Prefer professional ecommerce images:
-        - isolated products
-        - clean background
-        - centered products
-        - full visibility
-
-        Avoid:
-        - large text blocks
-        - banners
-        - lifestyle scenes
-        - infographic layouts
-
-        If isolated variants exist:
-        prefer them over model/lifestyle photos.
+        NEVER silently ignore visible products.
 
         ==================================================
         STOCK EXTRACTION RULES:
         ==================================================
-        PRICE EXTRACTION IS CRITICAL.
 
-        Extract: 
-        - stock quantity ONLY when
+        Extract stock quantity ONLY when
         actual available inventory is explicitly stated.
-
-        - visible stock quantity
 
         Examples:
         - "Stock: 11 pcs"
@@ -5349,6 +5237,12 @@ class VendorImportJob(models.Model):
         DO NOT extract:
         - delivery times
         - MOQ
+        - carton quantity
+        - package quantity
+        - shipping quantity
+        - lead times
+        - dimensions
+        - capacity values
 
         If no real stock quantity exists:
         set:
@@ -5356,8 +5250,33 @@ class VendorImportJob(models.Model):
         "stock_qty": 0
 
         ==================================================
-        VARIANT RULES
+        VARIANT DETECTION RULES
         ==================================================
+
+        VARIANT GROUPING RULES:
+
+        Products MUST be grouped as variants when:
+
+        - same product shape
+        - same structure
+        - same branding
+        - same dimensions
+        - same material
+        - only color changes
+        - only size changes
+        - only minor style changes
+
+        EXAMPLES:
+        - same cap in multiple colors
+        - same polo shirt in different colors
+        - same bottle with color variations
+
+        DO NOT create separate products for:
+        - color-only changes
+        - size-only changes
+
+        Instead:
+        create ONE parent product with variants.
 
         Each variant should contain:
 
@@ -5367,30 +5286,201 @@ class VendorImportJob(models.Model):
                 "Size": ""
             }},
 
-            "image_index": null,
-            "price": "",
-            "stock_qty": 0
+            "image_index": null
         }}
+
+        ==================================================
+        ECOMMERCE IMAGE UNDERSTANDING RULES
+        ==================================================
+
+        You are NOT selecting the most artistic image.
+
+        You are selecting the BEST PROFESSIONAL
+        ECOMMERCE PRODUCT IMAGE.
+
+        Your goal:
+        produce Amazon/Alibaba/Shopify-style
+        product merchandising quality.
+
+        --------------------------------------------------
+        PRIORITY ORDER (VERY IMPORTANT)
+        --------------------------------------------------
+
+        ALWAYS prioritize:
+
+        1. isolated standalone product
+        2. clean white/plain background
+        3. centered product
+        4. full product visibility
+        5. variant color visibility
+        6. clean catalog render
+        7. multiple isolated color options
+
+        NEVER prioritize:
+        - humans/models
+        - lifestyle scenes
+        - promotional layouts
+        - infographic compositions
+        - text-heavy blocks
+        - banners
+        - decorative graphics
+
+        ==================================================
+        HERO IMAGE RULES
+        ==================================================
+
+        hero_image_index MUST point to:
+
+        - ONE isolated product
+        - clean/plain background
+        - centered product
+        - professional ecommerce shot
+        - no text overlays
+        - no large text areas
+        - no promotional layout
+        - no infographic composition
+
+        DO NOT use:
+        - humans wearing products
+        - lifestyle photography
+        - catalog cover layouts
+        - multi-product collages
+        - pages with large text blocks
+        - specification layouts
+        - promotional graphics
+
+        VERY IMPORTANT:
+
+        If isolated product variants exist anywhere
+        on the page,
+        ALWAYS prefer them over:
+        - human/model photos
+        - lifestyle shots
+        - promotional scenes
+
+        Example:
+        If a cap page contains:
+        - woman wearing cap
+        - isolated cap colors
+
+        hero_image_index MUST use:
+        isolated cap color image
+
+        NOT the woman/model image.
+
+        ==================================================
+        GALLERY IMAGE RULES
+        ==================================================
+
+        gallery_image_indexes should contain ONLY:
+
+        - isolated alternate angles
+        - isolated closeups
+        - isolated detail shots
+        - isolated side/back views
+
+        DO NOT include:
+        - banners
+        - specification layouts
+        - infographic graphics
+        - text-heavy images
+        - decorative layouts
+        - icons
+        - logos
+        - promotional compositions
+
+        ==================================================
+        VARIANT IMAGE RULES
+        ==================================================
+
+        Variants MUST be created when:
+
+        - same product
+        - same shape
+        - same structure
+        - same dimensions
+        - only color/material/style changes
+
+        IMPORTANT:
+
+        If multiple isolated product colors exist,
+        they MUST become variants.
+
+        Example:
+        - black cap
+        - blue cap
+        - red cap
+
+        MUST become:
+        ONE product
+        with multiple color variants.
+
+        DO NOT create separate products.
+
+        Each variant should contain:
+        - correct Color/Material attribute
+        - correct image_index
+
+        ==================================================
+        COLLAGE UNDERSTANDING RULES
+        ==================================================
+
+        Supplier catalog pages often contain:
+        - one large lifestyle image
+        - multiple smaller isolated products
+
+        IMPORTANT:
+
+        The smaller isolated products are usually
+        the CORRECT ecommerce assets.
+
+        DO NOT automatically prefer the largest image.
+
+        Prefer:
+        isolated product renders
+        over:
+        visually dominant lifestyle graphics.
+
+        ==================================================
+        PRICE/STOCK RULES
+        ==================================================
+
+        Extract:
+        - visible product price
+        - visible stock quantity
+        - visible product code
+
+        If stock/price belongs to a specific variant:
+        assign it to that variant.
+
+        DO NOT invent prices or stock.
 
         ==================================================
         OUTPUT FORMAT
         ==================================================
 
+        Return JSON ARRAY:
+
         [
             {{
                 "name": "",
-                "subtitle": "",
                 "description": "",
-                "bullet_features": [],
-                "material": "",
-                "dimensions": "",
                 "stock_qty": 0,
                 "price": "",
-                "currency": "",
                 "product_code": "",
                 "hero_image_index": null,
                 "gallery_image_indexes": [],
-                "variants": []
+                "variants": [
+                    {{
+                        "attributes": {{
+                            "Color": ""
+                        }},
+
+                        "image_index": null,
+                        "stock_qty": 0,
+                        "price": ""
+                    }}
+                ]
             }}
         ]
 
