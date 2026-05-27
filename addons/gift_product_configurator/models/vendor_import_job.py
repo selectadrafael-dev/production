@@ -9708,8 +9708,9 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-    
+   
     #==========pdf product PRODUCT CREATE/GET====================================
+    
     def _get_or_create_pdf_product(
 
         self,
@@ -9743,6 +9744,103 @@ class VendorImportJob(models.Model):
 
             return product, False
 
+        # =====================================
+        # BUILD PROFESSIONAL DESCRIPTION
+        # =====================================
+
+        subtitle = (
+            product_data.get("subtitle")
+            or ""
+        ).strip()
+
+        description = (
+            product_data.get("description")
+            or ""
+        ).strip()
+
+        material = (
+            product_data.get("material")
+            or ""
+        ).strip()
+
+        dimensions = (
+            product_data.get("dimensions")
+            or ""
+        ).strip()
+
+        bullet_features = (
+            product_data.get("bullet_features")
+            or []
+        )
+
+        # =====================================
+        # CLEAN BULLETS
+        # =====================================
+
+        clean_bullets = []
+
+        for bullet in bullet_features:
+
+            if not bullet:
+                continue
+
+            bullet = str(bullet).strip()
+
+            if len(bullet) < 2:
+                continue
+
+            clean_bullets.append(bullet)
+
+        # =====================================
+        # BUILD HTML DESCRIPTION
+        # =====================================
+
+        description_parts = []
+
+        if subtitle:
+
+            description_parts.append(
+                f"<h4>{subtitle}</h4>"
+            )
+
+        if description:
+
+            description_parts.append(
+                f"<p>{description}</p>"
+            )
+
+        if material:
+
+            description_parts.append(
+                f"<p><strong>Material:</strong> "
+                f"{material}</p>"
+            )
+
+        if dimensions:
+
+            description_parts.append(
+                f"<p><strong>Dimensions:</strong> "
+                f"{dimensions}</p>"
+            )
+
+        if clean_bullets:
+
+            bullet_html = "".join([
+
+                f"<li>{b}</li>"
+
+                for b in clean_bullets
+            ])
+
+            description_parts.append(
+
+                f"<ul>{bullet_html}</ul>"
+            )
+
+        rich_description = "<br/>".join(
+            description_parts
+        )
+
         vals = {
 
             'name': (
@@ -9750,13 +9848,12 @@ class VendorImportJob(models.Model):
                 or ""
             ).strip(),
 
-            'default_code': variant_group,
-
-            'description_sale': (
-                product_data.get(
-                    "description"
-                ) or ""
+           'default_code': (
+                product_data.get("product_code")
+                or variant_group
             ),
+
+           'description_sale': rich_description,
 
             'type': 'consu',
 
@@ -9781,18 +9878,19 @@ class VendorImportJob(models.Model):
                     0
                 ) or 0
             ),
-        }
 
+            'list_price': self._safe_parse_price(
+                product_data.get("price")
+            ),
+        }
 
         hero_index = product_data.get(
             "hero_image_index"
         )
         
-
-
-        # ======================================
+        # =====================================
         # PROFESSIONAL HERO IMAGE SELECTION
-        # ======================================
+        # =====================================
 
         hero_asset = None
 
@@ -10630,6 +10728,7 @@ class VendorImportJob(models.Model):
             )
 
             return {}
+
 
     #==========create excel product===========================
     def create_products_excel(self):
