@@ -8955,7 +8955,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-
+    
     #==========create pdf product====================================
   
     def create_products_pdf(self):
@@ -9059,10 +9059,8 @@ class VendorImportJob(models.Model):
         vendor_id = (
 
             self.partner_id.id
-
             if self.partner_id
-
-            else False
+            else self.env.user.partner_id.id
         )
 
         BATCH_SIZE = 3
@@ -9167,13 +9165,53 @@ class VendorImportJob(models.Model):
 
                 if not product_images:
 
-                    product_images = page_images
+                    # -----------------------------------------
+                    # SAFE PAGE FALLBACK
+                    # -----------------------------------------
+
+                    product_images = []
+
+                    variant_count = max(
+                        len(product_data.get("variants", [])),
+                        1
+                    )
+
+                    # prefer highest gallery assets
+                    sorted_page_assets = sorted(
+
+                        page_images,
+
+                        key=lambda x: (
+
+                            x.get("gallery_score", 0),
+
+                            x.get("hero_score", 0)
+
+                        ),
+
+                        reverse=True
+                    )
+
+                    # allocate enough assets
+                    allocation_size = min(
+
+                        max(variant_count * 2, 4),
+
+                        len(sorted_page_assets)
+                    )
+
+                    product_images = sorted_page_assets[
+                        :allocation_size
+                    ]
 
                     _logger.warning(
 
-                        f"[PAGE IMAGE FALLBACK] "
+                        f"[SMART PAGE FALLBACK] "
 
-                        f"{product_data.get('name')}"
+                        f"{product_data.get('name')} "
+
+                        f"| allocated={len(product_images)}"
+
                     )
 
                 segmented_assets = []
@@ -9303,6 +9341,7 @@ class VendorImportJob(models.Model):
                         )
                     )
 
+
                     if created:
 
                         self._apply_product_translation(
@@ -9317,6 +9356,80 @@ class VendorImportJob(models.Model):
 
                             asset_pool
                         )
+
+                        # =====================================
+                        # APPLY REAL INVENTORY STOCK
+                        # =====================================
+
+                        try:
+
+                            stock_qty = int(
+
+                                product_data.get(
+                                    "stock_qty",
+                                    0
+                                ) or 0
+                            )
+
+                            if stock_qty > 0:
+
+                                quant = stock_quant_obj.search([
+
+                                    (
+                                        'product_id',
+                                        '=',
+                                        product.product_variant_id.id
+                                    ),
+
+                                    (
+                                        'location_id',
+                                        '=',
+                                        stock_location.id
+                                    )
+
+                                ], limit=1)
+
+                                if quant:
+
+                                    quant.inventory_quantity = (
+                                        stock_qty
+                                    )
+
+                                    quant.action_apply_inventory()
+
+                                else:
+
+                                    quant = stock_quant_obj.create({
+
+                                        'product_id':
+                                            product.product_variant_id.id,
+
+                                        'location_id':
+                                            stock_location.id,
+
+                                        'inventory_quantity':
+                                            stock_qty
+                                    })
+
+                                    quant.action_apply_inventory()
+
+                                _logger.warning(
+
+                                    f"[STOCK APPLIED] "
+
+                                    f"{product.name} "
+
+                                    f"| qty={stock_qty}"
+                                )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[STOCK APPLY FAILED] "
+
+                                f"{str(e)}"
+                            )
 
                         created_count += 1
 
@@ -9530,13 +9643,24 @@ class VendorImportJob(models.Model):
 
                                         match_count += 1
 
+
+                                required_matches = max(
+
+                                    1,
+
+                                    min(
+                                        len(variant_words),
+                                        2
+                                    )
+                                )
+
                                 if (
 
                                     variant_words
 
                                     and
 
-                                    match_count >= 1
+                                    match_count >= required_matches
                                 ):
 
                                     variant_record = pv
@@ -9545,20 +9669,17 @@ class VendorImportJob(models.Model):
                         # ---------------------------------
                         # SAFE FALLBACK
                         # ---------------------------------
-
+                      
                         if (
-
                             not variant_record
-
                             and
-
-                            product_variants
+                            len(product_variants) == 1
                         ):
 
                             variant_record = (
                                 product_variants[0]
                             )
-                      
+
                         # =====================================
                         # PROFESSIONAL VARIANT IMAGE MATCHING
                         # =====================================
@@ -9588,9 +9709,19 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
-                                    used_asset_indexes.add(
-                                        matched_asset.get("index")
+                                    # used_asset_indexes.add(
+                                    #     matched_asset.get("index")
+                                    # )
+
+                                    asset_index = (
+                                        matched_asset.get("clean_index")
+                                        if matched_asset.get("clean_index") is not None
+                                        else matched_asset.get("index")
                                     )
+
+                                    if asset_index is not None:
+
+                                        used_asset_indexes.add(asset_index)
 
                                     _logger.warning(
 
@@ -9657,7 +9788,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-     
+    
     #==========pdf product PRODUCT CREATE/GET====================================
     def _get_or_create_pdf_product(
 
