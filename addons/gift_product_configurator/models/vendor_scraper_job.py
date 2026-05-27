@@ -7052,6 +7052,7 @@ class VendorImportJob(models.Model):
 
             return "unknown"
 
+
     # =====================================
     # PROFESSIONAL VARIANT IMAGE MATCHER
     # =====================================
@@ -12956,6 +12957,257 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+
+
+
+
+
+
+
+
+
+
+
+
+#==========most recent changes=================
+
+    # =====================================
+    # ADVANCED DOMINANT COLOR DETECTION
+    # =====================================
+
+    def _detect_dominant_color(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            import base64
+            import colorsys
+            import numpy as np
+
+            from io import BytesIO
+            from PIL import Image
+
+            image_data = base64.b64decode(
+                image_base64
+            )
+
+            image = Image.open(
+
+                BytesIO(image_data)
+
+            ).convert("RGB")
+
+            image = image.resize((120, 120))
+
+            pixels = np.array(image)
+
+            # =====================================
+            # REMOVE VERY BRIGHT BACKGROUND
+            # =====================================
+
+            pixels = pixels.reshape(-1, 3)
+
+            filtered_pixels = []
+
+            for r, g, b in pixels:
+
+                # remove white bg
+                if r > 235 and g > 235 and b > 235:
+                    continue
+
+                filtered_pixels.append([r, g, b])
+
+            if not filtered_pixels:
+                return "white"
+
+            pixels = np.array(filtered_pixels)
+
+            avg = pixels.mean(axis=0)
+
+            r, g, b = avg
+
+            # =====================================
+            # DARK COLOR ANALYSIS
+            # =====================================
+
+            brightness = np.mean(
+
+                pixels,
+
+                axis=1
+            )
+
+            dark_pixels_ratio = np.mean(
+                brightness < 75
+            )
+
+            very_dark_ratio = np.mean(
+                brightness < 45
+            )
+
+            # dominant blue inside dark pixels
+            dark_blue_ratio = np.mean(
+
+                (
+                    pixels[:, 2] > pixels[:, 0] * 1.15
+                )
+
+                &
+
+                (
+                    pixels[:, 2] > pixels[:, 1] * 1.10
+                )
+
+                &
+
+                (
+                    brightness < 90
+                )
+            )
+
+            # =====================================
+            # TRUE BLACK DETECTION
+            # =====================================
+
+            if (
+
+                very_dark_ratio > 0.24
+
+                or
+
+                (
+                    dark_pixels_ratio > 0.40
+
+                    and
+
+                    abs(r - g) < 24
+
+                    and
+
+                    abs(g - b) < 24
+                )
+            ):
+
+                return "black"
+
+            # =====================================
+            # DARK NAVY DETECTION
+            # =====================================
+
+            if dark_blue_ratio > 0.18:
+
+                return "navy"
+
+            # =====================================
+            # RGB → HSV
+            # =====================================
+
+            h, s, v = colorsys.rgb_to_hsv(
+
+                r / 255.0,
+                g / 255.0,
+                b / 255.0
+            )
+
+            h = h * 360
+            s = s * 100
+            v = v * 100
+
+            # =====================================
+            # BLACK
+            # =====================================
+
+            if v < 18:
+                return "black"
+
+            # =====================================
+            # WHITE
+            # =====================================
+
+            if v > 92 and s < 10:
+                return "white"
+
+         
+            # =====================================
+            # GREY DETECTION
+            # =====================================
+
+            if s < 15:
+
+                return "grey"
+
+            # =====================================
+            # RED
+            # =====================================
+
+            if h < 15 or h >= 345:
+                return "red"
+
+            # =====================================
+            # ORANGE
+            # =====================================
+
+            if 15 <= h < 40:
+                return "orange"
+
+            # =====================================
+            # YELLOW
+            # =====================================
+
+            if 40 <= h < 70:
+                return "yellow"
+
+            # =====================================
+            # GREEN
+            # =====================================
+
+            if 70 <= h < 170:
+                return "green"
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if 170 <= h < 260:
+
+                if v < 45:
+                    return "navy"
+
+                if s < 35:
+                    return "light blue"
+
+                return "blue"
+
+            # =====================================
+            # PURPLE
+            # =====================================
+
+            if 260 <= h < 320:
+                return "purple"
+
+            # =====================================
+            # PINK
+            # =====================================
+
+            if 320 <= h < 345:
+                return "pink"
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[DOMINANT COLOR FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return "unknown"
 
 
 
@@ -44197,3 +44449,696 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+
+
+
+
+
+
+
+
+
+
+
+
+#=========new AI method===========
+
+    #===========Excel Open AI================================
+    def send_to_openai_excel(self):
+
+        import json
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+
+            raise Exception(
+                "OpenAI API key not configured"
+            )
+
+
+        client = OpenAI(
+            api_key=api_key
+        )
+
+
+        _logger.warning(
+            "[EXCEL AI] START"
+        )
+
+
+        # =====================================================
+        # LOAD EXTRACTED DATA
+        # =====================================================
+
+        try:
+
+            pages = json.loads(
+                self.extracted_text or "[]"
+            )
+
+        except Exception as e:
+
+            _logger.error(
+
+                f"[EXCEL AI] "
+
+                f"INVALID extracted_text JSON "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        if not pages:
+
+            _logger.error(
+                "[EXCEL AI] NO ROWS TO PROCESS"
+            )
+
+            return
+
+
+        _logger.warning(
+
+            f"[EXCEL AI] "
+
+            f"TOTAL ROWS={len(pages)}"
+        )
+
+
+        # =====================================================
+        # BATCH
+        # =====================================================
+
+        BATCH_SIZE = 5
+
+        start = (
+            self.excel_ai_index or 0
+        )
+
+        end = min(
+
+            start + BATCH_SIZE,
+
+            len(pages)
+        )
+
+
+        batch = pages[start:end]
+
+
+        _logger.warning(
+
+            f"[EXCEL AI BATCH] "
+
+            f"{start} → {end}"
+        )
+
+
+        # =====================================================
+        # LOAD EXISTING PRODUCTS
+        # =====================================================
+
+        existing_products = []
+
+
+        if self.ai_response:
+
+            try:
+
+                existing_ai = json.loads(
+                    self.ai_response
+                )
+
+                if (
+                    isinstance(existing_ai, list)
+                    and existing_ai
+                ):
+
+                    existing_products = (
+                        existing_ai[0].get(
+                            "products",
+                            []
+                        )
+                    )
+
+
+                _logger.warning(
+
+                    f"[EXCEL AI] "
+
+                    f"EXISTING PRODUCTS="
+
+                    f"{len(existing_products)}"
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[EXCEL AI] "
+
+                    f"FAILED LOAD EXISTING "
+
+                    f"| {str(e)}"
+                )
+
+                existing_products = []
+
+
+        new_products = []
+
+
+        # =====================================================
+        # PROCESS ROWS
+        # =====================================================
+
+        for idx, row in enumerate(
+
+            batch,
+
+            start=start
+
+        ):
+
+            try:
+
+                row_text = row.get(
+                    "text",
+                    ""
+                )
+
+                row_price = row.get(
+                    "price",
+                    ""
+                )
+
+                row_stock = row.get(
+                    "stock",
+                    ""
+                )
+
+                images = row.get(
+                    "images",
+                    []
+                )
+
+
+                _logger.warning(
+
+                    f"[EXCEL AI ROW] "
+
+                    f"idx={idx} "
+
+                    f"| images={len(images)}"
+                )
+
+                prompt = f"""
+                You are a structured Excel product parser.
+
+                Each input represents EXACTLY ONE ROW = ONE PRODUCT.
+
+                =====================================
+                COLUMN UNDERSTANDING (CRITICAL)
+                =====================================
+
+                The row could contain mixed values like:
+
+                - ID (e.g. 94601, 12345)
+                - Range (e.g. 2-66, 11-00)
+                - Stock numbers
+                - Prices
+                - Links (http...)
+                - Image references
+
+                YOU MUST:
+
+                1. IDENTIFY PRODUCT ID
+                - Usually numeric (e.g. 94601)
+                - Column name may vary:
+                    - KOD
+                    - SKU
+                    - ID
+                    - CODE
+
+                2. IDENTIFY PRODUCT NAME
+                - MUST NOT be:
+                    - pure numbers
+                    - ranges
+                    - links
+                    - dates
+                    - headers
+
+                - Product names should describe the ACTUAL product type.
+
+               GOOD:
+                - Sports Bottle
+                - Metal Pen
+                - Travel Mug
+                - Drawstring Bag
+
+                If the Excel already contains a valid product name:
+                - preserve and use it
+
+                If the Excel does NOT contain a real product name:
+                - intelligently generate one using:
+                    - Product <ID>
+                    - category clues
+                    - image appearance
+                    - surrounding row data
+
+                Fallback naming is allowed when necessary.
+
+                GOOD fallback examples:
+                - Product 94601
+                - Bottle 94646
+                - Pen 92070
+
+                However:
+
+                If rows belong to the SAME variant_group,
+                you MUST still detect and extract the REAL variant difference.
+
+                Example:
+
+                Parent:
+                Product 94646
+
+                Variants:
+                - White
+                - Orange
+                - Black
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+
+                when a real difference can be visually or textually identified.
+                
+                =====================================
+                VARIANT GROUPING (VERY IMPORTANT)
+                =====================================
+
+                - SAME ID = SAME variant_group
+                - DIFFERENT ID = DIFFERENT PRODUCT
+                - NEVER leave variant_group empty
+
+                Rows sharing the same:
+                - ID
+                - grouped code
+                - SKU group
+
+                should be treated as variants of ONE parent product.
+
+                 =====================================
+                VARIANT DETECTION
+                =====================================
+
+                If rows share same PRODUCT ID:
+
+                → they belong to the SAME product family.
+
+                IMPORTANT:
+
+                Use PRODUCT IMAGES as the PRIMARY
+                source for identifying variants.
+
+                Look for visual differences such as:
+
+                - color
+                - material
+                - finish
+                - lid type
+                - texture
+                - shape
+                - capacity
+                - packaging
+
+                THEN use nearby codes/numbers
+                as supporting evidence.
+
+                Example:
+
+                Rows may contain:
+
+                106
+                103
+                128
+
+                These MAY represent:
+                - color codes
+                - material codes
+                - size codes
+
+                DO NOT assume globally.
+
+                Infer meaning from:
+                - image differences
+                - repeated patterns
+                - product appearance
+
+                If uncertain:
+
+                Use safe fallback:
+
+                "attributes": {{
+                    "Vendor Code": "106"
+                }}
+
+                NEVER return:
+                - Variant 1
+                - Variant 2
+                - Variant 3
+
+                ALWAYS return meaningful attributes.
+
+                =====================================
+                VISUAL DIFFERENCE DETECTION
+                =====================================
+
+                If product images exist:
+
+                You MUST visually inspect the images
+                to identify the distinguishing feature.
+
+                Example:
+
+                If grouped products show:
+                - white bottle
+                - orange bottle
+                - black bottle
+
+                Return:
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "White"
+                }}
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "Orange"
+                }}
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+                - Product 94601
+
+                =====================================
+                PARENT PRODUCT CONSISTENCY
+                =====================================
+
+                When multiple rows belong to the same
+                variant_group:
+
+                - The parent product name MUST remain consistent.
+                - ONLY the variant fields should change.
+
+                GOOD:
+
+                Sports Bottle
+                → White
+                → Orange
+                → Black
+
+                BAD:
+
+                White Bottle
+                Orange Bottle
+                Black Bottle
+
+                =====================================
+                ATTRIBUTE EXTRACTION
+                =====================================
+
+                Put distinguishing values into:
+
+                - color
+                - material
+                - size
+                - capacity
+                - style
+
+                Only use generic "Variant"
+                if absolutely no real difference can be detected.
+
+                =====================================
+                PRICE & STOCK
+                =====================================
+
+                - Extract numeric price carefully
+                - Extract stock carefully
+                - Ignore ranges like:
+                    - 2-66
+                    - 11-00
+
+                =====================================
+                LINKS
+                =====================================
+
+                If a row contains a product URL:
+                - preserve it
+                - never use URL as product name
+
+                =====================================
+                OUTPUT FORMAT
+                =====================================
+
+                [
+                    {{
+                        "name": "",
+                        "description": "",
+                        "category": "",
+                        "price": "",
+                        "stock": "",
+                        "variant_group": "",
+                        "color": "",
+                        "material": "",
+                        "size": "",
+                        "capacity": "",
+                        "style": "",
+                        "url": "",
+                        "variants": [
+                            {{
+                                "attributes": {{
+                                    "Variant": ""
+                                }},
+                                "image_index": 0,
+                                "stock": null
+                            }}
+                        ]
+                    }}
+                ]
+
+                =====================================
+                IMPORTANT RULES
+                =====================================
+
+                - Return ONLY valid JSON
+                - No markdown
+                - No explanations
+                - No comments
+                - No trailing commas
+
+                ROW TEXT:
+                {row_text}
+
+                DETECTED PRICE:
+                {row_price}
+
+                DETECTED STOCK:
+                {row_stock}
+                """
+
+                response = client.responses.create(
+
+                    model="gpt-4.1-mini",
+
+                    input=prompt,
+
+                    timeout=60
+                )
+
+
+                result = (
+                    response.output_text or ""
+                ).strip()
+
+
+                result = result.replace(
+                    "```json",
+                    ""
+                )
+
+                result = result.replace(
+                    "```",
+                    ""
+                ).strip()
+
+
+                if not result:
+
+                    raise Exception(
+                        "EMPTY AI RESPONSE"
+                    )
+
+
+                parsed = json.loads(
+                    result
+                )
+
+
+                if (
+
+                    isinstance(parsed, list)
+
+                    and parsed
+
+                ):
+
+                    parsed = parsed[0]
+
+
+                if not isinstance(
+                    parsed,
+                    dict
+                ):
+
+                    _logger.warning(
+
+                        f"[EXCEL AI] "
+
+                        f"INVALID STRUCTURE "
+
+                        f"| idx={idx}"
+                    )
+
+                    continue
+
+
+                # =================================================
+                # IMAGE
+                # =================================================
+
+                if images:
+
+                    parsed["image"] = (
+                        images[0]
+                    )
+
+
+                # =================================================
+                # DEBUG
+                # =================================================
+
+                _logger.warning(
+
+                    f"[EXCEL AI PRODUCT] "
+
+                    f"name={parsed.get('name')} "
+
+                    f"| group={parsed.get('variant_group')}"
+                )
+
+
+                new_products.append(
+                    parsed
+                )
+
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[EXCEL AI ERROR] "
+
+                    f"idx={idx} "
+
+                    f"| {str(e)}"
+                )
+
+
+        # =====================================================
+        # MERGE PRODUCTS SAFELY
+        # =====================================================
+
+        combined_products = (
+            existing_products
+            +
+            new_products
+        )
+
+
+        _logger.warning(
+
+            f"[EXCEL AI MERGE] "
+
+            f"existing={len(existing_products)} "
+
+            f"| new={len(new_products)} "
+
+            f"| total={len(combined_products)}"
+        )
+
+
+        # =====================================================
+        # SAVE
+        # =====================================================
+
+        self.ai_response = json.dumps([{
+
+            "page": 1,
+
+            "products": combined_products
+
+        }])
+
+
+        self.excel_ai_index = end
+
+
+        _logger.warning(
+
+            f"[EXCEL AI SAVE] "
+
+            f"{self.excel_ai_index}/"
+
+            f"{len(pages)}"
+        )
+
+
+        # =====================================================
+        # NEXT STATE
+        # =====================================================
+
+        if end < len(pages):
+
+            self.state = "excel_ai"
+
+        else:
+
+            _logger.warning(
+                "[EXCEL AI COMPLETE]"
+            )
+
+            self.state = (
+                "excel_creating"
+            )
+
+
+        self.flush_recordset()
+
+        self.env.cr.commit()
+
+        return
+    
+
+
+

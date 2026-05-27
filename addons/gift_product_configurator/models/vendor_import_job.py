@@ -4766,6 +4766,8 @@ class VendorImportJob(models.Model):
 
     # =========== PDF OPENAI =========================
 
+     # =========== PDF OPENAI =========================
+
     def send_to_openai_pdf(self):
 
         import json
@@ -5214,116 +5216,13 @@ class VendorImportJob(models.Model):
         Then:
         extract them as SEPARATE products.
 
-        CRITICAL:
-
-        Supplier catalog pages frequently contain:
-
-        - many isolated product thumbnails
-        - many color variants
-        - grouped apparel grids
-        - multiple visible colors
-        - multiple visible SKU presentations
-
-        You MUST aggressively detect ALL visible products.
-
-        If 8 visible shirt colors exist:
-        extract 8 variants.
-
-        If 10 visible caps exist:
-        extract 10 variants.
-
-        NEVER reduce visible product colors
-        to only 2-3 variants.
-
         IMPORTANT:
 
-        It is FAR BETTER to slightly over-detect
-        than to miss visible ecommerce variants.
+        If unsure:
+        it is BETTER to slightly over-detect
+        than to miss products.
 
-        NEVER silently ignore:
-        - isolated products
-        - visible color variants
-        - clean thumbnails
-        - alternate product colors
-
-        ==================================================
-        MAIN TITLE UNDERSTANDING RULES
-        ==================================================
-
-        CRITICAL:
-
-        Supplier catalogs contain:
-        - product titles
-        - subtitles
-        - materials
-        - marketing text
-        - feature blocks
-        - specifications
-        - dimensions
-
-        You MUST correctly identify the TRUE MAIN PRODUCT TITLE.
-
-        MAIN PRODUCT TITLE is usually:
-        - largest bold heading
-        - top-level heading
-        - dominant product headline
-        - catalog product name
-
-        NEVER use as product title:
-        - material descriptions
-        - feature paragraphs
-        - bullet lists
-        - dimensions
-        - capacities
-        - marketing text
-        - print method text
-        - specification text
-        - eco labels
-        - fabric composition text
-
-        GOOD TITLE EXAMPLES:
-        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
-        - 5 PANEL CAP
-        - RAISE Glass Sport Bottle
-        - Wireless Charging Pad
-
-        BAD TITLE EXAMPLES:
-        - Heavy Brushed 100% Cotton
-        - Rib 1x1 collar and cuffs
-        - Stainless steel capacity 520ml
-
-        If both exist:
-        ALWAYS prioritize the MAIN heading.
-
-        ==================================================
-        RICH PRODUCT DESCRIPTION RULES
-        ==================================================
-
-        You MUST extract and preserve ALL valuable ecommerce content.
-
-        Combine into rich product_description:
-        - subtitle
-        - marketing text
-        - feature text
-        - bullet lists
-        - material composition
-        - dimensions
-        - capacity
-        - specifications
-        - print area
-        - packaging info
-        - branding info
-        - eco information
-
-        DO NOT keep descriptions too short.
-
-        Professional ecommerce product pages require:
-        - meaningful content
-        - readable specifications
-        - rich product information
-
-        If multiple useful text blocks exist:
-        combine them cleanly into one rich description.
+        NEVER silently ignore visible products.
 
         ==================================================
         STOCK EXTRACTION RULES:
@@ -5391,22 +5290,6 @@ class VendorImportJob(models.Model):
 
             "image_index": null
         }}
-
-        IMPORTANT:
-
-        Variant images should ALSO be reused
-        inside gallery_image_indexes whenever useful.
-
-        A professional ecommerce product page
-        should contain:
-
-        - hero image
-        - variant thumbnails
-        - alternate isolated product renders
-        - supporting clean product images
-
-        Do NOT return empty galleries
-        when clean isolated product thumbnails exist.
 
         ==================================================
         ECOMMERCE IMAGE UNDERSTANDING RULES
@@ -5491,7 +5374,7 @@ class VendorImportJob(models.Model):
         GALLERY IMAGE RULES
         ==================================================
 
-        gallery_image_indexes should contain:
+        gallery_image_indexes should contain ONLY:
 
         - isolated alternate angles
         - isolated closeups
@@ -5560,52 +5443,19 @@ class VendorImportJob(models.Model):
         over:
         visually dominant lifestyle graphics.
 
-       ==================================================
+        ==================================================
         PRICE/STOCK RULES
         ==================================================
-
-        PRICE EXTRACTION IS CRITICAL.
-
-        Catalog prices may appear:
-        - near title
-        - inside text
-        - inside specification blocks
-        - beside variants
-        - inside tables
-        - at page corners
-        - in small text
-        - separated from products
-
-        You MUST aggressively search for:
-        - $
-        - €
-        - £
-        - ₦
-        - USD
-        - EUR
-        - GBP
-
-        Examples:
-        - $2.99
-        - USD 4.25
-        - €8,50
-        - From $3.10
-
-        If multiple prices exist:
-        prefer:
-        1. standard/base product price
-        2. visible selling price
-        3. "from" price
-
-        DO NOT invent prices.
-
-        If no price exists:
-        return empty string.
 
         Extract:
         - visible product price
         - visible stock quantity
         - visible product code
+
+        If stock/price belongs to a specific variant:
+        assign it to that variant.
+
+        DO NOT invent prices or stock.
 
         ==================================================
         OUTPUT FORMAT
@@ -5616,14 +5466,9 @@ class VendorImportJob(models.Model):
         [
             {{
                 "name": "",
-                "subtitle": "",
                 "description": "",
-                "bullet_features": [],
-                "material": "",
-                "dimensions": "",
                 "stock_qty": 0,
                 "price": "",
-                "currency": "",
                 "product_code": "",
                 "hero_image_index": null,
                 "gallery_image_indexes": [],
@@ -5666,106 +5511,21 @@ class VendorImportJob(models.Model):
 
         try:
             
-
-            MAX_IMAGES = 24
+            MAX_IMAGES = 15
 
             image_inputs = []
-
-
-            def ai_visibility_score(asset):
-
-                base = asset.get(
-                    "score",
-                    0
-                )
-
-                # =====================================
-                # BOOST CLEAN ISOLATED PRODUCTS
-                # =====================================
-
-                if not asset.get("is_collage"):
-
-                    base *= 1.35
-
-                # =====================================
-                # BOOST SMALL/MEDIUM PRODUCT SHOTS
-                # =====================================
-
-                width = int(
-
-                    asset.get(
-                        "width",
-                        0
-                    )
-
-                    or 0
-                )
-
-                height = int(
-
-                    asset.get(
-                        "height",
-                        0
-                    )
-
-                    or 0
-                )
-
-                area = width * height
-
-                if area < 350000:
-
-                    base *= 1.25
-
-                # =====================================
-                # PENALIZE HUMAN/LIFESTYLE IMAGES
-                # =====================================
-
-                dominant = str(
-
-                    asset.get(
-                        "dominant_color"
-                    )
-
-                    or ""
-
-                ).lower()
-
-                if dominant in [
-                    "skin",
-                    "beige"
-                ]:
-
-                    base *= 0.7
-
-                return base
-
 
             sorted_page_images = sorted(
 
                 page_images,
 
-                key=ai_visibility_score,
+                key=lambda x: x.get(
+                    "score",
+                    0
+                ),
 
                 reverse=True
             )
-
-            for idx, asset in enumerate(
-                sorted_page_images[:MAX_IMAGES]
-            ):
-
-                _logger.warning(
-
-                    f"[AI IMAGE INPUT] "
-
-                    f"rank={idx} "
-
-                    f"score={asset.get('score')} "
-
-                    f"clean={asset.get('clean_index')} "
-
-                    f"collage={asset.get('is_collage')}"
-                )
 
             for asset in sorted_page_images[:MAX_IMAGES]:
 
@@ -6123,6 +5883,7 @@ class VendorImportJob(models.Model):
 
         return
     
+
 
     #===========Excel Open AI================================
     def send_to_openai_excel(self):
@@ -7174,7 +6935,6 @@ class VendorImportJob(models.Model):
     # =====================================
     # ADVANCED DOMINANT COLOR DETECTION
     # =====================================
-
     def _detect_dominant_color(
 
         self,
@@ -7231,78 +6991,6 @@ class VendorImportJob(models.Model):
             r, g, b = avg
 
             # =====================================
-            # DARK COLOR ANALYSIS
-            # =====================================
-
-            brightness = np.mean(
-
-                pixels,
-
-                axis=1
-            )
-
-            dark_pixels_ratio = np.mean(
-                brightness < 75
-            )
-
-            very_dark_ratio = np.mean(
-                brightness < 45
-            )
-
-            # dominant blue inside dark pixels
-            dark_blue_ratio = np.mean(
-
-                (
-                    pixels[:, 2] > pixels[:, 0] * 1.15
-                )
-
-                &
-
-                (
-                    pixels[:, 2] > pixels[:, 1] * 1.10
-                )
-
-                &
-
-                (
-                    brightness < 90
-                )
-            )
-
-            # =====================================
-            # TRUE BLACK DETECTION
-            # =====================================
-
-            if (
-
-                very_dark_ratio > 0.24
-
-                or
-
-                (
-                    dark_pixels_ratio > 0.40
-
-                    and
-
-                    abs(r - g) < 24
-
-                    and
-
-                    abs(g - b) < 24
-                )
-            ):
-
-                return "black"
-
-            # =====================================
-            # DARK NAVY DETECTION
-            # =====================================
-
-            if dark_blue_ratio > 0.18:
-
-                return "navy"
-
-            # =====================================
             # RGB → HSV
             # =====================================
 
@@ -7331,12 +7019,14 @@ class VendorImportJob(models.Model):
             if v > 92 and s < 10:
                 return "white"
 
-         
             # =====================================
-            # GREY DETECTION
+            # GRAY / GREY
             # =====================================
 
             if s < 15:
+
+                if v < 55:
+                    return "gray"
 
                 return "grey"
 
@@ -7408,6 +7098,7 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
+
 
 
     # =====================================
