@@ -1151,10 +1151,23 @@ class VendorImportJob(models.Model):
                 # ==========================================
 
                 if new_index > previous_index:
+                    
+                    self.state = 'excel_ai'
+
+                    _logger.warning(
+
+                        "[EXCEL STATE CHANGE] "
+
+                        f"{self.id} -> excel_ai"
+                    )
 
                     _logger.warning(
                         "[EXCEL PARSE] NEW BATCH READY → excel_ai"
                     )
+
+                    self._safe_commit_progress()
+
+                    return
 
 
                 else:
@@ -2060,6 +2073,7 @@ class VendorImportJob(models.Model):
 
             return {}
 
+
     #------excel parsing method---------------
     
     def parse_excel(self):
@@ -2686,7 +2700,7 @@ class VendorImportJob(models.Model):
 
 
         # =====================================
-        # COMPLETION
+        # COMPLETION FLAG ONLY
         # =====================================
 
         if new_index >= total_rows:
@@ -2697,8 +2711,6 @@ class VendorImportJob(models.Model):
 
             self.is_excel_parsed = True
 
-            self.state = "excel_ai"
-
         else:
 
             _logger.warning(
@@ -2706,9 +2718,7 @@ class VendorImportJob(models.Model):
                 "→ NEXT CRON"
             )
 
-            self.state = "excel_parsing"
-
-
+       
         wb.close()
 
 
@@ -9707,7 +9717,7 @@ class VendorImportJob(models.Model):
 
             self.state = 'pdf_creating'
 
-        self._safe_commit_progre
+        self._safe_commit_progress()
 
     #==========pdf product PRODUCT CREATE/GET====================================
     
