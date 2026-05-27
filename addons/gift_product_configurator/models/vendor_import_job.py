@@ -1235,6 +1235,10 @@ class VendorImportJob(models.Model):
 
                     new_ai_index = self.excel_ai_index or 0
 
+                    ai_progress_detected = (
+                        new_ai_index > previous_ai_index
+                    )
+                                        
                     _logger.warning(
 
                         f"[EXCEL AI AFTER] "
@@ -1294,7 +1298,15 @@ class VendorImportJob(models.Model):
                 # AI COMPLETE → CREATE
                 # ==========================================
 
-                if self.state != 'failed':
+                if (
+                        self.state != 'failed'
+                        and
+                        (
+                            ai_progress_detected
+                            or
+                            self.ai_response
+                        )
+                    ):
 
                     _logger.warning(
                         "[EXCEL AI COMPLETE] → excel_creating"
@@ -1825,11 +1837,6 @@ class VendorImportJob(models.Model):
 
             return
 
-        # =====================================================
-        # LIMIT SIZE (VERY IMPORTANT)
-        # =====================================================
-
-        # structured_data = structured_data[:40]
 
         # ============================================
         # URL BATCHING
@@ -1848,6 +1855,7 @@ class VendorImportJob(models.Model):
             len(structured_data)
         )
 
+        total_structured = len(structured_data)
 
         structured_data = structured_data[
             start:end
@@ -1934,8 +1942,7 @@ class VendorImportJob(models.Model):
         # MOVE TO NEXT STEP
         # =====================================================
 
-        if self.url_parse_index >= len(structured_data):
-
+        if self.url_parse_index >= total_structured:
             _logger.warning(
                 "[URL PARSE] FINAL BATCH READY"
             )
@@ -11710,6 +11717,12 @@ class VendorImportJob(models.Model):
                 )
             )
 
+            all_groups_processed = (
+
+                self.excel_created_index >= len(grouped_keys)
+            )
+
+           
             if (
 
                 self.is_excel_parsed
@@ -11717,6 +11730,10 @@ class VendorImportJob(models.Model):
                 and
 
                 all_ai_processed
+
+                and
+
+                all_groups_processed
 
                 and
 
