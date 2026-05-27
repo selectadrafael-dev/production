@@ -4765,7 +4765,6 @@ class VendorImportJob(models.Model):
 
 
   # =========== PDF OPENAI ================================
-
     
     def send_to_openai_pdf(self):
 
@@ -5562,7 +5561,7 @@ class VendorImportJob(models.Model):
         visually dominant lifestyle graphics.
 
        ==================================================
-        PRICE/STOCK RULES
+        PRICE
         ==================================================
 
         PRICE EXTRACTION IS CRITICAL.
@@ -5605,9 +5604,41 @@ class VendorImportJob(models.Model):
 
         Extract:
         - visible product price
-        - visible stock quantity
         - visible product code
 
+        ==================================================
+        STOCK EXTRACTION RULES:
+        ==================================================
+        PRICE EXTRACTION IS CRITICAL.
+
+        Extract: 
+        - stock quantity ONLY when
+        actual available inventory is explicitly stated.
+
+        - visible stock quantity
+
+        Examples:
+        - "Stock: 11 pcs"
+        - "Available: 25"
+        - "In stock: 8"
+
+        DO NOT extract:
+        - delivery times
+        - MOQ
+
+        If no real stock quantity exists:
+        set:
+
+        "stock_qty": 0
+        ==================================================
+        MOST CRITICAL
+        ==================================================
+        NO PRODUCT SHOULD MISS OUT OR BE IGNORED EXCEPT BLANK PAGE, 
+        TOTAL NUMBER OF PAGES SHOULD GENERAGES SAME NUMBERS OF 
+        PRODUCTS WITH EACH PRODUCTS HAS IT'S VARIANTS WHERE 
+        MULTIPLE ITEMS APPEAR 
+        ON SINGLE PAGE ACCURATELY. 
+        
         ==================================================
         OUTPUT FORMAT
         ==================================================
@@ -5639,6 +5670,229 @@ class VendorImportJob(models.Model):
                         "price": ""
                     }}
                 ]
+            }}
+        ]
+
+        ==================================================
+        PAGE TEXT
+        ==================================================
+
+        {page_text}
+
+        ==================================================
+        DETECTED PRICE
+        ==================================================
+
+        {page_price}
+
+        ==================================================
+        DETECTED STOCK
+        ==================================================
+
+        {page_stock}
+        """
+
+
+
+        prompt = f"""
+        You are an AI ecommerce catalog extraction engine.
+
+        Analyze:
+        - catalog page text
+        - detected catalog images
+
+        Extract ALL visible products accurately.
+
+        ==================================================
+        OUTPUT RULES
+        ==================================================
+
+        Return ONLY valid JSON array.
+
+        No markdown.
+        No explanations.
+        No extra text.
+
+        ==================================================
+        CORE EXTRACTION RULES
+        ==================================================
+
+        This input represents ONE catalog page.
+
+        A page may contain:
+        - one product
+        - multiple products
+        - one product with variants
+        - isolated thumbnails
+        - grouped color variations
+
+        IMPORTANT:
+
+        Aggressively detect ALL visible ecommerce products.
+
+        If a catalog page shows:
+        - 8 shirts
+        - 10 caps
+        - 6 bottles
+
+        extract ALL visible variants.
+
+        Prefer over-detection rather than missing products.
+
+        ==================================================
+        PRODUCT GROUPING RULES
+        ==================================================
+
+        Group products as variants ONLY when:
+        - same product shape
+        - same structure
+        - same dimensions
+        - same branding
+        - only color/material/size changes
+
+        Examples:
+        - same cap in different colors
+        - same polo shirt in different colors
+        - same bottle in different colors
+
+        Otherwise:
+        create separate products.
+
+        ==================================================
+        TITLE RULES
+        ==================================================
+
+        Use the TRUE MAIN PRODUCT TITLE.
+
+        Main title is usually:
+        - largest heading
+        - top heading
+        - dominant catalog title
+        - visible product headline
+
+        DO NOT use:
+        - material-only text
+        - bullet features
+        - specifications
+        - dimensions
+        - marketing phrases
+
+        GOOD:
+        - 5 PANEL CAP
+        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
+        - Wireless Charging Pad
+
+        BAD:
+        - Heavy Brushed 100% Cotton
+        - Rib 1x1 collar and cuffs
+
+        ==================================================
+        DESCRIPTION RULES
+        ==================================================
+
+        Build rich ecommerce descriptions using:
+        - subtitle
+        - features
+        - specifications
+        - bullet points
+        - dimensions
+        - materials
+        - capacities
+        - branding info
+        - packaging info
+
+        Combine useful text naturally.
+
+        ==================================================
+        PRICE/STOCK RULES
+        ==================================================
+
+        Aggressively search for price and stocks.
+
+        Prices and stocks may appear:
+        - near title
+        - beside variants
+        - inside tables
+        - inside text blocks
+        - in corners
+
+        Detect:
+        - $
+        - €
+        - £
+        - ₦
+        - USD
+        - EUR
+        - GBP
+
+        Examples:
+        - $2.99
+        - USD 4.25
+        - €8.50
+
+        If no price exists:
+        return empty string.
+
+        Extract:
+        - visible product price
+        - visible stock quantity
+        - visible product code
+
+        ==================================================
+        IMAGE RULES
+        ==================================================
+
+        Prefer professional ecommerce images:
+        - isolated products
+        - clean background
+        - centered products
+        - full visibility
+
+        Avoid:
+        - large text blocks
+        - banners
+        - lifestyle scenes
+        - infographic layouts
+
+        If isolated variants exist:
+        prefer them over model/lifestyle photos.
+
+        ==================================================
+        VARIANT RULES
+        ==================================================
+
+        Each variant should contain:
+
+        {{
+            "attributes": {{
+                "Color": "",
+                "Size": ""
+            }},
+
+            "image_index": null,
+            "price": "",
+            "stock_qty": 0
+        }}
+
+        ==================================================
+        OUTPUT FORMAT
+        ==================================================
+
+        [
+            {{
+                "name": "",
+                "subtitle": "",
+                "description": "",
+                "bullet_features": [],
+                "material": "",
+                "dimensions": "",
+                "stock_qty": 0,
+                "price": "",
+                "currency": "",
+                "product_code": "",
+                "hero_image_index": null,
+                "gallery_image_indexes": [],
+                "variants": []
             }}
         ]
 
