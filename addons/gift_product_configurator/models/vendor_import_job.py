@@ -1648,6 +1648,194 @@ class VendorImportJob(models.Model):
 
                 return
 
+     #=========Variant swatch 1======================================
+   
+    #=========Variant color swatch logic 1===========================================
+    COLOR_HEX_MAP = {
+
+        "black": "#000000",
+        "white": "#FFFFFF",
+        "grey": "#808080",
+        "gray": "#808080",
+        "charcoal": "#36454F",
+        "charcoal gray": "#36454F",
+        "navy": "#000080",
+        "blue": "#0066CC",
+        "royal blue": "#4169E1",
+        "light blue": "#87CEEB",
+        "red": "#FF0000",
+        "yellow": "#FFD700",
+        "green": "#008000",
+        "lime green": "#32CD32",
+        "orange": "#FF6600",
+        "purple": "#800080",
+        "pink": "#FF69B4",
+        "brown": "#8B4513",
+        "silver": "#C0C0C0",
+        "gold": "#D4AF37",
+        "beige": "#F5F5DC"
+    }
+
+    # =====================================
+    # REUSABLE ATTRIBUTE ENGINE
+    # =====================================
+
+    def _get_or_create_attribute_and_value(
+
+        self,
+
+        attr_name,
+
+        attr_value
+    ):
+
+        attr_name = str(
+            attr_name or ""
+        ).strip()
+
+        attr_value = str(
+            attr_value or ""
+        ).strip()
+
+        # =====================================
+        # ATTRIBUTE NORMALIZATION
+        # =====================================
+        normalized_attr = attr_name.lower().strip()
+
+        is_color_attribute = normalized_attr in [
+
+            'color',
+
+            'colour',
+
+            'colors',
+
+            'colourway',
+
+            'color name'
+        ]
+
+        attribute = self.env[
+            'product.attribute'
+        ].search([
+
+            ('name', '=', attr_name)
+
+        ], limit=1)
+
+        # =====================================
+        # CREATE ATTRIBUTE
+        # =====================================
+
+        if not attribute:
+
+            attribute_vals = {
+
+                'name': attr_name
+            }
+
+            # =====================================
+            # COLOR SWATCH SUPPORT
+            # =====================================
+
+            if is_color_attribute:
+
+                attribute_vals[
+                    'display_type'
+                ] = 'color'
+
+            attribute = self.env[
+                'product.attribute'
+            ].create(attribute_vals)
+            
+
+            _logger.warning(
+
+                f"[ATTRIBUTE CREATED] "
+
+                f"{attr_name}"
+            )
+
+
+        # =====================================
+        # FORCE EXISTING COLOR ATTRIBUTE
+        # INTO SWATCH MODE
+        # =====================================
+
+
+        if (
+
+            is_color_attribute
+
+            and
+
+            attribute.display_type != 'color'
+        ):
+
+            attribute.display_type = 'color'
+
+            _logger.warning(
+
+                "[COLOR ATTRIBUTE UPDATED] "
+
+                f"{attribute.name}"
+            )
+
+        # =====================================
+        # CREATE VALUE
+        # =====================================
+
+        value = self.env[
+            'product.attribute.value'
+        ].search([
+
+            ('name', '=', attr_value),
+
+            ('attribute_id', '=', attribute.id)
+
+        ], limit=1)
+
+        if not value:
+
+            value_vals = {
+
+                'name': attr_value,
+
+                'attribute_id': attribute.id
+            }
+
+            # =====================================
+            # HTML COLOR SUPPORT
+            # =====================================
+
+            if is_color_attribute:
+
+                color_hex = self.COLOR_HEX_MAP.get(
+
+                    attr_value.lower()
+                )
+
+                if color_hex:
+
+                    value_vals[
+                        'html_color'
+                    ] = color_hex
+
+                    _logger.warning(
+
+                        f"[COLOR HEX ASSIGNED] "
+
+                        f"{attr_value} "
+
+                        f"→ {color_hex}"
+                    )
+
+            value = self.env[
+                'product.attribute.value'
+            ].create(value_vals)
+
+        return attribute, value
+
 
     #------------parse url------------------------------------
 
@@ -9080,7 +9268,6 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-    
     #==========create pdf product====================================
 
     def create_products_pdf(self):
@@ -9596,57 +9783,15 @@ class VendorImportJob(models.Model):
                             if not attr_value:
                                 continue
 
-                            attribute = self.env[
-                                'product.attribute'
-                            ].search([
+                            attribute, value = (
 
-                                (
-                                    'name',
-                                    '=',
-                                    attr_name
-                                )
+                                self._get_or_create_attribute_and_value(
 
-                            ], limit=1)
+                                    attr_name,
 
-                            if not attribute:
-
-                                attribute = self.env[
-                                    'product.attribute'
-                                ].create({
-
-                                    'name': attr_name
-
-                                })
-
-                            value = self.env[
-                                'product.attribute.value'
-                            ].search([
-
-                                (
-                                    'name',
-                                    '=',
                                     attr_value
-                                ),
-
-                                (
-                                    'attribute_id',
-                                    '=',
-                                    attribute.id
                                 )
-
-                            ], limit=1)
-
-                            if not value:
-
-                                value = self.env[
-                                    'product.attribute.value'
-                                ].create({
-
-                                    'name': attr_value,
-
-                                    'attribute_id':
-                                        attribute.id
-                                })
+                            )
 
                             line = self.env[
                                 'product.template.attribute.line'
@@ -9918,6 +10063,7 @@ class VendorImportJob(models.Model):
             self.state = 'pdf_creating'
 
         self._safe_commit_progress()
+
 
     #==========pdf product PRODUCT CREATE/GET====================================
     
@@ -13442,6 +13588,7 @@ class VendorImportJob(models.Model):
 
         return data
 
+
     #=======validation===================
     def validate_ai_output(products):
         for p in products:
@@ -13532,7 +13679,7 @@ class VendorImportJob(models.Model):
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
 
-#===============pdf price helper====================
+    #===============pdf price helper====================
     def _safe_parse_price(self, value):
 
         try:
