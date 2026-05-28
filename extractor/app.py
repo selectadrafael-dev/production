@@ -69,24 +69,15 @@ def split_catalog_image(pil_image):
             area = cv2.contourArea(contour)
 
             if area < 8000:
-                continue
-
-            x, y, w, h = cv2.boundingRect(contour)
-           
-            area = cv2.contourArea(
-                contour
-            )
-
-            if area < 4500:
-
                 _logger.warning(
 
                     f"[EXTRACTOR REJECT AREA] "
 
                     f"area={area}"
                 )
-
                 continue
+
+            x, y, w, h = cv2.boundingRect(contour)
 
             if w < 120 or h < 120:
                 continue
@@ -390,6 +381,52 @@ def extract():
             score = (w * h)
 
             # =================================
+            # TEXT/BANNER PENALTY
+            # =================================
+
+            gray_crop = cv2.cvtColor(
+
+                crop,
+
+                cv2.COLOR_BGR2GRAY
+            )
+
+            edges = cv2.Canny(
+
+                gray_crop,
+
+                80,
+
+                180
+            )
+
+            edge_ratio = np.mean(
+                edges > 0
+            )
+
+            # =================================
+            # TEXT-LIKE STRUCTURE DETECTION
+            # =================================
+
+            if (
+
+                edge_ratio > 0.18
+
+                and
+
+                w < (page_np.shape[1] * 0.45)
+            ):
+
+                score *= 0.45
+
+                _logger.warning(
+
+                    f"[TEXT BANNER PENALTY] "
+
+                    f"edge_ratio={edge_ratio:.3f}"
+                )
+
+            # =================================
             # PRODUCT SHAPE BONUS
             # =================================
 
@@ -503,46 +540,46 @@ def extract():
 
             try:
 
-                    fallback_img = img.copy()
+                fallback_img = img.copy()
 
-                    fallback_img.thumbnail((1200, 1200))
+                fallback_img.thumbnail((1200, 1200))
 
-                    fallback_buffer = io.BytesIO()
+                fallback_buffer = io.BytesIO()
 
-                    fallback_img.save(
+                fallback_img.save(
 
-                        fallback_buffer,
+                    fallback_buffer,
 
-                        format="JPEG",
+                    format="JPEG",
 
-                        quality=80
-                    )
+                    quality=80
+                )
 
-                    fallback_base64 = base64.b64encode(
+                fallback_base64 = base64.b64encode(
 
-                        fallback_buffer.getvalue()
+                    fallback_buffer.getvalue()
 
-                    ).decode("utf-8")
+                ).decode("utf-8")
 
-                    image_list.append(
-                            fallback_base64
-                    )
+                image_list.append(
+                    fallback_base64
+                )
 
-                    _logger.warning(
+                _logger.warning(
 
-                        f"[EXTRACTOR FALLBACK USED] "
+                    f"[EXTRACTOR FALLBACK USED] "
 
-                        f"page={page_number + 1} "
+                    f"page={page_number + 1} "
 
-                        f"| NO CROPS DETECTED"
-                    )
+                    f"| NO CROPS DETECTED"
+                )
 
-                    _logger.warning(
+                _logger.warning(
 
-                        f"[EXTRACTOR FALLBACK PAGE] "
+                    f"[EXTRACTOR FALLBACK PAGE] "
 
-                        f"page={page_number + 1}"
-                    )
+                    f"page={page_number + 1}"
+                )
 
             except Exception as e:
 
