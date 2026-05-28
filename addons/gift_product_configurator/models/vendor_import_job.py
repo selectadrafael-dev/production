@@ -233,6 +233,7 @@ class VendorImportJob(models.Model):
     )
 
     failure_reason = fields.Text()
+    ai_retry_count = fields.Integer(default=0)
    
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -5166,6 +5167,68 @@ class VendorImportJob(models.Model):
             f"| valid={len(page_images)}"
         )
 
+        # =====================================
+        # NO VALID IMAGE FAILSAFE
+        # =====================================
+
+        if not page_images:
+
+            _logger.warning(
+
+                f"[PDF NO VALID IMAGE] "
+
+                f"PAGE={next_record.page_number}"
+            )
+
+            existing_map = {}
+
+            for p in existing_pages:
+
+                existing_map[
+                    p.get("page")
+                ] = p
+
+            existing_map[
+                next_record.page_number
+            ] = {
+
+                "page": next_record.page_number,
+
+                "products": [],
+
+                "images": [],
+
+                "failed": True,
+
+                "reason": "no_valid_images"
+            }
+
+            combined_pages = sorted(
+
+                list(existing_map.values()),
+
+                key=lambda x: x.get(
+                    "page",
+                    0
+                )
+            )
+
+            self.ai_response = json.dumps(
+                combined_pages
+            )
+
+            self.last_ai_page = len(
+                combined_pages
+            )
+
+            self.state = "pdf_ai"
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            return
+
         page_price = ""
 
         page_stock = ""
@@ -5238,6 +5301,24 @@ class VendorImportJob(models.Model):
         - one product with variants
         - isolated thumbnails
         - grouped color variations
+
+
+        IMPORTANT:
+
+        If products appear without clear title blocks,
+        still extract them.
+
+        If multiple standalone products appear on one page:
+        - infer product grouping visually
+        - detect visible variants
+        - create products even if title is missing
+
+        Pens, bottles, shirts, caps and accessories
+        must NEVER be ignored simply because:
+        - title is small
+        - products are grouped
+        - products are arranged in grid layout
+
 
         IMPORTANT:
 
@@ -5648,11 +5729,6 @@ class VendorImportJob(models.Model):
                     "EMPTY AI RESPONSE"
                 )
 
-
-            # parsed = json.loads(
-            #     result
-            # )
-
             try:
 
                 parsed = json.loads(result)
@@ -5675,10 +5751,57 @@ class VendorImportJob(models.Model):
                     f"{result[:1200]}"
                 )
 
-                next_record.write({
+                _logger.warning(
 
-                    'state': 'failed'
-                })
+                    f"[PDF AI PAGE SKIPPED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| INVALID JSON"
+                )
+
+                # =====================================
+                # MARK PAGE AS SKIPPED
+                # =====================================
+
+                existing_map = {}
+
+                for p in existing_pages:
+
+                    existing_map[
+                        p.get("page")
+                    ] = p
+
+                existing_map[
+                    next_record.page_number
+                ] = {
+
+                    "page": next_record.page_number,
+
+                    "products": [],
+
+                    "images": [],
+
+                    "failed": True
+                }
+
+                combined_pages = sorted(
+
+                    list(existing_map.values()),
+
+                    key=lambda x: x.get(
+                        "page",
+                        0
+                    )
+                )
+
+                self.ai_response = json.dumps(
+                    combined_pages
+                )
+
+                self.last_ai_page = len(
+                    combined_pages
+                )
 
                 self._safe_commit_progress()
 
@@ -5693,10 +5816,54 @@ class VendorImportJob(models.Model):
                     f"PAGE={next_record.page_number}"
                 )
 
-                next_record.write({
 
-                    'state': 'failed'
-                })
+                _logger.warning(
+
+                    f"[PDF AI PAGE SKIPPED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| EMPTY RESPONSE"
+                )
+
+                existing_map = {}
+
+                for p in existing_pages:
+
+                    existing_map[
+                        p.get("page")
+                    ] = p
+
+                existing_map[
+                    next_record.page_number
+                ] = {
+
+                    "page": next_record.page_number,
+
+                    "products": [],
+
+                    "images": [],
+
+                    "failed": True
+                }
+
+                combined_pages = sorted(
+
+                    list(existing_map.values()),
+
+                    key=lambda x: x.get(
+                        "page",
+                        0
+                    )
+                )
+
+                self.ai_response = json.dumps(
+                    combined_pages
+                )
+
+                self.last_ai_page = len(
+                    combined_pages
+                )
 
                 self._safe_commit_progress()
 
