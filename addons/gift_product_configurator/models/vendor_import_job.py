@@ -12456,7 +12456,14 @@ class VendorImportJob(models.Model):
 
         for j in jobs:
 
-            sig = j.upload_signature
+            sig = (
+
+                str(j.vendor_id.id)
+
+                + "_"
+
+                + str(j.upload_signature)
+            )
            
             if not sig:
 
