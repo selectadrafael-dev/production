@@ -72,6 +72,21 @@ def split_catalog_image(pil_image):
                 continue
 
             x, y, w, h = cv2.boundingRect(contour)
+           
+            area = cv2.contourArea(
+                contour
+            )
+
+            if area < 4500:
+
+                _logger.warning(
+
+                    f"[EXTRACTOR REJECT AREA] "
+
+                    f"area={area}"
+                )
+
+                continue
 
             if w < 120 or h < 120:
                 continue
@@ -214,7 +229,7 @@ def extract():
 
             gray,
 
-            248,
+            242,
 
             255,
 
@@ -282,7 +297,7 @@ def extract():
                 continue
 
             # skip full-page blocks
-            if w > page_np.shape[1] * 0.95:
+            if w > page_np.shape[1] * 0.995:
 
                 _logger.warning(
 
@@ -294,7 +309,7 @@ def extract():
                 continue
 
            
-            if h > page_np.shape[0] * 0.95:
+            if h > page_np.shape[0] * 0.995:
 
                 _logger.warning(
 
@@ -333,11 +348,11 @@ def extract():
 
             if (
 
-                dark_pixels > 0.52
+                dark_pixels > 0.72
 
                 and
 
-                pixel_std < 32
+                pixel_std < 18
             ):
 
                 _logger.warning(
@@ -358,7 +373,8 @@ def extract():
             aspect_ratio = h / float(w)
 
             # portrait human-like layout
-            if aspect_ratio > 1.7 and w < 400:
+
+            if aspect_ratio > 2.4 and w < 180:
 
                 _logger.warning(
 
@@ -371,16 +387,44 @@ def extract():
 
                 continue
 
+            score = (w * h)
+
+            # =================================
+            # PRODUCT SHAPE BONUS
+            # =================================
+
+            ratio = w / float(h)
+
+            if 0.35 <= ratio <= 2.8:
+                score *= 1.25
+
+            # =================================
+            # CENTER BONUS
+            # =================================
+
+            center_x = x + (w / 2)
+
+            page_center = page_np.shape[1] / 2
+
+            distance = abs(
+                center_x - page_center
+            )
+
+            center_factor = 1 - (
+                distance / page_center
+            )
+
+            score *= (
+                1 + (center_factor * 0.18)
+            )
+
             candidate_images.append({
 
                 "crop": crop,
 
-                "score": (
-                    (w * h)
-                    *
-                    (1.15 if h > w else 1.0)
-                )
+                "score": score
             })
+
 
         # ===============================
         # SORT BEST FIRST
@@ -395,13 +439,14 @@ def extract():
             reverse=True
         )
 
-        MAX_IMAGES_PER_PAGE = 18
+        MAX_IMAGES_PER_PAGE = 12
 
         image_list = []
 
         for item in candidate_images[
             :MAX_IMAGES_PER_PAGE
         ]:
+        
 
             try:
 
@@ -434,6 +479,7 @@ def extract():
                     image_base64
                 )
 
+                
                 _logger.warning(
 
                     f"[EXTRACTOR IMAGE] "
@@ -448,6 +494,65 @@ def extract():
             except Exception:
                 continue
 
+
+        # =====================================
+        # FALLBACK FULL PAGE IMAGE
+        # =====================================
+
+        if not image_list:
+
+            try:
+
+                    fallback_img = img.copy()
+
+                    fallback_img.thumbnail((1200, 1200))
+
+                    fallback_buffer = io.BytesIO()
+
+                    fallback_img.save(
+
+                        fallback_buffer,
+
+                        format="JPEG",
+
+                        quality=80
+                    )
+
+                    fallback_base64 = base64.b64encode(
+
+                        fallback_buffer.getvalue()
+
+                    ).decode("utf-8")
+
+                    image_list.append(
+                            fallback_base64
+                    )
+
+                    _logger.warning(
+
+                        f"[EXTRACTOR FALLBACK USED] "
+
+                        f"page={page_number + 1} "
+
+                        f"| NO CROPS DETECTED"
+                    )
+
+                    _logger.warning(
+
+                        f"[EXTRACTOR FALLBACK PAGE] "
+
+                        f"page={page_number + 1}"
+                    )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[EXTRACTOR FALLBACK FAILED] "
+
+                    f"{str(e)}"
+                )
+        
         # 🔒 limit text
         text = text[:2000]
 
