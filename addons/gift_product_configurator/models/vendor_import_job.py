@@ -2354,7 +2354,7 @@ class VendorImportJob(models.Model):
     # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
     # ======================================================
 
-    def _extract_excel_url_data(
+    def _extract_url_product_data(
 
         self,
 
@@ -2365,7 +2365,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"[EXCEL URL ENRICHMENT START] "
+                f"[URL ENRICHMENT START] "
 
                 f"{product_url}"
             )
