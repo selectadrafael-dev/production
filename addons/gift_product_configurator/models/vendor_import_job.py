@@ -1650,30 +1650,100 @@ class VendorImportJob(models.Model):
 
      #=========Variant swatch 1======================================
    
-    #=========Variant color swatch logic 1===========================================
+    #=========Variant color swatch logic===========================================
+
     COLOR_HEX_MAP = {
+
+        # =====================================
+        # BASIC COLORS
+        # =====================================
 
         "black": "#000000",
         "white": "#FFFFFF",
-        "grey": "#808080",
-        "gray": "#808080",
-        "charcoal": "#36454F",
-        "charcoal gray": "#36454F",
-        "navy": "#000080",
-        "blue": "#0066CC",
-        "royal blue": "#4169E1",
-        "light blue": "#87CEEB",
         "red": "#FF0000",
-        "yellow": "#FFD700",
         "green": "#008000",
-        "lime green": "#32CD32",
+        "blue": "#0066CC",
+        "yellow": "#FFD700",
         "orange": "#FF6600",
         "purple": "#800080",
         "pink": "#FF69B4",
         "brown": "#8B4513",
+
+        # =====================================
+        # GREY / GRAY FAMILY
+        # =====================================
+
+        "grey": "#808080",
+        "gray": "#808080",
+        "light grey": "#D3D3D3",
+        "light gray": "#D3D3D3",
+        "dark grey": "#555555",
+        "dark gray": "#555555",
+        "charcoal": "#36454F",
+        "charcoal grey": "#36454F",
+        "charcoal gray": "#36454F",
+        "ash": "#B2BEB5",
+        "ash grey": "#B2BEB5",
+        "ash gray": "#B2BEB5",
+        "heather": "#9AA0A6",
+        "heather grey": "#A9A9A9",
+        "heather gray": "#A9A9A9",
+        "grey marl": "#A9A9A9",
+        "gray marl": "#A9A9A9",
+
+        # =====================================
+        # BLUE FAMILY
+        # =====================================
+
+        "navy": "#000080",
+        "navy blue": "#000080",
+        "royal blue": "#4169E1",
+        "light blue": "#ADD8E6",
+        "sky blue": "#87CEEB",
+        "ice blue": "#BFEFFF",
+        "powder blue": "#B0E0E6",
+
+        # =====================================
+        # GREEN FAMILY
+        # =====================================
+
+        "lime": "#32CD32",
+        "lime green": "#32CD32",
+        "neon green": "#39FF14",
+
+        # =====================================
+        # WHITE / NATURAL FAMILY
+        # =====================================
+
+        "off white": "#F8F8F8",
+        "natural": "#F5F5DC",
+        "cream": "#FFFDD0",
+        "ivory": "#FFFFF0",
+        "stone": "#D2C29D",
+        "sand": "#C2B280",
+        "beige": "#F5F5DC",
+
+        # =====================================
+        # METALLIC COLORS
+        # =====================================
+
         "silver": "#C0C0C0",
         "gold": "#D4AF37",
-        "beige": "#F5F5DC"
+
+        # =====================================
+        # SPECIAL COLORS
+        # =====================================
+
+        "burgundy": "#800020",
+        "wine": "#722F37",
+
+        # =====================================
+        # MULTI COLORS
+        # =====================================
+
+        "multi": "#CCCCCC",
+        "multi-color": "#CCCCCC",
+        "multicolor": "#CCCCCC",
     }
 
     # =====================================
@@ -1810,10 +1880,135 @@ class VendorImportJob(models.Model):
 
             if is_color_attribute:
 
-                color_hex = self.COLOR_HEX_MAP.get(
+                # color_hex = self.COLOR_HEX_MAP.get(
 
-                    attr_value.lower()
+                #     attr_value.lower()
+                # )
+
+                # =====================================
+                # SMART COLOR NORMALIZATION
+                # =====================================
+
+                normalized_color = " ".join(
+
+                    attr_value
+                    .lower()
+                    .replace("/", " ")
+                    .replace("-", " ")
+                    .replace("_", " ")
+                    .split()
                 )
+
+                color_hex = None
+
+                _logger.warning(
+
+                    f"[COLOR NORMALIZED] "
+
+                    f"raw={attr_value} "
+
+                    f"normalized={normalized_color}"
+                )
+
+                # =====================================
+                # DIRECT MATCH
+                # =====================================
+
+                color_hex = self.COLOR_HEX_MAP.get(
+                    normalized_color
+                )
+
+                # =====================================
+                # PARTIAL MATCH FALLBACK
+                # =====================================
+
+                if not color_hex:
+
+                    # =====================================
+                    # LONGEST COLOR MATCH PRIORITY
+                    # =====================================
+
+                    best_match = None
+
+                    best_length = 0
+
+                    for key, value in self.COLOR_HEX_MAP.items():
+
+                        if key in normalized_color:
+
+                            if len(key) > best_length:
+
+                                best_match = (key, value)
+
+                                best_length = len(key)
+
+                    if best_match:
+
+                        matched_key, matched_value = best_match
+
+                        color_hex = matched_value
+
+                        _logger.warning(
+
+                            f"[BEST COLOR MATCH] "
+
+                            f"{attr_value} "
+
+                            f"→ {matched_key} "
+
+                            f"→ {matched_value}"
+                        )
+
+                # =====================================
+                # SAFE FALLBACK COLORS
+                # =====================================
+
+                if not color_hex:
+
+                    if "white" in normalized_color:
+
+                        color_hex = "#F8F8F8"
+
+                    elif "grey" in normalized_color \
+                            or "gray" in normalized_color:
+
+                        color_hex = "#808080"
+
+                    elif "black" in normalized_color:
+
+                        color_hex = "#000000"
+
+                    elif "navy" in normalized_color:
+
+                        color_hex = "#000080"
+
+                    elif "blue" in normalized_color:
+
+                        color_hex = "#0066CC"
+
+                    elif "green" in normalized_color:
+
+                        color_hex = "#008000"
+
+                    elif "red" in normalized_color:
+
+                        color_hex = "#FF0000"
+
+                    elif "yellow" in normalized_color:
+
+                        color_hex = "#FFD700"
+
+                    elif "purple" in normalized_color:
+
+                        color_hex = "#800080"
+
+                    elif "orange" in normalized_color:
+
+                        color_hex = "#FF6600"
+
+                # =====================================
+                # APPLY HTML COLOR
+                # =====================================
 
                 if color_hex:
 
@@ -1829,6 +2024,16 @@ class VendorImportJob(models.Model):
 
                         f"→ {color_hex}"
                     )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[COLOR HEX MISSING] "
+
+                        f"{attr_value}"
+                    )
+
 
             value = self.env[
                 'product.attribute.value'

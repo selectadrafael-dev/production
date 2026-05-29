@@ -41,7 +41,7 @@
         "gift_product_configurator/static/src/scss/quote_drawer.scss",
         "gift_product_configurator/static/src/scss/shop_hero.scss",
         "gift_product_configurator/static/src/scss/category_hero.scss",
-        "gift_product_configurator/static/src/scss/variants.scss",
+        #"gift_product_configurator/static/src/scss/variants.scss",
         "gift_product_configurator/static/src/scss/larger_quantity.scss",
         "gift_product_configurator/static/src/scss/vendor_tool.scss",
         "gift_product_configurator/static/src/scss/portal.scss",
