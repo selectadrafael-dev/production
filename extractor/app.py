@@ -419,6 +419,44 @@ def extract():
 
                 score *= 0.45
 
+                # =================================
+                # EXTREME TEXT PANEL PENALTY
+                # =================================
+
+                try:
+
+                    vertical_ratio = h / float(w)
+
+                    # very tall brochure-like panels
+                    if (
+
+                        vertical_ratio > 1.35
+
+                        and
+
+                        edge_ratio > 0.14
+                    ):
+
+                        score *= 0.12
+
+                        _logger.warning(
+
+                            f"[EXTREME TEXT PANEL] "
+
+                            f"ratio={vertical_ratio:.2f} "
+
+                            f"edge={edge_ratio:.3f}"
+                        )
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[TEXT PANEL CHECK FAILED] "
+
+                        f"{str(e)}"
+                    )
+
                 _logger.warning(
 
                     f"[TEXT BANNER PENALTY] "
@@ -487,7 +525,79 @@ def extract():
 
             try:
 
+
                 crop = item["crop"]
+
+                # =================================
+                # SMART BORDER TRIM
+                # =================================
+
+                try:
+
+                    crop_gray = cv2.cvtColor(
+
+                        crop,
+
+                        cv2.COLOR_RGB2GRAY
+                    )
+
+                    thresh_crop = cv2.threshold(
+
+                        crop_gray,
+
+                        245,
+
+                        255,
+
+                        cv2.THRESH_BINARY_INV
+
+                    )[1]
+
+                    trim_contours, _ = cv2.findContours(
+
+                        thresh_crop,
+
+                        cv2.RETR_EXTERNAL,
+
+                        cv2.CHAIN_APPROX_SIMPLE
+                    )
+
+                    if trim_contours:
+
+                        largest = max(
+
+                            trim_contours,
+
+                            key=cv2.contourArea
+                        )
+
+                        tx, ty, tw, th = cv2.boundingRect(
+                            largest
+                        )
+
+                        # avoid tiny accidental trims
+                        if tw > 80 and th > 80:
+
+                            crop = crop[
+                                ty:ty+th,
+                                tx:tx+tw
+                            ]
+
+                            _logger.warning(
+
+                                f"[SMART TRIM APPLIED] "
+
+                                f"w={tw} h={th}"
+                            )
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[SMART TRIM FAILED] "
+
+                        f"{str(e)}"
+                    )
 
                 crop_img = Image.fromarray(
                     crop
