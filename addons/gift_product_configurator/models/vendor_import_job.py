@@ -11740,6 +11740,9 @@ class VendorImportJob(models.Model):
                         'description_sale':
                             description,
 
+                        'description': 
+                            description,
+
                        'type': 'consu',
 
                         'categ_id':
@@ -11779,6 +11782,16 @@ class VendorImportJob(models.Model):
                             'image_1920'
                         ] = image
 
+                    _logger.warning(
+
+                        f"[FINAL PRODUCT DATA] "
+
+                        f"group={group_id} "
+
+                        f"| desc_len={len(description or '')} "
+
+                        f"| has_url_data={'yes' if url_data else 'no'}"
+                    )
 
                     product = product_obj.create(
                         vals
@@ -11854,10 +11867,10 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # DETECT ATTRIBUTE VALUE
+                    # RAW ATTRIBUTE VALUE
                     # =============================================
 
-                    attr_value = str(
+                    raw_attr_value = (
 
                         item.get("color")
 
@@ -11873,11 +11886,47 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                        or f"Variant {idx+1}"
+                        or ""
 
+                    )
+
+                    attr_value = str(
+                        raw_attr_value
                     ).strip()
 
-                    if not attr_value:
+
+                    # =============================================
+                    # INVALID COLOR DETECTION
+                    # =============================================
+
+                    invalid_variant = False
+
+                    # numeric-only values
+                    if attr_value.isdigit():
+
+                        invalid_variant = True
+
+                    # short internal codes
+                    elif re.match(r'^(clr|var|opt|id)[\-_]?\d+$', attr_value, re.I):
+
+                        invalid_variant = True
+
+                    # generic variant labels
+                    elif re.match(r'^variant\s*\d+$', attr_value, re.I):
+
+                        invalid_variant = True
+
+                    # meaningless tiny values
+                    elif len(attr_value) <= 1:
+
+                        invalid_variant = True
+
+
+                    # =============================================
+                    # IMAGE COLOR FALLBACK
+                    # =============================================
+
+                    if invalid_variant:
 
                         detected_color = self._detect_basic_image_color(
                             item.get("image")
@@ -11891,26 +11940,22 @@ class VendorImportJob(models.Model):
 
                             _logger.warning(
 
-                                f"[IMAGE COLOR FALLBACK] "
+                                f"[EXCEL IMAGE COLOR DETECTED] "
 
-                                f"{detected_color}"
+                                f"{raw_attr_value} -> {detected_color}"
                             )
 
                         else:
 
+                            attr_value = f"Variant {idx+1}"
 
-                            attr_value = (
+                            _logger.warning(
 
-                                item.get("vendor_code")
+                                f"[EXCEL COLOR FALLBACK FAILED] "
 
-                                or
-
-                                item.get("primary_code")
-
-                                or
-
-                                f"Code {idx+1}"
+                                f"{raw_attr_value}"
                             )
+
 
                     _logger.warning(
 
@@ -11923,123 +11968,68 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # ATTRIBUTE
+                    # REUSABLE ATTRIBUTE ENGINE
                     # =============================================
 
-                    attribute = attribute_obj.search([
+                    attribute, value = self._get_or_create_attribute_and_value(
 
-                        (
-                            'name',
-                            '=',
-                            variant_attribute_name
-                        )
+                        variant_attribute_name,
 
-                    ], limit=1)
+                        attr_value
+                    )
 
+                    # =========================================
+                    # TRANSLATE VARIANT VALUE
+                    # =========================================
 
-                    if not attribute:
+                    try:
 
-                        attribute = attribute_obj.create({
+                        for lang_code in ['ru_RU', 'az_AZ']:
 
-                            'name': variant_attribute_name
+                            translated_variant = self._force_translate(
 
-                        })
+                                attr_value,
 
-
-                        _logger.warning(
-
-                            f"[ATTRIBUTE CREATED] "
-
-                            f"{variant_attribute_name}"
-                        )
-
-
-                    # =============================================
-                    # ATTRIBUTE VALUE
-                    # =============================================
-
-                    value = attribute_value_obj.search([
-
-                        (
-                            'name',
-                            '=',
-                            attr_value
-                        ),
-
-                        (
-                            'attribute_id',
-                            '=',
-                            attribute.id
-                        )
-
-                    ], limit=1)
-
-                    if not value:
-
-                        value = attribute_value_obj.create({
-
-                            'name': attr_value,
-
-                            'attribute_id': attribute.id
-                        })
-
-
-                        # =========================================
-                        # TRANSLATE VARIANT VALUE
-                        # =========================================
-
-                        try:
-
-                            for lang_code in ['ru_RU', 'az_AZ']:
-
-                                translated_variant = self._force_translate(
-
-                                    attr_value,
-
-                                    lang_code
-                                )
-
-
-                                if translated_variant:
-
-                                    value.with_context(
-                                        lang=lang_code
-                                    ).write({
-
-                                        'name': translated_variant
-                                    })
-
-
-                                    _logger.warning(
-
-                                        f"[VARIANT TRANSLATED] "
-
-                                        f"{attr_value} "
-
-                                        f"-> "
-
-                                        f"{translated_variant} "
-
-                                        f"({lang_code})"
-                                    )
-
-                        except Exception as e:
-
-                            _logger.warning(
-
-                                f"[VARIANT TRANSLATION ERROR] "
-
-                                f"{str(e)}"
+                                lang_code
                             )
 
+                            if translated_variant:
+
+                                value.with_context(
+                                    lang=lang_code
+                                ).write({
+
+                                    'name': translated_variant
+                                })
+
+                                _logger.warning(
+
+                                    f"[VARIANT TRANSLATED] "
+
+                                    f"{attr_value} "
+
+                                    f"-> "
+
+                                    f"{translated_variant} "
+
+                                    f"({lang_code})"
+                                )
+
+                    except Exception as e:
 
                         _logger.warning(
 
-                            f"[ATTRIBUTE VALUE CREATED] "
+                            f"[VARIANT TRANSLATION ERROR] "
 
-                            f"{attr_value}"
+                            f"{str(e)}"
                         )
 
+                    _logger.warning(
+
+                        f"[ATTRIBUTE VALUE READY] "
+
+                        f"{attr_value}"
+                    )
 
                     # =============================================
                     # TEMPLATE ATTRIBUTE LINE
