@@ -12458,7 +12458,7 @@ class VendorImportJob(models.Model):
 
             sig = (
 
-                str(j.vendor_id.id)
+                str(j.partner_id.id)
 
                 + "_"
 
