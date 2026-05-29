@@ -20,7 +20,7 @@ _logger = logging.getLogger(__name__)
 def home():
     return "OK"
 
-
+# LEGACY METHOD (currently unused)
 def split_catalog_image(pil_image):
 
     try:
@@ -381,6 +381,34 @@ def extract():
             score = (w * h)
 
             # =================================
+            # CLEAN PRODUCT BONUS
+            # =================================
+
+            white_ratio = np.mean(
+                crop_gray > 235
+            )
+
+            # ecommerce-like isolated product
+            if white_ratio > 0.42:
+
+                score *= 1.55
+
+                _logger.warning(
+                    f"[CLEAN PRODUCT BONUS] "
+                    f"white_ratio={white_ratio:.2f}"
+                )
+
+            # lifestyle/noisy backgrounds
+            elif white_ratio < 0.10:
+
+                score *= 0.65
+
+                _logger.warning(
+                    f"[NOISY BACKGROUND PENALTY] "
+                    f"white_ratio={white_ratio:.2f}"
+                )
+
+            # =================================
             # TEXT/BANNER PENALTY
             # =================================
 
@@ -388,7 +416,7 @@ def extract():
 
                 crop,
 
-                cv2.COLOR_BGR2GRAY
+                cv2.COLOR_RGB2GRAY
             )
 
             edges = cv2.Canny(
@@ -408,16 +436,41 @@ def extract():
             # TEXT-LIKE STRUCTURE DETECTION
             # =================================
 
+            text_penalty = False
+
+            # high edge density usually text-heavy
+            if edge_ratio > 0.18:
+                text_penalty = True
+
+            # brochure/document layout
+            vertical_ratio = h / float(w)
+
             if (
-
-                edge_ratio > 0.18
-
+                vertical_ratio > 1.15
                 and
-
-                w < (page_np.shape[1] * 0.45)
+                edge_ratio > 0.12
             ):
+                text_penalty = True
 
-                score *= 0.45
+            # excessive text-like darkness
+            dark_ratio = np.mean(gray_crop < 90)
+
+            if (
+                dark_ratio > 0.35
+                and
+                edge_ratio > 0.12
+            ):
+                text_penalty = True
+
+            if text_penalty:
+
+                score *= 0.18
+
+                _logger.warning(
+                    f"[TEXT PANEL PENALTY] "
+                    f"edge={edge_ratio:.3f} "
+                    f"dark={dark_ratio:.3f}"
+                )
 
                 # =================================
                 # EXTREME TEXT PANEL PENALTY
@@ -621,6 +674,30 @@ def extract():
                     buffer.getvalue()
 
                 ).decode("utf-8")
+
+                # reject fallback if page is mostly text
+                fallback_gray = np.array(
+                    fallback_img.convert("L")
+                )
+
+                fallback_edges = cv2.Canny(
+                    fallback_gray,
+                    80,
+                    180
+                )
+
+                fallback_edge_ratio = np.mean(
+                    fallback_edges > 0
+                )
+
+                if fallback_edge_ratio > 0.22:
+
+                    _logger.warning(
+                        "[FALLBACK REJECTED] "
+                        "TEXT-HEAVY PAGE"
+                    )
+
+                    continue
 
                 image_list.append(
                     image_base64
