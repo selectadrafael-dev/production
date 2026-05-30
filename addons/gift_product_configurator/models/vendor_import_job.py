@@ -11353,6 +11353,14 @@ class VendorImportJob(models.Model):
             'product.category'
         ]
 
+        attribute_obj = self.env[
+            'product.attribute'
+        ]
+
+        attribute_value_obj = self.env[
+            'product.attribute.value'
+        ]
+
         line_obj = self.env[
             'product.template.attribute.line'
         ]
@@ -11414,76 +11422,42 @@ class VendorImportJob(models.Model):
                 p.get("name") or ""
             ).strip()
 
-            # =========================================
-            # FORCE STABLE GROUP NAME
-            # =========================================
 
-            product_code_match = re.search(
-
-                r'([A-Z]{2,}[\-_]?\d+)',
-
-                raw_name,
-
-                re.I
+            variant_group = (
+                p.get("variant_group")
             )
 
-            if product_code_match:
 
-                stable_code = (
+            if variant_group:
 
-                    product_code_match
-                    .group(1)
-                    .replace('-', '')
-                    .replace('_', '')
-                    .upper()
-                )
-
-                p['_stable_group_code'] = stable_code
+                group_id = str(
+                    variant_group
+                ).strip().upper()
 
             else:
 
-                p['_stable_group_code'] = False
+                match = re.search(
 
-            # =====================================================
-            # STABLE EXCEL GROUPING
-            # =====================================================
+                    r'(?:Product\s*)?([A-Z]*\d+)',
 
-            match = re.search(
+                    raw_name,
 
-                r'(?:Product\s*)?([A-Z]*\d+)',
-
-                raw_name,
-
-                re.I
-            )
-
-            if match:
-
-                group_id = (
-
-                    p.get('_stable_group_code')
-
-                    or
-
-                    match.group(1).upper()
+                    re.I
                 )
 
-            else:
 
-                # =========================================
-                # SAFE FALLBACK
-                # =========================================
+                if match:
 
-                fallback_name = re.sub(
+                    group_id = (
+                        match.group(1)
+                        .upper()
+                    )
 
-                    r'[^A-Z0-9]+',
+                else:
 
-                    '_',
-
-                    raw_name.upper()
-                ).strip('_')
-
-                group_id = fallback_name
+                    group_id = (
+                        raw_name.upper()
+                    )
 
 
             grouped_products.setdefault(
@@ -11493,6 +11467,7 @@ class VendorImportJob(models.Model):
                 []
 
             ).append(p)
+
 
         grouped_keys = list(
             grouped_products.keys()
@@ -11570,12 +11545,6 @@ class VendorImportJob(models.Model):
                 )
 
                 # =========================================
-                # SAFE DEFERRED URL NAME
-                # =========================================
-
-                deferred_url_name = False
-
-                # =========================================
                 # SAFE URL EXTRACTION (NON-BLOCKING)
                 # =========================================
 
@@ -11590,16 +11559,13 @@ class VendorImportJob(models.Model):
                     main_product
                 )
 
-                original_name = (
+                name = (
 
                     main_product.get(
                         "name"
                     ) or ""
 
                 ).strip()
-
-
-                name = original_name
 
 
                 description = (
@@ -11609,116 +11575,62 @@ class VendorImportJob(models.Model):
                     ) or ""
                 )
 
-
                 # =====================================
                 # SAFE URL ENRICHMENT
                 # =====================================
 
                 if url_data:
 
-                    url_description = (
+                    description = (
 
                         url_data.get("description")
 
-                        or ""
-                    ).strip()
+                        or description
+                    )
 
-                    url_name = (
+                    if not name:
 
-                        url_data.get("name")
+                        name = (
 
-                        or ""
-                    ).strip()
+                            url_data.get("name")
 
-                    # =====================================
-                    # SAFE DESCRIPTION MERGE
-                    # =====================================
-
-                    if url_description:
-
-                        if description:
-
-                            description = f"""
-
-                {description}
-
-                {url_description}
-                """.strip()
-
-                        else:
-
-                            description = url_description
-
-                    # =====================================
-                    # SAFE NAME ENRICHMENT
-                    # =====================================
-
-                    if url_name:
-
-                        existing_name_clean = re.sub(
-
-                            r'[^A-Z0-9]+',
-
-                            '',
-
-                            (name or '').upper()
+                            or name
                         )
-
-                        # =====================================
-                        # ONLY UPGRADE WEAK/GENERIC NAMES
-                        # =====================================
-
-                        weak_name_patterns = [
-
-                            r'^PRODUCT[_\-\s]*\d+$',
-
-                            r'^[A-Z]*\d+$',
-
-                            r'^ITEM[_\-\s]*\d+$'
-                        ]
-
-                        is_weak_name = any(
-
-                            re.match(pattern, existing_name_clean)
-
-                            for pattern in weak_name_patterns
-                        )
-
-
-                        if is_weak_name:
-
-                            _logger.warning(
-
-                                f"[URL NAME DEFERRED] "
-
-                                f"{group_id} "
-
-                                f"| preserved grouping name="
-                                f"{name}"
-                            )
-
-                            # =====================================
-                            # IMPORTANT:
-                            # DO NOT OVERRIDE NAME YET
-                            # Variant grouping depends on
-                            # stable AI/generated identity
-                            # =====================================
-
-                            deferred_url_name = url_name
-
-                        else:
-
-                            deferred_url_name = False
 
                     _logger.warning(
 
                         f"[URL DATA APPLIED] "
 
-                        f"{group_id} "
+                        f"{group_id}"
+                    )
 
-                        f"| desc={'yes' if url_description else 'no'} "
+                # =====================================
+                # URL DATA ENRICHMENT
+                # =====================================
 
-                        f"| name={'yes' if url_name else 'no'}"
+                if url_data:
+
+                    description = (
+
+                        url_data.get("description")
+
+                        or description
+                    )
+
+                    if not name:
+
+                        name = (
+
+                            url_data.get("name")
+
+                            or name
+                        )
+
+                    _logger.warning(
+
+                        f"[URL DATA APPLIED] "
+
+                        f"{group_id}"
                     )
 
                 raw_category = (
@@ -11886,9 +11798,6 @@ class VendorImportJob(models.Model):
                         'description_sale':
                             description,
 
-                        'description': 
-                            description,
-
                        'type': 'consu',
 
                         'categ_id':
@@ -11928,16 +11837,6 @@ class VendorImportJob(models.Model):
                             'image_1920'
                         ] = image
 
-                    _logger.warning(
-
-                        f"[FINAL PRODUCT DATA] "
-
-                        f"group={group_id} "
-
-                        f"| desc_len={len(description or '')} "
-
-                        f"| has_url_data={'yes' if url_data else 'no'}"
-                    )
 
                     product = product_obj.create(
                         vals
@@ -12013,10 +11912,10 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # RAW ATTRIBUTE VALUE
+                    # DETECT ATTRIBUTE VALUE
                     # =============================================
 
-                    raw_attr_value = (
+                    attr_value = str(
 
                         item.get("color")
 
@@ -12032,84 +11931,11 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                        or ""
+                        or f"Variant {idx+1}"
 
-                    )
-
-                    attr_value = str(
-                        raw_attr_value
                     ).strip()
 
-                    # =============================================
-                    # EMPTY COLOR PROTECTION
-                    # =============================================
-
                     if not attr_value:
-
-                        invalid_variant = True
-
-                    else:
-
-                        invalid_variant = False
-
-
-                    # =============================================
-                    # INVALID COLOR DETECTION
-                    # =============================================
-
-                    # numeric-only values
-                    if attr_value.isdigit():
-
-                        invalid_variant = True
-
-                    # short internal codes
-                    elif re.match(r'^(clr|var|opt|id)[\-_]?\d+$', attr_value, re.I):
-
-                        invalid_variant = True
-
-                    # generic variant labels
-                    elif re.match(r'^variant\s*\d+$', attr_value, re.I):
-
-                        invalid_variant = True
-
-
-                    # meaningless tiny values
-                    elif (
-
-                        len(attr_value) <= 1
-
-                        or
-
-                        attr_value.lower().strip() in [
-
-                            'n/a',
-
-                            'na',
-
-                            'null',
-
-                            'none',
-
-                            'unknown',
-
-                            '-',
-
-                            '--',
-
-                            '...',
-
-                            '?'
-                        ]
-                    ):
-
-                        invalid_variant = True
-
-
-                    # =============================================
-                    # IMAGE COLOR FALLBACK
-                    # =============================================
-
-                    if invalid_variant:
 
                         detected_color = self._detect_basic_image_color(
                             item.get("image")
@@ -12123,22 +11949,26 @@ class VendorImportJob(models.Model):
 
                             _logger.warning(
 
-                                f"[EXCEL IMAGE COLOR DETECTED] "
+                                f"[IMAGE COLOR FALLBACK] "
 
-                                f"{raw_attr_value} -> {detected_color}"
+                                f"{detected_color}"
                             )
 
                         else:
 
-                            attr_value = f"Variant {idx+1}"
 
-                            _logger.warning(
+                            attr_value = (
 
-                                f"[EXCEL COLOR FALLBACK FAILED] "
+                                item.get("vendor_code")
 
-                                f"{raw_attr_value}"
+                                or
+
+                                item.get("primary_code")
+
+                                or
+
+                                f"Code {idx+1}"
                             )
-
 
                     _logger.warning(
 
@@ -12151,68 +11981,123 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # REUSABLE ATTRIBUTE ENGINE
+                    # ATTRIBUTE
                     # =============================================
 
-                    attribute, value = self._get_or_create_attribute_and_value(
+                    attribute = attribute_obj.search([
 
-                        variant_attribute_name,
+                        (
+                            'name',
+                            '=',
+                            variant_attribute_name
+                        )
 
-                        attr_value
-                    )
+                    ], limit=1)
 
-                    # =========================================
-                    # TRANSLATE VARIANT VALUE
-                    # =========================================
 
-                    try:
+                    if not attribute:
 
-                        for lang_code in ['ru_RU', 'az_AZ']:
+                        attribute = attribute_obj.create({
 
-                            translated_variant = self._force_translate(
+                            'name': variant_attribute_name
 
-                                attr_value,
+                        })
 
-                                lang_code
-                            )
-
-                            if translated_variant:
-
-                                value.with_context(
-                                    lang=lang_code
-                                ).write({
-
-                                    'name': translated_variant
-                                })
-
-                                _logger.warning(
-
-                                    f"[VARIANT TRANSLATED] "
-
-                                    f"{attr_value} "
-
-                                    f"-> "
-
-                                    f"{translated_variant} "
-
-                                    f"({lang_code})"
-                                )
-
-                    except Exception as e:
 
                         _logger.warning(
 
-                            f"[VARIANT TRANSLATION ERROR] "
+                            f"[ATTRIBUTE CREATED] "
 
-                            f"{str(e)}"
+                            f"{variant_attribute_name}"
                         )
 
-                    _logger.warning(
 
-                        f"[ATTRIBUTE VALUE READY] "
+                    # =============================================
+                    # ATTRIBUTE VALUE
+                    # =============================================
 
-                        f"{attr_value}"
-                    )
+                    value = attribute_value_obj.search([
+
+                        (
+                            'name',
+                            '=',
+                            attr_value
+                        ),
+
+                        (
+                            'attribute_id',
+                            '=',
+                            attribute.id
+                        )
+
+                    ], limit=1)
+
+                    if not value:
+
+                        value = attribute_value_obj.create({
+
+                            'name': attr_value,
+
+                            'attribute_id': attribute.id
+                        })
+
+
+                        # =========================================
+                        # TRANSLATE VARIANT VALUE
+                        # =========================================
+
+                        try:
+
+                            for lang_code in ['ru_RU', 'az_AZ']:
+
+                                translated_variant = self._force_translate(
+
+                                    attr_value,
+
+                                    lang_code
+                                )
+
+
+                                if translated_variant:
+
+                                    value.with_context(
+                                        lang=lang_code
+                                    ).write({
+
+                                        'name': translated_variant
+                                    })
+
+
+                                    _logger.warning(
+
+                                        f"[VARIANT TRANSLATED] "
+
+                                        f"{attr_value} "
+
+                                        f"-> "
+
+                                        f"{translated_variant} "
+
+                                        f"({lang_code})"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[VARIANT TRANSLATION ERROR] "
+
+                                f"{str(e)}"
+                            )
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE VALUE CREATED] "
+
+                            f"{attr_value}"
+                        )
+
 
                     # =============================================
                     # TEMPLATE ATTRIBUTE LINE
@@ -12283,16 +12168,11 @@ class VendorImportJob(models.Model):
                                 f"| {attr_value}"
                             )
 
-                    # =============================================
-                    # FORCE VARIANT GENERATION
-                    # =============================================
-
-                    product._create_variant_ids()
 
                     # =============================================
                     # VARIANT IMAGE
                     # =============================================
-                   
+
                     variant_record = self.env[
                         'product.product'
                     ].search([
@@ -12335,35 +12215,7 @@ class VendorImportJob(models.Model):
                                 f"| {attr_value}"
                             )
 
-                # =============================================
-                # APPLY DEFERRED URL NAME SAFELY
-                # =============================================
 
-                if deferred_url_name:
-
-                    try:
-
-                        product.name = deferred_url_name
-
-                        _logger.warning(
-
-                            f"[URL NAME APPLIED POST-VARIANT] "
-
-                            f"{group_id} "
-
-                            f"| {deferred_url_name}"
-                        )
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"[URL NAME APPLY ERROR] "
-
-                            f"{group_id} "
-
-                            f"| {str(e)}"
-                        )
                 # =================================================
                 # SAVE PROGRESS
                 # =================================================
@@ -12427,42 +12279,11 @@ class VendorImportJob(models.Model):
                 "GROUP BATCH COMPLETE"
             )
 
-
             # =========================================
-            # FULL IMPORT COMPLETION CHECK
+            # FULL IMPORT COMPLETED
             # =========================================
 
-            all_ai_processed = (
-
-                self.excel_ai_index >= len(
-                    json.loads(
-                        self.extracted_text or "[]"
-                    )
-                )
-            )
-
-            all_groups_processed = (
-
-                self.excel_created_index >= len(grouped_keys)
-            )
-
-           
-            if (
-
-                self.is_excel_parsed
-
-                and
-
-                all_ai_processed
-
-                and
-
-                all_groups_processed
-
-                and
-
-                not self.excel_url_processing
-            ):
+            if self.is_excel_parsed:
 
                 _logger.warning(
                     "[EXCEL IMPORT COMPLETE] ✅"
@@ -12480,15 +12301,16 @@ class VendorImportJob(models.Model):
 
                 self.state = 'done'
 
-                #=====email notification============
-                if not self.completion_email_sent:
-
-                    self.send_completion_email()
-
                 # cleanup URL queue
                 self.excel_url_processing = False
 
+                self.excel_url_queue = False
+
                 self.excel_url_index = 0
+
+            # =========================================
+            # MORE PARSE ROWS REMAIN
+            # =========================================
 
             else:
 
@@ -12496,13 +12318,31 @@ class VendorImportJob(models.Model):
 
                     "[EXCEL FLOW] "
 
-                    "MORE AI/PARSE DATA REMAIN"
+                    "RETURN TO excel_parsing"
                 )
+
+                # IMPORTANT:
+                # KEEP CURRENT AI STATE
+                # for next parse batch
 
                 self.state = 'excel_parsing'
 
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    f"NEXT PARSE INDEX="
+
+                    f"{self.excel_parse_index}"
+                )
+
+        else:
+
+            self.state = 'excel_creating'
+
 
         self._safe_commit_progress()
+
 
 
     #=====excel group url update====================================
