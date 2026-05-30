@@ -1747,9 +1747,9 @@ class VendorImportJob(models.Model):
     }
 
 
-    # =====================================
+    # =========================================
     # REUSABLE ATTRIBUTE ENGINE
-    # =====================================
+    # =========================================
 
     def _get_or_create_attribute_and_value(
 
