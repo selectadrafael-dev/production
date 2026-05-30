@@ -2098,10 +2098,127 @@ class VendorImportJob(models.Model):
                 'product.attribute.value'
             ].create(value_vals)
 
+        # =====================================
+        # PATCH EXISTING COLOR VALUES
+        # =====================================
+
+        elif is_color_attribute:
+
+            existing_html = (
+                value.html_color or ""
+            ).strip()
+
+            if not existing_html:
+
+                normalized_color = " ".join(
+
+                    attr_value
+                    .lower()
+                    .replace("-", " ")
+                    .replace("_", " ")
+                    .split()
+                )
+
+                COLOR_ALIASES = {
+
+                    'lt blue': 'light blue',
+                    'dk blue': 'navy blue',
+                    'dk navy': 'navy blue',
+                    'royal': 'royal blue',
+                    'lime': 'lime green',
+                    'charcoal marl': 'charcoal',
+                    'heather navy': 'navy blue',
+                    'heather blue': 'blue',
+                    'heather grey': 'grey',
+                    'heather gray': 'gray',
+                    'sky': 'sky blue',
+                    'off white': 'white',
+                    'natural': 'beige',
+                }
+
+                normalized_color = COLOR_ALIASES.get(
+
+                    normalized_color,
+
+                    normalized_color
+                )
+
+                color_hex = self.COLOR_HEX_MAP.get(
+                    normalized_color
+                )
+
+                # =====================================
+                # FALLBACK PARTIAL MATCH
+                # =====================================
+
+                if not color_hex:
+
+                    best_match = None
+                    best_length = 0
+
+                    for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                        if key in normalized_color:
+
+                            if len(key) > best_length:
+
+                                best_match = (
+                                    key,
+                                    hex_value
+                                )
+
+                                best_length = len(key)
+
+                    if best_match:
+
+                        matched_key, matched_value = best_match
+
+                        color_hex = matched_value
+
+                        _logger.warning(
+
+                            f"[PATCH COLOR MATCH] "
+
+                            f"{attr_value} "
+
+                            f"→ {matched_key} "
+
+                            f"→ {matched_value}"
+                        )
+
+                # =====================================
+                # APPLY PATCHED HTML COLOR
+                # =====================================
+
+                if color_hex:
+
+                    value.write({
+
+                        'html_color': color_hex
+                    })
+
+                    _logger.warning(
+
+                        f"[PATCH EXISTING COLOR] "
+
+                        f"{attr_value} "
+
+                        f"→ {color_hex}"
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[PATCH FAILED NO HEX] "
+
+                        f"{attr_value}"
+                    )
+
         return attribute, value
 
 
-    #------------parse url------------------------------------
+    #------------parse url-----------------------------------
 
     def parse_url(self):
 
