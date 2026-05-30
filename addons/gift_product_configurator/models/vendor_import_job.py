@@ -1889,7 +1889,6 @@ class VendorImportJob(models.Model):
 
                     attr_value
                     .lower()
-                    .replace("/", " ")
                     .replace("-", " ")
                     .replace("_", " ")
                     .split()
