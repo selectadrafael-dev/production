@@ -1746,6 +1746,7 @@ class VendorImportJob(models.Model):
         "multicolor": "#CCCCCC",
     }
 
+
     # =====================================
     # REUSABLE ATTRIBUTE ENGINE
     # =====================================
@@ -1880,11 +1881,6 @@ class VendorImportJob(models.Model):
 
             if is_color_attribute:
 
-                # color_hex = self.COLOR_HEX_MAP.get(
-
-                #     attr_value.lower()
-                # )
-
                 # =====================================
                 # SMART COLOR NORMALIZATION
                 # =====================================
@@ -1897,6 +1893,34 @@ class VendorImportJob(models.Model):
                     .replace("-", " ")
                     .replace("_", " ")
                     .split()
+                )
+
+                # =====================================
+                # COLOR ALIAS NORMALIZATION
+                # =====================================
+
+                COLOR_ALIASES = {
+
+                    'lt blue': 'light blue',
+                    'dk blue': 'navy blue',
+                    'dk navy': 'navy blue',
+                    'royal': 'royal blue',
+                    'lime': 'lime green',
+                    'charcoal marl': 'charcoal',
+                    'heather navy': 'navy blue',
+                    'heather blue': 'blue',
+                    'heather grey': 'grey',
+                    'heather gray': 'gray',
+                    'sky': 'sky blue',
+                    'off white': 'white',
+                    'natural': 'beige',
+                }
+
+                normalized_color = COLOR_ALIASES.get(
+
+                    normalized_color,
+
+                    normalized_color
                 )
 
                 color_hex = None
