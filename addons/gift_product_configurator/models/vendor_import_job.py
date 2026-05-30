@@ -5205,7 +5205,7 @@ class VendorImportJob(models.Model):
         return
 
 
-  # =========== PDF OPENAI ================================
+    # =========== PDF OPENAI ================================
     
     def send_to_openai_pdf(self):
 
@@ -7535,7 +7535,6 @@ class VendorImportJob(models.Model):
     # =======================================
     # ADVANCED DOMINANT COLOR DETECTION
     # =======================================
-    
     
     def _detect_dominant_color(
 
@@ -11208,6 +11207,7 @@ class VendorImportJob(models.Model):
 
             self.env.invalidate_all()
 
+
     #==========create excel product===========================
     def create_products_excel(self):
 
@@ -11294,14 +11294,6 @@ class VendorImportJob(models.Model):
             'product.category'
         ]
 
-        attribute_obj = self.env[
-            'product.attribute'
-        ]
-
-        attribute_value_obj = self.env[
-            'product.attribute.value'
-        ]
-
         line_obj = self.env[
             'product.template.attribute.line'
         ]
@@ -11363,42 +11355,42 @@ class VendorImportJob(models.Model):
                 p.get("name") or ""
             ).strip()
 
+            # =====================================================
+            # STABLE EXCEL GROUPING
+            # =====================================================
 
-            variant_group = (
-                p.get("variant_group")
+            match = re.search(
+
+                r'(?:Product\s*)?([A-Z]*\d+)',
+
+                raw_name,
+
+                re.I
             )
 
+            if match:
 
-            if variant_group:
-
-                group_id = str(
-                    variant_group
-                ).strip().upper()
+                group_id = (
+                    match.group(1)
+                    .upper()
+                )
 
             else:
 
-                match = re.search(
+                # =========================================
+                # SAFE FALLBACK
+                # =========================================
 
-                    r'(?:Product\s*)?([A-Z]*\d+)',
+                fallback_name = re.sub(
 
-                    raw_name,
+                    r'[^A-Z0-9]+',
 
-                    re.I
-                )
+                    '_',
 
+                    raw_name.upper()
+                ).strip('_')
 
-                if match:
-
-                    group_id = (
-                        match.group(1)
-                        .upper()
-                    )
-
-                else:
-
-                    group_id = (
-                        raw_name.upper()
-                    )
+                group_id = fallback_name
 
 
             grouped_products.setdefault(
@@ -11408,7 +11400,6 @@ class VendorImportJob(models.Model):
                 []
 
             ).append(p)
-
 
         grouped_keys = list(
             grouped_products.keys()
@@ -11500,13 +11491,16 @@ class VendorImportJob(models.Model):
                     main_product
                 )
 
-                name = (
+                original_name = (
 
                     main_product.get(
                         "name"
                     ) or ""
 
                 ).strip()
+
+
+                name = original_name
 
 
                 description = (
@@ -11557,12 +11551,52 @@ class VendorImportJob(models.Model):
                             description = url_description
 
                     # =====================================
-                    # ONLY FILL EMPTY NAME
+                    # SAFE NAME ENRICHMENT
                     # =====================================
 
-                    if not name and url_name:
+                    if url_name:
 
-                        name = url_name
+                        existing_name_clean = re.sub(
+
+                            r'[^A-Z0-9]+',
+
+                            '',
+
+                            (name or '').upper()
+                        )
+
+                        # =====================================
+                        # ONLY UPGRADE WEAK/GENERIC NAMES
+                        # =====================================
+
+                        weak_name_patterns = [
+
+                            r'^PRODUCT[_\-\s]*\d+$',
+
+                            r'^[A-Z]*\d+$',
+
+                            r'^ITEM[_\-\s]*\d+$'
+                        ]
+
+                        is_weak_name = any(
+
+                            re.match(pattern, existing_name_clean)
+
+                            for pattern in weak_name_patterns
+                        )
+
+                        if is_weak_name:
+
+                            name = url_name
+
+                            _logger.warning(
+
+                                f"[URL NAME ENRICHED] "
+
+                                f"{group_id} "
+
+                                f"| {url_name}"
+                            )
 
                     _logger.warning(
 
@@ -11894,12 +11928,22 @@ class VendorImportJob(models.Model):
                         raw_attr_value
                     ).strip()
 
+                    # =============================================
+                    # EMPTY COLOR PROTECTION
+                    # =============================================
+
+                    if not attr_value:
+
+                        invalid_variant = True
+
+                    else:
+
+                        invalid_variant = False
+
 
                     # =============================================
                     # INVALID COLOR DETECTION
                     # =============================================
-
-                    invalid_variant = False
 
                     # numeric-only values
                     if attr_value.isdigit():
@@ -11916,8 +11960,35 @@ class VendorImportJob(models.Model):
 
                         invalid_variant = True
 
+
                     # meaningless tiny values
-                    elif len(attr_value) <= 1:
+                    elif (
+
+                        len(attr_value) <= 1
+
+                        or
+
+                        attr_value.lower().strip() in [
+
+                            'n/a',
+
+                            'na',
+
+                            'null',
+
+                            'none',
+
+                            'unknown',
+
+                            '-',
+
+                            '--',
+
+                            '...',
+
+                            '?'
+                        ]
+                    ):
 
                         invalid_variant = True
 
@@ -12100,11 +12171,16 @@ class VendorImportJob(models.Model):
                                 f"| {attr_value}"
                             )
 
+                    # =============================================
+                    # FORCE VARIANT GENERATION
+                    # =============================================
+
+                    product._create_variant_ids()
 
                     # =============================================
                     # VARIANT IMAGE
                     # =============================================
-
+                   
                     variant_record = self.env[
                         'product.product'
                     ].search([
