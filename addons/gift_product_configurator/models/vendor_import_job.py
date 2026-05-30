@@ -1949,6 +1949,42 @@ class VendorImportJob(models.Model):
                 if not color_hex:
 
                     # =====================================
+                    # REMOVE SECONDARY COLOR CONTEXT
+                    # =====================================
+
+                    primary_color_text = normalized_color
+
+                    split_keywords = [
+
+                        " with ",
+                        " trim",
+                        " piping",
+                        " contrast",
+                        "/",
+                        "&",
+                        ","
+                    ]
+
+                    for splitter in split_keywords:
+
+                        if splitter in primary_color_text:
+
+                            primary_color_text = (
+                                primary_color_text
+                                .split(splitter)[0]
+                                .strip()
+                            )
+
+                    _logger.warning(
+
+                        f"[PRIMARY COLOR PARSED] "
+
+                        f"raw={normalized_color} "
+
+                        f"primary={primary_color_text}"
+                    )
+
+                    # =====================================
                     # LONGEST COLOR MATCH PRIORITY
                     # =====================================
 
@@ -1956,13 +1992,13 @@ class VendorImportJob(models.Model):
 
                     best_length = 0
 
-                    for key, value in self.COLOR_HEX_MAP.items():
+                    for key, hex_value in self.COLOR_HEX_MAP.items():
 
-                        if key in normalized_color:
+                        if key in primary_color_text:
 
                             if len(key) > best_length:
 
-                                best_match = (key, value)
+                                best_match = (key, hex_value)
 
                                 best_length = len(key)
 
