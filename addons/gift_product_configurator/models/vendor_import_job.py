@@ -11379,6 +11379,36 @@ class VendorImportJob(models.Model):
                 p.get("name") or ""
             ).strip()
 
+            # =========================================
+            # FORCE STABLE GROUP NAME
+            # =========================================
+
+            product_code_match = re.search(
+
+                r'([A-Z]{2,}[\-_]?\d+)',
+
+                raw_name,
+
+                re.I
+            )
+
+            if product_code_match:
+
+                stable_code = (
+
+                    product_code_match
+                    .group(1)
+                    .replace('-', '')
+                    .replace('_', '')
+                    .upper()
+                )
+
+                p['_stable_group_code'] = stable_code
+
+            else:
+
+                p['_stable_group_code'] = False
+
             # =====================================================
             # STABLE EXCEL GROUPING
             # =====================================================
@@ -11395,8 +11425,12 @@ class VendorImportJob(models.Model):
             if match:
 
                 group_id = (
-                    match.group(1)
-                    .upper()
+
+                    p.get('_stable_group_code')
+
+                    or
+
+                    match.group(1).upper()
                 )
 
             else:
@@ -11499,6 +11533,12 @@ class VendorImportJob(models.Model):
                 main_product = (
                     group_items[0]
                 )
+
+                # =========================================
+                # SAFE DEFERRED URL NAME
+                # =========================================
+
+                deferred_url_name = False
 
                 # =========================================
                 # SAFE URL EXTRACTION (NON-BLOCKING)
@@ -11609,18 +11649,31 @@ class VendorImportJob(models.Model):
                             for pattern in weak_name_patterns
                         )
 
-                        if is_weak_name:
 
-                            name = url_name
+                        if is_weak_name:
 
                             _logger.warning(
 
-                                f"[URL NAME ENRICHED] "
+                                f"[URL NAME DEFERRED] "
 
                                 f"{group_id} "
 
-                                f"| {url_name}"
+                                f"| preserved grouping name="
+                                f"{name}"
                             )
+
+                            # =====================================
+                            # IMPORTANT:
+                            # DO NOT OVERRIDE NAME YET
+                            # Variant grouping depends on
+                            # stable AI/generated identity
+                            # =====================================
+
+                            deferred_url_name = url_name
+
+                        else:
+
+                            deferred_url_name = False
 
                     _logger.warning(
 
@@ -12247,7 +12300,35 @@ class VendorImportJob(models.Model):
                                 f"| {attr_value}"
                             )
 
+                # =============================================
+                # APPLY DEFERRED URL NAME SAFELY
+                # =============================================
 
+                if deferred_url_name:
+
+                    try:
+
+                        product.name = deferred_url_name
+
+                        _logger.warning(
+
+                            f"[URL NAME APPLIED POST-VARIANT] "
+
+                            f"{group_id} "
+
+                            f"| {deferred_url_name}"
+                        )
+
+                    except Exception as e:
+
+                        _logger.warning(
+
+                            f"[URL NAME APPLY ERROR] "
+
+                            f"{group_id} "
+
+                            f"| {str(e)}"
+                        )
                 # =================================================
                 # SAVE PROGRESS
                 # =================================================
