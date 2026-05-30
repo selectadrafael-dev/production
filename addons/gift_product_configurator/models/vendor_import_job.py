@@ -2119,3 +2119,4 @@ class VendorImportJob(models.Model):
     #=======keep cron alive================
     def keep_alive(self):
         _logger.warning("KEEP ALIVE PING")
+        
