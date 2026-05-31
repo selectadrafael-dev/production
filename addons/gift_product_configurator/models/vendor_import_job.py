@@ -9648,6 +9648,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
+
     #==========create pdf product====================================
 
     def create_products_pdf(self):
@@ -11385,6 +11386,7 @@ class VendorImportJob(models.Model):
 
 
     #==========create excel product===========================
+
     def create_products_excel(self):
 
         import json
@@ -11632,7 +11634,6 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROCESS GROUPS
         # =====================================================
-        url_cache = {}
 
         for group_idx in range(start, end):
 
@@ -11661,20 +11662,10 @@ class VendorImportJob(models.Model):
                     group_items[0]
                 )
 
-                # =========================================
-                # SAFE URL EXTRACTION (NON-BLOCKING)
-                # =========================================
-
-                url_data = self._enrich_group_with_url_data(
-
-                    group_items,
-
-                    url_cache
-                )
-
                 fingerprint = self._build_vendor_fingerprint(
                     main_product
                 )
+
 
                 name = (
 
@@ -11692,63 +11683,6 @@ class VendorImportJob(models.Model):
                     ) or ""
                 )
 
-                # =====================================
-                # SAFE URL ENRICHMENT
-                # =====================================
-
-                if url_data:
-
-                    description = (
-
-                        url_data.get("description")
-
-                        or description
-                    )
-
-                    if not name:
-
-                        name = (
-
-                            url_data.get("name")
-
-                            or name
-                        )
-
-                    _logger.warning(
-
-                        f"[URL DATA APPLIED] "
-
-                        f"{group_id}"
-                    )
-
-                # =====================================
-                # URL DATA ENRICHMENT
-                # =====================================
-
-                if url_data:
-
-                    description = (
-
-                        url_data.get("description")
-
-                        or description
-                    )
-
-                    if not name:
-
-                        name = (
-
-                            url_data.get("name")
-
-                            or name
-                        )
-
-                    _logger.warning(
-
-                        f"[URL DATA APPLIED] "
-
-                        f"{group_id}"
-                    )
 
                 raw_category = (
 
@@ -11806,8 +11740,7 @@ class VendorImportJob(models.Model):
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                #vendor_id = self.partner_id.id if self.partner_id else False
-                vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
+                vendor_id = self.partner_id.id if self.partner_id else False
 
                 product = False
 
@@ -12459,7 +12392,6 @@ class VendorImportJob(models.Model):
 
 
         self._safe_commit_progress()
-
 
 
     #=====excel group url update====================================
