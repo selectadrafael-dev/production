@@ -11532,24 +11532,56 @@ class VendorImportJob(models.Model):
 
                 ).strip()
 
-                match = re.search(
 
-                    r'(?:Product\s*)?([A-Z]*\d+)',
+                excel_group = (
 
-                    raw_name,
+                    p.get("group")
 
-                    re.I
-                )
+                    or
 
-                if match:
+                    p.get("product_group")
 
-                    group_id = (
-                        match.group(1).upper()
-                    )
+                    or
+
+                    p.get("group_id")
+
+                    or ""
+
+                ).strip()
+
+
+                # =====================================================
+                # AI GROUP ID
+                # =====================================================
+
+                if excel_group:
+
+                    group_id = excel_group.upper()
+
+                # =====================================================
+                # FALLBACK REGEX
+                # =====================================================
 
                 else:
 
-                    group_id = raw_name.upper()
+                    match = re.search(
+
+                        r'(?:Product\s*)?([A-Z]*\d+)',
+
+                        raw_name,
+
+                        re.I
+                    )
+
+                    if match:
+
+                        group_id = (
+                            match.group(1).upper()
+                        )
+
+                    else:
+
+                        group_id = raw_name.upper()
 
                 grouped_products.setdefault(
 
