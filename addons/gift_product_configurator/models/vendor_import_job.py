@@ -1991,16 +1991,34 @@ class VendorImportJob(models.Model):
 
                     best_length = 0
 
+                    # for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                    #     if key in primary_color_text:
+
+                    #         if len(key) > best_length:
+
+                    #             best_match = (key, hex_value)
+
+                    #             best_length = len(key)
+
                     for key, hex_value in self.COLOR_HEX_MAP.items():
 
-                        if key in primary_color_text:
+                        key_words = key.split()
 
-                            if len(key) > best_length:
+                        primary_words = primary_color_text.split()
+
+                        # =====================================
+                        # EXACT WORD MATCH
+                        # =====================================
+
+                        if all(word in primary_words for word in key_words):
+
+                            if len(key_words) > best_length:
 
                                 best_match = (key, hex_value)
 
-                                best_length = len(key)
-
+                                best_length = len(key_words)
+                                
                     if best_match:
 
                         matched_key, matched_value = best_match
@@ -2158,16 +2176,24 @@ class VendorImportJob(models.Model):
 
                     for key, hex_value in self.COLOR_HEX_MAP.items():
 
-                        if key in normalized_color:
+                        key_words = key.split()
 
-                            if len(key) > best_length:
+                        normalized_words = normalized_color.split()
+
+                        # =====================================
+                        # EXACT WORD MATCH
+                        # =====================================
+
+                        if all(word in normalized_words for word in key_words):
+
+                            if len(key_words) > best_length:
 
                                 best_match = (
                                     key,
                                     hex_value
                                 )
 
-                                best_length = len(key)
+                                best_length = len(key_words)
 
                     if best_match:
 
@@ -11386,7 +11412,7 @@ class VendorImportJob(models.Model):
 
 
     #==========create excel product=================================
-
+    
     def create_products_excel(self):
 
         import json
@@ -11634,6 +11660,7 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROCESS GROUPS
         # =====================================================
+        url_cache = {}
 
         for group_idx in range(start, end):
 
@@ -11662,10 +11689,20 @@ class VendorImportJob(models.Model):
                     group_items[0]
                 )
 
+                # =========================================
+                # SAFE URL EXTRACTION (NON-BLOCKING)
+                # =========================================
+
+                url_data = self._enrich_group_with_url_data(
+
+                    group_items,
+
+                    url_cache
+                )
+
                 fingerprint = self._build_vendor_fingerprint(
                     main_product
                 )
-
 
                 name = (
 
@@ -11683,6 +11720,63 @@ class VendorImportJob(models.Model):
                     ) or ""
                 )
 
+                # =====================================
+                # SAFE URL ENRICHMENT
+                # =====================================
+
+                if url_data:
+
+                    description = (
+
+                        url_data.get("description")
+
+                        or description
+                    )
+
+                    if not name:
+
+                        name = (
+
+                            url_data.get("name")
+
+                            or name
+                        )
+
+                    _logger.warning(
+
+                        f"[URL DATA APPLIED] "
+
+                        f"{group_id}"
+                    )
+
+                # =====================================
+                # URL DATA ENRICHMENT
+                # =====================================
+
+                if url_data:
+
+                    description = (
+
+                        url_data.get("description")
+
+                        or description
+                    )
+
+                    if not name:
+
+                        name = (
+
+                            url_data.get("name")
+
+                            or name
+                        )
+
+                    _logger.warning(
+
+                        f"[URL DATA APPLIED] "
+
+                        f"{group_id}"
+                    )
 
                 raw_category = (
 
@@ -11740,7 +11834,8 @@ class VendorImportJob(models.Model):
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                vendor_id = self.partner_id.id if self.partner_id else False
+                #vendor_id = self.partner_id.id if self.partner_id else False
+                vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
 
                 product = False
 
