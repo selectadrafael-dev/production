@@ -11412,72 +11412,107 @@ class VendorImportJob(models.Model):
 
     
     #==========create excel product=================================
-
     def create_products_excel(self):
 
         import json
         import re
 
-        if not self.ai_response or not self.extracted_text:
+        _logger.warning(
+            "[EXCEL CREATE] START"
+        )
+
+
+        # =====================================================
+        # VALIDATION
+        # =====================================================
+
+        if not self.ai_response:
 
             _logger.warning(
-                "NO AI OR EXTRACTED DATA → STOP"
+                "[EXCEL CREATE] NO AI RESPONSE"
             )
 
             return
 
-        product_obj = self.env['product.template']
-
-        category_obj = self.env['product.category']
 
         try:
 
-            pages = json.loads(
-                self.extracted_text
-            )
-
             ai_pages = json.loads(
-                self.ai_response
+                self.ai_response or "[]"
             )
 
-        except Exception:
+        except Exception as e:
 
-            _logger.error(
-                "INVALID JSON → STOP"
+            _logger.exception(
+
+                f"[EXCEL CREATE] "
+
+                f"INVALID AI JSON "
+
+                f"| {str(e)}"
             )
 
             return
 
-        _logger.warning(
-            "CREATING PRODUCTS (EXCEL STABLE MODE)"
+
+        if not ai_pages:
+
+            _logger.warning(
+                "[EXCEL CREATE] EMPTY AI"
+            )
+
+            return
+
+
+        ai_page = ai_pages[0]
+
+        products = ai_page.get(
+            "products",
+            []
         )
 
-        created_count = 0
 
-        grouped_products = {}
+        _logger.warning(
 
-        CATEGORY_MAPPING = {
+            f"[EXCEL CREATE] "
 
-            "t-shirt": "Apparel",
-            "shirt": "Apparel",
-            "polo": "Apparel",
+            f"RAW PRODUCTS={len(products)}"
+        )
 
-            "bag": "Bags",
-            "backpack": "Bags",
 
-            "cap": "Headwear",
-            "hat": "Headwear",
+        if not products:
 
-            "bottle": "Drinkware",
-            "drinkware": "Drinkware",
+            return
 
-            "pen": "Stationery",
-            "notebook": "Stationery",
 
-            "powerbank": "Electronics",
-            "charger": "Electronics",
-            "laptop": "Electronics",
-        }
+        # =====================================================
+        # MODELS
+        # =====================================================
+
+        product_obj = self.env[
+            'product.template'
+        ]
+
+        category_obj = self.env[
+            'product.category'
+        ]
+
+        attribute_obj = self.env[
+            'product.attribute'
+        ]
+
+        attribute_value_obj = self.env[
+            'product.attribute.value'
+        ]
+
+        line_obj = self.env[
+            'product.template.attribute.line'
+        ]
+
+
+        # =====================================================
+        # ROOT CATEGORY
+        # =====================================================
 
         parent_category = category_obj.search([
 
@@ -11485,396 +11520,812 @@ class VendorImportJob(models.Model):
 
         ], limit=1)
 
+
         if not parent_category:
 
             parent_category = category_obj.create({
 
                 'name': "All Products"
+
             })
 
+
         # =====================================================
-        # PAGE LOOP
+        # CATEGORY MAP
         # =====================================================
 
-        for page_data in pages:
+        CATEGORY_MAPPING = {
 
-            page_no = page_data.get("page")
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
+        }
 
-            ai_page = next(
 
-                (
-                    p for p in ai_pages
-                    if p.get("page") == page_no
-                ),
+        # =====================================================
+        # GROUP PRODUCTS
+        # =====================================================
 
-                None
+        grouped_products = {}
+
+
+        for p in products:
+
+            raw_name = (
+                p.get("name") or ""
+            ).strip()
+
+
+            variant_group = (
+                p.get("variant_group")
             )
 
-            if not ai_page:
-                continue
 
-            products = ai_page.get("products", [])
+            if variant_group:
 
-            if not products:
-                continue
+                group_id = str(
+                    variant_group
+                ).strip().upper()
 
-            # =====================================================
-            # GROUP PRODUCTS
-            # =====================================================
+            else:
 
-            grouped_products = {}
+                match = re.search(
 
-            for p in products:
+                    r'(?:Product\s*)?([A-Z]*\d+)',
 
-                raw_name = (
+                    raw_name,
 
-                    p.get("name") or ""
-
-                ).strip()
+                    re.I
+                )
 
 
-                excel_group = (
+                if match:
 
-                    p.get("group")
-
-                    or
-
-                    p.get("product_group")
-
-                    or
-
-                    p.get("group_id")
-
-                    or ""
-
-                ).strip()
-
-
-                # =====================================================
-                # AI GROUP ID
-                # =====================================================
-
-                if excel_group:
-
-                    group_id = excel_group.upper()
-
-                # ======================================================
-                # FALLBACK REGEX
-                # ======================================================
+                    group_id = (
+                        match.group(1)
+                        .upper()
+                    )
 
                 else:
 
-                    match = re.search(
-
-                        r'(?:Product\s*)?([A-Z]*\d+)',
-
-                        raw_name,
-
-                        re.I
+                    group_id = (
+                        raw_name.upper()
                     )
 
-                    if match:
 
-                        group_id = (
-                            match.group(1).upper()
-                        )
+            grouped_products.setdefault(
 
-                    else:
+                group_id,
 
-                        group_id = raw_name.upper()
+                []
 
-                grouped_products.setdefault(
+            ).append(p)
 
-                    group_id,
 
-                    []
+        grouped_keys = list(
+            grouped_products.keys()
+        )
 
-                ).append(p)
 
-            _logger.warning(
+        _logger.warning(
 
-                f"[EXCEL] GROUPS → "
+            f"[EXCEL GROUPS] "
 
-                f"{len(grouped_products)}"
-            )
+            f"TOTAL={len(grouped_keys)}"
+        )
 
-            # =====================================================
-            # GROUP LOOP
-            # =====================================================
 
-            for group_id, group_items in grouped_products.items():
+        # =====================================================
+        # BATCH GROUPS
+        # =====================================================
 
-                try:
+        BATCH_SIZE = 10
 
-                    main_product = group_items[0]
+        start = (
+            self.excel_created_index or 0
+        )
 
-                    name = (
+        end = min(
 
-                        main_product.get("name") or ""
+            start + BATCH_SIZE,
 
-                    ).strip()
+            len(grouped_keys)
+        )
 
-                    description = main_product.get(
 
-                        "description",
+        _logger.warning(
 
-                        ""
+            f"[EXCEL BATCH] "
+
+            f"{start} → {end}"
+        )
+
+
+        created_count = 0
+        merged_count = 0
+
+
+        # =====================================================
+        # PROCESS GROUPS
+        # =====================================================
+
+        for group_idx in range(start, end):
+
+            try:
+
+                group_id = grouped_keys[
+                    group_idx
+                ]
+
+                group_items = grouped_products[
+                    group_id
+                ]
+
+
+                _logger.warning(
+
+                    f"[EXCEL GROUP] "
+
+                    f"{group_id} "
+
+                    f"| items={len(group_items)}"
+                )
+
+
+                main_product = (
+                    group_items[0]
+                )
+
+                fingerprint = self._build_vendor_fingerprint(
+                    main_product
+                )
+
+
+                name = (
+
+                    main_product.get(
+                        "name"
+                    ) or ""
+
+                ).strip()
+
+
+                description = (
+
+                    main_product.get(
+                        "description"
+                    ) or ""
+                )
+
+
+                raw_category = (
+
+                    main_product.get(
+                        "category"
+                    ) or ""
+
+                ).lower()
+
+
+                mapped_category = (
+                    "General"
+                )
+
+
+                for key, val in CATEGORY_MAPPING.items():
+
+                    if key in raw_category:
+
+                        mapped_category = val
+
+                        break
+
+
+                category = category_obj.search([
+
+                    (
+                        'name',
+                        '=',
+                        mapped_category
+                    ),
+
+                    (
+                        'parent_id',
+                        '=',
+                        parent_category.id
                     )
 
-                    raw_category = (
+                ], limit=1)
 
-                        main_product.get("category") or ""
 
-                    ).lower()
+                if not category:
 
-                    mapped_category = "General"
+                    category = category_obj.create({
 
-                    for key, val in CATEGORY_MAPPING.items():
+                        'name':
+                            mapped_category,
 
-                        if key in raw_category:
+                        'parent_id':
+                            parent_category.id
+                    })
 
-                            mapped_category = val
 
-                            break
+                # ================================================
+                # FIND BY PRODUCT CODE FIRST
+                # ================================================
 
-                    category = category_obj.search([
+                vendor_id = self.partner_id.id if self.partner_id else False
 
-                        ('name', '=', mapped_category),
+                product = False
 
-                        ('parent_id', '=', parent_category.id)
+                # =====================================================
+                # 1. STRICT FINGERPRINT MATCH
+                # =====================================================
 
-                    ], limit=1)
-
-                    if not category:
-
-                        category = category_obj.create({
-
-                            'name': mapped_category,
-
-                            'parent_id': parent_category.id
-                        })
-
-                    # =====================================================
-                    # FIND EXISTING TEMPLATE
-                    # =====================================================
+                if (
+                    'vendor_fingerprint' in product_obj._fields
+                    and vendor_id
+                ):
 
                     product = product_obj.search([
 
-                        ('default_code', '=', group_id)
+                        (
+                            'vendor_fingerprint',
+                            '=',
+                            fingerprint
+                        ),
+
+                        (
+                            'vendor_id',
+                            '=',
+                            vendor_id
+                        )
 
                     ], limit=1)
 
-                    # =====================================================
-                    # CREATE TEMPLATE
-                    # =====================================================
 
-                    if not product:
-
-                        vals = {
-
-                            'name': name,
-
-                            'default_code': group_id,
-
-                            'description_sale': description,
-
-                            'categ_id': category.id,
-
-                            'sale_ok': True,
-
-                            'website_published': False,
-
-                            'vendor_import_job_id': self.id,
-                        }
-
-                        image = main_product.get("image")
-
-                        if image:
-
-                            vals['image_1920'] = image
-
-                        product = product_obj.create(vals)
-
-                        created_count += 1
+                    if product:
 
                         _logger.warning(
 
-                            f"[EXCEL TEMPLATE CREATED] "
+                            f"[FINGERPRINT MATCH] "
+
+                            f"{group_id} "
+
+                            f"| vendor={vendor_id} "
+
+                            f"| product_id={product.id}"
+                        )
+
+                 # =====================================================
+                # 2. FALLBACK SKU MATCH
+                # =====================================================
+
+                if not product and vendor_id:
+
+                    product = product_obj.search([
+
+                        (
+                            'default_code',
+                            '=',
+                            group_id
+                        ),
+
+                        (
+                            'vendor_id',
+                            '=',
+                            vendor_id
+                        )
+
+                    ], limit=1)
+
+
+                    if product:
+
+                        _logger.warning(
+
+                            f"[SKU MATCH] "
+
+                            f"{group_id} "
+
+                            f"| vendor={vendor_id} "
+
+                            f"| product_id={product.id}"
+                        )
+
+                is_new_product = False
+
+                if product:
+
+                    _logger.warning(
+                        f"[EXCEL DUPLICATE FOUND] "
+                        f"{group_id} | vendor={vendor_id} | product_id={product.id}"
+                    )
+
+                else:
+                    is_new_product = True
+
+
+                # =================================================
+                # CREATE PARENT
+                # =================================================
+
+                if is_new_product:
+
+                    vals = {
+
+                        'name': name,
+
+                        'default_code':
+                            group_id,
+
+                        'description_sale':
+                            description,
+
+                       'type': 'consu',
+
+                        'categ_id':
+                            category.id,
+
+                        'sale_ok': True,
+
+                        'website_published':
+                            False,
+
+                        # =====================================
+                        # SAVE VENDOR LINK
+                        # =====================================
+
+                        'vendor_id':
+                            vendor_id,
+
+                        'list_price':
+                            self._safe_float(
+                                main_product.get("price")
+                            ),
+
+                        'vendor_fingerprint': fingerprint,
+
+                        'vendor_import_job_id': self.id,
+                    }
+
+
+                    image = main_product.get(
+                        "image"
+                    )
+
+
+                    if image:
+
+                        vals[
+                            'image_1920'
+                        ] = image
+
+
+                    product = product_obj.create(
+                        vals
+                    )
+
+                    # ✅ SAFE TRANSLATION CALL (PLUG-IN)
+                    self._apply_product_translation(product)
+                    created_count += 1
+
+
+                    _logger.warning(
+
+                        f"[EXCEL CREATED] "
+
+                        f"{group_id} "
+
+                        f"| vendor={vendor_id}"
+                    )
+
+                else:
+
+                    merged_count += 1
+
+                    # =====================================
+                    # TRANSLATE EXISTING PRODUCT TOO
+                    # =====================================
+
+                    self._apply_product_translation(product)
+
+                    _logger.warning(
+
+                        f"[EXCEL EXISTING PRODUCT] "
+
+                        f"{group_id} "
+
+                        f"| vendor={vendor_id} "
+
+                        f"| product_id={product.id}"
+                    )
+              
+
+                # ==================================================
+                # VARIANTS
+                # ==================================================
+
+                for idx, item in enumerate(group_items):
+
+                    # =============================================
+                    # DETECT ATTRIBUTE TYPE
+                    # =============================================
+
+                    variant_attribute_name = "Variant"
+
+                    if item.get("color") or item.get("colour"):
+
+                        variant_attribute_name = "Color"
+
+                    elif item.get("material"):
+
+                        variant_attribute_name = "Material"
+
+                    elif item.get("size"):
+
+                        variant_attribute_name = "Size"
+
+                    elif item.get("capacity"):
+
+                        variant_attribute_name = "Capacity"
+
+                    elif item.get("style"):
+
+                        variant_attribute_name = "Style"
+
+
+                    # =============================================
+                    # DETECT ATTRIBUTE VALUE
+                    # =============================================
+
+                    attr_value = str(
+
+                        item.get("color")
+
+                        or item.get("colour")
+
+                        or item.get("material")
+
+                        or item.get("size")
+
+                        or item.get("variant")
+
+                        or item.get("capacity")
+
+                        or item.get("style")
+
+                        or f"Variant {idx+1}"
+
+                    ).strip()
+
+                    if not attr_value:
+
+                        detected_color = self._detect_basic_image_color(
+                            item.get("image")
+                        )
+
+                        if detected_color:
+
+                            variant_attribute_name = "Color"
+
+                            attr_value = detected_color
+
+                            _logger.warning(
+
+                                f"[IMAGE COLOR FALLBACK] "
+
+                                f"{detected_color}"
+                            )
+
+                        else:
+
+
+                            attr_value = (
+
+                                item.get("vendor_code")
+
+                                or
+
+                                item.get("primary_code")
+
+                                or
+
+                                f"Code {idx+1}"
+                            )
+
+                    _logger.warning(
+
+                        f"[VARIANT DETECTED] "
+
+                        f"{variant_attribute_name} "
+
+                        f"= {attr_value}"
+                    )
+
+
+                    # =============================================
+                    # ATTRIBUTE
+                    # =============================================
+
+                    attribute = attribute_obj.search([
+
+                        (
+                            'name',
+                            '=',
+                            variant_attribute_name
+                        )
+
+                    ], limit=1)
+
+
+                    if not attribute:
+
+                        attribute = attribute_obj.create({
+
+                            'name': variant_attribute_name
+
+                        })
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE CREATED] "
+
+                            f"{variant_attribute_name}"
+                        )
+
+
+                    # =============================================
+                    # ATTRIBUTE VALUE
+                    # =============================================
+
+                    value = attribute_value_obj.search([
+
+                        (
+                            'name',
+                            '=',
+                            attr_value
+                        ),
+
+                        (
+                            'attribute_id',
+                            '=',
+                            attribute.id
+                        )
+
+                    ], limit=1)
+
+                    if not value:
+
+                        value = attribute_value_obj.create({
+
+                            'name': attr_value,
+
+                            'attribute_id': attribute.id
+                        })
+
+
+                        # =========================================
+                        # TRANSLATE VARIANT VALUE
+                        # =========================================
+
+                        try:
+
+                            for lang_code in ['ru_RU', 'az_AZ']:
+
+                                translated_variant = self._force_translate(
+
+                                    attr_value,
+
+                                    lang_code
+                                )
+
+
+                                if translated_variant:
+
+                                    value.with_context(
+                                        lang=lang_code
+                                    ).write({
+
+                                        'name': translated_variant
+                                    })
+
+
+                                    _logger.warning(
+
+                                        f"[VARIANT TRANSLATED] "
+
+                                        f"{attr_value} "
+
+                                        f"-> "
+
+                                        f"{translated_variant} "
+
+                                        f"({lang_code})"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[VARIANT TRANSLATION ERROR] "
+
+                                f"{str(e)}"
+                            )
+
+
+                        _logger.warning(
+
+                            f"[ATTRIBUTE VALUE CREATED] "
+
+                            f"{attr_value}"
+                        )
+
+
+                    # =============================================
+                    # TEMPLATE ATTRIBUTE LINE
+                    # =============================================
+
+                    line = line_obj.search([
+
+                        (
+                            'product_tmpl_id',
+                            '=',
+                            product.id
+                        ),
+
+                        (
+                            'attribute_id',
+                            '=',
+                            attribute.id
+                        )
+
+                    ], limit=1)
+
+
+                    if not line:
+
+                        line = line_obj.create({
+
+                            'product_tmpl_id': product.id,
+
+                            'attribute_id': attribute.id,
+
+                            'value_ids': [
+
+                                (
+                                    6,
+                                    0,
+                                    [value.id]
+                                )
+                            ]
+                        })
+
+
+                        _logger.warning(
+
+                            f"[VARIANT LINE CREATED] "
 
                             f"{group_id}"
                         )
 
-                    # =====================================================
-                    # CREATE VARIANTS
-                    # =====================================================
+                    else:
 
-                    for idx, item in enumerate(group_items):
+                        if value.id not in line.value_ids.ids:
 
-                        attr_value = f"Variant {idx+1}"
+                            line.value_ids = [
 
-                        attribute = self.env[
-                            'product.attribute'
-                        ].search([
+                                (
+                                    4,
+                                    value.id
+                                )
+                            ]
 
-                            ('name', '=', "Variant")
 
-                        ], limit=1)
+                            _logger.warning(
 
-                        if not attribute:
+                                f"[VARIANT ADDED] "
 
-                            attribute = self.env[
-                                'product.attribute'
-                            ].create({
+                                f"{group_id} "
 
-                                'name': "Variant"
-                            })
-
-                        value = self.env[
-                            'product.attribute.value'
-                        ].search([
-
-                            ('name', '=', attr_value),
-
-                            ('attribute_id', '=', attribute.id)
-
-                        ], limit=1)
-
-                        if not value:
-
-                            value = self.env[
-                                'product.attribute.value'
-                            ].create({
-
-                                'name': attr_value,
-
-                                'attribute_id': attribute.id
-                            })
-
-                        line = self.env[
-                            'product.template.attribute.line'
-                        ].search([
-
-                            ('product_tmpl_id', '=', product.id),
-
-                            ('attribute_id', '=', attribute.id)
-
-                        ], limit=1)
-
-                        if not line:
-
-                            self.env[
-                                'product.template.attribute.line'
-                            ].create({
-
-                                'product_tmpl_id': product.id,
-
-                                'attribute_id': attribute.id,
-
-                                'value_ids': [(6, 0, [value.id])]
-                            })
-
-                        else:
-
-                            if value.id not in line.value_ids.ids:
-
-                                line.value_ids = [(4, value.id)]
-
-                        # =====================================================
-                        # VARIANT IMAGE FIX
-                        # =====================================================
-
-                        variant_record = self.env[
-                            'product.product'
-                        ].search([
-
-                            ('product_tmpl_id', '=', product.id),
-
-                            (
-                                'product_template_attribute_value_ids.product_attribute_value_id',
-                                '=',
-                                value.id
+                                f"| {attr_value}"
                             )
 
-                        ], limit=1)
 
-                        if variant_record:
+                    # =============================================
+                    # VARIANT IMAGE
+                    # =============================================
 
-                            variant_image = item.get("image")
+                    variant_record = self.env[
+                        'product.product'
+                    ].search([
 
-                            if variant_image:
+                        (
+                            'product_tmpl_id',
+                            '=',
+                            product.id
+                        ),
 
-                                variant_record.image_1920 = variant_image
-
-                                _logger.warning(
-
-                                    f"[EXCEL VARIANT IMAGE SET] "
-
-                                    f"{group_id} | "
-
-                                    f"{value.name}"
-                                )
-
-                            else:
-
-                                _logger.warning(
-
-                                    f"[EXCEL NO IMAGE] "
-
-                                    f"{group_id} | "
-
-                                    f"{value.name}"
-                                )
-
-                    # =====================================================
-                    # BATCH COMMIT
-                    # =====================================================
-
-                    if created_count % 10 == 0:
-
-                        self._safe_commit_progress()
-
-                        _logger.warning(
-
-                            f"[EXCEL BATCH COMMIT] "
-
-                            f"created={created_count}"
+                        (
+                            'product_template_attribute_value_ids.product_attribute_value_id',
+                            '=',
+                            value.id
                         )
 
-                    # =================================================
-                    # SAVE PROGRESS
-                    # =================================================
+                    ], limit=1)
 
-                    self.excel_created_index += 1
 
-                    self._safe_commit_progress()
+                    if variant_record:
 
-                    _logger.warning(
+                        variant_image = item.get(
+                            "image"
+                        )
 
-                        f"[EXCEL SAVE] "
 
-                        f"index="
+                        if variant_image:
 
-                        f"{self.excel_created_index}"
-                    )
+                            variant_record.image_1920 = (
+                                variant_image
+                            )
 
-                except Exception as e:
 
-                    _logger.exception(
+                            _logger.warning(
 
-                        f"[EXCEL GROUP ERROR] "
+                                f"[VARIANT IMAGE] "
 
-                        f"group_id={group_id} "
+                                f"{group_id} "
 
-                        f"| {str(e)}"
-                    )
+                                f"| {attr_value}"
+                            )
 
-                    self.env.cr.rollback()
 
-            # =====================================================
-            # PAGE COMMIT
-            # =====================================================
+                # =================================================
+                # SAVE PROGRESS
+                # =================================================
 
-            self._safe_commit_progress()
+                self.excel_created_index = (
+                    group_idx + 1
+                )
+
+
+                self._safe_commit_progress()
+                
+
+                _logger.warning(
+
+                    f"[EXCEL SAVE] "
+
+                    f"index="
+
+                    f"{self.excel_created_index}"
+                )
+
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[EXCEL GROUP ERROR] "
+
+                    f"group_idx={group_idx} "
+
+                    f"| {str(e)}"
+                )
+
+                self.env.cr.rollback()
+
 
         # =====================================================
         # FINAL LOG
@@ -11884,18 +12335,15 @@ class VendorImportJob(models.Model):
 
             f"[EXCEL COMPLETE] "
 
-            f"created={created_count}"
+            f"created={created_count} "
+
+            f"| merged={merged_count}"
         )
+
 
         # ======================================================
         # NEXT STATE
         # ======================================================
-
-        grouped_keys = list(
-
-            grouped_products.keys()
-
-        ) if grouped_products else []
 
         if self.excel_created_index >= len(grouped_keys):
 
@@ -11929,12 +12377,15 @@ class VendorImportJob(models.Model):
                 self.state = 'done'
 
                 # cleanup URL queue
-
                 self.excel_url_processing = False
 
                 self.excel_url_queue = False
 
                 self.excel_url_index = 0
+
+            # =========================================
+            # MORE PARSE ROWS REMAIN
+            # =========================================
 
             else:
 
@@ -11944,6 +12395,10 @@ class VendorImportJob(models.Model):
 
                     "RETURN TO excel_parsing"
                 )
+
+                # IMPORTANT:
+                # KEEP CURRENT AI STATE
+                # for next parse batch
 
                 self.state = 'excel_parsing'
 
@@ -11960,7 +12415,10 @@ class VendorImportJob(models.Model):
 
             self.state = 'excel_creating'
 
+
         self._safe_commit_progress()
+
+
 
     #=====excel group url update====================================
 
