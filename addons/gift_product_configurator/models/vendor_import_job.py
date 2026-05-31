@@ -11410,32 +11410,51 @@ class VendorImportJob(models.Model):
 
             self.env.invalidate_all()
 
-
-    #==========create excel product=================================
     
+    #==========create excel product=================================
+
     def create_products_excel(self):
 
         import json
         import re
 
         if not self.ai_response or not self.extracted_text:
-            _logger.warning("NO AI OR EXTRACTED DATA → STOP")
+
+            _logger.warning(
+                "NO AI OR EXTRACTED DATA → STOP"
+            )
+
             return
 
         product_obj = self.env['product.template']
+
         category_obj = self.env['product.category']
 
         try:
-            pages = json.loads(self.extracted_text)
-            ai_pages = json.loads(self.ai_response)
+
+            pages = json.loads(
+                self.extracted_text
+            )
+
+            ai_pages = json.loads(
+                self.ai_response
+            )
 
         except Exception:
-            _logger.error("INVALID JSON → STOP")
+
+            _logger.error(
+                "INVALID JSON → STOP"
+            )
+
             return
 
-        _logger.warning("CREATING PRODUCTS (EXCEL STABLE MODE)")
+        _logger.warning(
+            "CREATING PRODUCTS (EXCEL STABLE MODE)"
+        )
 
         created_count = 0
+
+        grouped_products = {}
 
         CATEGORY_MAPPING = {
 
@@ -11473,13 +11492,20 @@ class VendorImportJob(models.Model):
                 'name': "All Products"
             })
 
+        # =====================================================
+        # PAGE LOOP
+        # =====================================================
+
         for page_data in pages:
 
             page_no = page_data.get("page")
 
             ai_page = next(
 
-                (p for p in ai_pages if p.get("page") == page_no),
+                (
+                    p for p in ai_pages
+                    if p.get("page") == page_no
+                ),
 
                 None
             )
@@ -11492,11 +11518,11 @@ class VendorImportJob(models.Model):
             if not products:
                 continue
 
-            grouped_products = {}
-
             # =====================================================
             # GROUP PRODUCTS
             # =====================================================
+
+            grouped_products = {}
 
             for p in products:
 
@@ -11517,7 +11543,9 @@ class VendorImportJob(models.Model):
 
                 if match:
 
-                    group_id = match.group(1).upper()
+                    group_id = (
+                        match.group(1).upper()
+                    )
 
                 else:
 
@@ -11528,6 +11556,7 @@ class VendorImportJob(models.Model):
                     group_id,
 
                     []
+
                 ).append(p)
 
             _logger.warning(
@@ -11538,7 +11567,7 @@ class VendorImportJob(models.Model):
             )
 
             # =====================================================
-            # CREATE GROUP PRODUCTS
+            # GROUP LOOP
             # =====================================================
 
             for group_id, group_items in grouped_products.items():
@@ -11573,6 +11602,7 @@ class VendorImportJob(models.Model):
                         if key in raw_category:
 
                             mapped_category = val
+
                             break
 
                     category = category_obj.search([
@@ -11769,29 +11799,136 @@ class VendorImportJob(models.Model):
 
                     if created_count % 10 == 0:
 
-                        self.env.cr.commit()
+                        self._safe_commit_progress()
+
+                        _logger.warning(
+
+                            f"[EXCEL BATCH COMMIT] "
+
+                            f"created={created_count}"
+                        )
+
+                    # =================================================
+                    # SAVE PROGRESS
+                    # =================================================
+
+                    self.excel_created_index += 1
+
+                    self._safe_commit_progress()
+
+                    _logger.warning(
+
+                        f"[EXCEL SAVE] "
+
+                        f"index="
+
+                        f"{self.excel_created_index}"
+                    )
 
                 except Exception as e:
 
-                    _logger.error(
+                    _logger.exception(
 
-                        f"[EXCEL PRODUCT FAILED] "
+                        f"[EXCEL GROUP ERROR] "
 
-                        f"{str(e)}"
+                        f"group_id={group_id} "
+
+                        f"| {str(e)}"
                     )
 
                     self.env.cr.rollback()
 
-                    continue
+            # =====================================================
+            # PAGE COMMIT
+            # =====================================================
 
-            self.env.cr.commit()
+            self._safe_commit_progress()
+
+        # =====================================================
+        # FINAL LOG
+        # =====================================================
 
         _logger.warning(
 
-            f"TOTAL EXCEL PRODUCTS CREATED: "
+            f"[EXCEL COMPLETE] "
 
-            f"{created_count}"
+            f"created={created_count}"
         )
+
+        # ======================================================
+        # NEXT STATE
+        # ======================================================
+
+        grouped_keys = list(
+
+            grouped_products.keys()
+
+        ) if grouped_products else []
+
+        if self.excel_created_index >= len(grouped_keys):
+
+            _logger.warning(
+
+                "[EXCEL FLOW] "
+
+                "GROUP BATCH COMPLETE"
+            )
+
+            # =========================================
+            # FULL IMPORT COMPLETED
+            # =========================================
+
+            if self.is_excel_parsed:
+
+                _logger.warning(
+                    "[EXCEL IMPORT COMPLETE] ✅"
+                )
+
+                # =========================================
+                # FINAL RESET
+                # =========================================
+
+                self.excel_created_index = 0
+
+                self.excel_ai_index = 0
+
+                self.ai_response = False
+
+                self.state = 'done'
+
+                # cleanup URL queue
+
+                self.excel_url_processing = False
+
+                self.excel_url_queue = False
+
+                self.excel_url_index = 0
+
+            else:
+
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    "RETURN TO excel_parsing"
+                )
+
+                self.state = 'excel_parsing'
+
+                _logger.warning(
+
+                    "[EXCEL FLOW] "
+
+                    f"NEXT PARSE INDEX="
+
+                    f"{self.excel_parse_index}"
+                )
+
+        else:
+
+            self.state = 'excel_creating'
+
+        self._safe_commit_progress()
 
     #=====excel group url update====================================
 
