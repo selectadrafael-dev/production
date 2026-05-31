@@ -11412,6 +11412,8 @@ class VendorImportJob(models.Model):
 
     
     #==========create excel product=================================
+    
+    
     def create_products_excel(self):
 
         import json
@@ -12417,7 +12419,6 @@ class VendorImportJob(models.Model):
 
 
         self._safe_commit_progress()
-
 
 
     #=====excel group url update====================================
