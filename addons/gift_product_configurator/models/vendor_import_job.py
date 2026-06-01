@@ -11766,6 +11766,37 @@ class VendorImportJob(models.Model):
                 # FINAL NAME
                 # =====================================================
 
+                # if invalid_name:
+
+                #     category_hint = (
+
+                #         main_product.get("category")
+
+                #         or "Product"
+                #     ).strip()
+
+                #     if not category_hint:
+
+                #         category_hint = "Product"
+
+
+                #     name = f"{category_hint.title()} {group_id}"
+
+                #     _logger.warning(
+
+                #         f"[NAME FALLBACK] "
+
+                #         f"{raw_name} "
+
+                #         f"-> "
+
+                #         f"{name}"
+                #     )
+
+                # else:
+
+                #     name = raw_name
+
                 if invalid_name:
 
                     # =========================================
@@ -12075,7 +12106,7 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # RAW ATTRIBUTE VALUE
+                    # DETECT ATTRIBUTE VALUE
                     # =============================================
 
                     attr_value = str(
@@ -12094,14 +12125,9 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                        or ""
+                        or f"Variant {idx+1}"
 
                     ).strip()
-
-
-                    # ===============================================
-                    # IMAGE COLOR FALLBACK
-                    # ===============================================
 
                     if not attr_value:
 
@@ -12113,25 +12139,31 @@ class VendorImportJob(models.Model):
 
                             variant_attribute_name = "Color"
 
-                            attr_value = detected_color.title()
+                            attr_value = detected_color
 
                             _logger.warning(
 
-                                f"[IMAGE COLOR DETECTED] "
+                                f"[IMAGE COLOR FALLBACK] "
 
-                                f"{attr_value}"
+                                f"{detected_color}"
                             )
 
+                        else:
 
-                    # =============================================
-                    # FINAL SAFE FALLBACK
-                    # =============================================
 
-                    if not attr_value:
+                            attr_value = (
 
-                        attr_value = f"Variant {idx+1}"
+                                item.get("vendor_code")
 
-                    
+                                or
+
+                                item.get("primary_code")
+
+                                or
+
+                                f"Code {idx+1}"
+                            )
+
                     _logger.warning(
 
                         f"[VARIANT DETECTED] "
