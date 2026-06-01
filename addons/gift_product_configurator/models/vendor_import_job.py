@@ -11414,7 +11414,6 @@ class VendorImportJob(models.Model):
     
     #==========create excel product=================================
     
-   
     def create_products_excel(self):
 
         import json
@@ -11605,7 +11604,67 @@ class VendorImportJob(models.Model):
 
             else:
 
-                group_id = raw_name.upper()
+                normalized_name = re.sub(
+
+                    r'[\W_]+',
+
+                    ' ',
+
+                    raw_name
+                ).strip().upper()
+
+
+                # ============================================
+                # INVALID / GENERIC NAMES
+                # ============================================
+
+                generic_names = [
+
+                    'PRODUCT',
+                    'ITEM',
+                    'GOODS',
+                    'SAMPLE',
+                    'TEST',
+                    'UNKNOWN',
+
+                    'SPORTS BOTTLE',
+                    'BOTTLE',
+                    'TRAVEL MUG',
+                    'TRAVEL CUP',
+                    'DRINKWARE MUG',
+                    'THERMAL BOTTLE',
+                    'MUG',
+                    'CUP',
+                ]
+
+
+                # ============================================
+                # SAFE NAME GROUPING
+                # ============================================
+
+                if (
+
+                    normalized_name
+
+                    and normalized_name not in generic_names
+
+                    and not re.match(
+                        r'^PRODUCT\s+\d+$',
+                        normalized_name,
+                        re.I
+                    )
+
+                ):
+
+                    group_id = normalized_name
+
+                else:
+
+                    # ============================================
+                    # FINAL HARD FALLBACK
+                    # ============================================
+
+                    group_id = f"ROW_{len(grouped_products)}"
 
 
             grouped_products.setdefault(
