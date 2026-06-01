@@ -7181,6 +7181,7 @@ class VendorImportJob(models.Model):
                 {row_stock}
                 """
 
+
                 response = client.responses.create(
 
                     model="gpt-4.1-mini",
@@ -11692,8 +11693,7 @@ class VendorImportJob(models.Model):
                     main_product
                 )
 
-
-                name = (
+                raw_name = (
 
                     main_product.get(
                         "name"
@@ -11701,6 +11701,81 @@ class VendorImportJob(models.Model):
 
                 ).strip()
 
+
+                variant_group = (
+
+                    main_product.get(
+                        "variant_group"
+                    ) or ""
+
+                ).strip()
+
+
+                # =====================================================
+                # VALIDATE PRODUCT NAME
+                # =====================================================
+
+                invalid_name = False
+
+
+                # EMPTY
+                if not raw_name:
+
+                    invalid_name = True
+
+
+                # PURE NUMBER
+                elif re.fullmatch(r'\d+', raw_name):
+
+                    invalid_name = True
+
+
+                # RANGE
+                elif re.fullmatch(r'\d+\s*[-/]\s*\d+', raw_name):
+
+                    invalid_name = True
+
+
+                # URL
+                elif raw_name.lower().startswith(("http://", "https://", "www.")):
+
+                    invalid_name = True
+
+
+                # GENERIC HEADERS
+                elif raw_name.lower() in [
+
+                    'item',
+                    'product',
+                    'description',
+                    'name',
+                    'goods',
+                    'article',
+                    'code',
+                    'sku',
+
+                ]:
+
+                    invalid_name = True
+
+
+                # =====================================================
+                # FINAL NAME
+                # =====================================================
+
+                if invalid_name:
+
+                    if variant_group:
+
+                        name = f"Product {variant_group}"
+
+                    else:
+
+                        name = f"Product {group_id}"
+
+                else:
+
+                    name = raw_name
 
                 description = (
 
