@@ -12075,7 +12075,7 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # DETECT ATTRIBUTE VALUE
+                    # RAW ATTRIBUTE VALUE
                     # =============================================
 
                     attr_value = str(
@@ -12094,9 +12094,14 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                        or f"Variant {idx+1}"
+                        or ""
 
                     ).strip()
+
+
+                    # =============================================
+                    # IMAGE COLOR FALLBACK
+                    # =============================================
 
                     if not attr_value:
 
@@ -12108,31 +12113,25 @@ class VendorImportJob(models.Model):
 
                             variant_attribute_name = "Color"
 
-                            attr_value = detected_color
+                            attr_value = detected_color.title()
 
                             _logger.warning(
 
-                                f"[IMAGE COLOR FALLBACK] "
+                                f"[IMAGE COLOR DETECTED] "
 
-                                f"{detected_color}"
+                                f"{attr_value}"
                             )
 
-                        else:
 
+                    # =============================================
+                    # FINAL SAFE FALLBACK
+                    # =============================================
 
-                            attr_value = (
+                    if not attr_value:
 
-                                item.get("vendor_code")
+                        attr_value = f"Variant {idx+1}"
 
-                                or
-
-                                item.get("primary_code")
-
-                                or
-
-                                f"Code {idx+1}"
-                            )
-
+                    
                     _logger.warning(
 
                         f"[VARIANT DETECTED] "
