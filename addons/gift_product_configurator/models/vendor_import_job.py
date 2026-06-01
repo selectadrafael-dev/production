@@ -12726,12 +12726,49 @@ class VendorImportJob(models.Model):
             if not colors:
                 return False
 
-            dominant = max(
-                colors,
-                key=lambda x: x[0]
-            )[1]
+
+            # =====================================
+            # REMOVE BACKGROUND COLORS
+            # =====================================
+
+            filtered_colors = []
+
+            for count, rgb in colors:
+
+                r, g, b = rgb
+
+                # skip near-white backgrounds
+                if r > 220 and g > 220 and b > 220:
+                    continue
+
+                # skip light grey/silver reflections
+                if abs(r - g) < 15 and abs(g - b) < 15 and r > 170:
+                    continue
+
+                filtered_colors.append(
+                    (count, rgb)
+                )
+
+
+            # fallback if everything removed
+            if filtered_colors:
+                dominant = max(
+                    filtered_colors,
+                    key=lambda x: x[0]
+                )[1]
+            else:
+                dominant = max(
+                    colors,
+                    key=lambda x: x[0]
+                )[1]
+
 
             r, g, b = dominant
+
+
+            _logger.warning(
+                f"[COLOR RGB] r={r} g={g} b={b}"
+            )
 
 
             # =====================================
