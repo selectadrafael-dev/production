@@ -8,31 +8,21 @@ class ProductTemplate(models.Model):
 
     _inherit = 'product.template'
 
-    #====== method====================
+    # =====================================
+    # FINAL PURGE ENGINE
+    # =====================================
+
     def action_purge_imported_products(self):
 
-        _logger.warning(
-            f"[PURGE SELF IDS] {self.ids}"
+        templates = self.filtered(
+            lambda t: t.vendor_import_job_id
         )
 
-        templates = self
-
-        for t in templates:
-
-            _logger.warning(
-
-                f"[PURGE TEMPLATE CHECK] "
-
-                f"template={t.id} "
-
-                f"name={t.name} "
-
-                f"job={t.vendor_import_job_id.id}"
-            )
-
+        if not templates:
+            return True
 
         _logger.warning(
-            f"[PURGE SELECTED TEMPLATES] {templates.ids}"
+            f"[PURGE TEMPLATES] {templates.ids}"
         )
 
         products = templates.mapped(
@@ -40,73 +30,142 @@ class ProductTemplate(models.Model):
         )
 
         # =====================================
-        # DELETE STOCK QUANTS
+        # STOCK MOVE LINES
         # =====================================
 
-        quants = self.env['stock.quant'].search([
+        move_lines = self.env[
+            'stock.move.line'
+        ].search([
 
             ('product_id', 'in', products.ids)
 
         ])
 
         _logger.warning(
-            f"[PURGE QUANTS] {quants.ids}"
-        )
-
-        quants.sudo().unlink()
-
-        # =====================================
-        # DELETE MOVE LINES
-        # =====================================
-
-        move_lines = self.env['stock.move.line'].search([
-
-            ('product_id', 'in', products.ids)
-
-        ])
-
-        _logger.warning(
-            f"[PURGE MOVE LINES] {move_lines.ids}"
+            f"[PURGE MOVE LINES] "
+            f"{move_lines.ids}"
         )
 
         move_lines.sudo().unlink()
 
         # =====================================
-        # DELETE STOCK MOVES
+        # STOCK MOVES
         # =====================================
 
+        moves = self.env[
+            'stock.move'
+        ].search([
 
-        moves = self.env['stock.move'].search([
-
-            ('product_id', 'in', products.ids),
-
-            ('state', '!=', 'done')
+            ('product_id', 'in', products.ids)
 
         ])
 
         _logger.warning(
-            f"[PURGE MOVES] {moves.ids}"
+            f"[PURGE MOVES] "
+            f"{moves.ids}"
         )
 
+        # CANCEL DONE MOVES
+        for move in moves.filtered(
+            lambda m: m.state == 'done'
+        ):
+
+            try:
+
+                move._action_cancel()
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[MOVE CANCEL FAILED] "
+                    f"{move.id} => {str(e)}"
+                )
+
         moves.sudo().unlink()
+
+        # =====================================
+        # VALUATION LAYERS
+        # =====================================
+
+        valuation_layers = self.env[
+            'stock.valuation.layer'
+        ].search([
+
+            ('product_id', 'in', products.ids)
+
+        ])
+
+        _logger.warning(
+            f"[PURGE VALUATION] "
+            f"{valuation_layers.ids}"
+        )
+
+        valuation_layers.sudo().unlink()
+
+        # =====================================
+        # STOCK QUANTS
+        # =====================================
+
+        quants = self.env[
+            'stock.quant'
+        ].search([
+
+            ('product_id', 'in', products.ids)
+
+        ])
+
+        _logger.warning(
+            f"[PURGE QUANTS] "
+            f"{quants.ids}"
+        )
+
+        quants.sudo().unlink()
+
+        # =====================================
+        # REORDER RULES
+        # =====================================
+
+        reorder_rules = self.env[
+            'stock.warehouse.orderpoint'
+        ].search([
+
+            ('product_id', 'in', products.ids)
+
+        ])
+
+        _logger.warning(
+            f"[PURGE REORDER RULES] "
+            f"{reorder_rules.ids}"
+        )
+
+        reorder_rules.sudo().unlink()
 
         # =====================================
         # DELETE VARIANTS
         # =====================================
 
         _logger.warning(
-            f"[PURGE VARIANTS] {products.ids}"
+            f"[PURGE VARIANTS] "
+            f"{products.ids}"
         )
 
         products.with_context(
-
             active_test=False
-
         ).sudo().unlink()
 
-        # ======================================
+        # =====================================
         # DELETE TEMPLATES
-        # ======================================
+        # =====================================
+
+        _logger.warning(
+            f"[PURGE TEMPLATES FINAL] "
+            f"{templates.ids}"
+        )
+
+        templates.with_context(
+            active_test=False
+        ).sudo().unlink()
 
         self.env.cr.commit()
 

@@ -59,9 +59,9 @@ class ProductTemplate(models.Model):
     )
 
 
-    # ===========================================
+    # =============================================
     # AUTO ASSIGN VENDOR DURING CREATE
-    # ===========================================
+    # =============================================
 
     @api.model
     def create(self, vals):
@@ -207,8 +207,6 @@ class VendorImportJob(models.Model):
     ])
 
 
-    # excel_url_queue = fields.Text()
-
     excel_url_index = fields.Integer(
         default=0
     )
@@ -221,6 +219,21 @@ class VendorImportJob(models.Model):
         default=False
     )
 
+    stage_retry_count = fields.Integer(
+        default=0
+    )
+
+    last_error = fields.Text()
+
+    failed_at = fields.Datetime()
+
+    last_known_state = fields.Char(
+        string="Last Known State",
+        default=""
+    )
+
+    failure_reason = fields.Text()
+    ai_retry_count = fields.Integer(default=0)
    
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -285,7 +298,7 @@ class VendorImportJob(models.Model):
             )
 
 
-    #========vendor email notification==========
+    #========vendor completion email notification==========
     def send_completion_email(self, failed=False, error_message=None):
 
         self.ensure_one()
@@ -529,6 +542,86 @@ class VendorImportJob(models.Model):
                 pass
 
             return False
+    
+    #========vendor failed notification==============
+    def _send_failed_processing_email(
+
+        self,
+
+        error_message=None
+    ):
+
+        self.ensure_one()
+
+        try:
+
+            # =====================================
+            # FAILURE CONTEXT
+            # =====================================
+
+            stage = (
+
+                self.last_known_state
+
+                or
+
+                self.state
+
+                or
+
+                "unknown"
+            )
+
+            retry_count = (
+
+                self.retry_count
+
+                or
+
+                0
+            )
+
+            full_error = f"""
+
+    Stage:
+    {stage}
+
+    Retries:
+    {retry_count}
+
+    Error:
+    {error_message or 'Unknown processing failure'}
+    """
+
+            _logger.warning(
+
+                f"[FAILED EMAIL] "
+
+                f"job={self.id} "
+
+                f"stage={stage} "
+
+                f"retry={retry_count}"
+            )
+
+            return self.send_completion_email(
+
+                failed=True,
+
+                error_message=full_error
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+
+                f"[FAILED EMAIL ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return False
+
     #============Processing Jobs===================================================
     def _process_step(self):
 
@@ -536,7 +629,6 @@ class VendorImportJob(models.Model):
         import re
 
         self.ensure_one()
-
 
         # =================================================
         # SAFETY
@@ -550,8 +642,7 @@ class VendorImportJob(models.Model):
 
             self.state = "failed"
 
-            self.flush_recordset()
-            self.env.cr.commit()
+            self._safe_commit_progress()
 
             return
 
@@ -581,24 +672,48 @@ class VendorImportJob(models.Model):
         if self.state == 'review':
 
             _logger.warning(
-                "REVIEW → RESET TO START"
+
+                f"[REVIEW RECOVERY] "
+
+                f"retry={self.stage_retry_count}/5 "
+
+                f"last_state={self.last_known_state}"
             )
 
-            if self.pdf_file:
+            # =============================================
+            # HARD FAILURE LIMIT
+            # =============================================
 
-                self.state = 'pdf_extracting'
+            if self.stage_retry_count >= 5:
 
-            elif self.excel_file and not self.pdf_file:
+                _logger.error(
 
-                self.state = 'excel_parsing'
+                    f"[JOB FAILED PERMANENTLY] "
 
-            elif self.data_url:
+                    f"job={self.id}"
+                )
 
-                self.state = 'url_scraping'
+                self.state = 'failed'
 
+                self.failed_at = fields.Datetime.now()
 
-            self.flush_recordset()
-            self.env.cr.commit()
+                self._safe_commit_progress()
+
+                return
+
+            # =============================================
+            # RESTORE LAST KNOWN STATE
+            # =============================================
+
+            if self.last_known_state:
+
+                self.state = self.last_known_state
+
+            else:
+
+                self.state = 'failed'
+
+            self._safe_commit_progress()
 
             return
 
@@ -625,6 +740,9 @@ class VendorImportJob(models.Model):
                     "[URL FLOW] START"
                 )
 
+                self.stage_retry_count = 0
+
+                self.last_known_state = 'url_scraping'
                 self.state = 'url_scraping'
 
                 self._safe_commit_progress()
@@ -651,7 +769,10 @@ class VendorImportJob(models.Model):
                         "USING SAVED BLOCKS"
                     )
 
-                    self.state = 'url_ai'
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'url_scraping'
+                    self.state = 'url_scraping'
 
                     self._safe_commit_progress()
 
@@ -714,7 +835,9 @@ class VendorImportJob(models.Model):
                     _logger.warning(
                         "URL EXTRACTION SUCCESS → url_ai"
                     )
+                    self.stage_retry_count = 0
 
+                    self.last_known_state = 'url_ai'
                     self.state = 'url_ai'
 
                     self._safe_commit_progress()
@@ -778,8 +901,13 @@ class VendorImportJob(models.Model):
                         f"URL AI FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'url_ai'
+
+                    self.state = 'review'
 
                     self._safe_commit_progress()
 
@@ -867,7 +995,13 @@ class VendorImportJob(models.Model):
                         f"URL CREATE FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'url_creating'
+
+                    self.state = 'review'
 
                     self._safe_commit_progress()
 
@@ -909,19 +1043,26 @@ class VendorImportJob(models.Model):
 
 
                 if new_index >= total:
+                    self.stage_retry_count = 0
+                   
 
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
+                   
+                   
                     self.state = 'done'
 
                     _logger.warning(
                         "URL COMPLETE ✅"
                     )
 
-                    if not self.completion_email_sent:
-
-                        self.send_completion_email()
 
                 elif new_index > previous_index:
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'url_creating'
                     self.state = 'url_creating'
 
                     _logger.warning(
@@ -959,10 +1100,13 @@ class VendorImportJob(models.Model):
 
             if self.state == 'draft':
 
+                self.stage_retry_count = 0
+
+                self.last_known_state = 'excel_parsing'
+
                 self.state = 'excel_parsing'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -1003,15 +1147,28 @@ class VendorImportJob(models.Model):
                 )
 
 
-                # =========================================
+                # ==========================================
                 # NEW ROWS FOUND
-                # =========================================
+                # ==========================================
 
                 if new_index > previous_index:
+                    
+                    self.state = 'excel_ai'
+
+                    _logger.warning(
+
+                        "[EXCEL STATE CHANGE] "
+
+                        f"{self.id} -> excel_ai"
+                    )
 
                     _logger.warning(
                         "[EXCEL PARSE] NEW BATCH READY → excel_ai"
                     )
+
+                    self._safe_commit_progress()
+
+                    return
 
 
                 else:
@@ -1020,33 +1177,41 @@ class VendorImportJob(models.Model):
                         "[EXCEL PARSE] NO NEW ROWS"
                     )
 
-
                     if self.is_excel_parsed:
 
                         _logger.warning(
-                            "[EXCEL IMPORT COMPLETE] ✅"
+                            "[EXCEL PARSE COMPLETE] → excel_ai"
                         )
 
-                        self.state = 'done'
+                        # successful stage transition
+                      
+                        self.stage_retry_count = 0
 
-                        if not self.completion_email_sent:
+                        self.last_known_state = 'excel_ai'
 
-                            self.send_completion_email()
+                        self.state = 'excel_ai'
 
-                        # cleanup URL queue
+                        # cleanup optional URL enrichment state
                         self.excel_url_processing = False
-
-                        self.excel_url_queue = False
 
                         self.excel_url_index = 0
 
+                  
                     else:
 
-                        self.state = 'excel_parsing'
+                        _logger.warning(
+                            "[EXCEL PARSE STALLED]"
+                        )
 
+                        self.stage_retry_count += 1
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                        self.last_error = "Excel parse stalled"
+
+                        self.last_known_state = 'excel_parsing'
+
+                        self.state = 'review' 
+
+                self._safe_commit_progress()
 
                 return
 
@@ -1058,8 +1223,29 @@ class VendorImportJob(models.Model):
             if self.state == 'excel_ai':
 
                 try:
+                    previous_ai_index = self.excel_ai_index or 0
+
+                    _logger.warning(
+
+                        f"[EXCEL AI BEFORE] "
+
+                        f"{previous_ai_index}"
+                    )
 
                     self.send_to_openai_excel()
+
+                    new_ai_index = self.excel_ai_index or 0
+
+                    ai_progress_detected = (
+                        new_ai_index > previous_ai_index
+                    )
+                                        
+                    _logger.warning(
+
+                        f"[EXCEL AI AFTER] "
+
+                        f"{new_ai_index}"
+                    )
 
                 except Exception as e:
 
@@ -1068,10 +1254,15 @@ class VendorImportJob(models.Model):
                         f"EXCEL AI FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'excel_ai'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1104,6 +1295,29 @@ class VendorImportJob(models.Model):
                     f"{self.state}"
                 )
 
+                # ==========================================
+                # AI COMPLETE → CREATE
+                # ==========================================
+
+                if (
+                        self.state != 'failed'
+                        and
+                        (
+                            ai_progress_detected
+                            or
+                            self.ai_response
+                        )
+                    ):
+
+                    _logger.warning(
+                        "[EXCEL AI COMPLETE] → excel_creating"
+                    )
+
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'excel_creating'
+
+                    self.state = 'excel_creating'
 
                 self.flush_recordset()
                 self.env.cr.commit()
@@ -1116,23 +1330,28 @@ class VendorImportJob(models.Model):
 
 
             #-----------EXCEL ROW PROCESSOR-------------
-
+        
             if self.state == 'excel_creating':
 
                 try:
 
                     self.create_products_excel()
-
+                  
                 except Exception as e:
 
                     _logger.exception(
                         f"EXCEL CREATE FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'excel_creating'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1173,10 +1392,13 @@ class VendorImportJob(models.Model):
 
             if self.state == 'draft':
 
+                self.stage_retry_count = 0
+
+                self.last_known_state = 'pdf_extracting'
+
                 self.state = 'pdf_extracting'
 
-                self.flush_recordset()
-                self.env.cr.commit()
+                self._safe_commit_progress()
 
                 return
 
@@ -1198,10 +1420,15 @@ class VendorImportJob(models.Model):
                         f"PDF EXTRACT FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'pdf_extracting'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1258,13 +1485,18 @@ class VendorImportJob(models.Model):
 
                     _logger.exception(
 
-                        f"PDF AI FAILED → {str(e)}"
+                       f"PDF AI FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'pdf_ai'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
 
@@ -1307,6 +1539,10 @@ class VendorImportJob(models.Model):
                         f"{page_total}"
                     )
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'pdf_ai'
+
                     self.state = 'pdf_ai'
 
                 else:
@@ -1315,6 +1551,10 @@ class VendorImportJob(models.Model):
                         "PDF AI COMPLETE → pdf_creating"
                     )
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'pdf_creating'
+                    
                     self.state = 'pdf_creating'
 
 
@@ -1337,17 +1577,20 @@ class VendorImportJob(models.Model):
                 except Exception as e:
 
                     _logger.exception(
-
                         f"PDF CREATE FAILED → {str(e)}"
                     )
 
-                    self.state = 'failed'
+                    self.stage_retry_count += 1
 
-                    self.flush_recordset()
-                    self.env.cr.commit()
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'pdf_creating'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
 
                     return
-
 
                 try:
 
@@ -1381,6 +1624,9 @@ class VendorImportJob(models.Model):
                         f"{total_ai_pages}"
                     )
 
+                    self.stage_retry_count = 0
+
+                    self.last_known_state = 'pdf_creating'
                     self.state = 'pdf_creating'
 
                 else:
@@ -1389,6 +1635,7 @@ class VendorImportJob(models.Model):
                         "PDF COMPLETE ✅"
                     )
 
+                    self.stage_retry_count = 0
                     self.state = 'done'
 
                     if not self.completion_email_sent:
@@ -1401,8 +1648,603 @@ class VendorImportJob(models.Model):
 
                 return
 
+     #=========Variant swatch 1======================================
+   
+    #=========Variant color swatch logic===========================================
 
-    #------------parse url------------------------------------
+    COLOR_HEX_MAP = {
+
+        # =====================================
+        # BASIC COLORS
+        # =====================================
+
+        "black": "#000000",
+        "white": "#FFFFFF",
+        "red": "#FF0000",
+        "green": "#008000",
+        "blue": "#0066CC",
+        "yellow": "#FFD700",
+        "orange": "#FF6600",
+        "purple": "#800080",
+        "pink": "#FF69B4",
+        "brown": "#8B4513",
+
+        # =====================================
+        # GREY / GRAY FAMILY
+        # =====================================
+
+        "grey": "#808080",
+        "gray": "#808080",
+        "light grey": "#D3D3D3",
+        "light gray": "#D3D3D3",
+        "dark grey": "#555555",
+        "dark gray": "#555555",
+        "charcoal": "#36454F",
+        "charcoal grey": "#36454F",
+        "charcoal gray": "#36454F",
+        "ash": "#B2BEB5",
+        "ash grey": "#B2BEB5",
+        "ash gray": "#B2BEB5",
+        "heather": "#9AA0A6",
+        "heather grey": "#A9A9A9",
+        "heather gray": "#A9A9A9",
+        "grey marl": "#A9A9A9",
+        "gray marl": "#A9A9A9",
+
+        # =====================================
+        # BLUE FAMILY
+        # =====================================
+
+        "navy": "#000080",
+        "navy blue": "#000080",
+        "royal blue": "#4169E1",
+        "light blue": "#ADD8E6",
+        "sky blue": "#87CEEB",
+        "ice blue": "#BFEFFF",
+        "powder blue": "#B0E0E6",
+
+        # =====================================
+        # GREEN FAMILY
+        # =====================================
+
+        "lime": "#32CD32",
+        "lime green": "#32CD32",
+        "neon green": "#39FF14",
+
+        # =====================================
+        # WHITE / NATURAL FAMILY
+        # =====================================
+
+        "off white": "#F8F8F8",
+        "natural": "#F5F5DC",
+        "cream": "#FFFDD0",
+        "ivory": "#FFFFF0",
+        "stone": "#D2C29D",
+        "sand": "#C2B280",
+        "beige": "#F5F5DC",
+
+        # =====================================
+        # METALLIC COLORS
+        # =====================================
+
+        "silver": "#C0C0C0",
+        "gold": "#D4AF37",
+
+        # =====================================
+        # SPECIAL COLORS
+        # =====================================
+
+        "burgundy": "#800020",
+        "wine": "#722F37",
+
+        # =====================================
+        # MULTI COLORS
+        # =====================================
+
+        "multi": "#CCCCCC",
+        "multi-color": "#CCCCCC",
+        "multicolor": "#CCCCCC",
+    }
+
+
+    # =========================================
+    # REUSABLE ATTRIBUTE ENGINE
+    # =========================================
+
+    def _get_or_create_attribute_and_value(
+
+        self,
+
+        attr_name,
+
+        attr_value
+    ):
+
+        attr_name = str(
+            attr_name or ""
+        ).strip()
+
+        attr_value = str(
+            attr_value or ""
+        ).strip()
+
+        # =====================================
+        # ATTRIBUTE NORMALIZATION
+        # =====================================
+        normalized_attr = attr_name.lower().strip()
+
+        is_color_attribute = normalized_attr in [
+
+            'color',
+
+            'colour',
+
+            'colors',
+
+            'colourway',
+
+            'color name'
+        ]
+
+        attribute = self.env[
+            'product.attribute'
+        ].search([
+
+            ('name', '=', attr_name)
+
+        ], limit=1)
+
+        # =====================================
+        # CREATE ATTRIBUTE
+        # =====================================
+
+        if not attribute:
+
+            attribute_vals = {
+
+                'name': attr_name
+            }
+
+            # =====================================
+            # COLOR SWATCH SUPPORT
+            # =====================================
+
+            if is_color_attribute:
+
+                attribute_vals[
+                    'display_type'
+                ] = 'color'
+
+            attribute = self.env[
+                'product.attribute'
+            ].create(attribute_vals)
+            
+
+            _logger.warning(
+
+                f"[ATTRIBUTE CREATED] "
+
+                f"{attr_name}"
+            )
+
+
+        # =====================================
+        # FORCE EXISTING COLOR ATTRIBUTE
+        # INTO SWATCH MODE
+        # =====================================
+
+
+        if (
+
+            is_color_attribute
+
+            and
+
+            attribute.display_type != 'color'
+        ):
+
+            attribute.display_type = 'color'
+
+            _logger.warning(
+
+                "[COLOR ATTRIBUTE UPDATED] "
+
+                f"{attribute.name}"
+            )
+
+        # =====================================
+        # CREATE VALUE
+        # =====================================
+
+        value = self.env[
+            'product.attribute.value'
+        ].search([
+
+            ('name', '=', attr_value),
+
+            ('attribute_id', '=', attribute.id)
+
+        ], limit=1)
+
+        if not value:
+
+            value_vals = {
+
+                'name': attr_value,
+
+                'attribute_id': attribute.id
+            }
+
+            # =====================================
+            # HTML COLOR SUPPORT
+            # =====================================
+
+            if is_color_attribute:
+
+                # =====================================
+                # SMART COLOR NORMALIZATION
+                # =====================================
+
+                normalized_color = " ".join(
+
+                    attr_value
+                    .lower()
+                    .replace("-", " ")
+                    .replace("_", " ")
+                    .split()
+                )
+
+                # =====================================
+                # COLOR ALIAS NORMALIZATION
+                # =====================================
+
+                COLOR_ALIASES = {
+
+                    'lt blue': 'light blue',
+                    'dk blue': 'navy blue',
+                    'dk navy': 'navy blue',
+                    'royal': 'royal blue',
+                    'lime': 'lime green',
+                    'charcoal marl': 'charcoal',
+                    'heather navy': 'navy blue',
+                    'heather blue': 'blue',
+                    'heather grey': 'grey',
+                    'heather gray': 'gray',
+                    'sky': 'sky blue',
+                    'off white': 'white',
+                    'natural': 'beige',
+                }
+
+                normalized_color = COLOR_ALIASES.get(
+
+                    normalized_color,
+
+                    normalized_color
+                )
+
+                color_hex = None
+
+                _logger.warning(
+
+                    f"[COLOR NORMALIZED] "
+
+                    f"raw={attr_value} "
+
+                    f"normalized={normalized_color}"
+                )
+
+                # =====================================
+                # DIRECT MATCH
+                # =====================================
+
+                color_hex = self.COLOR_HEX_MAP.get(
+                    normalized_color
+                )
+
+                # ======================================
+                # PARTIAL MATCH FALLBACK
+                # ======================================
+
+                if not color_hex:
+
+                    # =====================================
+                    # REMOVE SECONDARY COLOR CONTEXT
+                    # =====================================
+
+                    primary_color_text = normalized_color
+
+                    split_keywords = [
+
+                        " with ",
+                        " trim",
+                        " piping",
+                        " contrast",
+                        "/",
+                        "&",
+                        ","
+                    ]
+
+                    for splitter in split_keywords:
+
+                        if splitter in primary_color_text:
+
+                            primary_color_text = (
+                                primary_color_text
+                                .split(splitter)[0]
+                                .strip()
+                            )
+
+                    _logger.warning(
+
+                        f"[PRIMARY COLOR PARSED] "
+
+                        f"raw={normalized_color} "
+
+                        f"primary={primary_color_text}"
+                    )
+
+                    # =====================================
+                    # LONGEST COLOR MATCH PRIORITY
+                    # =====================================
+
+                    best_match = None
+
+                    best_length = 0
+
+                    # for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                    #     if key in primary_color_text:
+
+                    #         if len(key) > best_length:
+
+                    #             best_match = (key, hex_value)
+
+                    #             best_length = len(key)
+
+                    for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                        key_words = key.split()
+
+                        primary_words = primary_color_text.split()
+
+                        # =====================================
+                        # EXACT WORD MATCH
+                        # =====================================
+
+                        if all(word in primary_words for word in key_words):
+
+                            if len(key_words) > best_length:
+
+                                best_match = (key, hex_value)
+
+                                best_length = len(key_words)
+                                
+                    if best_match:
+
+                        matched_key, matched_value = best_match
+
+                        color_hex = matched_value
+
+                        _logger.warning(
+
+                            f"[BEST COLOR MATCH] "
+
+                            f"{attr_value} "
+
+                            f"→ {matched_key} "
+
+                            f"→ {matched_value}"
+                        )
+
+                # =====================================
+                # SAFE FALLBACK COLORS
+                # =====================================
+
+                if not color_hex:
+
+                    if "white" in normalized_color:
+
+                        color_hex = "#F8F8F8"
+
+                    elif "grey" in normalized_color \
+                            or "gray" in normalized_color:
+
+                        color_hex = "#808080"
+
+                    elif "black" in normalized_color:
+
+                        color_hex = "#000000"
+
+                    elif "navy" in normalized_color:
+
+                        color_hex = "#000080"
+
+                    elif "blue" in normalized_color:
+
+                        color_hex = "#0066CC"
+
+                    elif "green" in normalized_color:
+
+                        color_hex = "#008000"
+
+                    elif "red" in normalized_color:
+
+                        color_hex = "#FF0000"
+
+                    elif "yellow" in normalized_color:
+
+                        color_hex = "#FFD700"
+
+                    elif "purple" in normalized_color:
+
+                        color_hex = "#800080"
+
+                    elif "orange" in normalized_color:
+
+                        color_hex = "#FF6600"
+
+                # =====================================
+                # APPLY HTML COLOR
+                # =====================================
+
+                if color_hex:
+
+                    value_vals[
+                        'html_color'
+                    ] = color_hex
+
+                    _logger.warning(
+
+                        f"[COLOR HEX ASSIGNED] "
+
+                        f"{attr_value} "
+
+                        f"→ {color_hex}"
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[COLOR HEX MISSING] "
+
+                        f"{attr_value}"
+                    )
+
+
+            value = self.env[
+                'product.attribute.value'
+            ].create(value_vals)
+
+        # =====================================
+        # PATCH EXISTING COLOR VALUES
+        # =====================================
+
+        elif is_color_attribute:
+
+            existing_html = (
+                value.html_color or ""
+            ).strip()
+
+            if not existing_html:
+
+                normalized_color = " ".join(
+
+                    attr_value
+                    .lower()
+                    .replace("-", " ")
+                    .replace("_", " ")
+                    .split()
+                )
+
+                COLOR_ALIASES = {
+
+                    'lt blue': 'light blue',
+                    'dk blue': 'navy blue',
+                    'dk navy': 'navy blue',
+                    'royal': 'royal blue',
+                    'lime': 'lime green',
+                    'charcoal marl': 'charcoal',
+                    'heather navy': 'navy blue',
+                    'heather blue': 'blue',
+                    'heather grey': 'grey',
+                    'heather gray': 'gray',
+                    'sky': 'sky blue',
+                    'off white': 'white',
+                    'natural': 'beige',
+                }
+
+                normalized_color = COLOR_ALIASES.get(
+
+                    normalized_color,
+
+                    normalized_color
+                )
+
+                color_hex = self.COLOR_HEX_MAP.get(
+                    normalized_color
+                )
+
+                # =====================================
+                # FALLBACK PARTIAL MATCH
+                # =====================================
+
+                if not color_hex:
+
+                    best_match = None
+                    best_length = 0
+
+                    for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                        key_words = key.split()
+
+                        normalized_words = normalized_color.split()
+
+                        # =====================================
+                        # EXACT WORD MATCH
+                        # =====================================
+
+                        if all(word in normalized_words for word in key_words):
+
+                            if len(key_words) > best_length:
+
+                                best_match = (
+                                    key,
+                                    hex_value
+                                )
+
+                                best_length = len(key_words)
+
+                    if best_match:
+
+                        matched_key, matched_value = best_match
+
+                        color_hex = matched_value
+
+                        _logger.warning(
+
+                            f"[PATCH COLOR MATCH] "
+
+                            f"{attr_value} "
+
+                            f"→ {matched_key} "
+
+                            f"→ {matched_value}"
+                        )
+
+                # =====================================
+                # APPLY PATCHED HTML COLOR
+                # =====================================
+
+                if color_hex:
+
+                    value.write({
+
+                        'html_color': color_hex
+                    })
+
+                    _logger.warning(
+
+                        f"[PATCH EXISTING COLOR] "
+
+                        f"{attr_value} "
+
+                        f"→ {color_hex}"
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[PATCH FAILED NO HEX] "
+
+                        f"{attr_value}"
+                    )
+
+        return attribute, value
+
+
+    #------------parse url-----------------------------------
 
     def parse_url(self):
 
@@ -1591,11 +2433,6 @@ class VendorImportJob(models.Model):
 
             return
 
-        # =====================================================
-        # LIMIT SIZE (VERY IMPORTANT)
-        # =====================================================
-
-        # structured_data = structured_data[:40]
 
         # ============================================
         # URL BATCHING
@@ -1614,6 +2451,7 @@ class VendorImportJob(models.Model):
             len(structured_data)
         )
 
+        total_structured = len(structured_data)
 
         structured_data = structured_data[
             start:end
@@ -1700,8 +2538,7 @@ class VendorImportJob(models.Model):
         # MOVE TO NEXT STEP
         # =====================================================
 
-        if self.url_parse_index >= len(structured_data):
-
+        if self.url_parse_index >= total_structured:
             _logger.warning(
                 "[URL PARSE] FINAL BATCH READY"
             )
@@ -1715,11 +2552,11 @@ class VendorImportJob(models.Model):
 
         self.state = "url_ai"
 
-    # =====================================================
+    # ======================================================
     # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
-    # =====================================================
+    # ======================================================
 
-    def _extract_excel_url_data(
+    def _extract_url_product_data(
 
         self,
 
@@ -1730,7 +2567,7 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
-                f"[EXCEL URL ENRICHMENT START] "
+                f"[URL ENRICHMENT START] "
 
                 f"{product_url}"
             )
@@ -1864,6 +2701,7 @@ class VendorImportJob(models.Model):
             )
 
             return {}
+
 
     #------excel parsing method---------------
     
@@ -2491,7 +3329,7 @@ class VendorImportJob(models.Model):
 
 
         # =====================================
-        # COMPLETION
+        # COMPLETION FLAG ONLY
         # =====================================
 
         if new_index >= total_rows:
@@ -2502,8 +3340,6 @@ class VendorImportJob(models.Model):
 
             self.is_excel_parsed = True
 
-            self.state = "excel_ai"
-
         else:
 
             _logger.warning(
@@ -2511,9 +3347,7 @@ class VendorImportJob(models.Model):
                 "→ NEXT CRON"
             )
 
-            self.state = "excel_parsing"
-
-
+       
         wb.close()
 
 
@@ -3186,17 +4020,42 @@ class VendorImportJob(models.Model):
                 area = cv2.contourArea(contour)
 
                 if area < 1600:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"small area={area}"
+                    )
+
                     continue
 
                 x, y, w, h = cv2.boundingRect(contour)
 
                 if w < 55 or h < 55:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"tiny size={w}x{h}"
+                    )
+
                     continue
 
                 ratio = w / float(h)
 
                 # reject text strips
+
                 if ratio > 6.5 or ratio < 0.12:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"ratio={ratio}"
+                    )
+
                     continue
 
                 sub = image[
@@ -3213,9 +4072,19 @@ class VendorImportJob(models.Model):
                     )
                 )
 
+
                 if not self._is_valid_product_crop(
                     pil_sub
                 ):
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"invalid crop "
+                        f"size={w}x{h}"
+                    )
+
                     continue
 
                 success, buffer = cv2.imencode(
@@ -3223,7 +4092,16 @@ class VendorImportJob(models.Model):
                     sub
                 )
 
+              
                 if not success:
+
+                    _logger.warning(
+
+                        "[GRID REJECT] "
+
+                        "encode failed"
+                    )
+
                     continue
 
                 encoded = base64.b64encode(
@@ -3232,6 +4110,21 @@ class VendorImportJob(models.Model):
 
                 score = self._score_segmented_image(
                     encoded
+                )
+
+                dominant = self._get_dominant_color_name(
+                    encoded
+                )
+
+                _logger.warning(
+
+                    f"[GRID ACCEPT] "
+
+                    f"score={score} "
+
+                    f"color={dominant} "
+
+                    f"size={w}x{h}"
                 )
 
                 results.append({
@@ -3247,6 +4140,35 @@ class VendorImportJob(models.Model):
                     "is_collage": False
                 })
 
+
+            # =====================================
+            # DEBUG BEFORE SORT
+            # =====================================
+
+            _logger.warning(
+
+                f"[GRID SPLIT RAW] "
+
+                f"total={len(results)}"
+            )
+
+            for idx, item in enumerate(results):
+
+                _logger.warning(
+
+                    f"[GRID RAW ITEM] "
+
+                    f"idx={idx} "
+
+                    f"score={item.get('score')} "
+
+                    f"size={item.get('width')}x{item.get('height')}"
+                )
+
+            # =====================================
+            # SORT BEST FIRST
+            # =====================================
+
             results = sorted(
 
                 results,
@@ -3259,7 +4181,33 @@ class VendorImportJob(models.Model):
                 reverse=True
             )
 
-            return results[:20]
+            # =====================================
+            # DEBUG AFTER SORT
+            # =====================================
+
+            for idx, item in enumerate(results):
+
+                _logger.warning(
+
+                    f"[GRID SORTED ITEM] "
+
+                    f"idx={idx} "
+
+                    f"score={item.get('score')} "
+                )
+
+            # =====================================
+            # NEVER HARD-TRIM VALID VARIANTS
+            # =====================================
+
+            _logger.warning(
+
+                f"[GRID FINAL COUNT] "
+
+                f"returned={len(results)}"
+            )
+
+            return results
 
         except Exception as e:
 
@@ -4459,8 +5407,8 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF OPENAI =========================
-
+    # =========== PDF OPENAI ================================
+    
     def send_to_openai_pdf(self):
 
         import json
@@ -4814,6 +5762,68 @@ class VendorImportJob(models.Model):
             f"| valid={len(page_images)}"
         )
 
+        # =====================================
+        # NO VALID IMAGE FAILSAFE
+        # =====================================
+
+        if not page_images:
+
+            _logger.warning(
+
+                f"[PDF NO VALID IMAGE] "
+
+                f"PAGE={next_record.page_number}"
+            )
+
+            existing_map = {}
+
+            for p in existing_pages:
+
+                existing_map[
+                    p.get("page")
+                ] = p
+
+            existing_map[
+                next_record.page_number
+            ] = {
+
+                "page": next_record.page_number,
+
+                "products": [],
+
+                "images": [],
+
+                "failed": True,
+
+                "reason": "no_valid_images"
+            }
+
+            combined_pages = sorted(
+
+                list(existing_map.values()),
+
+                key=lambda x: x.get(
+                    "page",
+                    0
+                )
+            )
+
+            self.ai_response = json.dumps(
+                combined_pages
+            )
+
+            self.last_ai_page = len(
+                combined_pages
+            )
+
+            self.state = "pdf_ai"
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            return
+
         page_price = ""
 
         page_stock = ""
@@ -4851,102 +5861,209 @@ class VendorImportJob(models.Model):
                 )
 
 
-        # =====================================================
+       # =====================================================
         # PROMPT
         # =====================================================
-       
+
         prompt = f"""
-        You are an advanced AI product extraction engine for catalog PDF pages.
+        You are an AI ecommerce catalog extraction engine.
 
-        You analyze BOTH:
-        - page text
-        - catalog product images
+        Analyze:
+        - catalog page text
+        - detected catalog images
 
-        Your job:
-        extract ALL visible products accurately.
-
-        ==================================================
-        STRICT OUTPUT RULES
-        ==================================================
-
-        1. RETURN ONLY VALID JSON ARRAY
-        2. NO markdown
-        3. NO explanation
-        4. NO text outside JSON
-        5. NEVER invent products not visible
-        6. NEVER skip visible products
-        7. NEVER duplicate products
-        8. EACH product must appear ONLY ONCE
-        9. ALWAYS preserve product grouping correctly
+        Extract ALL visible products accurately.
 
         ==================================================
-        CATALOG UNDERSTANDING RULES
+        OUTPUT RULES
         ==================================================
 
-        This input represents ONLY ONE catalog page.
+        Return ONLY valid JSON array.
 
-        DO NOT:
-        - continue products from previous pages
-        - assume future pages
-        - merge unrelated products
+        No markdown.
+        No explanations.
+        No extra text.
+
+        ==================================================
+        CORE EXTRACTION RULES
+        ==================================================
+
+        This input represents ONE catalog page.
 
         A page may contain:
-        - one hero product
+        - one product
         - multiple products
         - one product with variants
-        - one product with gallery/supporting images
+        - isolated thumbnails
+        - grouped color variations
 
-        ==================================================
-        PRODUCT DETECTION RULES
-        ==================================================
-
-        If a page contains:
-        - visually separated products
-        - different product names
-        - different product codes
-        - different structures/shapes
-
-        Then:
-        extract them as SEPARATE products.
-
-        CRITICAL:
-
-        Supplier catalog pages frequently contain:
-
-        - many isolated product thumbnails
-        - many color variants
-        - grouped apparel grids
-        - multiple visible colors
-        - multiple visible SKU presentations
-
-        You MUST aggressively detect ALL visible products.
-
-        If 8 visible shirt colors exist:
-        extract 8 variants.
-
-        If 10 visible caps exist:
-        extract 10 variants.
-
-        NEVER reduce visible product colors
-        to only 2-3 variants.
 
         IMPORTANT:
 
-        It is FAR BETTER to slightly over-detect
-        than to miss visible ecommerce variants.
+        If products appear without clear title blocks,
+        still extract them.
 
-        NEVER silently ignore:
+        If multiple standalone products appear on one page:
+        - infer product grouping visually
+        - detect visible variants
+        - create products even if title is missing
+
+        Pens, bottles, shirts, caps and accessories
+        must NEVER be ignored simply because:
+        - title is small
+        - products are grouped
+        - products are arranged in grid layout
+
+
+        IMPORTANT:
+
+        Aggressively detect ALL visible ecommerce products.
+
+        If a catalog page shows:
+        - 8 shirts
+        - 10 caps
+        - 6 bottles
+
+        extract ALL visible variants.
+
+        Prefer over-detection rather than missing products.
+
+        ==================================================
+        PRODUCT GROUPING RULES
+        ==================================================
+
+        Group products as variants ONLY when:
+        - same product shape
+        - same structure
+        - same dimensions
+        - same branding
+        - same item or product fall on same page
+        - only color/material/size changes
+
+        Examples:
+        - same cap in different colors
+        - same polo shirt in different colors
+        - same bottle in different colors
+
+        Otherwise:
+        create separate products.
+
+        ==================================================
+        TITLE RULES
+        ==================================================
+
+        Use the TRUE MAIN PRODUCT TITLE.
+
+        Main title is usually:
+        - largest heading
+        - top heading
+        - dominant catalog title
+        - visible product headline
+
+        DO NOT use:
+        - material-only text
+        - bullet features
+        - specifications
+        - dimensions
+        - marketing phrases
+
+        GOOD:
+        - 5 PANEL CAP
+        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
+        - Wireless Charging Pad
+
+        BAD:
+        - Heavy Brushed 100% Cotton
+        - Rib 1x1 collar and cuffs
+
+        ==================================================
+        DESCRIPTION RULES
+        ==================================================
+
+        Build rich ecommerce descriptions using:
+        - subtitle
+        - features
+        - specifications
+        - bullet points
+        - dimensions
+        - materials
+        - capacities
+        - branding info
+        - packaging info
+
+        Combine useful text naturally.
+
+        ==================================================
+        PRICE RULES
+        ==================================================
+
+        Aggressively search for price.
+
+        Prices and stocks may appear:
+        - near title
+        - beside variants
+        - inside tables
+        - inside text blocks
+        - in corners
+
+        Detect:
+        - $
+        - €
+        - £
+        - ₦
+        - USD
+        - EUR
+        - GBP
+
+        Examples:
+        - $2.99
+        - USD 4.25
+        - €8.50
+
+        If no price exists:
+        return empty string.
+
+        Extract:
+        - visible product price
+        - visible stock quantity
+        - visible product code
+        ==================================================
+        MOST CRITICAL
+        ==================================================
+        NO PRODUCT SHOULD MISS OUT OR BE IGNORED EXCEPT BLANK PAGE, 
+        TOTAL NUMBER OF PAGES SHOULD GENERAGES SAME NUMBERS OF 
+        PRODUCTS WITH EACH PRODUCTS HAS IT'S VARIANTS WHERE 
+        MULTIPLE ITEMS APPEAR 
+        ON SINGLE PAGE ACCURATELY. 
+        ==================================================
+        IMAGE RULES
+        ==================================================
+
+        Prefer professional ecommerce images:
         - isolated products
-        - visible color variants
-        - clean thumbnails
-        - alternate product colors
+        - clean background
+        - centered products
+        - full visibility
+
+        Avoid:
+        - large text blocks
+        - banners
+        - lifestyle scenes
+        - infographic layouts
+
+        If isolated variants exist:
+        prefer them over model/lifestyle photos.
 
         ==================================================
         STOCK EXTRACTION RULES:
         ==================================================
+        PRICE EXTRACTION IS CRITICAL.
 
-        Extract stock quantity ONLY when
+        Extract: 
+        - stock quantity ONLY when
         actual available inventory is explicitly stated.
+
+        - visible stock quantity
 
         Examples:
         - "Stock: 11 pcs"
@@ -4956,12 +6073,6 @@ class VendorImportJob(models.Model):
         DO NOT extract:
         - delivery times
         - MOQ
-        - carton quantity
-        - package quantity
-        - shipping quantity
-        - lead times
-        - dimensions
-        - capacity values
 
         If no real stock quantity exists:
         set:
@@ -4969,33 +6080,8 @@ class VendorImportJob(models.Model):
         "stock_qty": 0
 
         ==================================================
-        VARIANT DETECTION RULES
+        VARIANT RULES
         ==================================================
-
-        VARIANT GROUPING RULES:
-
-        Products MUST be grouped as variants when:
-
-        - same product shape
-        - same structure
-        - same branding
-        - same dimensions
-        - same material
-        - only color changes
-        - only size changes
-        - only minor style changes
-
-        EXAMPLES:
-        - same cap in multiple colors
-        - same polo shirt in different colors
-        - same bottle with color variations
-
-        DO NOT create separate products for:
-        - color-only changes
-        - size-only changes
-
-        Instead:
-        create ONE parent product with variants.
 
         Each variant should contain:
 
@@ -5005,217 +6091,30 @@ class VendorImportJob(models.Model):
                 "Size": ""
             }},
 
-            "image_index": null
+            "image_index": null,
+            "price": "",
+            "stock_qty": 0
         }}
-
-        IMPORTANT:
-
-        Variant images should ALSO be reused
-        inside gallery_image_indexes whenever useful.
-
-        A professional ecommerce product page
-        should contain:
-
-        - hero image
-        - variant thumbnails
-        - alternate isolated product renders
-        - supporting clean product images
-
-        Do NOT return empty galleries
-        when clean isolated product thumbnails exist.
-
-        ==================================================
-        ECOMMERCE IMAGE UNDERSTANDING RULES
-        ==================================================
-
-        You are NOT selecting the most artistic image.
-
-        You are selecting the BEST PROFESSIONAL
-        ECOMMERCE PRODUCT IMAGE.
-
-        Your goal:
-        produce Amazon/Alibaba/Shopify-style
-        product merchandising quality.
-
-        --------------------------------------------------
-        PRIORITY ORDER (VERY IMPORTANT)
-        --------------------------------------------------
-
-        ALWAYS prioritize:
-
-        1. isolated standalone product
-        2. clean white/plain background
-        3. centered product
-        4. full product visibility
-        5. variant color visibility
-        6. clean catalog render
-        7. multiple isolated color options
-
-        NEVER prioritize:
-        - humans/models
-        - lifestyle scenes
-        - promotional layouts
-        - infographic compositions
-        - text-heavy blocks
-        - banners
-        - decorative graphics
-
-        ==================================================
-        HERO IMAGE RULES
-        ==================================================
-
-        hero_image_index MUST point to:
-
-        - ONE isolated product
-        - clean/plain background
-        - centered product
-        - professional ecommerce shot
-        - no text overlays
-        - no large text areas
-        - no promotional layout
-        - no infographic composition
-
-        DO NOT use:
-        - humans wearing products
-        - lifestyle photography
-        - catalog cover layouts
-        - multi-product collages
-        - pages with large text blocks
-        - specification layouts
-        - promotional graphics
-
-        VERY IMPORTANT:
-
-        If isolated product variants exist anywhere
-        on the page,
-        ALWAYS prefer them over:
-        - human/model photos
-        - lifestyle shots
-        - promotional scenes
-
-        Example:
-        If a cap page contains:
-        - woman wearing cap
-        - isolated cap colors
-
-        hero_image_index MUST use:
-        isolated cap color image
-
-        NOT the woman/model image.
-
-        ==================================================
-        GALLERY IMAGE RULES
-        ==================================================
-
-        gallery_image_indexes should contain:
-
-        - isolated alternate angles
-        - isolated closeups
-        - isolated detail shots
-        - isolated side/back views
-
-        DO NOT include:
-        - banners
-        - specification layouts
-        - infographic graphics
-        - text-heavy images
-        - decorative layouts
-        - icons
-        - logos
-        - promotional compositions
-
-        ==================================================
-        VARIANT IMAGE RULES
-        ==================================================
-
-        Variants MUST be created when:
-
-        - same product
-        - same shape
-        - same structure
-        - same dimensions
-        - only color/material/style changes
-
-        IMPORTANT:
-
-        If multiple isolated product colors exist,
-        they MUST become variants.
-
-        Example:
-        - black cap
-        - blue cap
-        - red cap
-
-        MUST become:
-        ONE product
-        with multiple color variants.
-
-        DO NOT create separate products.
-
-        Each variant should contain:
-        - correct Color/Material attribute
-        - correct image_index
-
-        ==================================================
-        COLLAGE UNDERSTANDING RULES
-        ==================================================
-
-        Supplier catalog pages often contain:
-        - one large lifestyle image
-        - multiple smaller isolated products
-
-        IMPORTANT:
-
-        The smaller isolated products are usually
-        the CORRECT ecommerce assets.
-
-        DO NOT automatically prefer the largest image.
-
-        Prefer:
-        isolated product renders
-        over:
-        visually dominant lifestyle graphics.
-
-        ==================================================
-        PRICE/STOCK RULES
-        ==================================================
-
-        Extract:
-        - visible product price
-        - visible stock quantity
-        - visible product code
-
-        If stock/price belongs to a specific variant:
-        assign it to that variant.
-
-        DO NOT invent prices or stock.
 
         ==================================================
         OUTPUT FORMAT
         ==================================================
 
-        Return JSON ARRAY:
-
         [
             {{
                 "name": "",
+                "subtitle": "",
                 "description": "",
+                "bullet_features": [],
+                "material": "",
+                "dimensions": "",
                 "stock_qty": 0,
                 "price": "",
+                "currency": "",
                 "product_code": "",
                 "hero_image_index": null,
                 "gallery_image_indexes": [],
-                "variants": [
-                    {{
-                        "attributes": {{
-                            "Color": ""
-                        }},
-
-                        "image_index": null,
-                        "stock_qty": 0,
-                        "price": ""
-                    }}
-                ]
+                "variants": []
             }}
         ]
 
@@ -5425,11 +6324,6 @@ class VendorImportJob(models.Model):
                     "EMPTY AI RESPONSE"
                 )
 
-
-            # parsed = json.loads(
-            #     result
-            # )
-
             try:
 
                 parsed = json.loads(result)
@@ -5452,10 +6346,57 @@ class VendorImportJob(models.Model):
                     f"{result[:1200]}"
                 )
 
-                next_record.write({
+                _logger.warning(
 
-                    'state': 'failed'
-                })
+                    f"[PDF AI PAGE SKIPPED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| INVALID JSON"
+                )
+
+                # =====================================
+                # MARK PAGE AS SKIPPED
+                # =====================================
+
+                existing_map = {}
+
+                for p in existing_pages:
+
+                    existing_map[
+                        p.get("page")
+                    ] = p
+
+                existing_map[
+                    next_record.page_number
+                ] = {
+
+                    "page": next_record.page_number,
+
+                    "products": [],
+
+                    "images": [],
+
+                    "failed": True
+                }
+
+                combined_pages = sorted(
+
+                    list(existing_map.values()),
+
+                    key=lambda x: x.get(
+                        "page",
+                        0
+                    )
+                )
+
+                self.ai_response = json.dumps(
+                    combined_pages
+                )
+
+                self.last_ai_page = len(
+                    combined_pages
+                )
 
                 self._safe_commit_progress()
 
@@ -5470,10 +6411,54 @@ class VendorImportJob(models.Model):
                     f"PAGE={next_record.page_number}"
                 )
 
-                next_record.write({
 
-                    'state': 'failed'
-                })
+                _logger.warning(
+
+                    f"[PDF AI PAGE SKIPPED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| EMPTY RESPONSE"
+                )
+
+                existing_map = {}
+
+                for p in existing_pages:
+
+                    existing_map[
+                        p.get("page")
+                    ] = p
+
+                existing_map[
+                    next_record.page_number
+                ] = {
+
+                    "page": next_record.page_number,
+
+                    "products": [],
+
+                    "images": [],
+
+                    "failed": True
+                }
+
+                combined_pages = sorted(
+
+                    list(existing_map.values()),
+
+                    key=lambda x: x.get(
+                        "page",
+                        0
+                    )
+                )
+
+                self.ai_response = json.dumps(
+                    combined_pages
+                )
+
+                self.last_ai_page = len(
+                    combined_pages
+                )
 
                 self._safe_commit_progress()
 
@@ -5701,7 +6686,7 @@ class VendorImportJob(models.Model):
 
         return
     
-
+   
     #===========Excel Open AI================================
     def send_to_openai_excel(self):
 
@@ -6195,6 +7180,7 @@ class VendorImportJob(models.Model):
                 DETECTED STOCK:
                 {row_stock}
                 """
+
 
                 response = client.responses.create(
 
@@ -6749,10 +7735,10 @@ class VendorImportJob(models.Model):
         return prepared
 
 
-    # =====================================
+    # =======================================
     # ADVANCED DOMINANT COLOR DETECTION
-    # =====================================
-
+    # =======================================
+    
     def _detect_dominant_color(
 
         self,
@@ -6809,6 +7795,78 @@ class VendorImportJob(models.Model):
             r, g, b = avg
 
             # =====================================
+            # DARK COLOR ANALYSIS
+            # =====================================
+
+            brightness = np.mean(
+
+                pixels,
+
+                axis=1
+            )
+
+            dark_pixels_ratio = np.mean(
+                brightness < 75
+            )
+
+            very_dark_ratio = np.mean(
+                brightness < 45
+            )
+
+            # dominant blue inside dark pixels
+            dark_blue_ratio = np.mean(
+
+                (
+                    pixels[:, 2] > pixels[:, 0] * 1.15
+                )
+
+                &
+
+                (
+                    pixels[:, 2] > pixels[:, 1] * 1.10
+                )
+
+                &
+
+                (
+                    brightness < 90
+                )
+            )
+
+            # =====================================
+            # TRUE BLACK DETECTION
+            # =====================================
+
+            if (
+
+                very_dark_ratio > 0.24
+
+                or
+
+                (
+                    dark_pixels_ratio > 0.40
+
+                    and
+
+                    abs(r - g) < 24
+
+                    and
+
+                    abs(g - b) < 24
+                )
+            ):
+
+                return "black"
+
+            # =====================================
+            # DARK NAVY DETECTION
+            # =====================================
+
+            if dark_blue_ratio > 0.18:
+
+                return "navy"
+
+            # =====================================
             # RGB → HSV
             # =====================================
 
@@ -6837,14 +7895,12 @@ class VendorImportJob(models.Model):
             if v > 92 and s < 10:
                 return "white"
 
+         
             # =====================================
-            # GRAY / GREY
+            # GREY DETECTION
             # =====================================
 
             if s < 15:
-
-                if v < 55:
-                    return "gray"
 
                 return "grey"
 
@@ -6916,6 +7972,7 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
+
 
     # =====================================
     # PROFESSIONAL VARIANT IMAGE MATCHER
@@ -7047,6 +8104,7 @@ class VendorImportJob(models.Model):
 
                     "red",
                     "blue",
+                    "navy",
                     "green",
                     "lime",
                     "yellow",
@@ -7055,20 +8113,15 @@ class VendorImportJob(models.Model):
                     "black",
                     "gray",
                     "grey",
+                    "light_grey",
+                    "charcoal",
+                    "silver",
                     "purple",
                     "pink",
                     "brown"
                 ]
 
-                normalized_variant_text = (
-                    variant_text
-                    .replace("navy", "blue")
-                    .replace("sky blue", "blue")
-                    .replace("light blue", "blue")
-                    .replace("charcoal", "gray")
-                    .replace("silver", "gray")
-                    .replace("off white", "white")
-                )
+                normalized_variant_text = variant_text.lower()
 
                 for color in color_map:
 
@@ -7080,7 +8133,16 @@ class VendorImportJob(models.Model):
 
                         asset_score += 180
 
+                    # navy/blue distinction
+                    elif (
+                        color == "navy"
+                        and
+                        dominant_color == "blue"
+                    ):
+                        asset_score += 40
+
                     # gray/grey normalization
+
                     elif (
 
                         color in ["gray", "grey"]
@@ -7090,7 +8152,7 @@ class VendorImportJob(models.Model):
                         dominant_color in [
                             "gray",
                             "grey",
-                            "black"
+                            "light_grey"
                         ]
                     ):
 
@@ -7105,7 +8167,7 @@ class VendorImportJob(models.Model):
 
                         dominant_color in [
                             "white",
-                            "gray"
+                            "light_grey"
                         ]
                     ):
 
@@ -7120,15 +8182,15 @@ class VendorImportJob(models.Model):
 
                         dominant_color in [
                             "black",
-                            "gray"
+                            "navy"
                         ]
                     ):
 
                         asset_score += 90
 
-                # ---------------------------------
+                # ------------------------------------
                 # HERO BONUS
-                # ---------------------------------
+                # ------------------------------------
 
                 if asset.get("score", 0) >= 70:
 
@@ -7280,7 +8342,7 @@ class VendorImportJob(models.Model):
 
 
             # ==========================================
-            # TEXT-LIKE DENSITY PENALTY
+            # DARK OBJECT ANALYSIS
             # ==========================================
 
             gray_img = np.mean(
@@ -7289,13 +8351,25 @@ class VendorImportJob(models.Model):
             )
 
             very_dark_ratio = np.mean(
-                gray_img < 35
+                gray_img < 22
             )
 
-            # only punish extreme dense darkness
-            if very_dark_ratio > 0.55:
+            # ==========================================
+            # ONLY REJECT TRUE SOLID DARK BLOCKS
+            # ==========================================
 
-                score -= 55
+            pixel_std_gray = np.std(gray_img)
+
+            if (
+
+                very_dark_ratio > 0.82
+
+                and
+
+                pixel_std_gray < 18
+            ):
+
+                score -= 35
 
             # ==========================================
             # GOOD PRODUCT ASPECT BONUS
@@ -7310,12 +8384,43 @@ class VendorImportJob(models.Model):
             # ==========================================
             # CLEAN BACKGROUND BONUS
             # ==========================================
-
-            white_ratio = np.mean(
-                np_img > 230
+            white_pixels = np.all(
+                np_img > 230,
+                axis=2
             )
 
-            score += white_ratio * 38
+            white_ratio = np.mean(
+                white_pixels
+            )
+
+            # moderate ecommerce bonus only
+            if white_ratio > 0.45:
+
+                score += 14
+
+            elif white_ratio > 0.25:
+
+                score += 8
+
+            # ==========================================
+            # DARK PRODUCT PRESERVATION
+            # ==========================================
+
+            dark_presence = np.mean(
+                gray_img < 55
+            )
+
+            # preserve legitimate dark apparel
+            if (
+                0.18 < dark_presence < 0.75
+                and
+                pixel_std_gray > 16
+            ):
+
+                score += 18
+
+            score += white_ratio * 24
+           
             # ==========================================
             # DETAIL / TEXTURE BONUS
             # ==========================================
@@ -7410,29 +8515,48 @@ class VendorImportJob(models.Model):
                 filtered_pixels
             )
 
-            avg = filtered_pixels.mean(
+            # =====================================
+            # USE MEDIAN FOR STABILITY
+            # =====================================
+
+            median = np.median(
+                filtered_pixels,
                 axis=0
             )
 
-            r, g, b = avg
+            r, g, b = median
 
             # =====================================
             # COLOR CLASSIFICATION
             # =====================================
 
+  
             if r > 200 and g > 200 and b > 200:
                 return "white"
 
-
-            if r < 85 and g < 85 and b < 85:
-                    return "black"
-
+            if (
+                abs(r - g) < 18
+                and
+                abs(g - b) < 18
+                and
+                210 <= r <= 242
+            ):
+                return "light_grey"
+          
             if r > 160 and g < 120 and b < 120:
                 return "red"
 
             if r > 180 and g > 180 and b < 120:
                 return "yellow"
 
+            if (
+                b > r * 1.12
+                and
+                b > g * 1.08
+                and
+                b < 110
+            ):
+                return "navy"
 
             if (
                 b > r * 1.08
@@ -7440,15 +8564,15 @@ class VendorImportJob(models.Model):
                 b > g * 1.05
             ):
                 return "blue"
-
-
+            
+            
             if (
                 g > r * 1.05
                 and
                 g > b * 1.03
             ):
                 return "green"
-
+            
             if (
                 r > 110
                 and
@@ -7457,16 +8581,22 @@ class VendorImportJob(models.Model):
                 abs(r - b) < 60
             ):
                 return "purple"
-
+            
             if r > 150 and g > 120 and b < 100:
                 return "orange"
+            
+            if r < 85 and g < 85 and b < 85:
+                return "black"
 
             if (
-                abs(r - g) < 35
+                abs(r - g) < 22
                 and
-                abs(g - b) < 35
+                abs(g - b) < 22
+                and
+                70 < r < 210
             ):
                 return "grey"
+
 
             return "unknown"
 
@@ -7521,12 +8651,11 @@ class VendorImportJob(models.Model):
             return False
 
     #============marchin AI===================================================
-    # =====================================================
     # LEGACY IMAGE PAYLOAD MATCHER
     # Deprecated after migration to
     # index-based asset orchestration.
     # Keep temporarily for rollback safety.
-    # =====================================================
+    # ========================================================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -8547,7 +9676,7 @@ class VendorImportJob(models.Model):
 
 
     #==========create pdf product====================================
-  
+
     def create_products_pdf(self):
 
         import json
@@ -8949,6 +10078,7 @@ class VendorImportJob(models.Model):
 
                         # =====================================
                         # APPLY REAL INVENTORY STOCK
+                        # ONLY FOR STORABLE PRODUCTS
                         # =====================================
 
                         try:
@@ -8960,6 +10090,11 @@ class VendorImportJob(models.Model):
                                     0
                                 ) or 0
                             )
+
+                            # =====================================
+                            # CONSUMABLE PRODUCTS:
+                            # SKIP STOCK QUANTS
+                            # =====================================
 
                             if stock_qty > 0:
 
@@ -9055,57 +10190,15 @@ class VendorImportJob(models.Model):
                             if not attr_value:
                                 continue
 
-                            attribute = self.env[
-                                'product.attribute'
-                            ].search([
+                            attribute, value = (
 
-                                (
-                                    'name',
-                                    '=',
-                                    attr_name
-                                )
+                                self._get_or_create_attribute_and_value(
 
-                            ], limit=1)
+                                    attr_name,
 
-                            if not attribute:
-
-                                attribute = self.env[
-                                    'product.attribute'
-                                ].create({
-
-                                    'name': attr_name
-
-                                })
-
-                            value = self.env[
-                                'product.attribute.value'
-                            ].search([
-
-                                (
-                                    'name',
-                                    '=',
                                     attr_value
-                                ),
-
-                                (
-                                    'attribute_id',
-                                    '=',
-                                    attribute.id
                                 )
-
-                            ], limit=1)
-
-                            if not value:
-
-                                value = self.env[
-                                    'product.attribute.value'
-                                ].create({
-
-                                    'name': attr_value,
-
-                                    'attribute_id':
-                                        attribute.id
-                                })
+                            )
 
                             line = self.env[
                                 'product.template.attribute.line'
@@ -9379,60 +10472,8 @@ class VendorImportJob(models.Model):
         self._safe_commit_progress()
 
 
-    #==========create pdf CATEGORY RESOLVER====================================
-    
-    def _get_or_create_pdf_category(
-
-        self,
-
-        raw_category,
-
-        category_obj,
-
-        parent_category,
-
-        category_mapping
-    ):
-
-        mapped_category = "General"
-
-        raw_category = (
-            raw_category or ""
-        ).lower()
-
-        for key, val in category_mapping.items():
-
-            if key in raw_category:
-
-                mapped_category = val
-
-                break
-
-        category = category_obj.search([
-
-            ('name', '=ilike', mapped_category),
-
-            (
-                'parent_id',
-                '=',
-                parent_category.id
-            )
-
-        ], limit=1)
-
-        if not category:
-
-            category = category_obj.create({
-
-                'name': mapped_category,
-
-                'parent_id': parent_category.id
-            })
-
-        return category
-
-
     #==========pdf product PRODUCT CREATE/GET====================================
+    
     def _get_or_create_pdf_product(
 
         self,
@@ -9466,6 +10507,103 @@ class VendorImportJob(models.Model):
 
             return product, False
 
+        # =====================================
+        # BUILD PROFESSIONAL DESCRIPTION
+        # =====================================
+
+        subtitle = (
+            product_data.get("subtitle")
+            or ""
+        ).strip()
+
+        description = (
+            product_data.get("description")
+            or ""
+        ).strip()
+
+        material = (
+            product_data.get("material")
+            or ""
+        ).strip()
+
+        dimensions = (
+            product_data.get("dimensions")
+            or ""
+        ).strip()
+
+        bullet_features = (
+            product_data.get("bullet_features")
+            or []
+        )
+
+        # =====================================
+        # CLEAN BULLETS
+        # =====================================
+
+        clean_bullets = []
+
+        for bullet in bullet_features:
+
+            if not bullet:
+                continue
+
+            bullet = str(bullet).strip()
+
+            if len(bullet) < 2:
+                continue
+
+            clean_bullets.append(bullet)
+
+        # =====================================
+        # BUILD HTML DESCRIPTION
+        # =====================================
+
+        description_parts = []
+
+        if subtitle:
+
+            description_parts.append(
+                f"<h4>{subtitle}</h4>"
+            )
+
+        if description:
+
+            description_parts.append(
+                f"<p>{description}</p>"
+            )
+
+        if material:
+
+            description_parts.append(
+                f"<p><strong>Material:</strong> "
+                f"{material}</p>"
+            )
+
+        if dimensions:
+
+            description_parts.append(
+                f"<p><strong>Dimensions:</strong> "
+                f"{dimensions}</p>"
+            )
+
+        if clean_bullets:
+
+            bullet_html = "".join([
+
+                f"<li>{b}</li>"
+
+                for b in clean_bullets
+            ])
+
+            description_parts.append(
+
+                f"<ul>{bullet_html}</ul>"
+            )
+
+        rich_description = "<br/>".join(
+            description_parts
+        )
+
         vals = {
 
             'name': (
@@ -9473,13 +10611,12 @@ class VendorImportJob(models.Model):
                 or ""
             ).strip(),
 
-            'default_code': variant_group,
-
-            'description_sale': (
-                product_data.get(
-                    "description"
-                ) or ""
+           'default_code': (
+                product_data.get("product_code")
+                or variant_group
             ),
+
+           'description_sale': rich_description,
 
             'type': 'consu',
 
@@ -9504,16 +10641,16 @@ class VendorImportJob(models.Model):
                     0
                 ) or 0
             ),
+
+            'list_price': self._safe_parse_price(
+                product_data.get("price")
+            ),
         }
-
-
 
         hero_index = product_data.get(
             "hero_image_index"
         )
         
-
-
         # =====================================
         # PROFESSIONAL HERO IMAGE SELECTION
         # =====================================
@@ -9619,6 +10756,58 @@ class VendorImportJob(models.Model):
 
         return product, True
 
+
+    #==========create pdf CATEGORY RESOLVER====================================
+    
+    def _get_or_create_pdf_category(
+
+        self,
+
+        raw_category,
+
+        category_obj,
+
+        parent_category,
+
+        category_mapping
+    ):
+
+        mapped_category = "General"
+
+        raw_category = (
+            raw_category or ""
+        ).lower()
+
+        for key, val in category_mapping.items():
+
+            if key in raw_category:
+
+                mapped_category = val
+
+                break
+
+        category = category_obj.search([
+
+            ('name', '=ilike', mapped_category),
+
+            (
+                'parent_id',
+                '=',
+                parent_category.id
+            )
+
+        ], limit=1)
+
+        if not category:
+
+            category = category_obj.create({
+
+                'name': mapped_category,
+
+                'parent_id': parent_category.id
+            })
+
+        return category
 
     #=========pdf product GALLERY CREATOR=======================
     def _create_pdf_gallery(
@@ -10018,6 +11207,7 @@ class VendorImportJob(models.Model):
 
     
     #==========Excel URl queue logic========================
+    
     def _queue_excel_urls(self, url_products):
 
         import json
@@ -10220,90 +11410,9 @@ class VendorImportJob(models.Model):
 
             self.env.invalidate_all()
 
-    #=====excel group url update====================================
-
-    def _enrich_group_with_url_data(
-
-        self,
-
-        group_items,
-
-        url_cache=None
-    ):
-
-        if url_cache is None:
-
-            url_cache = {}
-
-        group_url = ""
-
-        for item in group_items:
-
-            possible_url = (
-                item.get("url")
-                or
-                item.get("product_url")
-                or
-                ""
-            ).strip()
-
-            if possible_url:
-
-                group_url = possible_url
-
-                break
-
-        if not group_url:
-
-            return {}
-
-        if group_url in url_cache:
-
-            _logger.warning(
-
-                f"[URL CACHE HIT] "
-
-                f"{group_url}"
-            )
-
-            return url_cache[group_url]
-
-        try:
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT START] "
-
-                f"{group_url}"
-            )
-
-            url_data = self._extract_url_product_data(
-                group_url
-            ) or {}
-
-            url_cache[group_url] = url_data
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT SUCCESS] "
-
-                f"{group_url}"
-            )
-
-            return url_data
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT FAILED] "
-
-                f"{str(e)}"
-            )
-
-            return {}
-
-    #==========create excel product===========================
+    
+    #==========create excel product=================================
+    
     def create_products_excel(self):
 
         import json
@@ -10451,7 +11560,6 @@ class VendorImportJob(models.Model):
 
         grouped_products = {}
 
-
         for p in products:
 
             raw_name = (
@@ -10464,36 +11572,98 @@ class VendorImportJob(models.Model):
             )
 
 
+            # ============================================
+            # PRIORITY 1:
+            # USE EXPLICIT VARIANT GROUP
+            # ============================================
+
             if variant_group:
 
                 group_id = str(
                     variant_group
                 ).strip().upper()
 
+
+            # ============================================
+            # PRIORITY 2:
+            # USE PRODUCT ID
+            # ============================================
+
+            elif p.get("id"):
+
+                group_id = str(
+                    p.get("id")
+                ).strip().upper()
+
+
+            # ============================================
+            # PRIORITY 3:
+            # FALLBACK TO RAW NAME
+            # ============================================
+
             else:
 
-                match = re.search(
+                normalized_name = re.sub(
 
-                    r'(?:Product\s*)?([A-Z]*\d+)',
+                    r'[\W_]+',
 
-                    raw_name,
+                    ' ',
 
-                    re.I
-                )
+                    raw_name
+                ).strip().upper()
 
 
-                if match:
+                # ============================================
+                # INVALID / GENERIC NAMES
+                # ============================================
 
-                    group_id = (
-                        match.group(1)
-                        .upper()
+                generic_names = [
+
+                    'PRODUCT',
+                    'ITEM',
+                    'GOODS',
+                    'SAMPLE',
+                    'TEST',
+                    'UNKNOWN',
+
+                    'SPORTS BOTTLE',
+                    'BOTTLE',
+                    'TRAVEL MUG',
+                    'TRAVEL CUP',
+                    'DRINKWARE MUG',
+                    'THERMAL BOTTLE',
+                    'MUG',
+                    'CUP',
+                ]
+
+
+                # ============================================
+                # SAFE NAME GROUPING
+                # ============================================
+
+                if (
+
+                    normalized_name
+
+                    and normalized_name not in generic_names
+
+                    and not re.match(
+                        r'^PRODUCT\s+\d+$',
+                        normalized_name,
+                        re.I
                     )
+
+                ):
+
+                    group_id = normalized_name
 
                 else:
 
-                    group_id = (
-                        raw_name.upper()
-                    )
+                    # =============================================
+                    # FINAL HARD FALLBACK
+                    # =============================================
+
+                    group_id = f"ROW_{len(grouped_products)}"
 
 
             grouped_products.setdefault(
@@ -10551,7 +11721,6 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROCESS GROUPS
         # =====================================================
-        url_cache = {}
 
         for group_idx in range(start, end):
 
@@ -10580,22 +11749,11 @@ class VendorImportJob(models.Model):
                     group_items[0]
                 )
 
-                # =========================================
-                # SAFE URL EXTRACTION (NON-BLOCKING)
-                # =========================================
-
-                url_data = self._enrich_group_with_url_data(
-
-                    group_items,
-
-                    url_cache
-                )
-
                 fingerprint = self._build_vendor_fingerprint(
                     main_product
                 )
 
-                name = (
+                raw_name = (
 
                     main_product.get(
                         "name"
@@ -10604,6 +11762,93 @@ class VendorImportJob(models.Model):
                 ).strip()
 
 
+                # =====================================================
+                # VALIDATE PRODUCT NAME
+                # =====================================================
+
+                invalid_name = False
+
+
+                if not raw_name:
+
+                    invalid_name = True
+
+
+                elif re.fullmatch(r'[\d\W_]+', raw_name):
+
+                    invalid_name = True
+
+
+                elif len(raw_name) < 3:
+
+                    invalid_name = True
+
+                elif raw_name.lower() in [
+
+                    'product',
+                    'item',
+                    'goods',
+                    'sample',
+                    'test',
+                    'n/a',
+                    'unknown',
+
+                    # =====================================
+                    # GENERIC AI NAMES
+                    # =====================================
+
+                    'sports bottle',
+                    'bottle',
+                    'travel mug',
+                    'travel cup',
+                    'drinkware mug',
+                    'thermal bottle',
+                    'mug',
+                    'cup',
+                ]:
+
+                    invalid_name = True
+
+
+                elif re.match(
+
+                    r'^(variant|color|size|style)\s*\d*$',
+
+                    raw_name,
+
+                    re.I
+                ):
+
+                    invalid_name = True
+
+
+                # =====================================================
+                # FINAL NAME
+                # =====================================================
+
+                if invalid_name:
+
+                    # =========================================
+                    # STRICT FALLBACK NAME
+                    # =========================================
+
+                    name = f"Product {group_id}"
+
+                    _logger.warning(
+
+                        f"[NAME FALLBACK] "
+
+                        f"{raw_name} "
+
+                        f"-> "
+
+                        f"{name}"
+                    )
+
+                else:
+
+                    name = raw_name
+
                 description = (
 
                     main_product.get(
@@ -10611,63 +11856,6 @@ class VendorImportJob(models.Model):
                     ) or ""
                 )
 
-                # =====================================
-                # SAFE URL ENRICHMENT
-                # =====================================
-
-                if url_data:
-
-                    description = (
-
-                        url_data.get("description")
-
-                        or description
-                    )
-
-                    if not name:
-
-                        name = (
-
-                            url_data.get("name")
-
-                            or name
-                        )
-
-                    _logger.warning(
-
-                        f"[URL DATA APPLIED] "
-
-                        f"{group_id}"
-                    )
-
-                # =====================================
-                # URL DATA ENRICHMENT
-                # =====================================
-
-                if url_data:
-
-                    description = (
-
-                        url_data.get("description")
-
-                        or description
-                    )
-
-                    if not name:
-
-                        name = (
-
-                            url_data.get("name")
-
-                            or name
-                        )
-
-                    _logger.warning(
-
-                        f"[URL DATA APPLIED] "
-
-                        f"{group_id}"
-                    )
 
                 raw_category = (
 
@@ -10725,8 +11913,7 @@ class VendorImportJob(models.Model):
                 # FIND BY PRODUCT CODE FIRST
                 # ================================================
 
-                #vendor_id = self.partner_id.id if self.partner_id else False
-                vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
+                vendor_id = self.partner_id.id if self.partner_id else False
 
                 product = False
 
@@ -10948,7 +12135,7 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # DETECT ATTRIBUTE VALUE
+                    # RAW ATTRIBUTE VALUE
                     # =============================================
 
                     attr_value = str(
@@ -10967,9 +12154,14 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                        or f"Variant {idx+1}"
+                        or ""
 
                     ).strip()
+
+
+                    # ===============================================
+                    # IMAGE COLOR FALLBACK
+                    # ===============================================
 
                     if not attr_value:
 
@@ -10981,31 +12173,25 @@ class VendorImportJob(models.Model):
 
                             variant_attribute_name = "Color"
 
-                            attr_value = detected_color
+                            attr_value = detected_color.title()
 
                             _logger.warning(
 
-                                f"[IMAGE COLOR FALLBACK] "
+                                f"[IMAGE COLOR DETECTED] "
 
-                                f"{detected_color}"
+                                f"{attr_value}"
                             )
 
-                        else:
 
+                    # =============================================
+                    # FINAL SAFE FALLBACK
+                    # =============================================
 
-                            attr_value = (
+                    if not attr_value:
 
-                                item.get("vendor_code")
+                        attr_value = f"Variant {idx+1}"
 
-                                or
-
-                                item.get("primary_code")
-
-                                or
-
-                                f"Code {idx+1}"
-                            )
-
+                    
                     _logger.warning(
 
                         f"[VARIANT DETECTED] "
@@ -11338,11 +12524,15 @@ class VendorImportJob(models.Model):
                 self.state = 'done'
 
                 # cleanup URL queue
-                self.excel_url_processing = False
 
-                self.excel_url_queue = False
+                if hasattr(self, 'excel_url_processing'):
 
-                self.excel_url_index = 0
+                    self.excel_url_processing = False
+
+
+                if hasattr(self, 'excel_url_index'):
+
+                    self.excel_url_index = 0
 
             # =========================================
             # MORE PARSE ROWS REMAIN
@@ -11380,6 +12570,136 @@ class VendorImportJob(models.Model):
         self._safe_commit_progress()
 
 
+    #=====excel group url update====================================
+
+    def _enrich_group_with_url_data(
+
+        self,
+
+        group_items,
+
+        url_cache=None
+    ):
+
+        if url_cache is None:
+
+            url_cache = {}
+
+        group_url = ""
+
+        # =====================================
+        # FIND FIRST VALID GROUP URL
+        # =====================================
+
+        for item in group_items:
+
+            possible_url = (
+                item.get("url")
+                or
+                item.get("product_url")
+                or
+                ""
+            ).strip()
+
+            if possible_url:
+
+                group_url = possible_url
+
+                break
+
+        # =====================================
+        # NO URL FOUND
+        # =====================================
+
+        if not group_url:
+
+            _logger.warning(
+
+                "[URL ENRICHMENT SKIPPED] "
+
+                "NO URL FOUND"
+            )
+
+            return {}
+
+        _logger.warning(
+
+            f"[URL GROUP FOUND] "
+
+            f"{group_url}"
+        )
+
+        # =====================================
+        # CACHE HIT
+        # =====================================
+
+        if group_url in url_cache:
+
+            _logger.warning(
+
+                f"[URL CACHE HIT] "
+
+                f"{group_url}"
+            )
+
+            return url_cache[group_url]
+
+        try:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT START] "
+
+                f"{group_url}"
+            )
+
+            url_data = self._extract_url_product_data(
+                group_url
+            ) or {}
+
+            # =====================================
+            # EMPTY RESPONSE
+            # =====================================
+
+            if not url_data:
+
+                _logger.warning(
+
+                    f"[URL ENRICHMENT EMPTY] "
+
+                    f"{group_url}"
+                )
+
+                url_cache[group_url] = {}
+
+                return {}
+
+            url_cache[group_url] = url_data
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT SUCCESS] "
+
+                f"{group_url} "
+
+                f"| keys={list(url_data.keys())}"
+            )
+
+            return url_data
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT FAILED] "
+
+                f"{group_url} "
+
+                f"| {str(e)}"
+            )
+
+            return {}
+
     #====Excel variant mapping==================================
     def _detect_basic_image_color(self, image_data):
 
@@ -11405,12 +12725,49 @@ class VendorImportJob(models.Model):
             if not colors:
                 return False
 
-            dominant = max(
-                colors,
-                key=lambda x: x[0]
-            )[1]
+
+            # =====================================
+            # REMOVE BACKGROUND COLORS
+            # =====================================
+
+            filtered_colors = []
+
+            for count, rgb in colors:
+
+                r, g, b = rgb
+
+                # skip near-white backgrounds
+                if r > 220 and g > 220 and b > 220:
+                    continue
+
+                # skip light grey/silver reflections
+                if abs(r - g) < 15 and abs(g - b) < 15 and r > 170:
+                    continue
+
+                filtered_colors.append(
+                    (count, rgb)
+                )
+
+
+            # fallback if everything removed
+            if filtered_colors:
+                dominant = max(
+                    filtered_colors,
+                    key=lambda x: x[0]
+                )[1]
+            else:
+                dominant = max(
+                    colors,
+                    key=lambda x: x[0]
+                )[1]
+
 
             r, g, b = dominant
+
+
+            _logger.warning(
+                f"[COLOR RGB] r={r} g={g} b={b}"
+            )
 
 
             # =====================================
@@ -11429,7 +12786,21 @@ class VendorImportJob(models.Model):
             if r > 180 and g < 80 and b < 80:
                 return "Red"
 
-            if b > 150 and r < 120:
+            # =====================================
+            # BLUE FAMILY
+            # =====================================
+
+            if b > r and b > g:
+
+                # NAVY / DARK BLUE
+                if b < 120:
+                    return "Navy"
+
+                # LIGHT BLUE / CYAN
+                if g > 140:
+                    return "Light Blue"
+
+                # ROYAL / NORMAL BLUE
                 return "Blue"
 
             if g > 140 and r < 120:
@@ -11438,7 +12809,60 @@ class VendorImportJob(models.Model):
             if r > 150 and g > 150 and b < 120:
                 return "Yellow"
 
-            return "Standard"
+            # =====================================
+            # BLUE FAMILY FALLBACK
+            # =====================================
+
+            if b > r and b > g:
+
+                # deep navy
+                if b < 120:
+                    return "Navy"
+
+                # light blue / cyan
+                if g > 120:
+                    return "Light Blue"
+
+                return "Blue"
+
+
+            # =====================================
+            # GREEN FAMILY FALLBACK
+            # =====================================
+
+            if g > r and g > b:
+
+                if g > 160 and r > 120:
+                    return "Lime Green"
+
+                return "Green"
+
+
+            # =====================================
+            # RED / ORANGE
+            # =====================================
+
+            if r > g and r > b:
+
+                if g > 100:
+                    return "Orange"
+
+                return "Red"
+
+
+            # =====================================
+            # DARK COLORS
+            # =====================================
+
+            if r < 90 and g < 90 and b < 120:
+                return "Black"
+
+
+            # =====================================
+            # FINAL FALLBACK
+            # =====================================
+
+            return "Grey"
 
         except Exception as e:
 
@@ -11563,6 +12987,7 @@ class VendorImportJob(models.Model):
         active_states = [
 
             'draft',
+            'review',
 
             'excel_parsing',
             'excel_ai',
@@ -11576,11 +13001,6 @@ class VendorImportJob(models.Model):
             'url_ai',
             'url_creating',
 
-            # =====================================
-            # AUTO-RECOVER INTERRUPTED JOBS
-            # =====================================
-
-            'failed',
         ]
 
 
@@ -11616,60 +13036,14 @@ class VendorImportJob(models.Model):
 
         for j in jobs:
 
-            # =====================================
-            # AUTO RECOVER FAILED JOBS
-            # =====================================
+            sig = (
 
-            if j.state == 'failed':
+                str(j.partner_id.id)
 
-                _logger.warning(
+                + "_"
 
-                    f"[AUTO RECOVER] "
-
-                    f"job={j.id}"
-                )
-
-                try:
-
-                    if j.last_created_page:
-
-                        j.state = 'pdf_creating'
-
-                    elif j.last_ai_page:
-
-                        j.state = 'pdf_ai'
-
-                    elif j.current_page:
-
-                        j.state = 'pdf_extracting'
-
-                    else:
-
-                        j.state = 'draft'
-
-                    j.lock = False
-
-                    self.env.cr.commit()
-
-                    _logger.warning(
-
-                        f"[AUTO RECOVER OK] "
-
-                        f"job={j.id} "
-
-                        f"| state={j.state}"
-                    )
-
-                except Exception as e:
-
-                    _logger.exception(
-
-                        f"[AUTO RECOVER FAILED] "
-
-                        f"{str(e)}"
-                    )
-
-            sig = j.upload_signature
+                + str(j.upload_signature)
+            )
            
             if not sig:
 
@@ -11965,7 +13339,17 @@ class VendorImportJob(models.Model):
 
                     try:
 
+                        # =========================================
+                        # REAL PROCESSING
+                        # =========================================
+
                         job._process_step()
+
+                        # =========================================
+                        # SUCCESS RESET
+                        # =========================================
+
+                        self.env.cr.commit()
 
                     except Exception as e:
 
@@ -11978,11 +13362,124 @@ class VendorImportJob(models.Model):
                             f"| {str(e)}"
                         )
 
+                        # =====================================
+                        # INFRASTRUCTURE FAILURE DETECTION
+                        # =====================================
+
+                        dead_cursor = any(
+
+                            x in str(e).lower()
+
+                            for x in [
+
+                                "cursor already closed",
+
+                                "connection already closed",
+
+                                "closed cursor",
+
+                                "interfaceerror"
+                            ]
+                        )
+
+                        # =====================================
+                        # DO NOT CONSUME BUSINESS RETRIES
+                        # =====================================
+
+                        if dead_cursor:
+
+                            _logger.warning(
+
+                                f"[INFRA FAILURE] "
+
+                                f"job={job.id} "
+
+                                f"| retry preserved"
+                            )
+
+                            return
+
                         try:
 
-                            job.state = 'failed'
+                            # =====================================
+                            # RETRY TRACKING
+                            # =====================================
 
-                            self.env.cr.commit()
+                            job.stage_retry_count += 1
+
+                            _logger.warning(
+
+                                f"[JOB RETRY] "
+
+                                f"job={job.id} "
+
+                                f"| retry={job.stage_retry_count}/8"
+                            )
+
+                            # =====================================
+                            # TERMINAL FAILURE
+                            # =====================================
+
+                            if job.stage_retry_count >= 8:
+
+                                _logger.error(
+
+                                    f"[JOB FAILED PERMANENTLY] "
+
+                                    f"job={job.id}"
+                                )
+
+                                job.state = 'failed'
+
+                                job.failed_at = fields.Datetime.now()
+
+                                job.failure_reason = str(e)
+
+                                self.env.cr.commit()
+
+                                # =================================
+                                # FAILED EMAIL NOTIFICATION
+                                # =================================
+
+                                try:
+
+                                    _logger.warning(
+
+                                        f"[FAILED EMAIL] "
+
+                                        f"START → job={job.id}"
+                                    )
+
+                                    job._send_failed_processing_email(
+
+                                        error_message=str(e)
+                                    )
+
+                                    _logger.warning(
+
+                                        f"[FAILED EMAIL] "
+
+                                        f"COMPLETE → job={job.id}"
+                                    )
+
+                                except Exception as email_error:
+
+                                    _logger.exception(
+
+                                        f"[FAILED EMAIL ERROR] "
+
+                                        f"{str(email_error)}"
+                                    )
+
+                            else:
+
+                                # =================================
+                                # RECOVERY STATE
+                                # =================================
+
+                                job.state = 'review'
+
+                                self.env.cr.commit()
 
                         except Exception:
 
@@ -11994,7 +13491,6 @@ class VendorImportJob(models.Model):
                             )
 
                         break
-
 
                     # =========================================
                     # REFRESH AFTER
@@ -12356,27 +13852,42 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    if (
+                    # =============================================
+                    # DEAD CURSOR SAFETY
+                    # =============================================
 
-                        job
-
-                        and
-
-                        job.exists()
-
-                    ):
-
-                        job.lock = False
-
-                        self.env.cr.commit()
-
+                    if self.env.cr.closed:
 
                         _logger.warning(
 
-                            f"[CRON] JOB UNLOCKED "
+                            "[CRON] SKIP UNLOCK "
 
-                            f"| job={job.id}"
+                            "CURSOR CLOSED"
                         )
+
+                    else:
+
+                        if (
+
+                            job
+
+                            and
+
+                            job.exists()
+
+                        ):
+
+                            job.lock = False
+
+                            self.env.cr.commit()
+
+
+                            _logger.warning(
+
+                                f"[CRON] JOB UNLOCKED "
+
+                                f"| job={job.id}"
+                            )
 
                 except Exception:
 
@@ -12664,6 +14175,7 @@ class VendorImportJob(models.Model):
 
         return data
 
+
     #=======validation===================
     def validate_ai_output(products):
         for p in products:
@@ -12753,3 +14265,27 @@ class VendorImportJob(models.Model):
 
             except Exception as e:
                 _logger.warning(f"❌ Failed: {str(e)}")
+
+    #===============pdf price helper====================
+    def _safe_parse_price(self, value):
+
+        try:
+
+            import re
+
+            if not value:
+                return 1.0
+
+            cleaned = re.sub(
+                r'[^0-9.,]',
+                '',
+                str(value)
+            )
+
+            cleaned = cleaned.replace(',', '.')
+
+            return float(cleaned)
+
+        except Exception:
+
+            return 1.0
