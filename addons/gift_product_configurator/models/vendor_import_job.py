@@ -11414,6 +11414,7 @@ class VendorImportJob(models.Model):
     
     #==========create excel product=================================
     
+   
     def create_products_excel(self):
 
         import json
@@ -11561,7 +11562,6 @@ class VendorImportJob(models.Model):
 
         grouped_products = {}
 
-
         for p in products:
 
             raw_name = (
@@ -11574,36 +11574,38 @@ class VendorImportJob(models.Model):
             )
 
 
+            # ============================================
+            # PRIORITY 1:
+            # USE EXPLICIT VARIANT GROUP
+            # ============================================
+
             if variant_group:
 
                 group_id = str(
                     variant_group
                 ).strip().upper()
 
+
+            # ============================================
+            # PRIORITY 2:
+            # USE PRODUCT ID
+            # ============================================
+
+            elif p.get("id"):
+
+                group_id = str(
+                    p.get("id")
+                ).strip().upper()
+
+
+            # ============================================
+            # PRIORITY 3:
+            # FALLBACK TO RAW NAME
+            # ============================================
+
             else:
 
-                match = re.search(
-
-                    r'(?:Product\s*)?([A-Z]*\d+)',
-
-                    raw_name,
-
-                    re.I
-                )
-
-
-                if match:
-
-                    group_id = (
-                        match.group(1)
-                        .upper()
-                    )
-
-                else:
-
-                    group_id = (
-                        raw_name.upper()
-                    )
+                group_id = raw_name.upper()
 
 
             grouped_products.setdefault(
@@ -11765,37 +11767,6 @@ class VendorImportJob(models.Model):
                 # =====================================================
                 # FINAL NAME
                 # =====================================================
-
-                # if invalid_name:
-
-                #     category_hint = (
-
-                #         main_product.get("category")
-
-                #         or "Product"
-                #     ).strip()
-
-                #     if not category_hint:
-
-                #         category_hint = "Product"
-
-
-                #     name = f"{category_hint.title()} {group_id}"
-
-                #     _logger.warning(
-
-                #         f"[NAME FALLBACK] "
-
-                #         f"{raw_name} "
-
-                #         f"-> "
-
-                #         f"{name}"
-                #     )
-
-                # else:
-
-                #     name = raw_name
 
                 if invalid_name:
 
@@ -12106,7 +12077,7 @@ class VendorImportJob(models.Model):
 
 
                     # =============================================
-                    # DETECT ATTRIBUTE VALUE
+                    # RAW ATTRIBUTE VALUE
                     # =============================================
 
                     attr_value = str(
@@ -12125,9 +12096,14 @@ class VendorImportJob(models.Model):
 
                         or item.get("style")
 
-                        or f"Variant {idx+1}"
+                        or ""
 
                     ).strip()
+
+
+                    # ===============================================
+                    # IMAGE COLOR FALLBACK
+                    # ===============================================
 
                     if not attr_value:
 
@@ -12139,31 +12115,25 @@ class VendorImportJob(models.Model):
 
                             variant_attribute_name = "Color"
 
-                            attr_value = detected_color
+                            attr_value = detected_color.title()
 
                             _logger.warning(
 
-                                f"[IMAGE COLOR FALLBACK] "
+                                f"[IMAGE COLOR DETECTED] "
 
-                                f"{detected_color}"
+                                f"{attr_value}"
                             )
 
-                        else:
 
+                    # =============================================
+                    # FINAL SAFE FALLBACK
+                    # =============================================
 
-                            attr_value = (
+                    if not attr_value:
 
-                                item.get("vendor_code")
+                        attr_value = f"Variant {idx+1}"
 
-                                or
-
-                                item.get("primary_code")
-
-                                or
-
-                                f"Code {idx+1}"
-                            )
-
+                    
                     _logger.warning(
 
                         f"[VARIANT DETECTED] "
@@ -12540,7 +12510,6 @@ class VendorImportJob(models.Model):
 
 
         self._safe_commit_progress()
-
 
 
     #=====excel group url update====================================
