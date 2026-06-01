@@ -8651,12 +8651,11 @@ class VendorImportJob(models.Model):
             return False
 
     #============marchin AI===================================================
-    # =====================================================
     # LEGACY IMAGE PAYLOAD MATCHER
     # Deprecated after migration to
     # index-based asset orchestration.
     # Keep temporarily for rollback safety.
-    # =====================================================
+    # ========================================================================
     def match_image_with_ai(self, product_name, images):
 
         api_key = self.env['ir.config_parameter'].sudo().get_param('openai.api.key')
@@ -12787,7 +12786,21 @@ class VendorImportJob(models.Model):
             if r > 180 and g < 80 and b < 80:
                 return "Red"
 
-            if b > 150 and r < 120:
+            # =====================================
+            # BLUE FAMILY
+            # =====================================
+
+            if b > r and b > g:
+
+                # NAVY / DARK BLUE
+                if b < 120:
+                    return "Navy"
+
+                # LIGHT BLUE / CYAN
+                if g > 140:
+                    return "Light Blue"
+
+                # ROYAL / NORMAL BLUE
                 return "Blue"
 
             if g > 140 and r < 120:
@@ -12796,7 +12809,60 @@ class VendorImportJob(models.Model):
             if r > 150 and g > 150 and b < 120:
                 return "Yellow"
 
-            return "Standard"
+            # =====================================
+            # BLUE FAMILY FALLBACK
+            # =====================================
+
+            if b > r and b > g:
+
+                # deep navy
+                if b < 120:
+                    return "Navy"
+
+                # light blue / cyan
+                if g > 120:
+                    return "Light Blue"
+
+                return "Blue"
+
+
+            # =====================================
+            # GREEN FAMILY FALLBACK
+            # =====================================
+
+            if g > r and g > b:
+
+                if g > 160 and r > 120:
+                    return "Lime Green"
+
+                return "Green"
+
+
+            # =====================================
+            # RED / ORANGE
+            # =====================================
+
+            if r > g and r > b:
+
+                if g > 100:
+                    return "Orange"
+
+                return "Red"
+
+
+            # =====================================
+            # DARK COLORS
+            # =====================================
+
+            if r < 90 and g < 90 and b < 120:
+                return "Black"
+
+
+            # =====================================
+            # FINAL FALLBACK
+            # =====================================
+
+            return "Grey"
 
         except Exception as e:
 
@@ -14022,8 +14088,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        #ACTOR_ID = "selectad~my-actor"
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
