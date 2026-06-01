@@ -12453,11 +12453,15 @@ class VendorImportJob(models.Model):
                 self.state = 'done'
 
                 # cleanup URL queue
-                self.excel_url_processing = False
 
-                self.excel_url_queue = False
+                if hasattr(self, 'excel_url_processing'):
 
-                self.excel_url_index = 0
+                    self.excel_url_processing = False
+
+
+                if hasattr(self, 'excel_url_index'):
+
+                    self.excel_url_index = 0
 
             # =========================================
             # MORE PARSE ROWS REMAIN
