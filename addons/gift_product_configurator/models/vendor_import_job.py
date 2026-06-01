@@ -11702,15 +11702,6 @@ class VendorImportJob(models.Model):
                 ).strip()
 
 
-                variant_group = (
-
-                    main_product.get(
-                        "variant_group"
-                    ) or ""
-
-                ).strip()
-
-
                 # =====================================================
                 # VALIDATE PRODUCT NAME
                 # =====================================================
@@ -11718,43 +11709,55 @@ class VendorImportJob(models.Model):
                 invalid_name = False
 
 
-                # EMPTY
                 if not raw_name:
 
                     invalid_name = True
 
 
-                # PURE NUMBER
-                elif re.fullmatch(r'\d+', raw_name):
+                elif re.fullmatch(r'[\d\W_]+', raw_name):
 
                     invalid_name = True
 
 
-                # RANGE
-                elif re.fullmatch(r'\d+\s*[-/]\s*\d+', raw_name):
+                elif len(raw_name) < 3:
 
                     invalid_name = True
 
-
-                # URL
-                elif raw_name.lower().startswith(("http://", "https://", "www.")):
-
-                    invalid_name = True
-
-
-                # GENERIC HEADERS
                 elif raw_name.lower() in [
 
-                    'item',
                     'product',
-                    'description',
-                    'name',
+                    'item',
                     'goods',
-                    'article',
-                    'code',
-                    'sku',
+                    'sample',
+                    'test',
+                    'n/a',
+                    'unknown',
 
+                    # =====================================
+                    # GENERIC AI NAMES
+                    # =====================================
+
+                    'sports bottle',
+                    'bottle',
+                    'travel mug',
+                    'travel cup',
+                    'drinkware mug',
+                    'thermal bottle',
+                    'mug',
+                    'cup',
                 ]:
+
+                    invalid_name = True
+
+
+                elif re.match(
+
+                    r'^(variant|color|size|style)\s*\d*$',
+
+                    raw_name,
+
+                    re.I
+                ):
 
                     invalid_name = True
 
@@ -11765,13 +11768,22 @@ class VendorImportJob(models.Model):
 
                 if invalid_name:
 
-                    if variant_group:
+                    # =========================================
+                    # STRICT FALLBACK NAME
+                    # =========================================
 
-                        name = f"Product {variant_group}"
+                    name = f"Product {group_id}"
 
-                    else:
+                    _logger.warning(
 
-                        name = f"Product {group_id}"
+                        f"[NAME FALLBACK] "
+
+                        f"{raw_name} "
+
+                        f"-> "
+
+                        f"{name}"
+                    )
 
                 else:
 
