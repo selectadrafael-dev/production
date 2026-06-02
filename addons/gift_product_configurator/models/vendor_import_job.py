@@ -8450,12 +8450,13 @@ class VendorImportJob(models.Model):
 
 
     #=============variant color enhancement 1=================
+
     def _get_dominant_color_name(
 
         self,
 
         image_base64
-      ):
+    ):
 
         try:
 
@@ -8589,6 +8590,20 @@ class VendorImportJob(models.Model):
             ):
                 return "light grey"
             
+
+            # =====================================
+            # BLACK
+            # =====================================
+
+            if (
+                brightness < 92
+                and
+                saturation < 42
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
+            
+
             # =====================================
             # GREY
             # =====================================
@@ -8616,39 +8631,6 @@ class VendorImportJob(models.Model):
                 return "orange"
 
             # =====================================
-            # NAVY
-            # =====================================
-
-            if (
-                    b > r * 1.22
-                    and
-                    b > g * 1.15
-                    and
-                    brightness < 80
-                    and
-                    saturation > 28
-            ):
-                _logger.warning("[PDF COLOR DETECTED] NAVY")
-                return "navy"
-
-
-            # =====================================
-            # BLUE
-            # =====================================
-
-            if (
-                b > r * 1.08
-                and
-                b > g * 1.05
-                and
-                brightness >= 70
-                and
-                saturation > 28
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLUE")
-                return "blue"
-            
-             # =====================================
             # PURPLE
             # =====================================
 
@@ -8665,20 +8647,37 @@ class VendorImportJob(models.Model):
                 return "purple"
 
             # =====================================
-            # TRUE BLACK
+            # NAVY
             # =====================================
 
             if (
-                brightness < 72
+                b > r * 1.18
                 and
-                saturation < 18
+                b > g * 1.12
                 and
-                abs(r - g) < 15
+                brightness < 95
                 and
-                abs(g - b) < 15
+                saturation > 35
             ):
-                _logger.warning("[PDF COLOR DETECTED] BLACK")
-                return "black"
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if (
+                b > r * 1.10
+                and
+                b > g * 1.08
+                and
+                brightness >= 95
+                and
+                saturation > 40
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
+                return "blue"
             
             # =====================================
             # GREEN
@@ -8711,7 +8710,6 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
-
 
     #=================Centralized Rusable Image resolver==============
 
@@ -10592,7 +10590,7 @@ class VendorImportJob(models.Model):
         asset_pool,
 
         product_obj
-    ):
+     ):
 
         product = product_obj.search([
 
@@ -10871,7 +10869,7 @@ class VendorImportJob(models.Model):
         parent_category,
 
         category_mapping
-    ):
+     ):
 
         mapped_category = "General"
 
@@ -10920,7 +10918,7 @@ class VendorImportJob(models.Model):
         product_data,
 
         asset_pool
-    ):
+        ):
 
         gallery_indexes = product_data.get(
             "gallery_image_indexes",
