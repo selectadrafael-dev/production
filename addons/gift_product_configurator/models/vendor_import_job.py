@@ -8475,7 +8475,21 @@ class VendorImportJob(models.Model):
 
             ).convert("RGB")
 
-            img = img.resize((80, 80))
+
+            # =====================================
+            # CENTER CROP
+            # =====================================
+
+            width, height = img.size
+
+            crop = img.crop((
+                width * 0.20,
+                height * 0.20,
+                width * 0.80,
+                height * 0.80
+            ))
+
+            img = crop.resize((80, 80))
 
             np_img = np.array(img)
 
@@ -8526,22 +8540,85 @@ class VendorImportJob(models.Model):
 
             r, g, b = median
 
+            brightness = (r + g + b) / 3
+
+            max_channel = max(r, g, b)
+            min_channel = min(r, g, b)
+
+            saturation = max_channel - min_channel
+
+            _logger.warning(
+                f"[PDF COLOR ANALYSIS] "
+                f"rgb=({r:.1f},{g:.1f},{b:.1f}) "
+                f"brightness={brightness:.1f} "
+                f"saturation={saturation:.1f}"
+            )
+
             # =====================================
             # COLOR CLASSIFICATION
             # =====================================
 
-  
-            if r > 200 and g > 200 and b > 200:
+            if (
+                brightness > 215
+                and
+                saturation < 32
+            ):
+
+                if r > b + 8 and g > b + 8:
+
+                    _logger.warning(
+                        "[PDF COLOR DETECTED] CREAM"
+                    )
+
+                    return "cream"
+
+                _logger.warning(
+                    "[PDF COLOR DETECTED] WHITE"
+                )
+
                 return "white"
 
             if (
+                saturation < 18
+                and
                 abs(r - g) < 18
                 and
                 abs(g - b) < 18
                 and
-                210 <= r <= 242
+                200 <= brightness <= 242
             ):
-                return "light_grey"
+                return "light grey"
+            
+
+            # =====================================
+            # BLACK
+            # =====================================
+
+            if (
+                brightness < 92
+                and
+                saturation < 42
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
+            
+
+            # =====================================
+            # GREY
+            # =====================================
+
+            if (
+                saturation < 22
+                and
+                abs(r - g) < 18
+                and
+                abs(g - b) < 18
+                and
+                70 <= brightness <= 210
+            ):
+                _logger.warning("[PDF COLOR DETECTED] GREY")
+                return "grey"
+
           
             if r > 160 and g < 120 and b < 120:
                 return "red"
@@ -8549,56 +8626,78 @@ class VendorImportJob(models.Model):
             if r > 180 and g > 180 and b < 120:
                 return "yellow"
 
+            if r > 150 and g > 120 and b < 100:
+                return "orange"
+
+            # =====================================
+            # PURPLE
+            # =====================================
+
             if (
-                b > r * 1.12
+                r > 75
+                and
+                b > 75
+                and
+                abs(r - b) < 45
+                and
+                g < (r * 0.82)
+            ):
+                _logger.warning("[PDF COLOR DETECTED] PURPLE")
+                return "purple"
+
+            # =====================================
+            # NAVY
+            # =====================================
+
+            if (
+                b > r * 1.18
+                and
+                b > g * 1.12
+                and
+                brightness < 95
+                and
+                saturation > 35
+            ):
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if (
+                b > r * 1.10
                 and
                 b > g * 1.08
                 and
-                b < 110
-            ):
-                return "navy"
-
-            if (
-                b > r * 1.08
+                brightness >= 95
                 and
-                b > g * 1.05
+                saturation > 40
             ):
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
                 return "blue"
             
-            
+            # =====================================
+            # GREEN
+            # =====================================
+
             if (
-                g > r * 1.05
+                g > r * 1.10
                 and
-                g > b * 1.03
+                g > b * 1.08
+                and
+                saturation > 35
             ):
+                _logger.warning("[PDF COLOR DETECTED] GREEN")
                 return "green"
-            
-            if (
-                r > 110
-                and
-                b > 110
-                and
-                abs(r - b) < 60
-            ):
-                return "purple"
-            
-            if r > 150 and g > 120 and b < 100:
-                return "orange"
-            
-            if r < 85 and g < 85 and b < 85:
-                return "black"
 
-            if (
-                abs(r - g) < 22
-                and
-                abs(g - b) < 22
-                and
-                70 < r < 210
-            ):
-                return "grey"
+            # return "unknown"
+            _logger.warning(
+                "[PDF COLOR DETECTED] FALLBACK GREY"
+            )
 
-
-            return "unknown"
+            return "grey"
 
         except Exception as e:
 
@@ -14088,8 +14187,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
