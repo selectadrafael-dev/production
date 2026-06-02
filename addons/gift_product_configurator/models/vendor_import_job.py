@@ -8455,7 +8455,7 @@ class VendorImportJob(models.Model):
         self,
 
         image_base64
-    ):
+      ):
 
         try:
 
@@ -8589,20 +8589,6 @@ class VendorImportJob(models.Model):
             ):
                 return "light grey"
             
-
-            # =====================================
-            # BLACK
-            # =====================================
-
-            if (
-                brightness < 92
-                and
-                saturation < 42
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLACK")
-                return "black"
-            
-
             # =====================================
             # GREY
             # =====================================
@@ -8630,6 +8616,39 @@ class VendorImportJob(models.Model):
                 return "orange"
 
             # =====================================
+            # NAVY
+            # =====================================
+
+            if (
+                    b > r * 1.22
+                    and
+                    b > g * 1.15
+                    and
+                    brightness < 80
+                    and
+                    saturation > 28
+            ):
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if (
+                b > r * 1.08
+                and
+                b > g * 1.05
+                and
+                brightness >= 70
+                and
+                saturation > 28
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
+                return "blue"
+            
+             # =====================================
             # PURPLE
             # =====================================
 
@@ -8646,37 +8665,20 @@ class VendorImportJob(models.Model):
                 return "purple"
 
             # =====================================
-            # NAVY
+            # TRUE BLACK
             # =====================================
 
             if (
-                b > r * 1.18
+                brightness < 72
                 and
-                b > g * 1.12
+                saturation < 18
                 and
-                brightness < 95
+                abs(r - g) < 15
                 and
-                saturation > 35
+                abs(g - b) < 15
             ):
-                _logger.warning("[PDF COLOR DETECTED] NAVY")
-                return "navy"
-
-
-            # =====================================
-            # BLUE
-            # =====================================
-
-            if (
-                b > r * 1.10
-                and
-                b > g * 1.08
-                and
-                brightness >= 95
-                and
-                saturation > 40
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLUE")
-                return "blue"
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
             
             # =====================================
             # GREEN
@@ -8717,7 +8719,7 @@ class VendorImportJob(models.Model):
         self,
         asset_pool,
         index
-    ):
+     ):
 
         try:
 
