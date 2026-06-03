@@ -9777,13 +9777,15 @@ class VendorImportJob(models.Model):
             'stock.quant'
         ]
 
+
         stock_location = self.env[
             'stock.location'
         ].search([
 
-            ('usage', '=', 'internal')
+            ('usage', '=', 'internal'),
+            ('active', '=', True)
 
-        ], limit=1)
+        ], order='id asc', limit=1)
 
         CATEGORY_MAPPING = {
 
@@ -10123,91 +10125,117 @@ class VendorImportJob(models.Model):
                             asset_pool
                         )
 
-                        # =====================================
-                        # APPLY REAL INVENTORY STOCK
-                        # ONLY FOR STORABLE PRODUCTS
-                        # =====================================
+                        created_count += 1
 
-                        try:
+                    else:
 
-                            stock_qty = int(
+                        skipped_count += 1
 
-                                product_data.get(
-                                    "stock_qty",
-                                    0
-                                ) or 0
-                            )
 
-                            # =====================================
-                            # CONSUMABLE PRODUCTS:
-                            # SKIP STOCK QUANTS
-                            # =====================================
+                    # =====================================
+                    # APPLY REAL INVENTORY STOCK
+                    # FOR BOTH NEW + EXISTING PRODUCTS
+                    # =====================================
 
-                            if stock_qty > 0:
+                    try:
 
-                                quant = stock_quant_obj.search([
+                        stock_qty = int(
 
-                                    (
-                                        'product_id',
-                                        '=',
-                                        product.product_variant_id.id
-                                    ),
+                            product_data.get(
+                                "stock_qty",
+                                0
+                            ) or 0
+                        )
 
-                                    (
-                                        'location_id',
-                                        '=',
-                                        stock_location.id
-                                    )
+                        _logger.warning(
 
-                                ], limit=1)
+                            f"[PDF STOCK DEBUG] "
 
-                                if quant:
+                            f"{product.name} "
 
-                                    quant.inventory_quantity = (
-                                        stock_qty
-                                    )
+                            f"| stock_qty={stock_qty}"
+                        )
 
-                                    quant.action_apply_inventory()
+                        if stock_qty > 0:
 
-                                else:
+                            quant = stock_quant_obj.search([
 
-                                    quant = stock_quant_obj.create({
+                                (
+                                    'product_id',
+                                    '=',
+                                    product.product_variant_id.id
+                                ),
 
-                                        'product_id':
-                                            product.product_variant_id.id,
+                                (
+                                    'location_id',
+                                    '=',
+                                    stock_location.id
+                                )
 
-                                        'location_id':
-                                            stock_location.id,
+                            ], limit=1)
 
-                                        'inventory_quantity':
-                                            stock_qty
-                                    })
+                            if quant:
 
-                                    quant.action_apply_inventory()
+                                quant.inventory_quantity = (
+                                    stock_qty
+                                )
+
+                                quant.action_apply_inventory()
 
                                 _logger.warning(
 
-                                    f"[STOCK APPLIED] "
+                                    f"[STOCK UPDATED] "
 
                                     f"{product.name} "
 
                                     f"| qty={stock_qty}"
                                 )
 
-                        except Exception as e:
+                            else:
+
+                                quant = stock_quant_obj.create({
+
+                                    'product_id':
+                                        product.product_variant_id.id,
+
+                                    'location_id':
+                                        stock_location.id,
+
+                                    'inventory_quantity':
+                                        stock_qty
+                                })
+
+                                quant.action_apply_inventory()
+
+                                _logger.warning(
+
+                                    f"[STOCK CREATED] "
+
+                                    f"{product.name} "
+
+                                    f"| qty={stock_qty}"
+                                )
+
+                        else:
 
                             _logger.warning(
 
-                                f"[STOCK APPLY FAILED] "
+                                f"[STOCK SKIPPED ZERO] "
 
-                                f"{str(e)}"
+                                f"{product.name}"
                             )
 
-                        created_count += 1
+                    except Exception as e:
 
-                    else:
+                        _logger.warning(
 
-                        skipped_count += 1
+                            f"[STOCK APPLY FAILED] "
+
+                            f"{product.name} "
+
+                            f"| {str(e)}"
+                        )
+
 
                     if not variants:
 
@@ -10439,19 +10467,21 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
-                                    # used_asset_indexes.add(
-                                    #     matched_asset.get("index")
-                                    # )
-
-                                    asset_index = (
-                                        matched_asset.get("clean_index")
-                                        if matched_asset.get("clean_index") is not None
-                                        else matched_asset.get("index")
-                                    )
+                            
+                                    asset_index = matched_asset.get("index")
 
                                     if asset_index is not None:
 
                                         used_asset_indexes.add(asset_index)
+
+                                        _logger.warning(
+
+                                            f"[ASSET INDEX USED] "
+
+                                            f"{variant_name} "
+
+                                            f"| index={asset_index}"
+                                        )
 
                                     _logger.warning(
 
