@@ -1758,7 +1758,7 @@ class VendorImportJob(models.Model):
         attr_name,
 
         attr_value
-    ):
+     ):
 
         attr_name = str(
             attr_name or ""
@@ -1991,16 +1991,7 @@ class VendorImportJob(models.Model):
 
                     best_length = 0
 
-                    # for key, hex_value in self.COLOR_HEX_MAP.items():
-
-                    #     if key in primary_color_text:
-
-                    #         if len(key) > best_length:
-
-                    #             best_match = (key, hex_value)
-
-                    #             best_length = len(key)
-
+                
                     for key, hex_value in self.COLOR_HEX_MAP.items():
 
                         key_words = key.split()
@@ -2165,53 +2156,7 @@ class VendorImportJob(models.Model):
                     normalized_color
                 )
 
-                # =====================================
-                # FALLBACK PARTIAL MATCH
-                # =====================================
-
-                if not color_hex:
-
-                    best_match = None
-                    best_length = 0
-
-                    for key, hex_value in self.COLOR_HEX_MAP.items():
-
-                        key_words = key.split()
-
-                        normalized_words = normalized_color.split()
-
-                        # =====================================
-                        # EXACT WORD MATCH
-                        # =====================================
-
-                        if all(word in normalized_words for word in key_words):
-
-                            if len(key_words) > best_length:
-
-                                best_match = (
-                                    key,
-                                    hex_value
-                                )
-
-                                best_length = len(key_words)
-
-                    if best_match:
-
-                        matched_key, matched_value = best_match
-
-                        color_hex = matched_value
-
-                        _logger.warning(
-
-                            f"[PATCH COLOR MATCH] "
-
-                            f"{attr_value} "
-
-                            f"→ {matched_key} "
-
-                            f"→ {matched_value}"
-                        )
-
+              
                 # =====================================
                 # APPLY PATCHED HTML COLOR
                 # =====================================
@@ -8450,13 +8395,13 @@ class VendorImportJob(models.Model):
 
 
     #=============variant color enhancement 1=================
-
+    
     def _get_dominant_color_name(
 
         self,
 
         image_base64
-    ):
+      ):
 
         try:
 
@@ -8590,20 +8535,6 @@ class VendorImportJob(models.Model):
             ):
                 return "light grey"
             
-
-            # =====================================
-            # BLACK
-            # =====================================
-
-            if (
-                brightness < 92
-                and
-                saturation < 42
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLACK")
-                return "black"
-            
-
             # =====================================
             # GREY
             # =====================================
@@ -8631,6 +8562,39 @@ class VendorImportJob(models.Model):
                 return "orange"
 
             # =====================================
+            # NAVY
+            # =====================================
+
+            if (
+                    b > r * 1.22
+                    and
+                    b > g * 1.15
+                    and
+                    brightness < 80
+                    and
+                    saturation > 28
+            ):
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if (
+                b > r * 1.08
+                and
+                b > g * 1.05
+                and
+                brightness >= 70
+                and
+                saturation > 28
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
+                return "blue"
+            
+             # =====================================
             # PURPLE
             # =====================================
 
@@ -8647,37 +8611,20 @@ class VendorImportJob(models.Model):
                 return "purple"
 
             # =====================================
-            # NAVY
+            # TRUE BLACK
             # =====================================
 
             if (
-                b > r * 1.18
+                brightness < 72
                 and
-                b > g * 1.12
+                saturation < 18
                 and
-                brightness < 95
+                abs(r - g) < 15
                 and
-                saturation > 35
+                abs(g - b) < 15
             ):
-                _logger.warning("[PDF COLOR DETECTED] NAVY")
-                return "navy"
-
-
-            # =====================================
-            # BLUE
-            # =====================================
-
-            if (
-                b > r * 1.10
-                and
-                b > g * 1.08
-                and
-                brightness >= 95
-                and
-                saturation > 40
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLUE")
-                return "blue"
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
             
             # =====================================
             # GREEN
@@ -8710,6 +8657,7 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
+
 
     #=================Centralized Rusable Image resolver==============
 

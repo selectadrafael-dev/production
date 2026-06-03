@@ -88541,3 +88541,780 @@ class VendorImportJob(models.Model):
 
             return "unknown"
 
+
+
+
+
+
+
+
+
+
+#==================================================
+#- previous stable working methods
+#==================================================
+
+
+
+
+ # =========================================
+ # REUSABLE ATTRIBUTE ENGINE 
+ # =========================================
+
+    def _get_or_create_attribute_and_value(
+
+        self,
+
+        attr_name,
+
+        attr_value
+      ):
+
+        attr_name = str(
+            attr_name or ""
+        ).strip()
+
+        attr_value = str(
+            attr_value or ""
+        ).strip()
+
+        # =====================================
+        # ATTRIBUTE NORMALIZATION
+        # =====================================
+        normalized_attr = attr_name.lower().strip()
+
+        is_color_attribute = normalized_attr in [
+
+            'color',
+
+            'colour',
+
+            'colors',
+
+            'colourway',
+
+            'color name'
+        ]
+
+        attribute = self.env[
+            'product.attribute'
+        ].search([
+
+            ('name', '=', attr_name)
+
+        ], limit=1)
+
+        # =====================================
+        # CREATE ATTRIBUTE
+        # =====================================
+
+        if not attribute:
+
+            attribute_vals = {
+
+                'name': attr_name
+            }
+
+            # =====================================
+            # COLOR SWATCH SUPPORT
+            # =====================================
+
+            if is_color_attribute:
+
+                attribute_vals[
+                    'display_type'
+                ] = 'color'
+
+            attribute = self.env[
+                'product.attribute'
+            ].create(attribute_vals)
+            
+
+            _logger.warning(
+
+                f"[ATTRIBUTE CREATED] "
+
+                f"{attr_name}"
+            )
+
+
+        # =====================================
+        # FORCE EXISTING COLOR ATTRIBUTE
+        # INTO SWATCH MODE
+        # =====================================
+
+
+        if (
+
+            is_color_attribute
+
+            and
+
+            attribute.display_type != 'color'
+        ):
+
+            attribute.display_type = 'color'
+
+            _logger.warning(
+
+                "[COLOR ATTRIBUTE UPDATED] "
+
+                f"{attribute.name}"
+            )
+
+        # =====================================
+        # CREATE VALUE
+        # =====================================
+
+        value = self.env[
+            'product.attribute.value'
+        ].search([
+
+            ('name', '=', attr_value),
+
+            ('attribute_id', '=', attribute.id)
+
+        ], limit=1)
+
+        if not value:
+
+            value_vals = {
+
+                'name': attr_value,
+
+                'attribute_id': attribute.id
+            }
+
+            # =====================================
+            # HTML COLOR SUPPORT
+            # =====================================
+
+            if is_color_attribute:
+
+                # =====================================
+                # SMART COLOR NORMALIZATION
+                # =====================================
+
+                normalized_color = " ".join(
+
+                    attr_value
+                    .lower()
+                    .replace("-", " ")
+                    .replace("_", " ")
+                    .split()
+                )
+
+                # =====================================
+                # COLOR ALIAS NORMALIZATION
+                # =====================================
+
+                COLOR_ALIASES = {
+
+                    'lt blue': 'light blue',
+                    'dk blue': 'navy blue',
+                    'dk navy': 'navy blue',
+                    'royal': 'royal blue',
+                    'lime': 'lime green',
+                    'charcoal marl': 'charcoal',
+                    'heather navy': 'navy blue',
+                    'heather blue': 'blue',
+                    'heather grey': 'grey',
+                    'heather gray': 'gray',
+                    'sky': 'sky blue',
+                    'off white': 'white',
+                    'natural': 'beige',
+                }
+
+                normalized_color = COLOR_ALIASES.get(
+
+                    normalized_color,
+
+                    normalized_color
+                )
+
+                color_hex = None
+
+                _logger.warning(
+
+                    f"[COLOR NORMALIZED] "
+
+                    f"raw={attr_value} "
+
+                    f"normalized={normalized_color}"
+                )
+
+                # =====================================
+                # DIRECT MATCH
+                # =====================================
+
+                color_hex = self.COLOR_HEX_MAP.get(
+                    normalized_color
+                )
+
+                # ======================================
+                # PARTIAL MATCH FALLBACK
+                # ======================================
+
+                if not color_hex:
+
+                    # =====================================
+                    # REMOVE SECONDARY COLOR CONTEXT
+                    # =====================================
+
+                    primary_color_text = normalized_color
+
+                    split_keywords = [
+
+                        " with ",
+                        " trim",
+                        " piping",
+                        " contrast",
+                        "/",
+                        "&",
+                        ","
+                    ]
+
+                    for splitter in split_keywords:
+
+                        if splitter in primary_color_text:
+
+                            primary_color_text = (
+                                primary_color_text
+                                .split(splitter)[0]
+                                .strip()
+                            )
+
+                    _logger.warning(
+
+                        f"[PRIMARY COLOR PARSED] "
+
+                        f"raw={normalized_color} "
+
+                        f"primary={primary_color_text}"
+                    )
+
+                    # =====================================
+                    # LONGEST COLOR MATCH PRIORITY
+                    # =====================================
+
+                    best_match = None
+
+                    best_length = 0
+
+                    # for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                    #     if key in primary_color_text:
+
+                    #         if len(key) > best_length:
+
+                    #             best_match = (key, hex_value)
+
+                    #             best_length = len(key)
+
+                    for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                        key_words = key.split()
+
+                        primary_words = primary_color_text.split()
+
+                        # =====================================
+                        # EXACT WORD MATCH
+                        # =====================================
+
+                        if all(word in primary_words for word in key_words):
+
+                            if len(key_words) > best_length:
+
+                                best_match = (key, hex_value)
+
+                                best_length = len(key_words)
+                                
+                    if best_match:
+
+                        matched_key, matched_value = best_match
+
+                        color_hex = matched_value
+
+                        _logger.warning(
+
+                            f"[BEST COLOR MATCH] "
+
+                            f"{attr_value} "
+
+                            f"→ {matched_key} "
+
+                            f"→ {matched_value}"
+                        )
+
+                # =====================================
+                # SAFE FALLBACK COLORS
+                # =====================================
+
+                if not color_hex:
+
+                    if "white" in normalized_color:
+
+                        color_hex = "#F8F8F8"
+
+                    elif "grey" in normalized_color \
+                            or "gray" in normalized_color:
+
+                        color_hex = "#808080"
+
+                    elif "black" in normalized_color:
+
+                        color_hex = "#000000"
+
+                    elif "navy" in normalized_color:
+
+                        color_hex = "#000080"
+
+                    elif "blue" in normalized_color:
+
+                        color_hex = "#0066CC"
+
+                    elif "green" in normalized_color:
+
+                        color_hex = "#008000"
+
+                    elif "red" in normalized_color:
+
+                        color_hex = "#FF0000"
+
+                    elif "yellow" in normalized_color:
+
+                        color_hex = "#FFD700"
+
+                    elif "purple" in normalized_color:
+
+                        color_hex = "#800080"
+
+                    elif "orange" in normalized_color:
+
+                        color_hex = "#FF6600"
+
+                # =====================================
+                # APPLY HTML COLOR
+                # =====================================
+
+                if color_hex:
+
+                    value_vals[
+                        'html_color'
+                    ] = color_hex
+
+                    _logger.warning(
+
+                        f"[COLOR HEX ASSIGNED] "
+
+                        f"{attr_value} "
+
+                        f"→ {color_hex}"
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[COLOR HEX MISSING] "
+
+                        f"{attr_value}"
+                    )
+
+
+            value = self.env[
+                'product.attribute.value'
+            ].create(value_vals)
+
+        # =====================================
+        # PATCH EXISTING COLOR VALUES
+        # =====================================
+
+        elif is_color_attribute:
+
+            existing_html = (
+                value.html_color or ""
+            ).strip()
+
+            if not existing_html:
+
+                normalized_color = " ".join(
+
+                    attr_value
+                    .lower()
+                    .replace("-", " ")
+                    .replace("_", " ")
+                    .split()
+                )
+
+                COLOR_ALIASES = {
+
+                    'lt blue': 'light blue',
+                    'dk blue': 'navy blue',
+                    'dk navy': 'navy blue',
+                    'royal': 'royal blue',
+                    'lime': 'lime green',
+                    'charcoal marl': 'charcoal',
+                    'heather navy': 'navy blue',
+                    'heather blue': 'blue',
+                    'heather grey': 'grey',
+                    'heather gray': 'gray',
+                    'sky': 'sky blue',
+                    'off white': 'white',
+                    'natural': 'beige',
+                }
+
+                normalized_color = COLOR_ALIASES.get(
+
+                    normalized_color,
+
+                    normalized_color
+                )
+
+                color_hex = self.COLOR_HEX_MAP.get(
+                    normalized_color
+                )
+
+                # =====================================
+                # FALLBACK PARTIAL MATCH
+                # =====================================
+
+                if not color_hex:
+
+                    best_match = None
+                    best_length = 0
+
+                    for key, hex_value in self.COLOR_HEX_MAP.items():
+
+                        key_words = key.split()
+
+                        normalized_words = normalized_color.split()
+
+                        # =====================================
+                        # EXACT WORD MATCH
+                        # =====================================
+
+                        if all(word in normalized_words for word in key_words):
+
+                            if len(key_words) > best_length:
+
+                                best_match = (
+                                    key,
+                                    hex_value
+                                )
+
+                                best_length = len(key_words)
+
+                    if best_match:
+
+                        matched_key, matched_value = best_match
+
+                        color_hex = matched_value
+
+                        _logger.warning(
+
+                            f"[PATCH COLOR MATCH] "
+
+                            f"{attr_value} "
+
+                            f"→ {matched_key} "
+
+                            f"→ {matched_value}"
+                        )
+
+                # =====================================
+                # APPLY PATCHED HTML COLOR
+                # =====================================
+
+                if color_hex:
+
+                    value.write({
+
+                        'html_color': color_hex
+                    })
+
+                    _logger.warning(
+
+                        f"[PATCH EXISTING COLOR] "
+
+                        f"{attr_value} "
+
+                        f"→ {color_hex}"
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[PATCH FAILED NO HEX] "
+
+                        f"{attr_value}"
+                    )
+
+        return attribute, value
+
+
+
+
+  #=============variant color enhancement 1=================
+
+    def _get_dominant_color_name(
+
+        self,
+
+        image_base64
+    ):
+
+        try:
+
+            import base64
+            import io
+            import numpy as np
+
+            from PIL import Image
+
+            image_bytes = base64.b64decode(
+                image_base64
+            )
+
+            img = Image.open(
+
+                io.BytesIO(image_bytes)
+
+            ).convert("RGB")
+
+
+            # =====================================
+            # CENTER CROP
+            # =====================================
+
+            width, height = img.size
+
+            crop = img.crop((
+                width * 0.20,
+                height * 0.20,
+                width * 0.80,
+                height * 0.80
+            ))
+
+            img = crop.resize((80, 80))
+
+            np_img = np.array(img)
+
+            pixels = np_img.reshape(
+                (-1, 3)
+            )
+
+            # =====================================
+            # REMOVE VERY LIGHT BACKGROUND PIXELS
+            # =====================================
+
+            filtered_pixels = []
+
+            for px in pixels:
+
+                pr, pg, pb = px
+
+                # skip white/light background
+                if (
+                    pr > 235
+                    and
+                    pg > 235
+                    and
+                    pb > 235
+                ):
+
+                    continue
+
+                filtered_pixels.append(px)
+
+            # fallback if filtering too aggressive
+            if not filtered_pixels:
+
+                filtered_pixels = pixels
+
+            filtered_pixels = np.array(
+                filtered_pixels
+            )
+
+            # =====================================
+            # USE MEDIAN FOR STABILITY
+            # =====================================
+
+            median = np.median(
+                filtered_pixels,
+                axis=0
+            )
+
+            r, g, b = median
+
+            brightness = (r + g + b) / 3
+
+            max_channel = max(r, g, b)
+            min_channel = min(r, g, b)
+
+            saturation = max_channel - min_channel
+
+            _logger.warning(
+                f"[PDF COLOR ANALYSIS] "
+                f"rgb=({r:.1f},{g:.1f},{b:.1f}) "
+                f"brightness={brightness:.1f} "
+                f"saturation={saturation:.1f}"
+            )
+
+            # =====================================
+            # COLOR CLASSIFICATION
+            # =====================================
+
+            if (
+                brightness > 215
+                and
+                saturation < 32
+            ):
+
+                if r > b + 8 and g > b + 8:
+
+                    _logger.warning(
+                        "[PDF COLOR DETECTED] CREAM"
+                    )
+
+                    return "cream"
+
+                _logger.warning(
+                    "[PDF COLOR DETECTED] WHITE"
+                )
+
+                return "white"
+
+            if (
+                saturation < 18
+                and
+                abs(r - g) < 18
+                and
+                abs(g - b) < 18
+                and
+                200 <= brightness <= 242
+            ):
+                return "light grey"
+            
+
+            # =====================================
+            # BLACK
+            # =====================================
+
+            if (
+                brightness < 92
+                and
+                saturation < 42
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
+            
+
+            # =====================================
+            # GREY
+            # =====================================
+
+            if (
+                saturation < 22
+                and
+                abs(r - g) < 18
+                and
+                abs(g - b) < 18
+                and
+                70 <= brightness <= 210
+            ):
+                _logger.warning("[PDF COLOR DETECTED] GREY")
+                return "grey"
+
+          
+            if r > 160 and g < 120 and b < 120:
+                return "red"
+
+            if r > 180 and g > 180 and b < 120:
+                return "yellow"
+
+            if r > 150 and g > 120 and b < 100:
+                return "orange"
+
+            # =====================================
+            # PURPLE
+            # =====================================
+
+            if (
+                r > 75
+                and
+                b > 75
+                and
+                abs(r - b) < 45
+                and
+                g < (r * 0.82)
+            ):
+                _logger.warning("[PDF COLOR DETECTED] PURPLE")
+                return "purple"
+
+            # =====================================
+            # NAVY
+            # =====================================
+
+            if (
+                b > r * 1.18
+                and
+                b > g * 1.12
+                and
+                brightness < 95
+                and
+                saturation > 35
+            ):
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if (
+                b > r * 1.10
+                and
+                b > g * 1.08
+                and
+                brightness >= 95
+                and
+                saturation > 40
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
+                return "blue"
+            
+            # =====================================
+            # GREEN
+            # =====================================
+
+            if (
+                g > r * 1.10
+                and
+                g > b * 1.08
+                and
+                saturation > 35
+            ):
+                _logger.warning("[PDF COLOR DETECTED] GREEN")
+                return "green"
+
+            # return "unknown"
+            _logger.warning(
+                "[PDF COLOR DETECTED] FALLBACK GREY"
+            )
+
+            return "grey"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return "unknown"
+
