@@ -152,8 +152,6 @@ def extract():
         if page_number >= MAX_PAGES:
             break
 
-        # text = page.get_text("text") or ""
-
         # =====================================
 
         # STRUCTURED PDF TEXT EXTRACTION
@@ -164,13 +162,42 @@ def extract():
 
         blocks = page.get_text("blocks") or []
 
+
+        # =====================================
+
+        # STABLE READING ORDER
+
+        # =====================================
+
+        blocks = sorted(
+
+            blocks,
+
+            key=lambda b: (
+
+                round(b[1] / 10) * 10,
+
+                b[0]
+            )
+
+        )
+
+
+        # =====================================
+
+        # TITLE CANDIDATE STORAGE
+
+        # =====================================
+
+        title_candidates = []
+
         structured_lines = []
 
         for block in blocks:
 
             try:
 
-                block_text = block[4]
+                x0, y0, x1, y1, block_text, *_ = block
 
                 if not block_text:
                     continue
@@ -180,16 +207,355 @@ def extract():
                 if not clean:
                     continue
 
-                structured_lines.append(clean)
+                # =====================================
 
+                # VERY LARGE PARAGRAPH PENALTY
+
+                # =====================================
+
+                long_text_penalty = 0
+
+                if len(clean.split()) > 40:
+                   
+                    long_text_penalty = 6
+                 
+                elif len(clean.split()) > 25:
+
+                    long_text_penalty = 3
+                   
+
+                # =====================================
+
+                # BLOCK METRICS
+
+                # =====================================
+
+                block_height = y1 - y0
+
+                # =====================================
+
+                # POSITIONAL BONUS
+
+                # =====================================
+
+                position_bonus = 0
+
+                page_height = page.rect.height
+
+                relative_y = y0 / max(page_height, 1)
+
+                # upper area
+
+                if relative_y < 0.30:
+
+                    position_bonus += 2
+
+                # middle area
+
+                elif relative_y < 0.72:
+
+                    position_bonus += 1
+           
+                word_count = len(clean.split())
+
+                text_length = len(clean)
+
+                uppercase_ratio = (
+
+                
+                sum(1 for c in clean if c.isupper())
+
+                / max(
+                    sum(1 for c in clean if c.isalpha()),
+                    1
+                )
+                
+
+                )
+
+                # =====================================
+
+                # TITLE SCORING SYSTEM
+
+                # =====================================
+
+                title_score = position_bonus - long_text_penalty
+
+                # larger typography
+
+                if block_height >= 16:
+                    title_score += 3
+
+                # short title behavior
+
+                if 1 <= word_count <= 6:
+                    title_score += 3
+
+                # compact text
+
+                if text_length <= 60:
+                    title_score += 2
+
+                # uppercase bonus
+
+                if uppercase_ratio > 0.35:
+                    title_score += 2
+
+                # block height
+                if 22 <= block_height <= 42:
+                    title_score += 3
+
+
+                # avoid sentences
+
+                if clean.endswith("."):
+                    title_score -= 3
+
+                # avoid feature lines
+
+                bad_patterns = [
+
+                "cotton",
+                "polyester",
+                "closure",
+                "features",
+                "material",
+                "fabric",
+                "dimensions",
+                "capacity",
+                "size:",
+                "weight",
+
+                ]
+
+                generic_bad_titles = [
+                    "new",
+                    "featured",
+                    "collection",
+                    "summer",
+                    "winter",
+                    "premium",
+                    "eco",
+                    "range",
+                    "series",
+                    "edition",
+                    "sale",
+                ]
+
+
+                if any(
+                p in clean.lower()
+                for p in bad_patterns
+                ):
+                    title_score -= 4
+
+                # =====================================
+
+                # SPECIFICATION-LIKE LINES
+
+                # =====================================
+
+                digit_ratio = (
+
+                sum(1 for c in clean if c.isdigit())
+
+                / max(len(clean), 1)
+
+                )
+
+                if digit_ratio > 0.35:
+
+                    title_score -= 5
+
+
+                # =====================================
+
+                # FINAL TITLE DETECTION
+
+                # =====================================
+
+                if clean.lower().strip() in generic_bad_titles:
+
+                    title_score -= 6
+
+                _logger.warning(
+                    f"[TITLE SCORE] "
+
+                    f"text={clean[:80]} "
+
+                    f"| score={title_score} "
+
+                    f"| height={block_height:.1f} "
+
+                    f"| y={relative_y:.2f}"
+                )
+
+                if title_score >= 7:
+
+                    title_candidates.append({
+
+                        "text": clean,
+
+                        "x0": x0,
+                        "y0": y0,
+                        "x1": x1,
+                        "y1": y1,
+
+                        "height": block_height,
+
+                        "score": title_score
+                    })
+               
+
+                else:
+
+                    structured_lines.append(clean)
+              
             except Exception:
                 continue
 
         # =====================================
 
-        # PRIORITIZE STRUCTURED LAYOUT
+        # PROFESSIONAL TITLE FUSION
 
         # =====================================
+
+        merged_titles = []
+
+        used_indexes = set()
+
+        for i, candidate in enumerate(title_candidates):
+
+           
+            if i in used_indexes:
+                continue
+
+            merged_text = candidate["text"]
+
+            used_indexes.add(i)
+
+            for j, other in enumerate(title_candidates):
+
+                if j == i:
+                    continue
+
+                if j in used_indexes:
+                    continue
+
+                # =====================================
+                # SAME HORIZONTAL ALIGNMENT
+                # =====================================
+
+                x_distance = abs(
+                    candidate["x0"] - other["x0"]
+                )
+
+                # =====================================
+                # VERTICAL PROXIMITY
+                # =====================================
+
+                vertical_gap = abs(
+                    candidate["y1"] - other["y0"]
+                )
+
+                # =====================================
+                # TYPOGRAPHY SIMILARITY
+                # =====================================
+
+                height_gap = abs(
+                    candidate["height"]
+                    - other["height"]
+                )
+
+
+                if (
+
+                    x_distance < 80
+
+                    and
+
+ 
+                    vertical_gap < (
+                        candidate["height"] * 1.15
+                    )
+
+                    and
+
+                    abs(candidate["x1"] - other["x1"]) < 120
+
+                    and
+
+                    height_gap < 8
+
+                    and
+
+                    abs(candidate["score"] - other["score"]) <= 4
+                ):
+
+
+                    # =====================================
+
+                    # DUPLICATE PREVENTION
+
+                    # =====================================
+
+                    if other["text"] in merged_text:
+                        continue
+
+                    merged_text += " " + other["text"]
+
+                    used_indexes.add(j)
+
+            merged_titles.append(merged_text)
+
+            # =====================================
+
+            # PUSH MERGED TITLES INTO STRUCTURE
+
+            # =====================================
+
+        for title in merged_titles:
+
+           
+            structured_lines.append(
+                f"[TITLE_CANDIDATE] {title}"
+            )
+
+            _logger.warning(
+
+                f"[PDF TITLE MERGED] "
+
+                    f"{title}"
+            )
+            
+
+        # =====================================
+
+        # PRIORITIZE TITLE CANDIDATES
+
+        # =====================================
+
+        title_lines = [
+            line
+
+            for line in structured_lines
+
+            if line.startswith("[TITLE_CANDIDATE]")
+
+        ]
+
+        other_lines = [
+
+            line
+
+            for line in structured_lines
+
+            if not line.startswith("[TITLE_CANDIDATE]")
+
+        ]
+
+        structured_lines = title_lines + other_lines
+
 
         structured_text = "\n".join(
         structured_lines
@@ -604,7 +970,7 @@ def extract():
                 )
         
         # 🔒 limit text
-        text = text[:2000]
+        text = text[:3500]
 
         _logger.warning(
 
