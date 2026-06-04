@@ -1768,9 +1768,9 @@ class VendorImportJob(models.Model):
             attr_value or ""
         ).strip()
 
-        # =====================================
+        # ========================================
         # ATTRIBUTE NORMALIZATION
-        # =====================================
+        # ========================================
         normalized_attr = attr_name.lower().strip()
 
         is_color_attribute = normalized_attr in [
