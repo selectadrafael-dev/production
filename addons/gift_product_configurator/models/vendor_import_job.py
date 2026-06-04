@@ -5806,7 +5806,7 @@ class VendorImportJob(models.Model):
                 )
 
 
-       # =====================================================
+        # =====================================================
         # PROMPT
         # =====================================================
 
@@ -5897,29 +5897,74 @@ class VendorImportJob(models.Model):
         TITLE RULES
         ==================================================
 
-        Use the TRUE MAIN PRODUCT TITLE.
+        CRITICAL:
 
-        Main title is usually:
-        - largest heading
-        - top heading
-        - dominant catalog title
-        - visible product headline
+        ALWAYS prioritize the REAL PRODUCT TITLE
+        even if:
 
-        DO NOT use:
-        - material-only text
-        - bullet features
-        - specifications
-        - dimensions
-        - marketing phrases
+        * title is small
+        * title is thin font
+        * title is placed left/right/middle
+        * title are mostly separated from images
+        * description text is visually larger
 
-        GOOD:
-        - 5 PANEL CAP
-        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
-        - Wireless Charging Pad
+        The TRUE PRODUCT TITLE is usually:
 
-        BAD:
-        - Heavy Brushed 100% Cotton
-        - Rib 1x1 collar and cuffs
+        * short
+        * product-like
+        * catalog heading
+        * model/product name
+        * appears before specifications/features
+
+        GOOD TITLES:
+
+        * 5 PANEL CAP
+        * 6 PANEL CAP
+        * SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
+        * Travel Mug
+        * Wireless Charging Pad
+        * Sports Bottle
+
+        BAD TITLES:
+
+        * Heavy Brushed 100% Cotton
+        * Metal closure
+        * Rib 1x1 collar and cuffs
+        * Double wall stainless steel
+        * Capacity 500ml
+
+        NEVER use:
+
+        * feature sentences
+        * material lines
+        * specification paragraphs
+        * bullet descriptions
+        * marketing text
+        * capacity text
+        * packaging text
+        * closure text
+
+        IMPORTANT:
+
+        If a short product-like title exists ANYWHERE on the page,
+        ALWAYS prefer it over nearby description text.
+
+        Even if:
+
+        * description text is larger
+        * feature text is closer to images
+        * title is isolated
+        * title is positioned differently
+
+        For apparel/caps/shirts/bottles:
+        titles are often:
+
+        * SHORT
+        * UPPERCASE
+        * placed above or beside specifications
+
+        Always prioritize those titles.
+
 
         ==================================================
         DESCRIPTION RULES
@@ -6081,6 +6126,7 @@ class VendorImportJob(models.Model):
 
         {page_stock}
         """
+
 
         # =====================================================
         # AI CALL
@@ -10699,12 +10745,18 @@ class VendorImportJob(models.Model):
             description_parts
         )
 
+
+        # =====================================
+        # NORMALIZE PRODUCT TITLE
+        # =====================================
+
+        clean_title = self._normalize_pdf_product_title(
+            product_data
+        )
+
         vals = {
 
-            'name': (
-                product_data.get("name")
-                or ""
-            ).strip(),
+            'name': clean_title,
 
            'default_code': (
                 product_data.get("product_code")
@@ -11207,6 +11259,243 @@ class VendorImportJob(models.Model):
 
                 f"{str(e)}"
             )
+
+    #==========PDF TITLE NORMALIZATION====================================
+    def _normalize_pdf_product_title(
+
+        self,
+
+        product_data
+    ):
+
+        import re
+
+        raw_name = (
+            product_data.get("name")
+            or ""
+        ).strip()
+
+        subtitle = (
+            product_data.get("subtitle")
+            or ""
+        ).strip()
+
+        description = (
+            product_data.get("description")
+            or ""
+        ).strip()
+
+        # =====================================
+        # CANDIDATE SOURCES
+        # =====================================
+
+        candidates = []
+
+        if raw_name:
+            candidates.append(raw_name)
+
+        if subtitle:
+            candidates.extend([
+
+                x.strip()
+
+                for x in subtitle.splitlines()
+
+                if x.strip()
+            ])
+
+        # =====================================
+        # CLEAN DUPLICATES
+        # =====================================
+
+        unique_candidates = []
+
+        for c in candidates:
+
+            if c not in unique_candidates:
+
+                unique_candidates.append(c)
+
+        # =====================================
+        # BAD TITLE KEYWORDS
+        # =====================================
+
+        reject_keywords = [
+
+            "100%",
+            "cotton",
+            "polyester",
+            "metal closure",
+            "velcro",
+            "heavy brushed",
+            "soft touch",
+            "waterproof",
+            "capacity",
+            "refill",
+            "bpa",
+            "double wall",
+            "eco",
+            "material",
+            "dimensions",
+            "weight",
+            "packaging",
+            "closure",
+            "features"
+        ]
+
+        # =====================================
+        # VALID PRODUCT WORDS
+        # =====================================
+
+        product_words = [
+
+            "cap",
+            "bottle",
+            "mug",
+            "shirt",
+            "t-shirt",
+            "polo",
+            "hoodie",
+            "bag",
+            "pen",
+            "umbrella",
+            "cup",
+            "flask",
+            "speaker",
+            "notebook",
+            "towel",
+            "bottle",
+            "backpack"
+        ]
+
+        # =====================================
+        # SCORE TITLES
+        # =====================================
+
+        scored = []
+
+        for text in unique_candidates:
+
+            clean = text.strip()
+
+            lower = clean.lower()
+
+            score = 0
+
+            # =====================================
+            # REJECT FEATURE SENTENCES
+            # =====================================
+
+            reject_hit = False
+
+            for bad in reject_keywords:
+
+                if bad in lower:
+
+                    reject_hit = True
+                    score -= 30
+
+            # =====================================
+            # SHORT PRODUCT TITLES SCORE HIGHER
+            # =====================================
+
+            word_count = len(clean.split())
+
+            if 1 <= word_count <= 5:
+                score += 30
+
+            # =====================================
+            # UPPERCASE PRODUCT NAMES
+            # =====================================
+
+            if clean.upper() == clean:
+                score += 20
+
+            # =====================================
+            # PRODUCT WORD DETECTION
+            # =====================================
+
+            for pw in product_words:
+
+                if pw in lower:
+                    score += 25
+
+            # =====================================
+            # PENALIZE LONG SENTENCES
+            # =====================================
+
+            if word_count > 8:
+                score -= 25
+
+            # =====================================
+            # PENALIZE DESCRIPTION STYLE
+            # =====================================
+
+            if "." in clean:
+                score -= 10
+
+            if "," in clean:
+                score -= 5
+
+            # =====================================
+            # PENALIZE PURE FEATURE LINES
+            # =====================================
+
+            if reject_hit and score < 20:
+                score -= 50
+
+            scored.append({
+
+                "text": clean,
+                "score": score
+            })
+
+        # =====================================
+        # SORT BEST TITLE
+        # =====================================
+
+        scored = sorted(
+
+            scored,
+
+            key=lambda x: x["score"],
+
+            reverse=True
+        )
+
+        # =====================================
+        # DEBUG LOG
+        # =====================================
+
+        _logger.warning(
+            f"[PDF TITLE CANDIDATES] {scored}"
+        )
+
+        # =====================================
+        # FINAL TITLE
+        # =====================================
+
+        if scored:
+
+            best = scored[0]["text"]
+
+            _logger.warning(
+                f"[PDF FINAL TITLE] {best}"
+            )
+
+            return best
+
+        # =====================================
+        # SAFE FALLBACK
+        # =====================================
+
+        fallback = raw_name or "Product"
+
+        _logger.warning(
+            f"[PDF TITLE FALLBACK] {fallback}"
+        )
+
+        return fallback
 
     #===============fingerprint================================
     def _build_vendor_fingerprint(self, product_data):
