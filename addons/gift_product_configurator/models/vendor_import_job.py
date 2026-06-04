@@ -8439,6 +8439,24 @@ class VendorImportJob(models.Model):
 
             np_img = np.array(img)
 
+            # =====================================
+            # FOCUS CENTER REGION ONLY
+            # REDUCE BACKGROUND POLLUTION
+            # =====================================
+
+            h, w, _ = np_img.shape
+
+            crop_x1 = int(w * 0.20)
+            crop_x2 = int(w * 0.80)
+
+            crop_y1 = int(h * 0.20)
+            crop_y2 = int(h * 0.80)
+
+            np_img = np_img[
+                crop_y1:crop_y2,
+                crop_x1:crop_x2
+            ]
+
             pixels = np_img.reshape(
                 (-1, 3)
             )
