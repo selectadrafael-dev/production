@@ -8569,6 +8569,21 @@ class VendorImportJob(models.Model):
                 _logger.warning("[PDF COLOR DETECTED] GREY")
                 return "grey"
 
+              # =====================================
+            # TRUE BLACK
+            # =====================================
+
+            if (
+                brightness < 72
+                and
+                saturation < 18
+                and
+                abs(r - g) < 15
+                and
+                abs(g - b) < 15
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
           
             if r > 160 and g < 120 and b < 120:
                 return "red"
@@ -8584,13 +8599,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if (
-                    b > r * 1.22
+                    b > r * 1.28
                     and
-                    b > g * 1.15
+                    b > g * 1.20
                     and
-                    brightness < 80
+                    brightness < 68
                     and
-                    saturation > 28
+                    saturation > 32
             ):
                 _logger.warning("[PDF COLOR DETECTED] NAVY")
                 return "navy"
@@ -8628,22 +8643,7 @@ class VendorImportJob(models.Model):
                 _logger.warning("[PDF COLOR DETECTED] PURPLE")
                 return "purple"
 
-            # =====================================
-            # TRUE BLACK
-            # =====================================
-
-            if (
-                brightness < 72
-                and
-                saturation < 18
-                and
-                abs(r - g) < 15
-                and
-                abs(g - b) < 15
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLACK")
-                return "black"
-            
+          
             # =====================================
             # GREEN
             # =====================================

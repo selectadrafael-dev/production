@@ -1,7 +1,6 @@
 #================================================
 #Highest stable model, pdf and excel working
 =================================================
-
 from odoo import models, fields, api
 import base64
 import logging
@@ -553,7 +552,7 @@ class VendorImportJob(models.Model):
         self,
 
         error_message=None
-     ):
+    ):
 
         self.ensure_one()
 
@@ -1995,16 +1994,7 @@ class VendorImportJob(models.Model):
 
                     best_length = 0
 
-                    # for key, hex_value in self.COLOR_HEX_MAP.items():
-
-                    #     if key in primary_color_text:
-
-                    #         if len(key) > best_length:
-
-                    #             best_match = (key, hex_value)
-
-                    #             best_length = len(key)
-
+                
                     for key, hex_value in self.COLOR_HEX_MAP.items():
 
                         key_words = key.split()
@@ -2169,53 +2159,7 @@ class VendorImportJob(models.Model):
                     normalized_color
                 )
 
-                # =====================================
-                # FALLBACK PARTIAL MATCH
-                # =====================================
-
-                if not color_hex:
-
-                    best_match = None
-                    best_length = 0
-
-                    for key, hex_value in self.COLOR_HEX_MAP.items():
-
-                        key_words = key.split()
-
-                        normalized_words = normalized_color.split()
-
-                        # =====================================
-                        # EXACT WORD MATCH
-                        # =====================================
-
-                        if all(word in normalized_words for word in key_words):
-
-                            if len(key_words) > best_length:
-
-                                best_match = (
-                                    key,
-                                    hex_value
-                                )
-
-                                best_length = len(key_words)
-
-                    if best_match:
-
-                        matched_key, matched_value = best_match
-
-                        color_hex = matched_value
-
-                        _logger.warning(
-
-                            f"[PATCH COLOR MATCH] "
-
-                            f"{attr_value} "
-
-                            f"→ {matched_key} "
-
-                            f"→ {matched_value}"
-                        )
-
+              
                 # =====================================
                 # APPLY PATCHED HTML COLOR
                 # =====================================
@@ -2565,7 +2509,7 @@ class VendorImportJob(models.Model):
         self,
 
         product_url
-      ):
+    ):
 
         try:
 
@@ -8460,7 +8404,7 @@ class VendorImportJob(models.Model):
         self,
 
         image_base64
-    ):
+      ):
 
         try:
 
@@ -8497,6 +8441,24 @@ class VendorImportJob(models.Model):
             img = crop.resize((80, 80))
 
             np_img = np.array(img)
+
+            # =====================================
+            # FOCUS CENTER REGION ONLY
+            # REDUCE BACKGROUND POLLUTION
+            # =====================================
+
+            h, w, _ = np_img.shape
+
+            crop_x1 = int(w * 0.20)
+            crop_x2 = int(w * 0.80)
+
+            crop_y1 = int(h * 0.20)
+            crop_y2 = int(h * 0.80)
+
+            np_img = np_img[
+                crop_y1:crop_y2,
+                crop_x1:crop_x2
+            ]
 
             pixels = np_img.reshape(
                 (-1, 3)
@@ -8594,20 +8556,6 @@ class VendorImportJob(models.Model):
             ):
                 return "light grey"
             
-
-            # =====================================
-            # BLACK
-            # =====================================
-
-            if (
-                brightness < 92
-                and
-                saturation < 42
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLACK")
-                return "black"
-            
-
             # =====================================
             # GREY
             # =====================================
@@ -8635,6 +8583,39 @@ class VendorImportJob(models.Model):
                 return "orange"
 
             # =====================================
+            # NAVY
+            # =====================================
+
+            if (
+                    b > r * 1.22
+                    and
+                    b > g * 1.15
+                    and
+                    brightness < 80
+                    and
+                    saturation > 28
+            ):
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+
+
+            # =====================================
+            # BLUE
+            # =====================================
+
+            if (
+                b > r * 1.08
+                and
+                b > g * 1.05
+                and
+                brightness >= 70
+                and
+                saturation > 28
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
+                return "blue"
+            
+             # =====================================
             # PURPLE
             # =====================================
 
@@ -8651,37 +8632,20 @@ class VendorImportJob(models.Model):
                 return "purple"
 
             # =====================================
-            # NAVY
+            # TRUE BLACK
             # =====================================
 
             if (
-                b > r * 1.18
+                brightness < 72
                 and
-                b > g * 1.12
+                saturation < 18
                 and
-                brightness < 95
+                abs(r - g) < 15
                 and
-                saturation > 35
+                abs(g - b) < 15
             ):
-                _logger.warning("[PDF COLOR DETECTED] NAVY")
-                return "navy"
-
-
-            # =====================================
-            # BLUE
-            # =====================================
-
-            if (
-                b > r * 1.10
-                and
-                b > g * 1.08
-                and
-                brightness >= 95
-                and
-                saturation > 40
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLUE")
-                return "blue"
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
             
             # =====================================
             # GREEN
@@ -8722,7 +8686,7 @@ class VendorImportJob(models.Model):
         self,
         asset_pool,
         index
-    ):
+     ):
 
         try:
 
@@ -9834,13 +9798,15 @@ class VendorImportJob(models.Model):
             'stock.quant'
         ]
 
+
         stock_location = self.env[
             'stock.location'
         ].search([
 
-            ('usage', '=', 'internal')
+            ('usage', '=', 'internal'),
+            ('active', '=', True)
 
-        ], limit=1)
+        ], order='id asc', limit=1)
 
         CATEGORY_MAPPING = {
 
@@ -10180,91 +10146,117 @@ class VendorImportJob(models.Model):
                             asset_pool
                         )
 
-                        # =====================================
-                        # APPLY REAL INVENTORY STOCK
-                        # ONLY FOR STORABLE PRODUCTS
-                        # =====================================
+                        created_count += 1
 
-                        try:
+                    else:
 
-                            stock_qty = int(
+                        skipped_count += 1
 
-                                product_data.get(
-                                    "stock_qty",
-                                    0
-                                ) or 0
-                            )
 
-                            # =====================================
-                            # CONSUMABLE PRODUCTS:
-                            # SKIP STOCK QUANTS
-                            # =====================================
+                    # =====================================
+                    # APPLY REAL INVENTORY STOCK
+                    # FOR BOTH NEW + EXISTING PRODUCTS
+                    # =====================================
 
-                            if stock_qty > 0:
+                    try:
 
-                                quant = stock_quant_obj.search([
+                        stock_qty = int(
 
-                                    (
-                                        'product_id',
-                                        '=',
-                                        product.product_variant_id.id
-                                    ),
+                            product_data.get(
+                                "stock_qty",
+                                0
+                            ) or 0
+                        )
 
-                                    (
-                                        'location_id',
-                                        '=',
-                                        stock_location.id
-                                    )
+                        _logger.warning(
 
-                                ], limit=1)
+                            f"[PDF STOCK DEBUG] "
 
-                                if quant:
+                            f"{product.name} "
 
-                                    quant.inventory_quantity = (
-                                        stock_qty
-                                    )
+                            f"| stock_qty={stock_qty}"
+                        )
 
-                                    quant.action_apply_inventory()
+                        if stock_qty > 0:
 
-                                else:
+                            quant = stock_quant_obj.search([
 
-                                    quant = stock_quant_obj.create({
+                                (
+                                    'product_id',
+                                    '=',
+                                    product.product_variant_id.id
+                                ),
 
-                                        'product_id':
-                                            product.product_variant_id.id,
+                                (
+                                    'location_id',
+                                    '=',
+                                    stock_location.id
+                                )
 
-                                        'location_id':
-                                            stock_location.id,
+                            ], limit=1)
 
-                                        'inventory_quantity':
-                                            stock_qty
-                                    })
+                            if quant:
 
-                                    quant.action_apply_inventory()
+                                quant.inventory_quantity = (
+                                    stock_qty
+                                )
+
+                                quant.action_apply_inventory()
 
                                 _logger.warning(
 
-                                    f"[STOCK APPLIED] "
+                                    f"[STOCK UPDATED] "
 
                                     f"{product.name} "
 
                                     f"| qty={stock_qty}"
                                 )
 
-                        except Exception as e:
+                            else:
+
+                                quant = stock_quant_obj.create({
+
+                                    'product_id':
+                                        product.product_variant_id.id,
+
+                                    'location_id':
+                                        stock_location.id,
+
+                                    'inventory_quantity':
+                                        stock_qty
+                                })
+
+                                quant.action_apply_inventory()
+
+                                _logger.warning(
+
+                                    f"[STOCK CREATED] "
+
+                                    f"{product.name} "
+
+                                    f"| qty={stock_qty}"
+                                )
+
+                        else:
 
                             _logger.warning(
 
-                                f"[STOCK APPLY FAILED] "
+                                f"[STOCK SKIPPED ZERO] "
 
-                                f"{str(e)}"
+                                f"{product.name}"
                             )
 
-                        created_count += 1
+                    except Exception as e:
 
-                    else:
+                        _logger.warning(
 
-                        skipped_count += 1
+                            f"[STOCK APPLY FAILED] "
+
+                            f"{product.name} "
+
+                            f"| {str(e)}"
+                        )
+
 
                     if not variants:
 
@@ -10496,19 +10488,21 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
-                                    # used_asset_indexes.add(
-                                    #     matched_asset.get("index")
-                                    # )
-
-                                    asset_index = (
-                                        matched_asset.get("clean_index")
-                                        if matched_asset.get("clean_index") is not None
-                                        else matched_asset.get("index")
-                                    )
+                            
+                                    asset_index = matched_asset.get("index")
 
                                     if asset_index is not None:
 
                                         used_asset_indexes.add(asset_index)
+
+                                        _logger.warning(
+
+                                            f"[ASSET INDEX USED] "
+
+                                            f"{variant_name} "
+
+                                            f"| index={asset_index}"
+                                        )
 
                                     _logger.warning(
 
@@ -10595,7 +10589,7 @@ class VendorImportJob(models.Model):
         asset_pool,
 
         product_obj
-    ):
+     ):
 
         product = product_obj.search([
 
@@ -10874,7 +10868,7 @@ class VendorImportJob(models.Model):
         parent_category,
 
         category_mapping
-    ):
+     ):
 
         mapped_category = "General"
 
@@ -10923,7 +10917,7 @@ class VendorImportJob(models.Model):
         product_data,
 
         asset_pool
-    ):
+        ):
 
         gallery_indexes = product_data.get(
             "gallery_image_indexes",
@@ -14393,7 +14387,6 @@ class VendorImportJob(models.Model):
         except Exception:
 
             return 1.0
-
 
 
 
