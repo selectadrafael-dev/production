@@ -2506,7 +2506,7 @@ class VendorImportJob(models.Model):
         self,
 
         product_url
-    ):
+     ):
 
         try:
 
@@ -7735,7 +7735,7 @@ class VendorImportJob(models.Model):
         self,
 
         image_base64
-    ):
+     ):
 
         try:
 
@@ -7965,315 +7965,13 @@ class VendorImportJob(models.Model):
             return "unknown"
 
 
-    # =====================================
-    # PROFESSIONAL VARIANT IMAGE MATCHER
-    # =====================================
-  
-    def _match_variant_image(
-         self,
-        variant,
-        asset_pool,
-        used_asset_indexes=None
-    ):
-
-        try:
-            if used_asset_indexes is None:
-
-                used_asset_indexes = set()
-
-            if not asset_pool:
-                return False
-
-            best_asset = None
-
-            best_score = -999
-
-            if used_asset_indexes is None:
-
-                used_asset_indexes = set()
-            variant_text = ""
-
-            attributes = variant.get(
-                "attributes",
-                {}
-            )
-
-            if isinstance(attributes, dict):
-
-                variant_text = " ".join([
-
-                    str(v)
-
-                    for v in attributes.values()
-
-                ]).lower()
-
-            # =====================================
-            # SCORE ASSETS
-            # =====================================
-
-            for asset in asset_pool:
-
-                if asset.get("clean_index") in used_asset_indexes:
-                        continue
-
-                asset_score = 0
-
-                # =====================================
-                # UNUSED ASSET BONUS
-                # =====================================
-
-                asset_score += 25
-
-                # =====================================
-                # START FROM GALLERY SCORE
-                # =====================================
-
-                asset_score += asset.get(
-                    "gallery_score",
-                    asset.get(
-                        "score",
-                        0
-                    )
-                )
-
-
-                dominant_color = str(
-
-                    asset.get(
-                        "dominant_color",
-                        ""
-                    )
-
-                    or ""
-
-                ).lower()
-
-                # =====================================
-                # BOOST CLEAN ISOLATED PRODUCTS
-                # =====================================
-
-                if not asset.get("is_collage"):
-
-                    asset_score += 35
-
-                # =====================================
-                # SMALL/MEDIUM PRODUCT BOOST
-                # =====================================
-
-                width = int(
-                    asset.get("width", 0) or 0
-                )
-
-                height = int(
-                    asset.get("height", 0) or 0
-                )
-
-                area = width * height
-
-                if 10000 < area < 350000:
-
-                    asset_score += 55
-
-                if dominant_color == "unknown":
-
-                    asset_score -= 18
-
-                # ---------------------------------
-                # COLLAGE PENALTY
-                # ---------------------------------
-
-                if asset.get("is_collage"):
-
-                    asset_score -= 12
-
-                # ---------------------------------
-                # COLOR MATCHING
-                # ---------------------------------
-
-                color_map = [
-
-                    "red",
-                    "blue",
-                    "navy",
-                    "green",
-                    "lime",
-                    "yellow",
-                    "orange",
-                    "white",
-                    "black",
-                    "gray",
-                    "grey",
-                    "light_grey",
-                    "charcoal",
-                    "silver",
-                    "purple",
-                    "pink",
-                    "brown"
-                ]
-
-                normalized_variant_text = variant_text.lower()
-
-                for color in color_map:
-
-                    if color not in normalized_variant_text:
-                        continue
-
-                    # exact match
-                    if color == dominant_color:
-
-                        asset_score += 180
-
-                    # navy/blue distinction
-                    elif (
-                        color == "navy"
-                        and
-                        dominant_color == "blue"
-                    ):
-                        asset_score += 40
-
-                    # gray/grey normalization
-
-                    elif (
-
-                        color in ["gray", "grey"]
-
-                        and
-
-                        dominant_color in [
-                            "gray",
-                            "grey",
-                            "light_grey"
-                        ]
-                    ):
-
-                        asset_score += 120
-
-                    # white/silver/light handling
-                    elif (
-
-                        color == "white"
-
-                        and
-
-                        dominant_color in [
-                            "white",
-                            "light_grey"
-                        ]
-                    ):
-
-                        asset_score += 90
-
-                    # dark product approximation
-                    elif (
-
-                        color == "black"
-
-                        and
-
-                        dominant_color in [
-                            "black",
-                            "navy"
-                        ]
-                    ):
-
-                        asset_score += 90
-
-                # ------------------------------------
-                # HERO BONUS
-                # ------------------------------------
-
-                if asset.get("score", 0) >= 70:
-
-                    asset_score += 4
-
-                # ---------------------------------
-                # BEST MATCH
-                # ---------------------------------
-
-                if asset_score > best_score:
-
-                    best_score = asset_score
-
-                    best_asset = asset
-
-            # =====================================
-            # SAFE FALLBACK
-            # =====================================
-
-            if not best_asset:
-
-                remaining_assets = [
-
-                    a
-
-                    for a in asset_pool
-
-                    if (
-                        a.get("clean_index")
-                        not in used_asset_indexes
-                    )
-                ]
-
-                fallback_assets = (
-                    remaining_assets
-                    if remaining_assets
-                    else asset_pool
-                )
-
-                best_asset = sorted(
-
-                    fallback_assets,
-
-                    key=lambda x: (
-
-                        x.get(
-                            "gallery_score",
-                            0
-                        ),
-
-                        x.get(
-                            "hero_score",
-                            x.get(
-                                "score",
-                                0
-                            )
-                        )
-
-                    ),
-
-                    reverse=True
-
-                )[0]
-
-            if best_asset:
-
-                used_asset_indexes.add(
-
-                    best_asset.get("clean_index")
-                )
-
-            return best_asset
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[VARIANT MATCH FAILED] "
-
-                f"{str(e)}"
-            )
-
-            return False
-
-
     #======score_segmented_image ==========================
     def _score_segmented_image(
 
         self,
 
         image_base64
-    ):
+     ):
 
         try:
 
@@ -8438,6 +8136,339 @@ class VendorImportJob(models.Model):
             )
 
             return 0    
+
+
+    # =====================================
+    # PROFESSIONAL VARIANT IMAGE MATCHER
+    # =====================================
+  
+    def _match_variant_image(
+         self,
+        variant,
+        asset_pool,
+        used_asset_indexes=None
+      ):
+
+        try:
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+
+            if not asset_pool:
+                return False
+
+            best_asset = None
+
+            best_score = -999
+
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+            variant_text = ""
+
+            attributes = variant.get(
+                "attributes",
+                {}
+            )
+
+            if isinstance(attributes, dict):
+
+                variant_text = " ".join([
+
+                    str(v)
+
+                    for v in attributes.values()
+
+                ]).lower()
+
+            # =====================================
+            # SCORE ASSETS
+            # =====================================
+
+            for asset in asset_pool:
+
+                if asset.get("clean_index") in used_asset_indexes:
+                        continue
+
+                asset_score = 0
+
+                # =====================================
+                # UNUSED ASSET BONUS
+                # =====================================
+
+                asset_score += 25
+
+                # =====================================
+                # START FROM GALLERY SCORE
+                # =====================================
+
+                asset_score += asset.get(
+                    "gallery_score",
+                    asset.get(
+                        "score",
+                        0
+                    )
+                )
+
+
+                dominant_color = str(
+
+                    asset.get(
+                        "dominant_color",
+                        ""
+                    )
+
+                    or ""
+
+                ).lower()
+
+                # =====================================
+                # BOOST CLEAN ISOLATED PRODUCTS
+                # =====================================
+
+                if not asset.get("is_collage"):
+
+                    asset_score += 35
+
+                # =====================================
+                # SMALL/MEDIUM PRODUCT BOOST
+                # =====================================
+
+                width = int(
+                    asset.get("width", 0) or 0
+                )
+
+                height = int(
+                    asset.get("height", 0) or 0
+                )
+
+                area = width * height
+
+                if 10000 < area < 350000:
+
+                    asset_score += 55
+
+                if dominant_color == "unknown":
+
+                    asset_score -= 80
+
+                # ---------------------------------
+                # COLLAGE PENALTY
+                # ---------------------------------
+
+                if asset.get("is_collage"):
+
+                    asset_score -= 12
+
+                # ---------------------------------
+                # COLOR MATCHING
+                # ---------------------------------
+
+                color_map = [
+
+                    "red",
+                    "blue",
+                    "navy",
+                    "green",
+                    "lime",
+                    "yellow",
+                    "orange",
+                    "white",
+                    "black",
+                    "gray",
+                    "grey",
+                    "light_grey",
+                    "charcoal",
+                    "silver",
+                    "purple",
+                    "pink",
+                    "brown"
+                ]
+
+                normalized_variant_text = variant_text.lower()
+
+                for color in color_map:
+
+                    if color not in normalized_variant_text:
+                        continue
+
+                    # exact match
+                    if color == dominant_color:
+
+                        asset_score += 180
+
+                    elif (
+
+                        color in ["gray", "grey"]
+
+                        and
+
+                        dominant_color in [
+                            "gray",
+                            "grey",
+                            "light_grey"
+                        ]
+                    ):
+
+                        asset_score += 120
+
+                    # white/silver/light handling
+                    elif (
+
+                        color == "white"
+
+                        and
+
+                        dominant_color in [
+                            "white",
+                            "light_grey"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                    # =====================================
+                    # STRICT NAVY / BLUE SEPARATION
+                    # =====================================
+
+                    elif (
+                        color == "navy"
+                        and
+                        dominant_color == "blue"
+                    ):
+
+                        asset_score -= 120
+
+
+                    elif (
+                        color == "blue"
+                        and
+                        dominant_color == "navy"
+                    ):
+
+                        asset_score -= 120
+
+
+                    # =====================================
+                    # STRICT BLACK / NAVY SEPARATION
+                    # =====================================
+
+                    elif (
+                        color == "black"
+                        and
+                        dominant_color == "navy"
+                    ):
+
+                        asset_score -= 140
+
+
+                    elif (
+                        color == "navy"
+                        and
+                        dominant_color == "black"
+                    ):
+
+                        asset_score -= 140
+
+                # ------------------------------------
+                # HERO BONUS
+                # ------------------------------------
+
+                if asset.get("score", 0) >= 70:
+
+                    asset_score += 4
+
+
+                _logger.warning(
+
+                    f"[VARIANT SCORE] "
+
+                    f"variant={variant_text} "
+
+                    f"asset_color={dominant_color} "
+
+                    f"score={asset_score}"
+                )
+
+
+                # ---------------------------------
+                # BEST MATCH
+                # ---------------------------------
+
+                if asset_score > best_score:
+
+                    best_score = asset_score
+
+                    best_asset = asset
+
+            # =====================================
+            # SAFE FALLBACK
+            # =====================================
+
+            if not best_asset:
+
+                remaining_assets = [
+
+                    a
+
+                    for a in asset_pool
+
+                    if (
+                        a.get("clean_index")
+                        not in used_asset_indexes
+                    )
+                ]
+
+                fallback_assets = (
+                    remaining_assets
+                    if remaining_assets
+                    else asset_pool
+                )
+
+                best_asset = sorted(
+
+                    fallback_assets,
+
+                    key=lambda x: (
+
+                        x.get(
+                            "gallery_score",
+                            0
+                        ),
+
+                        x.get(
+                            "hero_score",
+                            x.get(
+                                "score",
+                                0
+                            )
+                        )
+
+                    ),
+
+                    reverse=True
+
+                )[0]
+
+            if best_asset:
+
+                used_asset_indexes.add(
+
+                    best_asset.get("clean_index")
+                )
+
+            return best_asset
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[VARIANT MATCH FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
 
 
     #=============variant color enhancement 1=================
@@ -8760,6 +8791,7 @@ class VendorImportJob(models.Model):
             )
 
             return False
+
 
     #============marchin AI===================================================
     # LEGACY IMAGE PAYLOAD MATCHER
@@ -10704,7 +10736,7 @@ class VendorImportJob(models.Model):
         if subtitle:
 
             description_parts.append(
-                f"<h4>{subtitle}</h4>"
+                f"<p><strong>{subtitle}</strong></p>"
             )
 
         if description:
