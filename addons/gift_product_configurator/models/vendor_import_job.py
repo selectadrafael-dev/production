@@ -5965,6 +5965,22 @@ class VendorImportJob(models.Model):
 
         Always prioritize those titles.
 
+        NEVER shorten product titles.
+
+        NEVER summarize titles.
+
+        NEVER reduce:
+
+        * "Basic Unisex T-Shirt"
+        to:
+        * "T-Shirt"
+
+        ALWAYS preserve the FULL visible catalog title exactly as printed on the page.
+
+        If multiple words appear in the title heading:
+        include ALL of them.
+
+        Do not simplify titles.
 
         ==================================================
         DESCRIPTION RULES
@@ -8583,6 +8599,12 @@ class VendorImportJob(models.Model):
 
             brightness = (r + g + b) / 3
 
+            blue_strength = b - max(r, g)
+
+            green_strength = g - max(r, b)
+
+            red_strength = r - max(g, b)
+
             max_channel = max(r, g, b)
             min_channel = min(r, g, b)
 
@@ -8672,38 +8694,47 @@ class VendorImportJob(models.Model):
                 return "orange"
 
             # =====================================
+
             # NAVY
+
+            # deep blue + dark brightness
+
             # =====================================
 
             if (
-                    b > r * 1.28
-                    and
-                    b > g * 1.20
-                    and
-                    brightness < 68
-                    and
-                    saturation > 32
+
+            blue_strength > 18
+
+            and
+
+            brightness < 95
+
             ):
                 _logger.warning("[PDF COLOR DETECTED] NAVY")
                 return "navy"
-
-
+        
             # =====================================
+
             # BLUE
+
+            # strong blue but brighter than navy
+
             # =====================================
 
             if (
-                b > r * 1.08
-                and
-                b > g * 1.05
-                and
-                brightness >= 70
-                and
-                saturation > 28
+
+            blue_strength > 20
+
+            and
+
+            brightness >= 95
+
             ):
+
                 _logger.warning("[PDF COLOR DETECTED] BLUE")
                 return "blue"
             
+
              # =====================================
             # PURPLE
             # =====================================
