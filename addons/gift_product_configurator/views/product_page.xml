@@ -154,10 +154,10 @@
         <div class="gift-product-extra-details"
             t-if="product.description_sale">
 
-            <div t-field="product.description_sale"
+            <div t-raw="product.description_sale" 
                 class="product-rich-description"/>
 
-            </div>
+        </div>
 
     </xpath>
 
