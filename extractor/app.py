@@ -152,7 +152,57 @@ def extract():
         if page_number >= MAX_PAGES:
             break
 
-        text = page.get_text("text") or ""
+        # text = page.get_text("text") or ""
+
+        # =====================================
+
+        # STRUCTURED PDF TEXT EXTRACTION
+
+        # =====================================
+
+        raw_text = page.get_text("text") or ""
+
+        blocks = page.get_text("blocks") or []
+
+        structured_lines = []
+
+        for block in blocks:
+
+            try:
+
+                block_text = block[4]
+
+                if not block_text:
+                    continue
+
+                clean = block_text.strip()
+
+                if not clean:
+                    continue
+
+                structured_lines.append(clean)
+
+            except Exception:
+                continue
+
+        # =====================================
+
+        # PRIORITIZE STRUCTURED LAYOUT
+
+        # =====================================
+
+        structured_text = "\n".join(
+        structured_lines
+        )
+
+        # =====================================
+
+        # FINAL PAGE TEXT
+
+        # =====================================
+
+        text = structured_text or raw_text
+
 
         image_list = []
 
