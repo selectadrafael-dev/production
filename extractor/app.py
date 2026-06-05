@@ -291,6 +291,21 @@ def extract():
                 if 1 <= word_count <= 6:
                     title_score += 3
 
+                # =====================================
+                # PRODUCT MODEL TITLE BOOST
+                # =====================================
+
+                import re
+
+                if re.search(
+
+                    r"\b\d+\s*(panel|pc|piece|inch|ml|oz)\b",
+
+                    clean.lower()
+                ):
+
+                    title_score += 12
+
                 # compact text
 
                 if text_length <= 60:
