@@ -1,2 +1,2 @@
 # production
-Main repo to onboard select ads B2B platform
+Clip service branch to onboard varaint image and accurate mapping

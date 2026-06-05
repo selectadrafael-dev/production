@@ -1,1 +1,0 @@
-# Gifting Theme - no python initialization needed

@@ -1,7 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-
-access_vendor_import_page,vendor.import.page,model_vendor_import_page,gift_product_configurator.group_product_vendor,1,1,1,1
-
-access_vendor_product_template,vendor.product.template,product.model_product_template,gift_product_configurator.group_product_vendor,1,1,1,1
-
-access_vendor_product_product,vendor.product.product,product.model_product_product,gift_product_configurator.group_product_vendor,1,1,1,1
