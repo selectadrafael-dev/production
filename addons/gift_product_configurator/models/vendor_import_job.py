@@ -4101,6 +4101,7 @@ class VendorImportJob(models.Model):
                     f"size={w}x{h}"
                 )
 
+
                 results.append({
 
                     "image": encoded,
@@ -4110,6 +4111,10 @@ class VendorImportJob(models.Model):
                     "width": w,
 
                     "height": h,
+
+                    "x": x,
+
+                    "y": y,
 
                     "is_collage": False,
 
@@ -4150,12 +4155,12 @@ class VendorImportJob(models.Model):
 
                 results,
 
-                key=lambda x: x.get(
-                    "score",
-                    0
-                ),
+                key=lambda x: (
 
-                reverse=True
+                    x.get("y", 0),
+
+                    x.get("x", 0)
+                )
             )
 
             # =====================================
