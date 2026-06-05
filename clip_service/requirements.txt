@@ -5,3 +5,4 @@ torch
 torchvision
 sentence-transformers
 numpy
+
