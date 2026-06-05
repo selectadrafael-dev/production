@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-pillow
-torch
-torchvision
-sentence-transformers
-numpy
