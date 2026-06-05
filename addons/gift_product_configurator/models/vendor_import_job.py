@@ -1922,16 +1922,18 @@ class VendorImportJob(models.Model):
                     normalized_color
                 )
 
-                color_hex = None
-
                 _logger.warning(
 
-                    f"[COLOR NORMALIZED] "
+                    f"[COLOR VARIANT DEBUG] "
 
                     f"raw={attr_value} "
 
-                    f"normalized={normalized_color}"
+                    f"| normalized={normalized_color}"
+
                 )
+
+
+                color_hex = None
 
                 # =====================================
                 # DIRECT MATCH
@@ -4061,6 +4063,31 @@ class VendorImportJob(models.Model):
                     encoded
                 )
 
+                # =====================================
+                # BRIGHTNESS ANALYSIS
+                # =====================================
+
+                try:
+
+                    pil_analysis = Image.fromarray(
+                        cv2.cvtColor(
+                            sub,
+                            cv2.COLOR_BGR2RGB
+                        )
+                    ).convert("RGB")
+
+                    np_analysis = np.array(
+                        pil_analysis
+                    )
+
+                    brightness = float(
+                        np.mean(np_analysis)
+                    )
+
+                except Exception:
+
+                    brightness = 128.0
+
                 _logger.warning(
 
                     f"[GRID ACCEPT] "
@@ -4068,6 +4095,8 @@ class VendorImportJob(models.Model):
                     f"score={score} "
 
                     f"color={dominant} "
+
+                    f"brightness={brightness:.1f} "
 
                     f"size={w}x{h}"
                 )
@@ -4082,9 +4111,12 @@ class VendorImportJob(models.Model):
 
                     "height": h,
 
-                    "is_collage": False
-                })
+                    "is_collage": False,
 
+                    "dominant_color": dominant,
+
+                    "brightness": brightness,
+                })
 
             # =====================================
             # DEBUG BEFORE SORT
@@ -11329,7 +11361,7 @@ class VendorImportJob(models.Model):
         self,
 
         product_data
-    ):
+     ):
 
         import re
 
