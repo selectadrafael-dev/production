@@ -7676,6 +7676,11 @@ class VendorImportJob(models.Model):
 
                         else 0
                     ),
+
+                    "is_lifestyle": asset.get(
+                        "is_lifestyle",
+                        False
+                    ),
                 })
 
 
@@ -7716,10 +7721,29 @@ class VendorImportJob(models.Model):
 
             key=lambda x: (
 
-                x.get("y", 0),
+                x.get(
+                    "gallery_score",
+                    x.get("score", 0)
+                ),
 
-                x.get("x", 0)
-            )
+                x.get(
+                    "hero_score",
+                    0
+                ),
+
+                not x.get(
+                    "is_collage",
+                    False
+                ),
+
+                # ONLY TIE-BREAKERS
+                -x.get("y", 0),
+
+                -x.get("x", 0)
+
+            ),
+
+            reverse=True
         )
 
         # =====================================
@@ -7740,6 +7764,57 @@ class VendorImportJob(models.Model):
         )
 
         return prepared
+
+
+    #===========================Clip image/variant===================
+    
+    def _clip_match_variant(
+
+        self,
+
+        variant_text,
+
+        asset_pool
+      ):
+
+        try:
+
+            import requests
+
+            endpoint = (
+                "https://YOUR-RENDER-URL.onrender.com/match"
+            )
+
+            images = []
+
+            index_map = []
+
+            filtered_assets = []
+
+            for asset in asset_pool:
+
+                if asset.get("is_lifestyle"):
+                    continue
+
+                if asset.get("is_collage"):
+                    continue
+
+                if asset.get("score", 0) < 20:
+                    continue
+
+                filtered_assets.append(asset)
+
+            # LIMIT FOR PERFORMANCE
+            filtered_assets = filtered_assets[:12]
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[CLIP MATCH FAILED] {str(e)}"
+            )
+
+            return False
 
 
     # =======================================
@@ -8199,6 +8274,30 @@ class VendorImportJob(models.Model):
 
                 ]).lower()
 
+                # =====================================
+                # CLIP SEMANTIC MATCH
+                # =====================================
+
+                clip_asset = self._clip_match_variant(
+
+                    variant_text,
+
+                    asset_pool
+                )
+
+                if clip_asset:
+
+                    _logger.warning(
+
+                        f"[CLIP MATCH SUCCESS] "
+
+                        f"variant={variant_text} "
+
+                        f"color={clip_asset.get('dominant_color')}"
+                    )
+
+                    return clip_asset
+
             # =====================================
             # SCORE ASSETS
             # =====================================
@@ -8245,6 +8344,14 @@ class VendorImportJob(models.Model):
                     or ""
 
                 ).lower()
+
+                # =====================================
+                # HARD LIFESTYLE REJECTION
+                # =====================================
+
+                if asset.get("is_lifestyle"):
+
+                    asset_score -= 300
 
                 # =====================================
                 # PREVENT REUSING SAME DOMINANT COLOR
@@ -10656,21 +10763,11 @@ class VendorImportJob(models.Model):
 
                 key=lambda x: (
 
-                    x.get(
-                        "hero_score",
-                        0
-                    ),
+                    x.get("hero_score", 0),
 
-                    x.get(
-                        "gallery_score",
-                        0
-                    ),
+                    x.get("gallery_score", 0),
 
-                    x.get(
-                        "score",
-                        0
-                    )
-
+                    x.get("score", 0)
                 ),
 
                 reverse=True
