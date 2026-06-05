@@ -89311,3 +89311,302 @@ class VendorImportJob(models.Model):
 
             return "unknown"
 
+
+#===========recent updated version===================
+#=============variant color enhancement 1=================
+    
+    def _get_dominant_color_name(
+
+        self,
+
+        image_base64
+      ):
+
+        try:
+
+            import base64
+            import io
+            import numpy as np
+
+            from PIL import Image
+
+            image_bytes = base64.b64decode(
+                image_base64
+            )
+
+            img = Image.open(
+
+                io.BytesIO(image_bytes)
+
+            ).convert("RGB")
+
+
+            # =====================================
+            # CENTER CROP
+            # =====================================
+
+            width, height = img.size
+
+            crop = img.crop((
+                width * 0.20,
+                height * 0.20,
+                width * 0.80,
+                height * 0.80
+            ))
+
+            img = crop.resize((80, 80))
+
+            np_img = np.array(img)
+
+            # =====================================
+            # FOCUS CENTER REGION ONLY
+            # REDUCE BACKGROUND POLLUTION
+            # =====================================
+
+            h, w, _ = np_img.shape
+
+            crop_x1 = int(w * 0.20)
+            crop_x2 = int(w * 0.80)
+
+            crop_y1 = int(h * 0.20)
+            crop_y2 = int(h * 0.80)
+
+            np_img = np_img[
+                crop_y1:crop_y2,
+                crop_x1:crop_x2
+            ]
+
+            pixels = np_img.reshape(
+                (-1, 3)
+            )
+
+            # =====================================
+            # REMOVE VERY LIGHT BACKGROUND PIXELS
+            # =====================================
+
+            filtered_pixels = []
+
+            for px in pixels:
+
+                pr, pg, pb = px
+
+                # skip white/light background
+                if (
+                    pr > 235
+                    and
+                    pg > 235
+                    and
+                    pb > 235
+                ):
+
+                    continue
+
+                filtered_pixels.append(px)
+
+            # fallback if filtering too aggressive
+            if not filtered_pixels:
+
+                filtered_pixels = pixels
+
+            filtered_pixels = np.array(
+                filtered_pixels
+            )
+
+            # =====================================
+            # USE MEDIAN FOR STABILITY
+            # =====================================
+
+            median = np.median(
+                filtered_pixels,
+                axis=0
+            )
+
+            r, g, b = median
+
+            brightness = (r + g + b) / 3
+
+            blue_strength = b - max(r, g)
+
+            green_strength = g - max(r, b)
+
+            red_strength = r - max(g, b)
+
+            max_channel = max(r, g, b)
+            min_channel = min(r, g, b)
+
+            saturation = max_channel - min_channel
+
+            _logger.warning(
+                f"[PDF COLOR ANALYSIS] "
+                f"rgb=({r:.1f},{g:.1f},{b:.1f}) "
+                f"brightness={brightness:.1f} "
+                f"saturation={saturation:.1f}"
+            )
+
+            # =====================================
+            # COLOR CLASSIFICATION
+            # =====================================
+
+            if (
+                brightness > 215
+                and
+                saturation < 32
+            ):
+
+                if r > b + 8 and g > b + 8:
+
+                    _logger.warning(
+                        "[PDF COLOR DETECTED] CREAM"
+                    )
+
+                    return "cream"
+
+                _logger.warning(
+                    "[PDF COLOR DETECTED] WHITE"
+                )
+
+                return "white"
+
+            if (
+                saturation < 18
+                and
+                abs(r - g) < 18
+                and
+                abs(g - b) < 18
+                and
+                200 <= brightness <= 242
+            ):
+                return "light grey"
+            
+            # =====================================
+            # GREY
+            # =====================================
+
+            if (
+                saturation < 22
+                and
+                abs(r - g) < 18
+                and
+                abs(g - b) < 18
+                and
+                70 <= brightness <= 210
+            ):
+                _logger.warning("[PDF COLOR DETECTED] GREY")
+                return "grey"
+
+              # =====================================
+            # TRUE BLACK
+            # =====================================
+
+            if (
+                brightness < 72
+                and
+                saturation < 18
+                and
+                abs(r - g) < 15
+                and
+                abs(g - b) < 15
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
+          
+            if r > 160 and g < 120 and b < 120:
+                return "red"
+
+            if r > 180 and g > 180 and b < 120:
+                return "yellow"
+
+            if r > 150 and g > 120 and b < 100:
+                return "orange"
+
+            # =====================================
+
+            # NAVY
+
+            # deep blue + dark brightness
+
+            # =====================================
+
+            if (
+
+            blue_strength > 18
+
+            and
+
+            brightness < 95
+
+            ):
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+        
+            # =====================================
+
+            # BLUE
+
+            # strong blue but brighter than navy
+
+            # =====================================
+
+            if (
+
+            blue_strength > 20
+
+            and
+
+            brightness >= 95
+
+            ):
+
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
+                return "blue"
+            
+
+             # =====================================
+            # PURPLE
+            # =====================================
+
+            if (
+                r > 75
+                and
+                b > 75
+                and
+                abs(r - b) < 45
+                and
+                g < (r * 0.82)
+            ):
+                _logger.warning("[PDF COLOR DETECTED] PURPLE")
+                return "purple"
+
+          
+            # =====================================
+            # GREEN
+            # =====================================
+
+            if (
+                g > r * 1.10
+                and
+                g > b * 1.08
+                and
+                saturation > 35
+            ):
+                _logger.warning("[PDF COLOR DETECTED] GREEN")
+                return "green"
+
+            # return "unknown"
+            _logger.warning(
+                "[PDF COLOR DETECTED] FALLBACK GREY"
+            )
+
+            return "grey"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return "unknown"
+

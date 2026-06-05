@@ -7409,85 +7409,36 @@ class VendorImportJob(models.Model):
         return
     
 
-    #-----------scoring image before picking best/quality image (inage logic)-------------
+    #-----------scoring image before picking best/quality image (image logic)-------------
     def pick_best_image(self, images):
 
-                best_img = None
-                best_score = 0
-                seen_hashes = set()
+        asset_pool = self._prepare_asset_pool(images)
 
-                for img in images:
+        if not asset_pool:
+            return None
 
-                    try:
-                        img_bytes = base64.b64decode(img)
-                        size = len(img_bytes)
+        sorted_assets = sorted(
 
-                        # ❌ Skip tiny images (logos/icons)
-                        if size < 10000:
-                            continue
+       
+            asset_pool,
 
-                        # ❌ Skip extremely large (full lifestyle pages)
-                        if size > 800000:
-                            continue
+            key=lambda x: (
 
-                        # ================= IMAGE ANALYSIS =================
-                        pil_img = Image.open(BytesIO(img_bytes))
-                        width, height = pil_img.size
+                x.get("hero_score", 0),
 
-                        # ❌ Skip extremely small resolution
-                        if width < 150 or height < 150:
-                            continue
+                x.get("gallery_score", 0),
 
-                        # ❌ Skip extreme aspect ratios (banners, strips)
-                        aspect_ratio = width / height if height else 1
+                x.get("score", 0)
 
-                        if aspect_ratio > 3 or aspect_ratio < 0.3:
-                            continue
+            ),
 
-                        # ================= DUPLICATE CHECK =================
-                        img_hash = hash(img_bytes[:100])  # fast partial hash
+            reverse=True
+        )
 
-                        if img_hash in seen_hashes:
-                            continue
+        if not sorted_assets:
+            return None
 
-                        seen_hashes.add(img_hash)
-
-                        # ================= SCORING =================
-                        score = 0
-
-                        # ✅ Prefer medium-good sizes
-                        if 20000 < size < 300000:
-                            score += 200
-
-                        # ✅ Prefer square-ish product images
-                        if 0.7 < aspect_ratio < 1.5:
-                            score += 150
-
-                        # ✅ Prefer decent resolution
-                        if width > 400 and height > 400:
-                            score += 150
-
-                        # ❌ Penalize too wide/tall
-                        if aspect_ratio > 2 or aspect_ratio < 0.5:
-                            score -= 100
-
-                        # ❌ Penalize very large images (likely lifestyle)
-                        if size > 500000:
-                            score -= 150
-
-                        # Base size contribution
-                        score += size / 2000
-
-                        # ================= SELECT BEST =================
-                        if score > best_score:
-                            best_score = score
-                            best_img = img
-
-                    except Exception:
-                        continue
-
-                return best_img
-
+        return sorted_assets[0].get("image")
 
 
     #=================Centralized Rusable Image=======================
@@ -7579,7 +7530,7 @@ class VendorImportJob(models.Model):
 
                     if not is_collage:
 
-                        gallery_score += 25
+                        gallery_score += 8
 
                     # =====================================
                     # COLLAGE SUPPRESSION
@@ -7611,37 +7562,12 @@ class VendorImportJob(models.Model):
 
                 if existing_asset:
 
-                    if (
+                    _logger.warning(
 
-                        abs(
+                        f"[ASSET SKIPPED] TRUE DUPLICATE"
+                    )
 
-                            existing_asset.get(
-                                "score",
-                                0
-                            ) - score
-
-                        ) <= 5
-
-                        and
-
-                        existing_asset.get(
-                            "is_collage"
-                        ) == is_collage
-
-                        and
-
-                        existing_asset.get(
-                            "dominant_color"
-                        ) == dominant_color
-
-                    ):
-
-                        _logger.warning(
-
-                            f"[ASSET SKIPPED] TRUE DUPLICATE"
-                        )
-
-                        continue
+                    continue
 
                 _logger.warning(
 
@@ -7656,6 +7582,47 @@ class VendorImportJob(models.Model):
                     f"color={dominant_color}"
                 )
 
+                # =====================================
+                # REJECT LIFESTYLE / HUMAN IMAGES
+                # =====================================
+
+                width = (
+
+                    asset.get("width", 0)
+
+                    if isinstance(asset, dict)
+
+                    else 0
+                )
+
+                height = (
+
+                    asset.get("height", 0)
+
+                    if isinstance(asset, dict)
+
+                    else 0
+                )
+
+                ratio = width / float(max(height, 1))
+
+                # =====================================
+                # HUMAN / LIFESTYLE DETECTION
+                # =====================================
+
+                # tall portrait images
+                if ratio < 0.72 and height > width * 1.20:
+
+                    _logger.warning(
+
+                        f"[ASSET REJECTED HUMAN] "
+
+                        f"ratio={ratio:.2f} "
+
+                        f"size={width}x{height}"
+                    )
+
+                    continue
 
                 prepared.append({
 
@@ -7675,6 +7642,18 @@ class VendorImportJob(models.Model):
 
                     "dominant_color":
                         dominant_color,
+
+                    "x": (
+                        asset.get("x", 0)
+                        if isinstance(asset, dict)
+                        else 0
+                    ),
+
+                    "y": (
+                        asset.get("y", 0)
+                        if isinstance(asset, dict)
+                        else 0
+                    ),
 
                     # =====================================
                     # DIMENSIONS
@@ -7699,13 +7678,12 @@ class VendorImportJob(models.Model):
                     ),
                 })
 
+
                 seen[image_hash] = {
 
                     "score": score,
 
-                    "is_collage": is_collage,
-
-                    "dominant_color": dominant_color
+                    "is_collage": is_collage
                 }
 
                 _logger.warning(
@@ -7738,27 +7716,10 @@ class VendorImportJob(models.Model):
 
             key=lambda x: (
 
-                x.get(
-                    "gallery_score",
-                    x.get(
-                        "score",
-                        0
-                    )
-                ),
+                x.get("y", 0),
 
-                x.get(
-                    "hero_score",
-                    0
-                ),
-
-                not x.get(
-                    "is_collage",
-                    False
-                )
-
-            ),
-
-            reverse=True
+                x.get("x", 0)
+            )
         )
 
         # =====================================
@@ -7836,9 +7797,12 @@ class VendorImportJob(models.Model):
 
             pixels = np.array(filtered_pixels)
 
-            avg = pixels.mean(axis=0)
+            median = np.median(
+                pixels,
+                axis=0
+            )
 
-            r, g, b = avg
+            r, g, b = median
 
             # =====================================
             # DARK COLOR ANALYSIS
@@ -8192,7 +8156,6 @@ class VendorImportJob(models.Model):
 
             return 0    
 
-
     # =====================================
     # PROFESSIONAL VARIANT IMAGE MATCHER
     # =====================================
@@ -8242,16 +8205,22 @@ class VendorImportJob(models.Model):
 
             for asset in asset_pool:
 
-                if asset.get("clean_index") in used_asset_indexes:
-                        continue
+                already_used = (
+                    asset.get("clean_index")
+                    in used_asset_indexes
+                )
 
                 asset_score = 0
+                
+                if already_used:
+
+                    asset_score -= 90
 
                 # =====================================
                 # UNUSED ASSET BONUS
                 # =====================================
 
-                asset_score += 25
+                asset_score += 8
 
                 # =====================================
                 # START FROM GALLERY SCORE
@@ -8278,12 +8247,37 @@ class VendorImportJob(models.Model):
                 ).lower()
 
                 # =====================================
+                # PREVENT REUSING SAME DOMINANT COLOR
+                # =====================================
+
+                already_used_colors = [
+
+                    a.get("dominant_color")
+
+                    for a in asset_pool
+
+                    if a.get("clean_index")
+                    in used_asset_indexes
+                ]
+
+                if (
+
+                    dominant_color in already_used_colors
+
+                    and
+
+                    dominant_color != "unknown"
+                ):
+
+                    asset_score -= 120
+
+                # =====================================
                 # BOOST CLEAN ISOLATED PRODUCTS
                 # =====================================
 
                 if not asset.get("is_collage"):
 
-                    asset_score += 35
+                    asset_score += 15
 
                 # =====================================
                 # SMALL/MEDIUM PRODUCT BOOST
@@ -8301,7 +8295,7 @@ class VendorImportJob(models.Model):
 
                 if 10000 < area < 350000:
 
-                    asset_score += 55
+                    asset_score += 18
 
                 if dominant_color == "unknown":
 
@@ -8346,6 +8340,15 @@ class VendorImportJob(models.Model):
 
                     if color not in normalized_variant_text:
                         continue
+
+                    _logger.warning(
+
+                        f"[COLOR COMPARE] "
+
+                        f"variant_color={color} "
+
+                        f"asset_color={dominant_color}"
+                    )
 
                     # exact match
                     if color == dominant_color:
@@ -8512,6 +8515,20 @@ class VendorImportJob(models.Model):
                     best_asset.get("clean_index")
                 )
 
+          
+                _logger.warning(
+
+                    f"[VARIANT FINAL] "
+
+                    f"variant={variant_text} "
+
+                    f"selected_color={best_asset.get('dominant_color')} "
+
+                    f"clean_index={best_asset.get('clean_index')} "
+
+                    f"score={best_score}"
+                )
+
             return best_asset
 
         except Exception as e:
@@ -8524,304 +8541,6 @@ class VendorImportJob(models.Model):
             )
 
             return False
-
-
-    #=============variant color enhancement 1=================
-    
-    def _get_dominant_color_name(
-
-        self,
-
-        image_base64
-      ):
-
-        try:
-
-            import base64
-            import io
-            import numpy as np
-
-            from PIL import Image
-
-            image_bytes = base64.b64decode(
-                image_base64
-            )
-
-            img = Image.open(
-
-                io.BytesIO(image_bytes)
-
-            ).convert("RGB")
-
-
-            # =====================================
-            # CENTER CROP
-            # =====================================
-
-            width, height = img.size
-
-            crop = img.crop((
-                width * 0.20,
-                height * 0.20,
-                width * 0.80,
-                height * 0.80
-            ))
-
-            img = crop.resize((80, 80))
-
-            np_img = np.array(img)
-
-            # =====================================
-            # FOCUS CENTER REGION ONLY
-            # REDUCE BACKGROUND POLLUTION
-            # =====================================
-
-            h, w, _ = np_img.shape
-
-            crop_x1 = int(w * 0.20)
-            crop_x2 = int(w * 0.80)
-
-            crop_y1 = int(h * 0.20)
-            crop_y2 = int(h * 0.80)
-
-            np_img = np_img[
-                crop_y1:crop_y2,
-                crop_x1:crop_x2
-            ]
-
-            pixels = np_img.reshape(
-                (-1, 3)
-            )
-
-            # =====================================
-            # REMOVE VERY LIGHT BACKGROUND PIXELS
-            # =====================================
-
-            filtered_pixels = []
-
-            for px in pixels:
-
-                pr, pg, pb = px
-
-                # skip white/light background
-                if (
-                    pr > 235
-                    and
-                    pg > 235
-                    and
-                    pb > 235
-                ):
-
-                    continue
-
-                filtered_pixels.append(px)
-
-            # fallback if filtering too aggressive
-            if not filtered_pixels:
-
-                filtered_pixels = pixels
-
-            filtered_pixels = np.array(
-                filtered_pixels
-            )
-
-            # =====================================
-            # USE MEDIAN FOR STABILITY
-            # =====================================
-
-            median = np.median(
-                filtered_pixels,
-                axis=0
-            )
-
-            r, g, b = median
-
-            brightness = (r + g + b) / 3
-
-            blue_strength = b - max(r, g)
-
-            green_strength = g - max(r, b)
-
-            red_strength = r - max(g, b)
-
-            max_channel = max(r, g, b)
-            min_channel = min(r, g, b)
-
-            saturation = max_channel - min_channel
-
-            _logger.warning(
-                f"[PDF COLOR ANALYSIS] "
-                f"rgb=({r:.1f},{g:.1f},{b:.1f}) "
-                f"brightness={brightness:.1f} "
-                f"saturation={saturation:.1f}"
-            )
-
-            # =====================================
-            # COLOR CLASSIFICATION
-            # =====================================
-
-            if (
-                brightness > 215
-                and
-                saturation < 32
-            ):
-
-                if r > b + 8 and g > b + 8:
-
-                    _logger.warning(
-                        "[PDF COLOR DETECTED] CREAM"
-                    )
-
-                    return "cream"
-
-                _logger.warning(
-                    "[PDF COLOR DETECTED] WHITE"
-                )
-
-                return "white"
-
-            if (
-                saturation < 18
-                and
-                abs(r - g) < 18
-                and
-                abs(g - b) < 18
-                and
-                200 <= brightness <= 242
-            ):
-                return "light grey"
-            
-            # =====================================
-            # GREY
-            # =====================================
-
-            if (
-                saturation < 22
-                and
-                abs(r - g) < 18
-                and
-                abs(g - b) < 18
-                and
-                70 <= brightness <= 210
-            ):
-                _logger.warning("[PDF COLOR DETECTED] GREY")
-                return "grey"
-
-              # =====================================
-            # TRUE BLACK
-            # =====================================
-
-            if (
-                brightness < 72
-                and
-                saturation < 18
-                and
-                abs(r - g) < 15
-                and
-                abs(g - b) < 15
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLACK")
-                return "black"
-          
-            if r > 160 and g < 120 and b < 120:
-                return "red"
-
-            if r > 180 and g > 180 and b < 120:
-                return "yellow"
-
-            if r > 150 and g > 120 and b < 100:
-                return "orange"
-
-            # =====================================
-
-            # NAVY
-
-            # deep blue + dark brightness
-
-            # =====================================
-
-            if (
-
-            blue_strength > 18
-
-            and
-
-            brightness < 95
-
-            ):
-                _logger.warning("[PDF COLOR DETECTED] NAVY")
-                return "navy"
-        
-            # =====================================
-
-            # BLUE
-
-            # strong blue but brighter than navy
-
-            # =====================================
-
-            if (
-
-            blue_strength > 20
-
-            and
-
-            brightness >= 95
-
-            ):
-
-                _logger.warning("[PDF COLOR DETECTED] BLUE")
-                return "blue"
-            
-
-             # =====================================
-            # PURPLE
-            # =====================================
-
-            if (
-                r > 75
-                and
-                b > 75
-                and
-                abs(r - b) < 45
-                and
-                g < (r * 0.82)
-            ):
-                _logger.warning("[PDF COLOR DETECTED] PURPLE")
-                return "purple"
-
-          
-            # =====================================
-            # GREEN
-            # =====================================
-
-            if (
-                g > r * 1.10
-                and
-                g > b * 1.08
-                and
-                saturation > 35
-            ):
-                _logger.warning("[PDF COLOR DETECTED] GREEN")
-                return "green"
-
-            # return "unknown"
-            _logger.warning(
-                "[PDF COLOR DETECTED] FALLBACK GREY"
-            )
-
-            return "grey"
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[COLOR DETECTION ERROR] "
-
-                f"{str(e)}"
-            )
-
-            return "unknown"
 
 
     #=================Centralized Rusable Image resolver==============
@@ -10935,9 +10654,23 @@ class VendorImportJob(models.Model):
 
                 asset_pool,
 
-                key=lambda x: x.get(
-                    "score",
-                    0
+                key=lambda x: (
+
+                    x.get(
+                        "hero_score",
+                        0
+                    ),
+
+                    x.get(
+                        "gallery_score",
+                        0
+                    ),
+
+                    x.get(
+                        "score",
+                        0
+                    )
+
                 ),
 
                 reverse=True
