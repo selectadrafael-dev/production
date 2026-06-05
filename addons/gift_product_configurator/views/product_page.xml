@@ -17,7 +17,7 @@
               </a>
             </div>
 
-<div id="middle_content_container_main"    class="middle_content_container_main">
+<div id="middle_content_container_main" class="middle_content_container_main">
                 <div class="gift-configurator">
                     <!--form method="post"-->
                         <!-- PRINT METHOD -->
@@ -142,6 +142,25 @@
             </div>
 
     </xpath>
+
+
+    <xpath expr="//div[@id='product_details']//t[@t-call='website_sale.product_price']"
+    position="after">
+
+        <!-- ===================================== -->
+        <!-- PRODUCT EXTRA DETAILS -->
+        <!-- ===================================== -->
+
+        <div class="gift-product-extra-details"
+            t-if="product.description_sale">
+
+            <div t-raw="product.description_sale" 
+                class="product-rich-description"/>
+
+        </div>
+
+    </xpath>
+
 
 </template>
 </odoo>

@@ -1758,7 +1758,7 @@ class VendorImportJob(models.Model):
         attr_name,
 
         attr_value
-    ):
+     ):
 
         attr_name = str(
             attr_name or ""
@@ -1768,9 +1768,9 @@ class VendorImportJob(models.Model):
             attr_value or ""
         ).strip()
 
-        # =====================================
+        # ========================================
         # ATTRIBUTE NORMALIZATION
-        # =====================================
+        # ========================================
         normalized_attr = attr_name.lower().strip()
 
         is_color_attribute = normalized_attr in [
@@ -1922,16 +1922,18 @@ class VendorImportJob(models.Model):
                     normalized_color
                 )
 
-                color_hex = None
-
                 _logger.warning(
 
-                    f"[COLOR NORMALIZED] "
+                    f"[COLOR VARIANT DEBUG] "
 
                     f"raw={attr_value} "
 
-                    f"normalized={normalized_color}"
+                    f"| normalized={normalized_color}"
+
                 )
+
+
+                color_hex = None
 
                 # =====================================
                 # DIRECT MATCH
@@ -1991,16 +1993,7 @@ class VendorImportJob(models.Model):
 
                     best_length = 0
 
-                    # for key, hex_value in self.COLOR_HEX_MAP.items():
-
-                    #     if key in primary_color_text:
-
-                    #         if len(key) > best_length:
-
-                    #             best_match = (key, hex_value)
-
-                    #             best_length = len(key)
-
+                
                     for key, hex_value in self.COLOR_HEX_MAP.items():
 
                         key_words = key.split()
@@ -2165,53 +2158,7 @@ class VendorImportJob(models.Model):
                     normalized_color
                 )
 
-                # =====================================
-                # FALLBACK PARTIAL MATCH
-                # =====================================
-
-                if not color_hex:
-
-                    best_match = None
-                    best_length = 0
-
-                    for key, hex_value in self.COLOR_HEX_MAP.items():
-
-                        key_words = key.split()
-
-                        normalized_words = normalized_color.split()
-
-                        # =====================================
-                        # EXACT WORD MATCH
-                        # =====================================
-
-                        if all(word in normalized_words for word in key_words):
-
-                            if len(key_words) > best_length:
-
-                                best_match = (
-                                    key,
-                                    hex_value
-                                )
-
-                                best_length = len(key_words)
-
-                    if best_match:
-
-                        matched_key, matched_value = best_match
-
-                        color_hex = matched_value
-
-                        _logger.warning(
-
-                            f"[PATCH COLOR MATCH] "
-
-                            f"{attr_value} "
-
-                            f"→ {matched_key} "
-
-                            f"→ {matched_value}"
-                        )
-
+              
                 # =====================================
                 # APPLY PATCHED HTML COLOR
                 # =====================================
@@ -2561,7 +2508,7 @@ class VendorImportJob(models.Model):
         self,
 
         product_url
-    ):
+     ):
 
         try:
 
@@ -4116,6 +4063,31 @@ class VendorImportJob(models.Model):
                     encoded
                 )
 
+                # =====================================
+                # BRIGHTNESS ANALYSIS
+                # =====================================
+
+                try:
+
+                    pil_analysis = Image.fromarray(
+                        cv2.cvtColor(
+                            sub,
+                            cv2.COLOR_BGR2RGB
+                        )
+                    ).convert("RGB")
+
+                    np_analysis = np.array(
+                        pil_analysis
+                    )
+
+                    brightness = float(
+                        np.mean(np_analysis)
+                    )
+
+                except Exception:
+
+                    brightness = 128.0
+
                 _logger.warning(
 
                     f"[GRID ACCEPT] "
@@ -4124,8 +4096,11 @@ class VendorImportJob(models.Model):
 
                     f"color={dominant} "
 
+                    f"brightness={brightness:.1f} "
+
                     f"size={w}x{h}"
                 )
+
 
                 results.append({
 
@@ -4137,9 +4112,16 @@ class VendorImportJob(models.Model):
 
                     "height": h,
 
-                    "is_collage": False
-                })
+                    "x": x,
 
+                    "y": y,
+
+                    "is_collage": False,
+
+                    "dominant_color": dominant,
+
+                    "brightness": brightness,
+                })
 
             # =====================================
             # DEBUG BEFORE SORT
@@ -4173,12 +4155,12 @@ class VendorImportJob(models.Model):
 
                 results,
 
-                key=lambda x: x.get(
-                    "score",
-                    0
-                ),
+                key=lambda x: (
 
-                reverse=True
+                    x.get("y", 0),
+
+                    x.get("x", 0)
+                )
             )
 
             # =====================================
@@ -5861,7 +5843,7 @@ class VendorImportJob(models.Model):
                 )
 
 
-       # =====================================================
+        # =====================================================
         # PROMPT
         # =====================================================
 
@@ -5952,29 +5934,90 @@ class VendorImportJob(models.Model):
         TITLE RULES
         ==================================================
 
-        Use the TRUE MAIN PRODUCT TITLE.
+        CRITICAL:
 
-        Main title is usually:
-        - largest heading
-        - top heading
-        - dominant catalog title
-        - visible product headline
+        ALWAYS prioritize the REAL PRODUCT TITLE
+        even if:
 
-        DO NOT use:
-        - material-only text
-        - bullet features
-        - specifications
-        - dimensions
-        - marketing phrases
+        * title is small
+        * title is thin font
+        * title is placed left/right/middle
+        * title are mostly separated from images
+        * description text is visually larger
 
-        GOOD:
-        - 5 PANEL CAP
-        - SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
-        - Wireless Charging Pad
+        The TRUE PRODUCT TITLE is usually:
 
-        BAD:
-        - Heavy Brushed 100% Cotton
-        - Rib 1x1 collar and cuffs
+        * short
+        * product-like
+        * catalog heading
+        * model/product name
+        * appears before specifications/features
+
+        GOOD TITLES:
+
+        * 5 PANEL CAP
+        * 6 PANEL CAP
+        * SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
+        * Travel Mug
+        * Wireless Charging Pad
+        * Sports Bottle
+
+        BAD TITLES:
+
+        * Heavy Brushed 100% Cotton
+        * Metal closure
+        * Rib 1x1 collar and cuffs
+        * Double wall stainless steel
+        * Capacity 500ml
+
+        NEVER use:
+
+        * feature sentences
+        * material lines
+        * specification paragraphs
+        * bullet descriptions
+        * marketing text
+        * capacity text
+        * packaging text
+        * closure text
+
+        IMPORTANT:
+
+        If a short product-like title exists ANYWHERE on the page,
+        ALWAYS prefer it over nearby description text.
+
+        Even if:
+
+        * description text is larger
+        * feature text is closer to images
+        * title is isolated
+        * title is positioned differently
+
+        For apparel/caps/shirts/bottles:
+        titles are often:
+
+        * SHORT
+        * UPPERCASE
+        * placed above or beside specifications
+
+        Always prioritize those titles.
+
+        NEVER shorten product titles.
+
+        NEVER summarize titles.
+
+        NEVER reduce:
+
+        * "Basic Unisex T-Shirt"
+        to:
+        * "T-Shirt"
+
+        ALWAYS preserve the FULL visible catalog title exactly as printed on the page.
+
+        If multiple words appear in the title heading:
+        include ALL of them.
+
+        Do not simplify titles.
 
         ==================================================
         DESCRIPTION RULES
@@ -6136,6 +6179,7 @@ class VendorImportJob(models.Model):
 
         {page_stock}
         """
+
 
         # =====================================================
         # AI CALL
@@ -7444,6 +7488,8 @@ class VendorImportJob(models.Model):
 
                 return best_img
 
+
+
     #=================Centralized Rusable Image=======================
     def _prepare_asset_pool(self, images):
 
@@ -7744,7 +7790,7 @@ class VendorImportJob(models.Model):
         self,
 
         image_base64
-    ):
+     ):
 
         try:
 
@@ -7974,315 +8020,13 @@ class VendorImportJob(models.Model):
             return "unknown"
 
 
-    # =====================================
-    # PROFESSIONAL VARIANT IMAGE MATCHER
-    # =====================================
-  
-    def _match_variant_image(
-         self,
-        variant,
-        asset_pool,
-        used_asset_indexes=None
-    ):
-
-        try:
-            if used_asset_indexes is None:
-
-                used_asset_indexes = set()
-
-            if not asset_pool:
-                return False
-
-            best_asset = None
-
-            best_score = -999
-
-            if used_asset_indexes is None:
-
-                used_asset_indexes = set()
-            variant_text = ""
-
-            attributes = variant.get(
-                "attributes",
-                {}
-            )
-
-            if isinstance(attributes, dict):
-
-                variant_text = " ".join([
-
-                    str(v)
-
-                    for v in attributes.values()
-
-                ]).lower()
-
-            # =====================================
-            # SCORE ASSETS
-            # =====================================
-
-            for asset in asset_pool:
-
-                if asset.get("clean_index") in used_asset_indexes:
-                        continue
-
-                asset_score = 0
-
-                # =====================================
-                # UNUSED ASSET BONUS
-                # =====================================
-
-                asset_score += 25
-
-                # =====================================
-                # START FROM GALLERY SCORE
-                # =====================================
-
-                asset_score += asset.get(
-                    "gallery_score",
-                    asset.get(
-                        "score",
-                        0
-                    )
-                )
-
-
-                dominant_color = str(
-
-                    asset.get(
-                        "dominant_color",
-                        ""
-                    )
-
-                    or ""
-
-                ).lower()
-
-                # =====================================
-                # BOOST CLEAN ISOLATED PRODUCTS
-                # =====================================
-
-                if not asset.get("is_collage"):
-
-                    asset_score += 35
-
-                # =====================================
-                # SMALL/MEDIUM PRODUCT BOOST
-                # =====================================
-
-                width = int(
-                    asset.get("width", 0) or 0
-                )
-
-                height = int(
-                    asset.get("height", 0) or 0
-                )
-
-                area = width * height
-
-                if 10000 < area < 350000:
-
-                    asset_score += 55
-
-                if dominant_color == "unknown":
-
-                    asset_score -= 18
-
-                # ---------------------------------
-                # COLLAGE PENALTY
-                # ---------------------------------
-
-                if asset.get("is_collage"):
-
-                    asset_score -= 12
-
-                # ---------------------------------
-                # COLOR MATCHING
-                # ---------------------------------
-
-                color_map = [
-
-                    "red",
-                    "blue",
-                    "navy",
-                    "green",
-                    "lime",
-                    "yellow",
-                    "orange",
-                    "white",
-                    "black",
-                    "gray",
-                    "grey",
-                    "light_grey",
-                    "charcoal",
-                    "silver",
-                    "purple",
-                    "pink",
-                    "brown"
-                ]
-
-                normalized_variant_text = variant_text.lower()
-
-                for color in color_map:
-
-                    if color not in normalized_variant_text:
-                        continue
-
-                    # exact match
-                    if color == dominant_color:
-
-                        asset_score += 180
-
-                    # navy/blue distinction
-                    elif (
-                        color == "navy"
-                        and
-                        dominant_color == "blue"
-                    ):
-                        asset_score += 40
-
-                    # gray/grey normalization
-
-                    elif (
-
-                        color in ["gray", "grey"]
-
-                        and
-
-                        dominant_color in [
-                            "gray",
-                            "grey",
-                            "light_grey"
-                        ]
-                    ):
-
-                        asset_score += 120
-
-                    # white/silver/light handling
-                    elif (
-
-                        color == "white"
-
-                        and
-
-                        dominant_color in [
-                            "white",
-                            "light_grey"
-                        ]
-                    ):
-
-                        asset_score += 90
-
-                    # dark product approximation
-                    elif (
-
-                        color == "black"
-
-                        and
-
-                        dominant_color in [
-                            "black",
-                            "navy"
-                        ]
-                    ):
-
-                        asset_score += 90
-
-                # ------------------------------------
-                # HERO BONUS
-                # ------------------------------------
-
-                if asset.get("score", 0) >= 70:
-
-                    asset_score += 4
-
-                # ---------------------------------
-                # BEST MATCH
-                # ---------------------------------
-
-                if asset_score > best_score:
-
-                    best_score = asset_score
-
-                    best_asset = asset
-
-            # =====================================
-            # SAFE FALLBACK
-            # =====================================
-
-            if not best_asset:
-
-                remaining_assets = [
-
-                    a
-
-                    for a in asset_pool
-
-                    if (
-                        a.get("clean_index")
-                        not in used_asset_indexes
-                    )
-                ]
-
-                fallback_assets = (
-                    remaining_assets
-                    if remaining_assets
-                    else asset_pool
-                )
-
-                best_asset = sorted(
-
-                    fallback_assets,
-
-                    key=lambda x: (
-
-                        x.get(
-                            "gallery_score",
-                            0
-                        ),
-
-                        x.get(
-                            "hero_score",
-                            x.get(
-                                "score",
-                                0
-                            )
-                        )
-
-                    ),
-
-                    reverse=True
-
-                )[0]
-
-            if best_asset:
-
-                used_asset_indexes.add(
-
-                    best_asset.get("clean_index")
-                )
-
-            return best_asset
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[VARIANT MATCH FAILED] "
-
-                f"{str(e)}"
-            )
-
-            return False
-
-
     #======score_segmented_image ==========================
     def _score_segmented_image(
 
         self,
 
         image_base64
-    ):
+     ):
 
         try:
 
@@ -8449,13 +8193,347 @@ class VendorImportJob(models.Model):
             return 0    
 
 
+    # =====================================
+    # PROFESSIONAL VARIANT IMAGE MATCHER
+    # =====================================
+  
+    def _match_variant_image(
+         self,
+        variant,
+        asset_pool,
+        used_asset_indexes=None
+      ):
+
+        try:
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+
+            if not asset_pool:
+                return False
+
+            best_asset = None
+
+            best_score = -999
+
+            if used_asset_indexes is None:
+
+                used_asset_indexes = set()
+            variant_text = ""
+
+            attributes = variant.get(
+                "attributes",
+                {}
+            )
+
+            if isinstance(attributes, dict):
+
+                variant_text = " ".join([
+
+                    str(v)
+
+                    for v in attributes.values()
+
+                ]).lower()
+
+            # =====================================
+            # SCORE ASSETS
+            # =====================================
+
+            for asset in asset_pool:
+
+                if asset.get("clean_index") in used_asset_indexes:
+                        continue
+
+                asset_score = 0
+
+                # =====================================
+                # UNUSED ASSET BONUS
+                # =====================================
+
+                asset_score += 25
+
+                # =====================================
+                # START FROM GALLERY SCORE
+                # =====================================
+
+                asset_score += asset.get(
+                    "gallery_score",
+                    asset.get(
+                        "score",
+                        0
+                    )
+                )
+
+
+                dominant_color = str(
+
+                    asset.get(
+                        "dominant_color",
+                        ""
+                    )
+
+                    or ""
+
+                ).lower()
+
+                # =====================================
+                # BOOST CLEAN ISOLATED PRODUCTS
+                # =====================================
+
+                if not asset.get("is_collage"):
+
+                    asset_score += 35
+
+                # =====================================
+                # SMALL/MEDIUM PRODUCT BOOST
+                # =====================================
+
+                width = int(
+                    asset.get("width", 0) or 0
+                )
+
+                height = int(
+                    asset.get("height", 0) or 0
+                )
+
+                area = width * height
+
+                if 10000 < area < 350000:
+
+                    asset_score += 55
+
+                if dominant_color == "unknown":
+
+                    asset_score -= 80
+
+                # ---------------------------------
+                # COLLAGE PENALTY
+                # ---------------------------------
+
+                if asset.get("is_collage"):
+
+                    asset_score -= 12
+
+                # ---------------------------------
+                # COLOR MATCHING
+                # ---------------------------------
+
+                color_map = [
+
+                    "red",
+                    "blue",
+                    "navy",
+                    "green",
+                    "lime",
+                    "yellow",
+                    "orange",
+                    "white",
+                    "black",
+                    "gray",
+                    "grey",
+                    "light_grey",
+                    "charcoal",
+                    "silver",
+                    "purple",
+                    "pink",
+                    "brown"
+                ]
+
+                normalized_variant_text = variant_text.lower()
+
+                for color in color_map:
+
+                    if color not in normalized_variant_text:
+                        continue
+
+                    # exact match
+                    if color == dominant_color:
+
+                        asset_score += 180
+
+                    elif (
+
+                        color in ["gray", "grey"]
+
+                        and
+
+                        dominant_color in [
+                            "gray",
+                            "grey",
+                            "light_grey"
+                        ]
+                    ):
+
+                        asset_score += 120
+
+                    # white/silver/light handling
+                    elif (
+
+                        color == "white"
+
+                        and
+
+                        dominant_color in [
+                            "white",
+                            "light_grey"
+                        ]
+                    ):
+
+                        asset_score += 90
+
+                    # =====================================
+                    # STRICT NAVY / BLUE SEPARATION
+                    # =====================================
+
+                    elif (
+                        color == "navy"
+                        and
+                        dominant_color == "blue"
+                    ):
+
+                        asset_score -= 120
+
+
+                    elif (
+                        color == "blue"
+                        and
+                        dominant_color == "navy"
+                    ):
+
+                        asset_score -= 120
+
+
+                    # =====================================
+                    # STRICT BLACK / NAVY SEPARATION
+                    # =====================================
+
+                    elif (
+                        color == "black"
+                        and
+                        dominant_color == "navy"
+                    ):
+
+                        asset_score -= 140
+
+
+                    elif (
+                        color == "navy"
+                        and
+                        dominant_color == "black"
+                    ):
+
+                        asset_score -= 140
+
+                # ------------------------------------
+                # HERO BONUS
+                # ------------------------------------
+
+                if asset.get("score", 0) >= 70:
+
+                    asset_score += 4
+
+
+                _logger.warning(
+
+                    f"[VARIANT SCORE] "
+
+                    f"variant={variant_text} "
+
+                    f"asset_color={dominant_color} "
+
+                    f"score={asset_score}"
+                )
+
+
+                # ---------------------------------
+                # BEST MATCH
+                # ---------------------------------
+
+                if asset_score > best_score:
+
+                    best_score = asset_score
+
+                    best_asset = asset
+
+            # =====================================
+            # SAFE FALLBACK
+            # =====================================
+
+            if not best_asset:
+
+                remaining_assets = [
+
+                    a
+
+                    for a in asset_pool
+
+                    if (
+                        a.get("clean_index")
+                        not in used_asset_indexes
+                    )
+                ]
+
+                fallback_assets = (
+                    remaining_assets
+                    if remaining_assets
+                    else asset_pool
+                )
+
+                best_asset = sorted(
+
+                    fallback_assets,
+
+                    key=lambda x: (
+
+                        x.get(
+                            "gallery_score",
+                            0
+                        ),
+
+                        x.get(
+                            "hero_score",
+                            x.get(
+                                "score",
+                                0
+                            )
+                        )
+
+                    ),
+
+                    reverse=True
+
+                )[0]
+
+            if best_asset:
+
+                used_asset_indexes.add(
+
+                    best_asset.get("clean_index")
+                )
+
+            return best_asset
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[VARIANT MATCH FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
+
+
     #=============variant color enhancement 1=================
+    
     def _get_dominant_color_name(
 
         self,
 
         image_base64
-    ):
+      ):
 
         try:
 
@@ -8492,6 +8570,24 @@ class VendorImportJob(models.Model):
             img = crop.resize((80, 80))
 
             np_img = np.array(img)
+
+            # =====================================
+            # FOCUS CENTER REGION ONLY
+            # REDUCE BACKGROUND POLLUTION
+            # =====================================
+
+            h, w, _ = np_img.shape
+
+            crop_x1 = int(w * 0.20)
+            crop_x2 = int(w * 0.80)
+
+            crop_y1 = int(h * 0.20)
+            crop_y2 = int(h * 0.80)
+
+            np_img = np_img[
+                crop_y1:crop_y2,
+                crop_x1:crop_x2
+            ]
 
             pixels = np_img.reshape(
                 (-1, 3)
@@ -8542,6 +8638,12 @@ class VendorImportJob(models.Model):
 
             brightness = (r + g + b) / 3
 
+            blue_strength = b - max(r, g)
+
+            green_strength = g - max(r, b)
+
+            red_strength = r - max(g, b)
+
             max_channel = max(r, g, b)
             min_channel = min(r, g, b)
 
@@ -8589,20 +8691,6 @@ class VendorImportJob(models.Model):
             ):
                 return "light grey"
             
-
-            # =====================================
-            # BLACK
-            # =====================================
-
-            if (
-                brightness < 92
-                and
-                saturation < 42
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLACK")
-                return "black"
-            
-
             # =====================================
             # GREY
             # =====================================
@@ -8619,6 +8707,21 @@ class VendorImportJob(models.Model):
                 _logger.warning("[PDF COLOR DETECTED] GREY")
                 return "grey"
 
+              # =====================================
+            # TRUE BLACK
+            # =====================================
+
+            if (
+                brightness < 72
+                and
+                saturation < 18
+                and
+                abs(r - g) < 15
+                and
+                abs(g - b) < 15
+            ):
+                _logger.warning("[PDF COLOR DETECTED] BLACK")
+                return "black"
           
             if r > 160 and g < 120 and b < 120:
                 return "red"
@@ -8630,6 +8733,48 @@ class VendorImportJob(models.Model):
                 return "orange"
 
             # =====================================
+
+            # NAVY
+
+            # deep blue + dark brightness
+
+            # =====================================
+
+            if (
+
+            blue_strength > 18
+
+            and
+
+            brightness < 95
+
+            ):
+                _logger.warning("[PDF COLOR DETECTED] NAVY")
+                return "navy"
+        
+            # =====================================
+
+            # BLUE
+
+            # strong blue but brighter than navy
+
+            # =====================================
+
+            if (
+
+            blue_strength > 20
+
+            and
+
+            brightness >= 95
+
+            ):
+
+                _logger.warning("[PDF COLOR DETECTED] BLUE")
+                return "blue"
+            
+
+             # =====================================
             # PURPLE
             # =====================================
 
@@ -8645,39 +8790,7 @@ class VendorImportJob(models.Model):
                 _logger.warning("[PDF COLOR DETECTED] PURPLE")
                 return "purple"
 
-            # =====================================
-            # NAVY
-            # =====================================
-
-            if (
-                b > r * 1.18
-                and
-                b > g * 1.12
-                and
-                brightness < 95
-                and
-                saturation > 35
-            ):
-                _logger.warning("[PDF COLOR DETECTED] NAVY")
-                return "navy"
-
-
-            # =====================================
-            # BLUE
-            # =====================================
-
-            if (
-                b > r * 1.10
-                and
-                b > g * 1.08
-                and
-                brightness >= 95
-                and
-                saturation > 40
-            ):
-                _logger.warning("[PDF COLOR DETECTED] BLUE")
-                return "blue"
-            
+          
             # =====================================
             # GREEN
             # =====================================
@@ -8717,7 +8830,7 @@ class VendorImportJob(models.Model):
         self,
         asset_pool,
         index
-    ):
+     ):
 
         try:
 
@@ -8748,6 +8861,7 @@ class VendorImportJob(models.Model):
             )
 
             return False
+
 
     #============marchin AI===================================================
     # LEGACY IMAGE PAYLOAD MATCHER
@@ -9829,13 +9943,15 @@ class VendorImportJob(models.Model):
             'stock.quant'
         ]
 
+
         stock_location = self.env[
             'stock.location'
         ].search([
 
-            ('usage', '=', 'internal')
+            ('usage', '=', 'internal'),
+            ('active', '=', True)
 
-        ], limit=1)
+        ], order='id asc', limit=1)
 
         CATEGORY_MAPPING = {
 
@@ -10175,91 +10291,117 @@ class VendorImportJob(models.Model):
                             asset_pool
                         )
 
-                        # =====================================
-                        # APPLY REAL INVENTORY STOCK
-                        # ONLY FOR STORABLE PRODUCTS
-                        # =====================================
+                        created_count += 1
 
-                        try:
+                    else:
 
-                            stock_qty = int(
+                        skipped_count += 1
 
-                                product_data.get(
-                                    "stock_qty",
-                                    0
-                                ) or 0
-                            )
 
-                            # =====================================
-                            # CONSUMABLE PRODUCTS:
-                            # SKIP STOCK QUANTS
-                            # =====================================
+                    # =====================================
+                    # APPLY REAL INVENTORY STOCK
+                    # FOR BOTH NEW + EXISTING PRODUCTS
+                    # =====================================
 
-                            if stock_qty > 0:
+                    try:
 
-                                quant = stock_quant_obj.search([
+                        stock_qty = int(
 
-                                    (
-                                        'product_id',
-                                        '=',
-                                        product.product_variant_id.id
-                                    ),
+                            product_data.get(
+                                "stock_qty",
+                                0
+                            ) or 0
+                        )
 
-                                    (
-                                        'location_id',
-                                        '=',
-                                        stock_location.id
-                                    )
+                        _logger.warning(
 
-                                ], limit=1)
+                            f"[PDF STOCK DEBUG] "
 
-                                if quant:
+                            f"{product.name} "
 
-                                    quant.inventory_quantity = (
-                                        stock_qty
-                                    )
+                            f"| stock_qty={stock_qty}"
+                        )
 
-                                    quant.action_apply_inventory()
+                        if stock_qty > 0:
 
-                                else:
+                            quant = stock_quant_obj.search([
 
-                                    quant = stock_quant_obj.create({
+                                (
+                                    'product_id',
+                                    '=',
+                                    product.product_variant_id.id
+                                ),
 
-                                        'product_id':
-                                            product.product_variant_id.id,
+                                (
+                                    'location_id',
+                                    '=',
+                                    stock_location.id
+                                )
 
-                                        'location_id':
-                                            stock_location.id,
+                            ], limit=1)
 
-                                        'inventory_quantity':
-                                            stock_qty
-                                    })
+                            if quant:
 
-                                    quant.action_apply_inventory()
+                                quant.inventory_quantity = (
+                                    stock_qty
+                                )
+
+                                quant.action_apply_inventory()
 
                                 _logger.warning(
 
-                                    f"[STOCK APPLIED] "
+                                    f"[STOCK UPDATED] "
 
                                     f"{product.name} "
 
                                     f"| qty={stock_qty}"
                                 )
 
-                        except Exception as e:
+                            else:
+
+                                quant = stock_quant_obj.create({
+
+                                    'product_id':
+                                        product.product_variant_id.id,
+
+                                    'location_id':
+                                        stock_location.id,
+
+                                    'inventory_quantity':
+                                        stock_qty
+                                })
+
+                                quant.action_apply_inventory()
+
+                                _logger.warning(
+
+                                    f"[STOCK CREATED] "
+
+                                    f"{product.name} "
+
+                                    f"| qty={stock_qty}"
+                                )
+
+                        else:
 
                             _logger.warning(
 
-                                f"[STOCK APPLY FAILED] "
+                                f"[STOCK SKIPPED ZERO] "
 
-                                f"{str(e)}"
+                                f"{product.name}"
                             )
 
-                        created_count += 1
+                    except Exception as e:
 
-                    else:
+                        _logger.warning(
 
-                        skipped_count += 1
+                            f"[STOCK APPLY FAILED] "
+
+                            f"{product.name} "
+
+                            f"| {str(e)}"
+                        )
+
 
                     if not variants:
 
@@ -10491,19 +10633,21 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
-                                    # used_asset_indexes.add(
-                                    #     matched_asset.get("index")
-                                    # )
-
-                                    asset_index = (
-                                        matched_asset.get("clean_index")
-                                        if matched_asset.get("clean_index") is not None
-                                        else matched_asset.get("index")
-                                    )
+                            
+                                    asset_index = matched_asset.get("index")
 
                                     if asset_index is not None:
 
                                         used_asset_indexes.add(asset_index)
+
+                                        _logger.warning(
+
+                                            f"[ASSET INDEX USED] "
+
+                                            f"{variant_name} "
+
+                                            f"| index={asset_index}"
+                                        )
 
                                     _logger.warning(
 
@@ -10590,7 +10734,7 @@ class VendorImportJob(models.Model):
         asset_pool,
 
         product_obj
-    ):
+     ):
 
         product = product_obj.search([
 
@@ -10662,7 +10806,7 @@ class VendorImportJob(models.Model):
         if subtitle:
 
             description_parts.append(
-                f"<h4>{subtitle}</h4>"
+                f"<p><strong>{subtitle}</strong></p>"
             )
 
         if description:
@@ -10703,12 +10847,18 @@ class VendorImportJob(models.Model):
             description_parts
         )
 
+
+        # =====================================
+        # NORMALIZE PRODUCT TITLE
+        # =====================================
+
+        clean_title = self._normalize_pdf_product_title(
+            product_data
+        )
+
         vals = {
 
-            'name': (
-                product_data.get("name")
-                or ""
-            ).strip(),
+            'name': clean_title,
 
            'default_code': (
                 product_data.get("product_code")
@@ -10869,7 +11019,7 @@ class VendorImportJob(models.Model):
         parent_category,
 
         category_mapping
-    ):
+     ):
 
         mapped_category = "General"
 
@@ -10918,7 +11068,7 @@ class VendorImportJob(models.Model):
         product_data,
 
         asset_pool
-    ):
+        ):
 
         gallery_indexes = product_data.get(
             "gallery_image_indexes",
@@ -11211,6 +11361,243 @@ class VendorImportJob(models.Model):
 
                 f"{str(e)}"
             )
+
+    #==========PDF TITLE NORMALIZATION====================================
+    def _normalize_pdf_product_title(
+
+        self,
+
+        product_data
+     ):
+
+        import re
+
+        raw_name = (
+            product_data.get("name")
+            or ""
+        ).strip()
+
+        subtitle = (
+            product_data.get("subtitle")
+            or ""
+        ).strip()
+
+        description = (
+            product_data.get("description")
+            or ""
+        ).strip()
+
+        # =====================================
+        # CANDIDATE SOURCES
+        # =====================================
+
+        candidates = []
+
+        if raw_name:
+            candidates.append(raw_name)
+
+        if subtitle:
+            candidates.extend([
+
+                x.strip()
+
+                for x in subtitle.splitlines()
+
+                if x.strip()
+            ])
+
+        # =====================================
+        # CLEAN DUPLICATES
+        # =====================================
+
+        unique_candidates = []
+
+        for c in candidates:
+
+            if c not in unique_candidates:
+
+                unique_candidates.append(c)
+
+        # =====================================
+        # BAD TITLE KEYWORDS
+        # =====================================
+
+        reject_keywords = [
+
+            "100%",
+            "cotton",
+            "polyester",
+            "metal closure",
+            "velcro",
+            "heavy brushed",
+            "soft touch",
+            "waterproof",
+            "capacity",
+            "refill",
+            "bpa",
+            "double wall",
+            "eco",
+            "material",
+            "dimensions",
+            "weight",
+            "packaging",
+            "closure",
+            "features"
+        ]
+
+        # =====================================
+        # VALID PRODUCT WORDS
+        # =====================================
+
+        product_words = [
+
+            "cap",
+            "bottle",
+            "mug",
+            "shirt",
+            "t-shirt",
+            "polo",
+            "hoodie",
+            "bag",
+            "pen",
+            "umbrella",
+            "cup",
+            "flask",
+            "speaker",
+            "notebook",
+            "towel",
+            "bottle",
+            "backpack"
+        ]
+
+        # =====================================
+        # SCORE TITLES
+        # =====================================
+
+        scored = []
+
+        for text in unique_candidates:
+
+            clean = text.strip()
+
+            lower = clean.lower()
+
+            score = 0
+
+            # =====================================
+            # REJECT FEATURE SENTENCES
+            # =====================================
+
+            reject_hit = False
+
+            for bad in reject_keywords:
+
+                if bad in lower:
+
+                    reject_hit = True
+                    score -= 30
+
+            # =====================================
+            # SHORT PRODUCT TITLES SCORE HIGHER
+            # =====================================
+
+            word_count = len(clean.split())
+
+            if 1 <= word_count <= 5:
+                score += 30
+
+            # =====================================
+            # UPPERCASE PRODUCT NAMES
+            # =====================================
+
+            if clean.upper() == clean:
+                score += 20
+
+            # =====================================
+            # PRODUCT WORD DETECTION
+            # =====================================
+
+            for pw in product_words:
+
+                if pw in lower:
+                    score += 25
+
+            # =====================================
+            # PENALIZE LONG SENTENCES
+            # =====================================
+
+            if word_count > 8:
+                score -= 25
+
+            # =====================================
+            # PENALIZE DESCRIPTION STYLE
+            # =====================================
+
+            if "." in clean:
+                score -= 10
+
+            if "," in clean:
+                score -= 5
+
+            # =====================================
+            # PENALIZE PURE FEATURE LINES
+            # =====================================
+
+            if reject_hit and score < 20:
+                score -= 50
+
+            scored.append({
+
+                "text": clean,
+                "score": score
+            })
+
+        # =====================================
+        # SORT BEST TITLE
+        # =====================================
+
+        scored = sorted(
+
+            scored,
+
+            key=lambda x: x["score"],
+
+            reverse=True
+        )
+
+        # =====================================
+        # DEBUG LOG
+        # =====================================
+
+        _logger.warning(
+            f"[PDF TITLE CANDIDATES] {scored}"
+        )
+
+        # =====================================
+        # FINAL TITLE
+        # =====================================
+
+        if scored:
+
+            best = scored[0]["text"]
+
+            _logger.warning(
+                f"[PDF FINAL TITLE] {best}"
+            )
+
+            return best
+
+        # =====================================
+        # SAFE FALLBACK
+        # =====================================
+
+        fallback = raw_name or "Product"
+
+        _logger.warning(
+            f"[PDF TITLE FALLBACK] {fallback}"
+        )
+
+        return fallback
 
     #===============fingerprint================================
     def _build_vendor_fingerprint(self, product_data):
@@ -14187,8 +14574,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        #ACTOR_ID = "selectad~my-actor"
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
