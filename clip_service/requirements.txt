@@ -1,8 +1,6 @@
-fastapi
-uvicorn
-pillow
-torch
-torchvision
-sentence-transformers
-numpy
-
+fastapi==0.115.0
+uvicorn==0.30.6
+pillow==10.4.0
+numpy==2.1.1
+torch==2.4.1
+transformers==4.44.2
