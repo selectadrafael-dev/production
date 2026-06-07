@@ -1,40 +1,31 @@
 from fastapi import FastAPI
-
 from pydantic import BaseModel
 
-from transformers import (
-    CLIPProcessor,
-    CLIPModel
-)
+from sentence_transformers import SentenceTransformer
 
 from PIL import Image
 
-import torch
-import numpy as np
-
 import base64
 import io
+import numpy as np
+import torch
 
 # =====================================
-# CPU OPTIMIZATION
+# CPU/RAM OPTIMIZATION
 # =====================================
 
 torch.set_num_threads(1)
 
 # =====================================
-# LOAD CLIP
+# LOAD MODEL ONLY ONCE
 # =====================================
 
-model = CLIPModel.from_pretrained(
-    "openai/clip-vit-base-patch32"
-)
-
-processor = CLIPProcessor.from_pretrained(
-    "openai/clip-vit-base-patch32"
+model = SentenceTransformer(
+    "clip-ViT-B-32"
 )
 
 # =====================================
-# FASTAPI
+# FASTAPI APP
 # =====================================
 
 app = FastAPI()
@@ -62,7 +53,7 @@ def home():
     }
 
 # =====================================
-# MATCH ENDPOINT
+# CLIP MATCH ENDPOINT
 # =====================================
 
 @app.post("/match")
@@ -71,6 +62,10 @@ def match_variant(request: MatchRequest):
 
     try:
 
+        # =====================================
+        # SAFETY CHECK
+        # =====================================
+
         if not request.images:
 
             return {
@@ -78,38 +73,31 @@ def match_variant(request: MatchRequest):
                 "score": 0
             }
 
-        best_score = -999.0
+        # =====================================
+        # LIMIT IMAGE COUNT
+        # IMPORTANT FOR RAM
+        # =====================================
+
+        images = request.images[:12]
+
+        # =====================================
+        # TEXT EMBEDDING
+        # =====================================
+
+        text_embedding = model.encode(
+            request.variant_text,
+            convert_to_numpy=True
+        )
 
         best_index = None
 
-        # =====================================
-        # PROCESS TEXT ONCE
-        # =====================================
-
-        text_inputs = processor(
-
-            text=[request.variant_text],
-
-            return_tensors="pt",
-
-            padding=True
-        )
-
-        with torch.no_grad():
-
-            text_features = model.get_text_features(
-                **text_inputs
-            )
-
-        text_features = text_features[0]
+        best_score = -999.0
 
         # =====================================
-        # LOOP IMAGES
+        # PROCESS IMAGES
         # =====================================
 
-        for idx, image_b64 in enumerate(
-            request.images
-        ):
+        for idx, image_b64 in enumerate(images):
 
             try:
 
@@ -124,36 +112,38 @@ def match_variant(request: MatchRequest):
                 ).convert("RGB")
 
                 # =====================================
-                # REDUCE IMAGE SIZE
+                # REDUCE MEMORY PRESSURE
                 # =====================================
 
                 pil_image.thumbnail((512, 512))
 
-                image_inputs = processor(
+                # =====================================
+                # IMAGE EMBEDDING
+                # =====================================
 
-                    images=pil_image,
-
-                    return_tensors="pt"
+                image_embedding = model.encode(
+                    pil_image,
+                    convert_to_numpy=True
                 )
 
-                with torch.no_grad():
+                # =====================================
+                # COSINE SIMILARITY
+                # =====================================
 
-                    image_features = (
+                similarity = np.dot(
+                    text_embedding,
+                    image_embedding
+                ) / (
+                    np.linalg.norm(text_embedding)
+                    *
+                    np.linalg.norm(image_embedding)
+                )
 
-                        model.get_image_features(
-                            **image_inputs
-                        )
-                    )
+                similarity = float(similarity)
 
-                image_features = image_features[0]
-
-                similarity = torch.cosine_similarity(
-
-                    text_features.unsqueeze(0),
-
-                    image_features.unsqueeze(0)
-
-                ).item()
+                # =====================================
+                # BEST MATCH
+                # =====================================
 
                 if similarity > best_score:
 
@@ -164,10 +154,15 @@ def match_variant(request: MatchRequest):
             except Exception as image_error:
 
                 print(
-                    f"[IMAGE ERROR] {str(image_error)}"
+                    f"[IMAGE ERROR] "
+                    f"{str(image_error)}"
                 )
 
                 continue
+
+        # =====================================
+        # RESPONSE
+        # =====================================
 
         return {
 
@@ -179,5 +174,6 @@ def match_variant(request: MatchRequest):
     except Exception as e:
 
         return {
+
             "error": str(e)
         }
