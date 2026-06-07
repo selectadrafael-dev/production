@@ -7784,7 +7784,7 @@ class VendorImportJob(models.Model):
             import requests
 
             endpoint = (
-                "https://YOUR-REAL-RENDER-URL.onrender.com/match"
+                "https://variant-color-and-image-mapping.onrender.com"
             )
 
             # =====================================
