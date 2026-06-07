@@ -7766,8 +7766,10 @@ class VendorImportJob(models.Model):
         return prepared
 
 
-    #===========================Clip image/variant===================
-    
+    # =============================================================
+    # CLIP IMAGE / VARIANT MATCH
+    # =============================================================
+
     def _clip_match_variant(
 
         self,
@@ -7775,47 +7777,205 @@ class VendorImportJob(models.Model):
         variant_text,
 
         asset_pool
-      ):
+     ):
 
         try:
 
             import requests
 
             endpoint = (
-                "https://YOUR-RENDER-URL.onrender.com/match"
+                "https://YOUR-REAL-RENDER-URL.onrender.com/match"
             )
 
-            images = []
-
-            index_map = []
+            # =====================================
+            # FILTER STRONG CANDIDATES ONLY
+            # =====================================
 
             filtered_assets = []
 
             for asset in asset_pool:
 
+                # reject lifestyle
                 if asset.get("is_lifestyle"):
                     continue
 
+                # reject collage
                 if asset.get("is_collage"):
                     continue
 
+                # reject weak images
                 if asset.get("score", 0) < 20:
+                    continue
+
+                # require image
+                if not asset.get("image"):
                     continue
 
                 filtered_assets.append(asset)
 
+            # =====================================
             # LIMIT FOR PERFORMANCE
+            # =====================================
+
             filtered_assets = filtered_assets[:12]
+
+            if not filtered_assets:
+
+                _logger.warning(
+
+                    "[CLIP MATCH] "
+
+                    "NO FILTERED ASSETS"
+                )
+
+                return False
+
+            # =====================================
+            # BUILD IMAGE PAYLOAD
+            # =====================================
+
+            images = []
+
+            index_map = []
+
+            for asset in filtered_assets:
+
+                images.append(
+                    asset.get("image")
+                )
+
+                index_map.append(asset)
+
+            # =====================================
+            # REQUEST PAYLOAD
+            # =====================================
+
+            payload = {
+
+                "variant_text": variant_text,
+
+                "images": images
+            }
+
+            _logger.warning(
+
+                f"[CLIP REQUEST] "
+
+                f"variant={variant_text} "
+
+                f"images={len(images)}"
+            )
+
+            # =====================================
+            # SEND REQUEST
+            # =====================================
+
+            response = requests.post(
+
+                endpoint,
+
+                json=payload,
+
+                timeout=90
+            )
+
+            # =====================================
+            # STATUS CHECK
+            # =====================================
+
+            if response.status_code != 200:
+
+                _logger.warning(
+
+                    f"[CLIP ERROR] "
+
+                    f"status={response.status_code}"
+                )
+
+                return False
+
+            data = response.json()
+
+            # =====================================
+            # SAFE RESPONSE CHECK
+            # =====================================
+
+            if data.get("error"):
+
+                _logger.warning(
+
+                    f"[CLIP INTERNAL ERROR] "
+
+                    f"{data.get('error')}"
+                )
+
+                return False
+
+            best_index = data.get(
+                "best_index"
+            )
+
+            similarity_score = data.get(
+                "score",
+                0
+            )
+
+            if best_index is None:
+
+                _logger.warning(
+
+                    "[CLIP MATCH] "
+
+                    "NO BEST INDEX"
+                )
+
+                return False
+
+            # =====================================
+            # SAFE INDEX VALIDATION
+            # =====================================
+
+            if best_index >= len(index_map):
+
+                _logger.warning(
+
+                    f"[CLIP INVALID INDEX] "
+
+                    f"{best_index}"
+                )
+
+                return False
+
+            matched_asset = index_map[best_index]
+
+            # =====================================
+            # DEBUG LOGGING
+            # =====================================
+
+            _logger.warning(
+
+                f"[CLIP MATCH SUCCESS] "
+
+                f"variant={variant_text} "
+
+                f"matched_color="
+                f"{matched_asset.get('dominant_color')} "
+
+                f"score={similarity_score}"
+            )
+
+            return matched_asset
 
         except Exception as e:
 
             _logger.warning(
 
-                f"[CLIP MATCH FAILED] {str(e)}"
+                f"[CLIP MATCH FAILED] "
+
+                f"{str(e)}"
             )
 
             return False
-
 
     # =======================================
     # ADVANCED DOMINANT COLOR DETECTION
@@ -8274,29 +8434,29 @@ class VendorImportJob(models.Model):
 
                 ]).lower()
 
-                # =====================================
-                # CLIP SEMANTIC MATCH
-                # =====================================
+            # =====================================
+            # CLIP SEMANTIC MATCH
+            # =====================================
 
-                clip_asset = self._clip_match_variant(
+            clip_asset = self._clip_match_variant(
 
-                    variant_text,
+                variant_text,
 
-                    asset_pool
+                asset_pool
+            )
+
+            if clip_asset:
+
+                _logger.warning(
+
+                    f"[CLIP MATCH SUCCESS] "
+
+                    f"variant={variant_text} "
+
+                       f"color={clip_asset.get('dominant_color')}"
                 )
 
-                if clip_asset:
-
-                    _logger.warning(
-
-                        f"[CLIP MATCH SUCCESS] "
-
-                        f"variant={variant_text} "
-
-                        f"color={clip_asset.get('dominant_color')}"
-                    )
-
-                    return clip_asset
+                return clip_asset
 
             # =====================================
             # SCORE ASSETS
@@ -8367,6 +8527,7 @@ class VendorImportJob(models.Model):
                     in used_asset_indexes
                 ]
 
+
                 if (
 
                     dominant_color in already_used_colors
@@ -8374,9 +8535,13 @@ class VendorImportJob(models.Model):
                     and
 
                     dominant_color != "unknown"
+
+                    and
+
+                    dominant_color in normalized_variant_text
                 ):
 
-                    asset_score -= 120
+                    asset_score -= 60
 
                 # =====================================
                 # BOOST CLEAN ISOLATED PRODUCTS
@@ -8460,7 +8625,7 @@ class VendorImportJob(models.Model):
                     # exact match
                     if color == dominant_color:
 
-                        asset_score += 180
+                        asset_score += 90
 
                     elif (
 
