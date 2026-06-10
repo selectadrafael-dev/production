@@ -25,6 +25,7 @@ from PIL import (
 import cv2
 import numpy as np
 from odoo.exceptions import AccessError
+import imagehash
 
  
 
@@ -3587,13 +3588,31 @@ class VendorImportJob(models.Model):
                     )
 
                     # =====================================
+                    # SMALL VARIANT BOOST
+                    # =====================================
+
+                    small_variant_candidate = False
+
+                    if (
+                        0.015 < coverage_ratio < 0.12
+                        and
+                        crop_height > 90
+                        and
+                        crop_width > 90
+                    ):
+                        small_variant_candidate = True
+
+                    # =====================================
                     # COLLAGE DETECTION
                     # =====================================
 
                     is_collage = False
 
-                    if len(filtered_contours) >= 6:
-
+                    if (
+                        len(filtered_contours) >= 12
+                        and
+                        coverage_ratio < 0.18
+                    ):
                         is_collage = True
 
                     # =====================================
@@ -3699,12 +3718,13 @@ class VendorImportJob(models.Model):
                         hero_score += 60
 
                     # dark/lifestyle penalty
-                    if background_ratio < 0.12:
-                        hero_score -= 55
+
+                    if background_ratio < 0.08:
+                        hero_score -= 25
 
                     # excessive visual noise
-                    if edge_density > 55:
-                        hero_score -= 35
+                    if edge_density > 85:
+                        hero_score -= 12
 
                     # =====================================
                     # HUMAN / LIFESTYLE DETECTION
@@ -3768,6 +3788,13 @@ class VendorImportJob(models.Model):
                         coverage_ratio * 90
                     )
 
+                    # =====================================
+                    # SMALL VARIANT BOOST
+                    # =====================================
+
+                    if small_variant_candidate:
+                        gallery_score += 55
+
                     # clean product bonus
                     if background_ratio > 0.18:
                         gallery_score += 35
@@ -3791,8 +3818,10 @@ class VendorImportJob(models.Model):
                     # =====================================
                     # FINAL SCORE
                     # =====================================
-
-                    score = hero_score
+                    score = max(
+                        hero_score,
+                        gallery_score
+                    )
 
                     # =====================================
                     # SAVE
@@ -3815,7 +3844,7 @@ class VendorImportJob(models.Model):
 
                         "image": encoded,
 
-                        "score": hero_score,
+                        "score": score,
 
                         "hero_score": hero_score,
 
@@ -3878,43 +3907,94 @@ class VendorImportJob(models.Model):
                 )
 
         # =============================================
-        # DEDUPE
+        # PROFESSIONAL VISUAL DEDUPE
         # =============================================
 
         deduped = []
-        hashes = {}
+
+        visual_hashes = []
 
         for asset in segmented_images:
 
             try:
 
-                img = asset.get("image")
+                img_b64 = asset.get("image")
 
-                image_hash = hashlib.md5(
-                    img.encode("utf-8")
-                ).hexdigest()
-
-
-                existing_score = hashes.get(
-                    image_hash
-                )
-
-                if existing_score == asset.get(
-                    "score"
-                ):
+                if not img_b64:
                     continue
 
-                hashes[image_hash] = asset.get(
-                    "score"
+                image_data = base64.b64decode(
+                    img_b64
+                )
+
+                pil_image = Image.open(
+
+                    BytesIO(image_data)
+
+                ).convert("RGB")
+
+                # =====================================
+                # SMALL STANDARDIZED SIZE
+                # =====================================
+
+                pil_image.thumbnail((256, 256))
+
+                # =====================================
+                # PERCEPTUAL HASH
+                # =====================================
+
+                current_hash = imagehash.phash(
+                    pil_image
+                )
+
+                is_duplicate = False
+
+                # =====================================
+                # COMPARE AGAINST EXISTING
+                # =====================================
+
+                for existing_hash in visual_hashes:
+
+                    hash_distance = (
+                        current_hash - existing_hash
+                    )
+
+                    # =================================
+                    # DUPLICATE THRESHOLD
+                    # =================================
+
+                    if hash_distance <= 6:
+
+                        is_duplicate = True
+
+                        break
+
+                if is_duplicate:
+
+                    _logger.warning(
+
+                        "[VISUAL DUPLICATE SKIPPED]"
+                    )
+
+                    continue
+
+                visual_hashes.append(
+                    current_hash
                 )
 
                 deduped.append(asset)
 
-            except Exception:
-                continue
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[VISUAL DEDUPE FAILED] "
+                    f"{str(e)}"
+                )
+
+                deduped.append(asset)
 
         return deduped
-
 
     # =====================================================
     # VARIANTS IMAGES CONTROLLER/DETECTOR
@@ -7800,12 +7880,16 @@ class VendorImportJob(models.Model):
                     continue
 
                 # reject collage
-                if asset.get("is_collage"):
+                if (
+                    asset.get("is_collage")
+                    and
+                    asset.get("gallery_score", 0) < 40
+                ):
                     continue
 
                 # reject weak images
-                if asset.get("score", 0) < 20:
-                    continue
+                # if asset.get("score", 0) < 20:
+                #     continue
 
                 # require image
                 if not asset.get("image"):
@@ -8438,6 +8522,7 @@ class VendorImportJob(models.Model):
             # CLIP SEMANTIC MATCH
             # =====================================
 
+
             clip_asset = self._clip_match_variant(
 
                 variant_text,
@@ -8447,16 +8532,31 @@ class VendorImportJob(models.Model):
 
             if clip_asset:
 
-                _logger.warning(
-
-                    f"[CLIP MATCH SUCCESS] "
-
-                    f"variant={variant_text} "
-
-                       f"color={clip_asset.get('dominant_color')}"
+                clip_index = clip_asset.get(
+                    "clean_index"
                 )
 
-                return clip_asset
+                if clip_index in used_asset_indexes:
+
+                    _logger.warning(
+
+                        f"[CLIP DUPLICATE BLOCKED] "
+
+                        f"variant={variant_text}"
+                    )
+
+                else:
+
+                    clip_asset["clip_boost"] = 220
+
+                    _logger.warning(
+
+                        f"[CLIP MATCH SUCCESS] "
+
+                        f"variant={variant_text} "
+
+                        f"color={clip_asset.get('dominant_color')}"
+                    )
 
             # =====================================
             # SCORE ASSETS
@@ -8470,6 +8570,23 @@ class VendorImportJob(models.Model):
                 )
 
                 asset_score = 0
+
+                if (
+
+                    clip_asset
+
+                    and
+
+                    asset.get("clean_index")
+                    ==
+                    clip_asset.get("clean_index")
+
+                ):
+
+                    asset_score += clip_asset.get(
+                        "clip_boost",
+                        0
+                    )
                 
                 if already_used:
 
