@@ -6,4 +6,5 @@ requests
 openpyxl-image-loader
 PyMuPDF==1.23.7
 opencv-python-headless==4.10.0.84
+ImageHash==4.3.1
 #playwright==1.42.0
