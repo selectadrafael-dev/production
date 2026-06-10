@@ -3298,1173 +3298,9 @@ class VendorImportJob(models.Model):
        
         wb.close()
 
-
-    # =====================================================
-    # REMOVE TEXT AREAS
-    # =====================================================
-
-    def _trim_catalog_whitespace(self, pil_image):
-        
-        original_image = pil_image
-
-        try:
-
-            # =====================================
-            # SAFE BACKGROUND ESTIMATION
-            # =====================================
-
-            corners = [
-
-                pil_image.getpixel((0, 0)),
-                pil_image.getpixel((pil_image.width - 1, 0)),
-                pil_image.getpixel((0, pil_image.height - 1)),
-                pil_image.getpixel((
-                    pil_image.width - 1,
-                    pil_image.height - 1
-                )),
-            ]
-
-            # average corner color
-            avg_corner = tuple(
-
-                int(sum(c[i] for c in corners) / 4)
-
-                for i in range(len(corners[0]))
-            )
-
-            bg = Image.new(
-                pil_image.mode,
-                pil_image.size,
-                avg_corner
-            )
-
-            diff = ImageChops.difference(
-                pil_image,
-                bg
-            )
-
-            # =====================================
-            # REDUCE OVER-TRIMMING
-            # =====================================
-
-            # convert to grayscale for stable trim mask
-            diff = diff.convert("L")
-
-            diff = diff.point(
-
-                lambda p: 255 if p > 18 else 0
-            )
-
-            bbox = diff.getbbox()
-
-            if bbox:
-
-                left, top, right, bottom = bbox
-
-                padding = 12
-
-                left = max(0, left - padding)
-                top = max(0, top - padding)
-
-                right = min(
-                    pil_image.width,
-                    right + padding
-                )
-
-                bottom = min(
-                    pil_image.height,
-                    bottom + padding
-                )
-
-                pil_image = pil_image.crop(
-
-                    (left, top, right, bottom)
-                )
-
-            # =====================================
-            # POST-TRIM SAFETY
-            # =====================================
-
-            if (
-                pil_image.width < 60
-                or
-                pil_image.height < 60
-            ):
-
-                return None
-
-            return pil_image
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[TRIM FAILED] {str(e)}"
-            )
-
-            return original_image
-
-
-    # =====================================================
-    # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
-    # =====================================================
-
-    def _segment_catalog_images(self, images):
-
-        segmented_images = []
-
-        if not images:
-            return segmented_images
-
-        for img_b64 in images:
-
-            try:
-
-                img_data = base64.b64decode(img_b64)
-
-                pil_image = Image.open(
-                    BytesIO(img_data)
-                ).convert("RGB")
-
-                original_width, original_height = pil_image.size
-
-                # =========================================
-                # CONVERT TO OPENCV
-                # =========================================
-
-                cv_image = cv2.cvtColor(
-                    np.array(pil_image),
-                    cv2.COLOR_RGB2BGR
-                )
-
-                gray = cv2.cvtColor(
-                    cv_image,
-                    cv2.COLOR_BGR2GRAY
-                )
-
-                # =========================================
-                # THRESHOLD
-                # =========================================
-
-                _, thresh = cv2.threshold(
-                    gray,
-                    245,
-                    255,
-                    cv2.THRESH_BINARY_INV
-                )
-
-                # =========================================
-                # DILATION
-                # =========================================
-
-                kernel = cv2.getStructuringElement(
-                    cv2.MORPH_RECT,
-                    (9, 9)
-                )
-
-                dilated = cv2.dilate(
-                    thresh,
-                    kernel,
-                    iterations=2
-                )
-
-                # =========================================
-                # FIND CONTOURS
-                # =========================================
-
-                contours, _ = cv2.findContours(
-                    dilated,
-                    cv2.RETR_EXTERNAL,
-                    cv2.CHAIN_APPROX_SIMPLE
-                )
-
-                filtered_contours = []
-
-                for contour in contours:
-
-                    area = cv2.contourArea(contour)
-
-                    if area < 2500:
-                        continue
-
-                    x, y, w, h = cv2.boundingRect(contour)
-
-                    # reject ultra-thin text columns
-                    if w < 65 or h < 65:
-                        continue
-
-                    ratio = w / float(h)
-
-                    # reject long text strips
-                    if ratio > 4.5 or ratio < 0.22:
-                        continue
-
-                    filtered_contours.append(contour)
-
-                contours = filtered_contours[:40]
-
-                candidate_crops = []
-
-                for contour in contours:
-
-                    x, y, w, h = cv2.boundingRect(contour)
-
-                    # =====================================
-                    # SIZE FILTERS
-                    # =====================================
-
-                    if w < 120 or h < 120:
-                        continue
-
-                    # reject huge full page
-                    if (
-                        w > original_width * 0.95
-                        and
-                        h > original_height * 0.95
-                    ):
-                        continue
-
-                    area = w * h
-
-                    # reject tiny fragments
-                    if area < 25000:
-                        continue
-
-                    # =====================================
-                    # CROP
-                    # =====================================
-
-                    pad = 12
-
-                    x1 = max(x - pad, 0)
-                    y1 = max(y - pad, 0)
-                    x2 = min(x + w + pad, original_width)
-                    y2 = min(y + h + pad, original_height)
-
-                    crop = pil_image.crop(
-                        (x1, y1, x2, y2)
-                    )
-
-                    crop = self._trim_catalog_whitespace(
-                        crop
-                    )
-
-                    # =====================================
-                    # VALIDATE
-                    # =====================================
-
-                    if not self._is_valid_product_crop(crop):
-                        continue
-
-                    # =====================================
-                    # OCR-LIKE TEXT REJECTION
-                    # =====================================
-
-                    crop_gray = crop.convert("L")
-
-                    crop_arr = np.array(crop_gray)
-
-                    dark_pixels = np.mean(
-                        crop_arr < 90
-                    )
-
-                    if dark_pixels < 0.01:
-                        continue
-
-                    # =====================================
-                    # IMAGE ANALYSIS
-                    # =====================================
-
-                    crop_width, crop_height = crop.size
-
-                    crop_area = crop_width * crop_height
-
-                    page_area = (
-                        original_width * original_height
-                    )
-
-                    coverage_ratio = (
-                        crop_area / float(page_area)
-                    )
-
-                    # =====================================
-                    # SMALL VARIANT BOOST
-                    # =====================================
-
-                    small_variant_candidate = False
-
-                    if (
-                        0.015 < coverage_ratio < 0.12
-                        and
-                        crop_height > 90
-                        and
-                        crop_width > 90
-                    ):
-                        small_variant_candidate = True
-
-                    # =====================================
-                    # COLLAGE DETECTION
-                    # =====================================
-
-                    is_collage = False
-
-                    if (
-                        len(filtered_contours) >= 12
-                        and
-                        coverage_ratio < 0.18
-                    ):
-                        is_collage = True
-
-                    # =====================================
-                    # CENTER DETECTION
-                    # =====================================
-
-                    centered_object = False
-
-                    crop_center_x = x + (w / 2.0)
-                    crop_center_y = y + (h / 2.0)
-
-                    page_center_x = (
-                        original_width / 2.0
-                    )
-
-                    page_center_y = (
-                        original_height / 2.0
-                    )
-
-                    distance_x = abs(
-                        crop_center_x - page_center_x
-                    )
-
-                    distance_y = abs(
-                        crop_center_y - page_center_y
-                    )
-
-                    if (
-
-                        distance_x < original_width * 0.18
-
-                        and
-
-                        distance_y < original_height * 0.18
-                    ):
-
-                        centered_object = True
-                   
-                    # =====================================
-                    # HERO SCORE
-                    # =====================================
-
-                    human_penalty = 0
-
-                    hero_score = 0
-                    gallery_score = 0
-
-                    # =====================================
-                    # HERO IMAGE PRIORITY
-                    # =====================================
-
-                    # big clean product bonus
-                    hero_score += int(
-                        coverage_ratio * 140
-                    )
-
-                    # centered ecommerce product
-                    if centered_object:
-                        hero_score += 55
-
-                    # portrait product bonus
-                    if crop_height > crop_width:
-                        hero_score += 18
-
-                    # =====================================
-                    # EDGE DENSITY
-                    # =====================================
-
-                    edge_density = cv2.Canny(
-                        crop_arr,
-                        80,
-                        160
-                    ).mean()
-
-                    # =====================================
-                    # BACKGROUND ANALYSIS
-                    # =====================================
-
-                    background_ratio = np.mean(
-                        crop_arr > 235
-                    )
-
-                    # =====================================
-                    # CLEAN HERO DETECTION
-                    # =====================================
-
-                    # strong ecommerce isolated render
-                    if (
-                        centered_object
-                        and
-                        background_ratio > 0.45
-                        and
-                        not is_collage
-                    ):
-                        hero_score += 120
-
-                    # medium clean product
-                    elif (
-                        background_ratio > 0.30
-                        and
-                        not is_collage
-                    ):
-                        hero_score += 60
-
-                    # dark/lifestyle penalty
-
-                    if background_ratio < 0.08:
-                        hero_score -= 25
-
-                    # excessive visual noise
-                    if edge_density > 85:
-                        hero_score -= 12
-
-                    # =====================================
-                    # HUMAN / LIFESTYLE DETECTION
-                    # =====================================
-
-                    rgb_arr = np.array(crop)
-
-                    r = rgb_arr[:, :, 0]
-                    g = rgb_arr[:, :, 1]
-                    b = rgb_arr[:, :, 2]
-
-                    skin_mask = (
-
-                        (r > 95)
-
-                        &
-
-                        (g > 40)
-
-                        &
-
-                        (b > 20)
-
-                        &
-
-                        (r > g)
-
-                        &
-
-                        (r > b)
-
-                        &
-
-                        (np.abs(r - g) > 15)
-                    )
-
-                    skin_ratio = np.mean(skin_mask)
-
-                    if skin_ratio > 0.28:
-
-                        human_penalty = 40
-
-                    hero_score -= human_penalty
-
-                    # balanced edge density
-                    if 8 < edge_density < 35:
-                        hero_score += 25
-
-                    # =====================================
-                    # GALLERY SCORE
-                    # =====================================
-
-                    gallery_score = 0
-
-                    # gallery accepts collages/grids
-                    if is_collage:
-                        gallery_score += 45
-
-                    # preserve useful thumbnails
-                    gallery_score += int(
-                        coverage_ratio * 90
-                    )
-
-                    # =====================================
-                    # SMALL VARIANT BOOST
-                    # =====================================
-
-                    if small_variant_candidate:
-                        gallery_score += 55
-
-                    # clean product bonus
-                    if background_ratio > 0.18:
-                        gallery_score += 35
-
-                    # acceptable noise
-                    if edge_density < 75:
-                        gallery_score += 20
-
-                    # retain portrait products
-                    if crop_height > crop_width:
-                        gallery_score += 12
-
-                    # moderate penalty only
-                    if skin_ratio > 0.38:
-                        gallery_score -= 20
-
-                    # avoid total garbage
-                    if background_ratio < 0.05:
-                        gallery_score -= 40
-
-                    # =====================================
-                    # FINAL SCORE
-                    # =====================================
-                    score = max(
-                        hero_score,
-                        gallery_score
-                    )
-
-                    # =====================================
-                    # SAVE
-                    # =====================================
-
-                    buffer = BytesIO()
-
-                    crop.save(
-                        buffer,
-                        format="JPEG",
-                        quality=92
-                    )
-
-                    encoded = base64.b64encode(
-                        buffer.getvalue()
-                    ).decode("utf-8")
-
-
-                    candidate_crops.append({
-
-                        "image": encoded,
-
-                        "score": score,
-
-                        "hero_score": hero_score,
-
-                        "gallery_score": gallery_score,
-
-                        "is_collage": is_collage,
-
-                        "centered_object": centered_object,
-
-                        "background_ratio": background_ratio
-                    })
-
-                    _logger.warning(
-
-                        f"[CROP DETECTED] "
-
-                        f"{w}x{h} "
-
-                        f"| hero={hero_score} "
-
-                        f"| gallery={gallery_score} "
-
-                        f"| collage={is_collage}"
-                    )
-
-                # =========================================
-                # FALLBACK
-                # =========================================
-
-                if not candidate_crops:
-
-                    buffer = BytesIO()
-
-                    pil_image.save(
-                        buffer,
-                        format="JPEG"
-                    )
-
-                    encoded = base64.b64encode(
-                        buffer.getvalue()
-                    ).decode("utf-8")
-
-                    candidate_crops.append({
-
-                        "image": encoded,
-
-                        "score": 10,
-
-                        "is_collage": False
-                    })
-
-                segmented_images.extend(
-                    candidate_crops
-                )
-
-            except Exception as e:
-
-                _logger.warning(
-                    f"[SEGMENTATION FAILED] {str(e)}"
-                )
-
-        # =============================================
-        # PROFESSIONAL VISUAL DEDUPE
-        # =============================================
-
-        deduped = []
-
-        visual_hashes = []
-
-        for asset in segmented_images:
-
-            try:
-
-                img_b64 = asset.get("image")
-
-                if not img_b64:
-                    continue
-
-                image_data = base64.b64decode(
-                    img_b64
-                )
-
-                pil_image = Image.open(
-
-                    BytesIO(image_data)
-
-                ).convert("RGB")
-
-                # =====================================
-                # SMALL STANDARDIZED SIZE
-                # =====================================
-
-                pil_image.thumbnail((256, 256))
-
-                # =====================================
-                # PERCEPTUAL HASH
-                # =====================================
-
-                current_hash = imagehash.phash(
-                    pil_image
-                )
-
-                is_duplicate = False
-
-                # =====================================
-                # COMPARE AGAINST EXISTING
-                # =====================================
-
-                for existing_hash in visual_hashes:
-
-                    hash_distance = (
-                        current_hash - existing_hash
-                    )
-
-                    # =================================
-                    # DUPLICATE THRESHOLD
-                    # =================================
-
-                    if hash_distance <= 6:
-
-                        is_duplicate = True
-
-                        break
-
-                if is_duplicate:
-
-                    _logger.warning(
-
-                        "[VISUAL DUPLICATE SKIPPED]"
-                    )
-
-                    continue
-
-                visual_hashes.append(
-                    current_hash
-                )
-
-                deduped.append(asset)
-
-            except Exception as e:
-
-                _logger.warning(
-
-                    f"[VISUAL DEDUPE FAILED] "
-                    f"{str(e)}"
-                )
-
-                deduped.append(asset)
-
-        return deduped
-
-    # =====================================================
-    # VARIANTS IMAGES CONTROLLER/DETECTOR
-    # =====================================================
-
-    def _split_grid_products(self, image):
-
-        try:
-
-            import cv2
-            import numpy as np
-            import base64
-
-            gray = cv2.cvtColor(
-                image,
-                cv2.COLOR_BGR2GRAY
-            )
-
-            thresh = cv2.adaptiveThreshold(
-                gray,
-                255,
-                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                cv2.THRESH_BINARY_INV,
-                15,
-                3
-            )
-
-            contours, _ = cv2.findContours(
-                thresh,
-                cv2.RETR_EXTERNAL,
-                cv2.CHAIN_APPROX_SIMPLE
-            )
-
-            kernel = cv2.getStructuringElement(
-                cv2.MORPH_RECT,
-                (3, 3)
-            )
-
-            thresh = cv2.morphologyEx(
-                thresh,
-                cv2.MORPH_CLOSE,
-                kernel,
-                iterations=1
-            )
-
-            results = []
-
-            for contour in contours:
-
-                area = cv2.contourArea(contour)
-
-                if area < 1600:
-
-                    _logger.warning(
-
-                        f"[GRID REJECT] "
-
-                        f"small area={area}"
-                    )
-
-                    continue
-
-                x, y, w, h = cv2.boundingRect(contour)
-
-                if w < 55 or h < 55:
-
-                    _logger.warning(
-
-                        f"[GRID REJECT] "
-
-                        f"tiny size={w}x{h}"
-                    )
-
-                    continue
-
-                ratio = w / float(h)
-
-                # reject text strips
-
-                if ratio > 6.5 or ratio < 0.12:
-
-                    _logger.warning(
-
-                        f"[GRID REJECT] "
-
-                        f"ratio={ratio}"
-                    )
-
-                    continue
-
-                sub = image[
-                    y:y+h,
-                    x:x+w
-                ]
-
-                from PIL import Image
-
-                pil_sub = Image.fromarray(
-                    cv2.cvtColor(
-                        sub,
-                        cv2.COLOR_BGR2RGB
-                    )
-                )
-
-
-                if not self._is_valid_product_crop(
-                    pil_sub
-                ):
-
-                    _logger.warning(
-
-                        f"[GRID REJECT] "
-
-                        f"invalid crop "
-                        f"size={w}x{h}"
-                    )
-
-                    continue
-
-                success, buffer = cv2.imencode(
-                    '.jpg',
-                    sub
-                )
-
-              
-                if not success:
-
-                    _logger.warning(
-
-                        "[GRID REJECT] "
-
-                        "encode failed"
-                    )
-
-                    continue
-
-                encoded = base64.b64encode(
-                    buffer
-                ).decode()
-
-                score = self._score_segmented_image(
-                    encoded
-                )
-
-                dominant = self._get_dominant_color_name(
-                    encoded
-                )
-
-                # =====================================
-                # BRIGHTNESS ANALYSIS
-                # =====================================
-
-                try:
-
-                    pil_analysis = Image.fromarray(
-                        cv2.cvtColor(
-                            sub,
-                            cv2.COLOR_BGR2RGB
-                        )
-                    ).convert("RGB")
-
-                    np_analysis = np.array(
-                        pil_analysis
-                    )
-
-                    brightness = float(
-                        np.mean(np_analysis)
-                    )
-
-                except Exception:
-
-                    brightness = 128.0
-
-                _logger.warning(
-
-                    f"[GRID ACCEPT] "
-
-                    f"score={score} "
-
-                    f"color={dominant} "
-
-                    f"brightness={brightness:.1f} "
-
-                    f"size={w}x{h}"
-                )
-
-
-                results.append({
-
-                    "image": encoded,
-
-                    "score": score,
-
-                    "width": w,
-
-                    "height": h,
-
-                    "x": x,
-
-                    "y": y,
-
-                    "is_collage": False,
-
-                    "dominant_color": dominant,
-
-                    "brightness": brightness,
-                })
-
-            # =====================================
-            # DEBUG BEFORE SORT
-            # =====================================
-
-            _logger.warning(
-
-                f"[GRID SPLIT RAW] "
-
-                f"total={len(results)}"
-            )
-
-            for idx, item in enumerate(results):
-
-                _logger.warning(
-
-                    f"[GRID RAW ITEM] "
-
-                    f"idx={idx} "
-
-                    f"score={item.get('score')} "
-
-                    f"size={item.get('width')}x{item.get('height')}"
-                )
-
-            # =====================================
-            # SORT BEST FIRST
-            # =====================================
-
-            results = sorted(
-
-                results,
-
-                key=lambda x: (
-
-                    x.get("y", 0),
-
-                    x.get("x", 0)
-                )
-            )
-
-            # =====================================
-            # DEBUG AFTER SORT
-            # =====================================
-
-            for idx, item in enumerate(results):
-
-                _logger.warning(
-
-                    f"[GRID SORTED ITEM] "
-
-                    f"idx={idx} "
-
-                    f"score={item.get('score')} "
-                )
-
-            # =====================================
-            # NEVER HARD-TRIM VALID VARIANTS
-            # =====================================
-
-            _logger.warning(
-
-                f"[GRID FINAL COUNT] "
-
-                f"returned={len(results)}"
-            )
-
-            return results
-
-        except Exception as e:
-
-            _logger.warning(
-                f"[GRID SPLIT FAILED] {str(e)}"
-            )
-
-            return []
-
-
-    # =====================================================
-    # VALIDATE CROPPED IMAGE
-    # =====================================================
-
-    def _is_valid_product_crop(self, pil_image):
-
-        try:
-
-            width, height = pil_image.size
-
-            # too tiny
-    
-            if width < 75 or height < 75:
-                return False
-
-            # aspect safety
-            ratio = width / float(height)
-
-            if ratio > 7 or ratio < 0.10:
-                return False
-
-            # reject ultra-thin strips
-            if width < 40 or height < 40:
-                return False
-
-            gray = pil_image.convert("L")
-
-            arr = np.array(gray)
-
-            # blank image rejection
-            if arr.std() < 7:
-                return False
-
-            # excessive dark block rejection
-    
-            dark_pixels = np.mean(
-                arr < 12
-            )
-
-            # only reject nearly solid dark blocks
-            if dark_pixels > 0.985:
-                return False
-
-            # =====================================
-            # TEXTURE VALIDATION
-            # =====================================
-
-            pixel_std = np.std(arr)
-
-            if pixel_std < 5:
-                return False
-
-            return True
-
-        except Exception:
-
-            return False
-
-
-    #=========VALIDATE AI IMAGE====================================
-    def _is_valid_ai_image(self, image_data):
-        
-        try:
-            import numpy as np
-
-            if not image_data:
-                return False
-
-            import base64
-            import io
-
-            from PIL import Image
-
-            # remove data url prefix
-            if ',' in image_data:
-                image_data = image_data.split(',')[1]
-
-            decoded = base64.b64decode(image_data)
-
-            # =====================================
-            # SAFETY LIMIT
-            # =====================================
-
-            if len(decoded) > 15 * 1024 * 1024:
-
-                _logger.warning(
-
-                    "[INVALID AI IMAGE] image too large"
-                )
-
-                return False
-
-            img = Image.open(
-                io.BytesIO(decoded)
-            )
-
-            img.verify()
-            
-            # reopen after verify
-            img = Image.open(
-                io.BytesIO(decoded)
-            ).convert("RGB")
-
-            width, height = img.size
-
-            # =====================================
-            # REJECT VERY SMALL IMAGES
-            # =====================================
-
-            if width < 80 or height < 80:
-
-                _logger.warning(
-
-                    f"[INVALID AI IMAGE] "
-
-                    f"tiny image {width}x{height}"
-                )
-
-                return False
-
-            np_img = np.array(img)
-
-            # =====================================
-            # REJECT MOSTLY BLANK IMAGES
-            # =====================================
-
-            # white_ratio = np.mean(
-            #     np_img > 245
-            # )
-
-            white_pixels = np.all(
-                np_img > 245,
-                axis=2
-            )
-
-            white_ratio = np.mean(
-                white_pixels
-            )
-
-            if white_ratio > 0.985:
-
-                _logger.warning(
-
-                    "[INVALID AI IMAGE] blank image"
-                )
-
-                return False
-            
-            # =====================================
-            # REJECT EXTREME DARK FRAMES
-            # =====================================
-
-            dark_pixels = np.all(
-                np_img < 8,
-                axis=2
-            )
-
-            dark_ratio = np.mean(
-                dark_pixels
-            )
-
-            if dark_ratio > 0.985:
-
-                _logger.warning(
-
-                    "[INVALID AI IMAGE] dark frame"
-                )
-
-                return False
-
-            return True
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[AI IMAGE VALIDATION FAILED] "
-
-                f"{str(e)}"
-            )
-
-            return False
-        
-    # ---------------- Extract PDF ----------------
+     # ---------------- Extract PDF ----------------
  
+    #===============etxract pdf=============================
     def extract_pdf(self):
 
         import gc
@@ -7489,6 +6325,1196 @@ class VendorImportJob(models.Model):
         return
     
 
+    # =====================================================
+    # REMOVE TEXT AREAS
+    # =====================================================
+
+    def _trim_catalog_whitespace(self, pil_image):
+        
+        original_image = pil_image
+
+        try:
+
+            # =====================================
+            # SAFE BACKGROUND ESTIMATION
+            # =====================================
+
+            corners = [
+
+                pil_image.getpixel((0, 0)),
+                pil_image.getpixel((pil_image.width - 1, 0)),
+                pil_image.getpixel((0, pil_image.height - 1)),
+                pil_image.getpixel((
+                    pil_image.width - 1,
+                    pil_image.height - 1
+                )),
+            ]
+
+            # average corner color
+            avg_corner = tuple(
+
+                int(sum(c[i] for c in corners) / 4)
+
+                for i in range(len(corners[0]))
+            )
+
+            bg = Image.new(
+                pil_image.mode,
+                pil_image.size,
+                avg_corner
+            )
+
+            diff = ImageChops.difference(
+                pil_image,
+                bg
+            )
+
+            # =====================================
+            # REDUCE OVER-TRIMMING
+            # =====================================
+
+            # convert to grayscale for stable trim mask
+            diff = diff.convert("L")
+
+            diff = diff.point(
+
+                lambda p: 255 if p > 18 else 0
+            )
+
+            bbox = diff.getbbox()
+
+            if bbox:
+
+                left, top, right, bottom = bbox
+
+                padding = 12
+
+                left = max(0, left - padding)
+                top = max(0, top - padding)
+
+                right = min(
+                    pil_image.width,
+                    right + padding
+                )
+
+                bottom = min(
+                    pil_image.height,
+                    bottom + padding
+                )
+
+                pil_image = pil_image.crop(
+
+                    (left, top, right, bottom)
+                )
+
+            # =====================================
+            # POST-TRIM SAFETY
+            # =====================================
+
+            if (
+                pil_image.width < 60
+                or
+                pil_image.height < 60
+            ):
+
+                return None
+
+            return pil_image
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[TRIM FAILED] {str(e)}"
+            )
+
+            return original_image
+
+
+    # =====================================================
+    # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
+    # =====================================================
+
+    def _segment_catalog_images(self, images):
+
+        segmented_images = []
+
+        if not images:
+            return segmented_images
+
+        for img_b64 in images:
+
+            try:
+
+                img_data = base64.b64decode(img_b64)
+
+                pil_image = Image.open(
+                    BytesIO(img_data)
+                ).convert("RGB")
+
+                original_width, original_height = pil_image.size
+
+                # =========================================
+                # CONVERT TO OPENCV
+                # =========================================
+
+                cv_image = cv2.cvtColor(
+                    np.array(pil_image),
+                    cv2.COLOR_RGB2BGR
+                )
+
+                gray = cv2.cvtColor(
+                    cv_image,
+                    cv2.COLOR_BGR2GRAY
+                )
+
+                # =========================================
+                # THRESHOLD
+                # =========================================
+
+                _, thresh = cv2.threshold(
+                    gray,
+                    245,
+                    255,
+                    cv2.THRESH_BINARY_INV
+                )
+
+                # =========================================
+                # DILATION
+                # =========================================
+
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_RECT,
+                    (9, 9)
+                )
+
+                dilated = cv2.dilate(
+                    thresh,
+                    kernel,
+                    iterations=2
+                )
+
+                # =========================================
+                # FIND CONTOURS
+                # =========================================
+
+                contours, _ = cv2.findContours(
+                    dilated,
+                    cv2.RETR_EXTERNAL,
+                    cv2.CHAIN_APPROX_SIMPLE
+                )
+
+                filtered_contours = []
+
+                for contour in contours:
+
+                    area = cv2.contourArea(contour)
+
+                    if area < 2500:
+                        continue
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # reject ultra-thin text columns
+                    if w < 65 or h < 65:
+                        continue
+
+                    ratio = w / float(h)
+
+                    # reject long text strips
+                    if ratio > 4.5 or ratio < 0.22:
+                        continue
+
+                    filtered_contours.append(contour)
+
+                contours = filtered_contours[:40]
+
+                candidate_crops = []
+
+                for contour in contours:
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # =====================================
+                    # SIZE FILTERS
+                    # =====================================
+
+                    if w < 120 or h < 120:
+                        continue
+
+                    # reject huge full page
+                    if (
+                        w > original_width * 0.95
+                        and
+                        h > original_height * 0.95
+                    ):
+                        continue
+
+                    area = w * h
+
+                    # reject tiny fragments
+                    if area < 25000:
+                        continue
+
+                    # =====================================
+                    # CROP
+                    # =====================================
+
+                    pad = 12
+
+                    x1 = max(x - pad, 0)
+                    y1 = max(y - pad, 0)
+                    x2 = min(x + w + pad, original_width)
+                    y2 = min(y + h + pad, original_height)
+
+                    crop = pil_image.crop(
+                        (x1, y1, x2, y2)
+                    )
+
+                    crop = self._trim_catalog_whitespace(
+                        crop
+                    )
+
+                    # =====================================
+                    # VALIDATE
+                    # =====================================
+
+                    if not self._is_valid_product_crop(crop):
+                        continue
+
+                    # =====================================
+                    # OCR-LIKE TEXT REJECTION
+                    # =====================================
+
+                    crop_gray = crop.convert("L")
+
+                    crop_arr = np.array(crop_gray)
+
+                    dark_pixels = np.mean(
+                        crop_arr < 90
+                    )
+
+                    if dark_pixels < 0.01:
+                        continue
+
+                    # =====================================
+                    # IMAGE ANALYSIS
+                    # =====================================
+
+                    crop_width, crop_height = crop.size
+
+                    crop_area = crop_width * crop_height
+
+                    page_area = (
+                        original_width * original_height
+                    )
+
+                    coverage_ratio = (
+                        crop_area / float(page_area)
+                    )
+
+                    # =====================================
+                    # SMALL VARIANT BOOST
+                    # =====================================
+
+                    small_variant_candidate = False
+
+                    if (
+                        0.015 < coverage_ratio < 0.12
+                        and
+                        crop_height > 90
+                        and
+                        crop_width > 90
+                    ):
+                        small_variant_candidate = True
+
+                    # =====================================
+                    # COLLAGE DETECTION
+                    # =====================================
+
+                    is_collage = False
+
+                    if (
+                        len(filtered_contours) >= 12
+                        and
+                        coverage_ratio < 0.18
+                    ):
+                        is_collage = True
+
+                    # =====================================
+                    # CENTER DETECTION
+                    # =====================================
+
+                    centered_object = False
+
+                    crop_center_x = x + (w / 2.0)
+                    crop_center_y = y + (h / 2.0)
+
+                    page_center_x = (
+                        original_width / 2.0
+                    )
+
+                    page_center_y = (
+                        original_height / 2.0
+                    )
+
+                    distance_x = abs(
+                        crop_center_x - page_center_x
+                    )
+
+                    distance_y = abs(
+                        crop_center_y - page_center_y
+                    )
+
+                    if (
+
+                        distance_x < original_width * 0.18
+
+                        and
+
+                        distance_y < original_height * 0.18
+                    ):
+
+                        centered_object = True
+                   
+                    # =====================================
+                    # HERO SCORE
+                    # =====================================
+
+                    human_penalty = 0
+
+                    hero_score = 0
+                    gallery_score = 0
+
+                    # =====================================
+                    # HERO IMAGE PRIORITY
+                    # =====================================
+
+                    # big clean product bonus
+                    hero_score += int(
+                        coverage_ratio * 140
+                    )
+
+                    # centered ecommerce product
+                    if centered_object:
+                        hero_score += 55
+
+                    # portrait product bonus
+                    if crop_height > crop_width:
+                        hero_score += 18
+
+                    # =====================================
+                    # EDGE DENSITY
+                    # =====================================
+
+                    edge_density = cv2.Canny(
+                        crop_arr,
+                        80,
+                        160
+                    ).mean()
+
+                    # =====================================
+                    # BACKGROUND ANALYSIS
+                    # =====================================
+
+                    background_ratio = np.mean(
+                        crop_arr > 235
+                    )
+
+                    # =====================================
+                    # CLEAN HERO DETECTION
+                    # =====================================
+
+                    # strong ecommerce isolated render
+                    if (
+                        centered_object
+                        and
+                        background_ratio > 0.45
+                        and
+                        not is_collage
+                    ):
+                        hero_score += 120
+
+                    # medium clean product
+                    elif (
+                        background_ratio > 0.30
+                        and
+                        not is_collage
+                    ):
+                        hero_score += 60
+
+                    # dark/lifestyle penalty
+
+                    if background_ratio < 0.08:
+                        hero_score -= 25
+
+                    # excessive visual noise
+                    if edge_density > 85:
+                        hero_score -= 12
+
+                    # =====================================
+                    # HUMAN / LIFESTYLE DETECTION
+                    # =====================================
+
+                    rgb_arr = np.array(crop)
+
+                    r = rgb_arr[:, :, 0]
+                    g = rgb_arr[:, :, 1]
+                    b = rgb_arr[:, :, 2]
+
+                    skin_mask = (
+
+                        (r > 95)
+
+                        &
+
+                        (g > 40)
+
+                        &
+
+                        (b > 20)
+
+                        &
+
+                        (r > g)
+
+                        &
+
+                        (r > b)
+
+                        &
+
+                        (np.abs(r - g) > 15)
+                    )
+
+                    skin_ratio = np.mean(skin_mask)
+
+                    if skin_ratio > 0.28:
+
+                        human_penalty = 40
+
+                    hero_score -= human_penalty
+
+                    # balanced edge density
+                    if 8 < edge_density < 35:
+                        hero_score += 25
+
+                    # =====================================
+                    # GALLERY SCORE
+                    # =====================================
+
+                    gallery_score = 0
+
+                    # gallery accepts collages/grids
+                    if is_collage:
+                        gallery_score += 45
+
+                    # preserve useful thumbnails
+                    gallery_score += int(
+                        coverage_ratio * 90
+                    )
+
+                    # =====================================
+                    # SMALL VARIANT BOOST
+                    # =====================================
+
+                    if small_variant_candidate:
+                        gallery_score += 55
+
+                    # clean product bonus
+                    if background_ratio > 0.18:
+                        gallery_score += 35
+
+                    # acceptable noise
+                    if edge_density < 75:
+                        gallery_score += 20
+
+                    # retain portrait products
+                    if crop_height > crop_width:
+                        gallery_score += 12
+
+                    # moderate penalty only
+                    if skin_ratio > 0.38:
+                        gallery_score -= 20
+
+                    # avoid total garbage
+                    if background_ratio < 0.05:
+                        gallery_score -= 40
+
+                    # =====================================
+                    # FINAL SCORE
+                    # =====================================
+                    score = max(
+                        hero_score,
+                        gallery_score
+                    )
+
+                    # =====================================
+                    # SAVE
+                    # =====================================
+
+                    buffer = BytesIO()
+
+                    crop.save(
+                        buffer,
+                        format="JPEG",
+                        quality=92
+                    )
+
+                    encoded = base64.b64encode(
+                        buffer.getvalue()
+                    ).decode("utf-8")
+
+
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": score,
+
+                        "hero_score": hero_score,
+
+                        "gallery_score": gallery_score,
+
+                        "is_collage": is_collage,
+
+                        "centered_object": centered_object,
+
+                        "background_ratio": background_ratio
+                    })
+
+                    _logger.warning(
+                        f"[SEGMENT ADD] "
+                        f"hero={hero_score} "
+                        f"gallery={gallery_score} "
+                        f"collage={is_collage} "
+                        f"bg={background_ratio:.2f} "
+                        f"centered={centered_object} "
+                        f"size={crop_width}x{crop_height}"
+                    )
+
+                    _logger.warning(
+
+                        f"[CROP DETECTED] "
+
+                        f"{w}x{h} "
+
+                        f"| hero={hero_score} "
+
+                        f"| gallery={gallery_score} "
+
+                        f"| collage={is_collage}"
+                    )
+
+                # =========================================
+                # FALLBACK
+                # =========================================
+
+                if not candidate_crops:
+
+                    buffer = BytesIO()
+
+                    pil_image.save(
+                        buffer,
+                        format="JPEG"
+                    )
+
+                    encoded = base64.b64encode(
+                        buffer.getvalue()
+                    ).decode("utf-8")
+
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": 10,
+
+                        "is_collage": False
+                    })
+
+                segmented_images.extend(
+                    candidate_crops
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[SEGMENTATION FAILED] {str(e)}"
+                )
+
+        # =============================================
+        # PROFESSIONAL VISUAL DEDUPE
+        # =============================================
+
+        deduped = []
+
+        visual_hashes = []
+
+        _logger.warning(
+        f"[PRE-DEDUPE COUNT] total={len(segmented_images)}"
+        )
+        for asset in segmented_images:
+
+            try:
+
+                img_b64 = asset.get("image")
+
+                if not img_b64:
+                    continue
+
+                image_data = base64.b64decode(
+                    img_b64
+                )
+
+                pil_image = Image.open(
+
+                    BytesIO(image_data)
+
+                ).convert("RGB")
+
+                # =====================================
+                # SMALL STANDARDIZED SIZE
+                # =====================================
+
+                pil_image.thumbnail((256, 256))
+
+                # =====================================
+                # PERCEPTUAL HASH
+                # =====================================
+
+                current_hash = imagehash.phash(
+                    pil_image
+                )
+
+                is_duplicate = False
+
+                # =====================================
+                # COMPARE AGAINST EXISTING
+                # =====================================
+
+                for existing_hash in visual_hashes:
+
+                    hash_distance = (
+                        current_hash - existing_hash
+                    )
+
+                    # =================================
+                    # DUPLICATE THRESHOLD
+                    # =================================
+
+                    if hash_distance <= 6:
+
+                        is_duplicate = True
+
+                        break
+
+                if is_duplicate:
+
+                    _logger.warning(
+
+                        "[VISUAL DUPLICATE SKIPPED]"
+                    )
+
+                    continue
+
+                visual_hashes.append(
+                    current_hash
+                )
+
+                deduped.append(asset)
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[VISUAL DEDUPE FAILED] "
+                    f"{str(e)}"
+                )
+
+                deduped.append(asset)
+
+        _logger.warning(
+            f"[POST-DEDUPE COUNT] total={len(deduped)}"
+        )
+        return deduped
+
+    # =====================================================
+    # VARIANTS IMAGES CONTROLLER/DETECTOR
+    # =====================================================
+
+    def _split_grid_products(self, image):
+
+        try:
+
+            import cv2
+            import numpy as np
+            import base64
+
+            gray = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2GRAY
+            )
+
+            thresh = cv2.adaptiveThreshold(
+                gray,
+                255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                15,
+                3
+            )
+
+            contours, _ = cv2.findContours(
+                thresh,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            kernel = cv2.getStructuringElement(
+                cv2.MORPH_RECT,
+                (3, 3)
+            )
+
+            thresh = cv2.morphologyEx(
+                thresh,
+                cv2.MORPH_CLOSE,
+                kernel,
+                iterations=1
+            )
+
+            results = []
+
+            for contour in contours:
+
+                area = cv2.contourArea(contour)
+
+                if area < 1600:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"small area={area}"
+                    )
+
+                    continue
+
+                x, y, w, h = cv2.boundingRect(contour)
+
+                if w < 55 or h < 55:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"tiny size={w}x{h}"
+                    )
+
+                    continue
+
+                ratio = w / float(h)
+
+                # reject text strips
+
+                if ratio > 6.5 or ratio < 0.12:
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"ratio={ratio}"
+                    )
+
+                    continue
+
+                sub = image[
+                    y:y+h,
+                    x:x+w
+                ]
+
+                from PIL import Image
+
+                pil_sub = Image.fromarray(
+                    cv2.cvtColor(
+                        sub,
+                        cv2.COLOR_BGR2RGB
+                    )
+                )
+
+
+                if not self._is_valid_product_crop(
+                    pil_sub
+                ):
+
+                    _logger.warning(
+
+                        f"[GRID REJECT] "
+
+                        f"invalid crop "
+                        f"size={w}x{h}"
+                    )
+
+                    continue
+
+                success, buffer = cv2.imencode(
+                    '.jpg',
+                    sub
+                )
+
+              
+                if not success:
+
+                    _logger.warning(
+
+                        "[GRID REJECT] "
+
+                        "encode failed"
+                    )
+
+                    continue
+
+                encoded = base64.b64encode(
+                    buffer
+                ).decode()
+
+                score = self._score_segmented_image(
+                    encoded
+                )
+
+                dominant = self._get_dominant_color_name(
+                    encoded
+                )
+
+                # =====================================
+                # BRIGHTNESS ANALYSIS
+                # =====================================
+
+                try:
+
+                    pil_analysis = Image.fromarray(
+                        cv2.cvtColor(
+                            sub,
+                            cv2.COLOR_BGR2RGB
+                        )
+                    ).convert("RGB")
+
+                    np_analysis = np.array(
+                        pil_analysis
+                    )
+
+                    brightness = float(
+                        np.mean(np_analysis)
+                    )
+
+                except Exception:
+
+                    brightness = 128.0
+
+                _logger.warning(
+
+                    f"[GRID ACCEPT] "
+
+                    f"score={score} "
+
+                    f"color={dominant} "
+
+                    f"brightness={brightness:.1f} "
+
+                    f"size={w}x{h}"
+                )
+
+
+                results.append({
+
+                    "image": encoded,
+
+                    "score": score,
+
+                    "width": w,
+
+                    "height": h,
+
+                    "x": x,
+
+                    "y": y,
+
+                    "is_collage": False,
+
+                    "dominant_color": dominant,
+
+                    "brightness": brightness,
+                })
+
+                _logger.warning(
+                f"[GRID VARIANT ADD] "
+                f"color={dominant} "
+                f"score={score} "
+                f"brightness={brightness:.1f} "
+                f"coords=({x},{y}) "
+                f"size={w}x{h}"
+                )
+
+            # =====================================
+            # DEBUG BEFORE SORT
+            # =====================================
+
+            _logger.warning(
+
+                f"[GRID SPLIT RAW] "
+
+                f"total={len(results)}"
+            )
+
+            for idx, item in enumerate(results):
+
+                _logger.warning(
+
+                    f"[GRID RAW ITEM] "
+
+                    f"idx={idx} "
+
+                    f"score={item.get('score')} "
+
+                    f"size={item.get('width')}x{item.get('height')}"
+                )
+
+            # =====================================
+            # SORT BEST FIRST
+            # =====================================
+
+            results = sorted(
+
+                results,
+
+                key=lambda x: (
+
+                    x.get("y", 0),
+
+                    x.get("x", 0)
+                )
+            )
+
+            # =====================================
+            # DEBUG AFTER SORT
+            # =====================================
+
+            for idx, item in enumerate(results):
+
+                _logger.warning(
+
+                    f"[GRID SORTED ITEM] "
+
+                    f"idx={idx} "
+
+                    f"score={item.get('score')} "
+                )
+
+            # =====================================
+            # NEVER HARD-TRIM VALID VARIANTS
+            # =====================================
+
+            _logger.warning(
+
+                f"[GRID FINAL COUNT] "
+
+                f"returned={len(results)}"
+            )
+
+            return results
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[GRID SPLIT FAILED] {str(e)}"
+            )
+
+            return []
+
+
+    # =====================================================
+    # VALIDATE CROPPED IMAGE
+    # =====================================================
+
+    def _is_valid_product_crop(self, pil_image):
+
+        try:
+
+            width, height = pil_image.size
+
+            # too tiny
+    
+            if width < 75 or height < 75:
+                return False
+
+            # aspect safety
+            ratio = width / float(height)
+
+            if ratio > 7 or ratio < 0.10:
+                return False
+
+            # reject ultra-thin strips
+            if width < 40 or height < 40:
+                return False
+
+            gray = pil_image.convert("L")
+
+            arr = np.array(gray)
+
+            # blank image rejection
+            if arr.std() < 7:
+                return False
+
+            # excessive dark block rejection
+    
+            dark_pixels = np.mean(
+                arr < 12
+            )
+
+            # only reject nearly solid dark blocks
+            if dark_pixels > 0.985:
+                return False
+
+            # =====================================
+            # TEXTURE VALIDATION
+            # =====================================
+
+            pixel_std = np.std(arr)
+
+            if pixel_std < 5:
+                return False
+
+            return True
+
+        except Exception:
+
+            return False
+
+
+    #=========VALIDATE AI IMAGE====================================
+    def _is_valid_ai_image(self, image_data):
+        
+        try:
+            import numpy as np
+
+            if not image_data:
+                return False
+
+            import base64
+            import io
+
+            from PIL import Image
+
+            # remove data url prefix
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
+
+            decoded = base64.b64decode(image_data)
+
+            # =====================================
+            # SAFETY LIMIT
+            # =====================================
+
+            if len(decoded) > 15 * 1024 * 1024:
+
+                _logger.warning(
+
+                    "[INVALID AI IMAGE] image too large"
+                )
+
+                return False
+
+            img = Image.open(
+                io.BytesIO(decoded)
+            )
+
+            img.verify()
+            
+            # reopen after verify
+            img = Image.open(
+                io.BytesIO(decoded)
+            ).convert("RGB")
+
+            width, height = img.size
+
+            # =====================================
+            # REJECT VERY SMALL IMAGES
+            # =====================================
+
+            if width < 80 or height < 80:
+
+                _logger.warning(
+
+                    f"[INVALID AI IMAGE] "
+
+                    f"tiny image {width}x{height}"
+                )
+
+                return False
+
+            np_img = np.array(img)
+
+            # =====================================
+            # REJECT MOSTLY BLANK IMAGES
+            # =====================================
+
+            # white_ratio = np.mean(
+            #     np_img > 245
+            # )
+
+            white_pixels = np.all(
+                np_img > 245,
+                axis=2
+            )
+
+            white_ratio = np.mean(
+                white_pixels
+            )
+
+            if white_ratio > 0.985:
+
+                _logger.warning(
+
+                    "[INVALID AI IMAGE] blank image"
+                )
+
+                return False
+            
+            # =====================================
+            # REJECT EXTREME DARK FRAMES
+            # =====================================
+
+            dark_pixels = np.all(
+                np_img < 8,
+                axis=2
+            )
+
+            dark_ratio = np.mean(
+                dark_pixels
+            )
+
+            if dark_ratio > 0.985:
+
+                _logger.warning(
+
+                    "[INVALID AI IMAGE] dark frame"
+                )
+
+                return False
+
+            return True
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[AI IMAGE VALIDATION FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
+        
+   
     #-----------scoring image before picking best/quality image (image logic)-------------
     def pick_best_image(self, images):
 
@@ -7525,6 +7551,9 @@ class VendorImportJob(models.Model):
     def _prepare_asset_pool(self, images):
 
         prepared = []
+        _logger.warning(
+            f"[POOL BUILD START] incoming={len(images or [])}"
+        )
 
         seen = {}
 
@@ -7604,6 +7633,13 @@ class VendorImportJob(models.Model):
                         ) or ""
                     )
 
+                    _logger.warning(
+                        f"[POOL COLOR] "
+                        f"color={dominant_color} "
+                        f"score={score} "
+                        f"collage={is_collage}"
+                    )
+
                     # =====================================
                     # CLEAN PRODUCT BOOST
                     # =====================================
@@ -7643,9 +7679,11 @@ class VendorImportJob(models.Model):
                 if existing_asset:
 
                     _logger.warning(
-
-                        f"[ASSET SKIPPED] TRUE DUPLICATE"
+                        f"[POOL DUPLICATE] "
+                        f"hash={image_hash} "
+                        f"color={dominant_color}"
                     )
+
 
                     continue
 
@@ -7763,6 +7801,13 @@ class VendorImportJob(models.Model):
                     ),
                 })
 
+                _logger.warning(
+                    f"[POOL ADD] "
+                    f"index={len(prepared)-1} "
+                    f"color={dominant_color} "
+                    f"hero={hero_score} "
+                    f"gallery={gallery_score}"
+                )
 
                 seen[image_hash] = {
 
@@ -7843,6 +7888,27 @@ class VendorImportJob(models.Model):
             f"{len(prepared)} assets"
         )
 
+        for asset in prepared:
+            _logger.warning(
+
+                f"[POOL FINAL] "
+
+                f"index={asset.get('clean_index')} "
+
+                f"color={asset.get('dominant_color')} "
+
+                f"hero={asset.get('hero_score')} "
+
+                f"gallery={asset.get('gallery_score')} "
+
+                f"score={asset.get('score')} "
+
+                f"collage={asset.get('is_collage')} "
+
+                f"width={asset.get('width')} "
+
+                f"height={asset.get('height')}"
+            )
         return prepared
 
 
@@ -8193,6 +8259,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if dark_blue_ratio > 0.18:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
 
                 return "navy"
 
@@ -8216,6 +8289,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if v < 18:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "black"
 
             # =====================================
@@ -8223,6 +8303,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if v > 92 and s < 10:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "white"
 
          
@@ -8231,7 +8318,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if s < 15:
-
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "grey"
 
             # =====================================
@@ -8239,6 +8332,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if h < 15 or h >= 345:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "red"
 
             # =====================================
@@ -8246,6 +8346,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if 15 <= h < 40:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "orange"
 
             # =====================================
@@ -8253,6 +8360,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if 40 <= h < 70:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "yellow"
 
             # =====================================
@@ -8260,6 +8374,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if 70 <= h < 170:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "green"
 
             # =====================================
@@ -8269,11 +8390,33 @@ class VendorImportJob(models.Model):
             if 170 <= h < 260:
 
                 if v < 45:
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=yellow "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
                     return "navy"
 
                 if s < 35:
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=yellow "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
                     return "light blue"
 
+
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "blue"
 
             # =====================================
@@ -8281,6 +8424,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if 260 <= h < 320:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "purple"
 
             # =====================================
@@ -8288,6 +8438,13 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if 320 <= h < 345:
+                _logger.warning(
+                    f"[DOMINANT COLOR] "
+                    f"result=yellow "
+                    f"h={h:.1f} "
+                    f"s={s:.1f} "
+                    f"v={v:.1f}"
+                )
                 return "pink"
 
             return "unknown"
