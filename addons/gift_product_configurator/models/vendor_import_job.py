@@ -7864,7 +7864,7 @@ class VendorImportJob(models.Model):
             import requests
 
             endpoint = (
-                "https://variant-color-and-image-mapping.onrender.com"
+                "https://variant-color-and-image-mapping.onrender.com/match"
             )
 
             # =====================================
@@ -8060,6 +8060,7 @@ class VendorImportJob(models.Model):
             )
 
             return False
+
 
     # =======================================
     # ADVANCED DOMINANT COLOR DETECTION
