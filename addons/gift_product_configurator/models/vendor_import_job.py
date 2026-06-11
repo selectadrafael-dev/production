@@ -8661,6 +8661,8 @@ class VendorImportJob(models.Model):
                 used_asset_indexes = set()
             variant_text = ""
 
+            normalized_variant_text = ""
+
             attributes = variant.get(
                 "attributes",
                 {}
@@ -8675,6 +8677,10 @@ class VendorImportJob(models.Model):
                     for v in attributes.values()
 
                 ]).lower()
+
+                normalized_variant_text = (
+                    variant_text or ""
+                ).strip().lower()
 
             # =====================================
             # CLIP SEMANTIC MATCH
@@ -8749,12 +8755,13 @@ class VendorImportJob(models.Model):
                 if already_used:
 
                     asset_score -= 90
+                else:
+                   
+                    # =====================================
+                    # UNUSED ASSET BONUS
+                    # =====================================
 
-                # =====================================
-                # UNUSED ASSET BONUS
-                # =====================================
-
-                asset_score += 8
+                    asset_score += 8
 
                 # =====================================
                 # START FROM GALLERY SCORE
@@ -8881,8 +8888,6 @@ class VendorImportJob(models.Model):
                     "brown"
                 ]
 
-                normalized_variant_text = variant_text.lower()
-
                 for color in color_map:
 
                     if color not in normalized_variant_text:
@@ -8926,7 +8931,9 @@ class VendorImportJob(models.Model):
 
                         dominant_color in [
                             "white",
-                            "light_grey"
+                            "light_grey",
+                            "grey",
+                            "gray"
                         ]
                     ):
 
