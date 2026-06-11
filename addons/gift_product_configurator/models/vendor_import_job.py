@@ -26,6 +26,7 @@ import cv2
 import numpy as np
 from odoo.exceptions import AccessError
 import imagehash
+import time
 
  
 
@@ -6436,6 +6437,12 @@ class VendorImportJob(models.Model):
     # =====================================================
 
     def _segment_catalog_images(self, images):
+       
+
+        _logger.warning(
+            f"[SEGMENT START] "
+            f"incoming={len(images or [])}"
+        )
 
         segmented_images = []
 
@@ -6511,6 +6518,10 @@ class VendorImportJob(models.Model):
                     area = cv2.contourArea(contour)
 
                     if area < 2500:
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"tiny crop area={area}"
+                        )
                         continue
 
                     x, y, w, h = cv2.boundingRect(contour)
@@ -6523,6 +6534,10 @@ class VendorImportJob(models.Model):
 
                     # reject long text strips
                     if ratio > 4.5 or ratio < 0.22:
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"bad ratio={ratio:.2f}"
+                        )
                         continue
 
                     filtered_contours.append(contour)
@@ -6540,6 +6555,10 @@ class VendorImportJob(models.Model):
                     # =====================================
 
                     if w < 120 or h < 120:
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"tiny contour={w}x{h}"
+                        )
                         continue
 
                     # reject huge full page
@@ -6554,6 +6573,12 @@ class VendorImportJob(models.Model):
 
                     # reject tiny fragments
                     if area < 25000:
+                       
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"small area={area}"
+                        )
+
                         continue
 
                     # =====================================
@@ -6580,6 +6605,12 @@ class VendorImportJob(models.Model):
                     # =====================================
 
                     if not self._is_valid_product_crop(crop):
+
+                        _logger.warning(
+                            "[SEGMENT REJECT] "
+                            "invalid product crop"
+                        )
+
                         continue
 
                     # =====================================
@@ -6595,6 +6626,11 @@ class VendorImportJob(models.Model):
                     )
 
                     if dark_pixels < 0.01:
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"low dark pixels={dark_pixels:.5f}"
+                        )
+
                         continue
 
                     # =====================================
@@ -6865,6 +6901,13 @@ class VendorImportJob(models.Model):
                         buffer.getvalue()
                     ).decode("utf-8")
 
+                    _logger.warning(
+                        f"[SEGMENT ACCEPT] "
+                        f"w={w} "
+                        f"h={h} "
+                        f"area={area} "
+                        f"ratio={ratio:.2f}"
+                    )
 
                     candidate_crops.append({
 
@@ -7037,6 +7080,7 @@ class VendorImportJob(models.Model):
             f"[POST-DEDUPE COUNT] total={len(deduped)}"
         )
         return deduped
+
 
     # =====================================================
     # VARIANTS IMAGES CONTROLLER/DETECTOR
@@ -8686,6 +8730,11 @@ class VendorImportJob(models.Model):
             # CLIP SEMANTIC MATCH
             # =====================================
 
+            _logger.warning(
+                f"[VARIANT START] "
+                f"variant={variant_text} "
+                f"pool={len(asset_pool)}"
+            )
 
             clip_asset = self._clip_match_variant(
 
@@ -8693,6 +8742,15 @@ class VendorImportJob(models.Model):
 
                 asset_pool
             )
+
+            _logger.warning(
+                f"[CLIP RESULT] "
+                f"variant={variant_text} "
+                f"clip_found={bool(clip_asset)} "
+                f"clip_color={clip_asset.get('dominant_color') if clip_asset else 'NONE'} "
+                f"clip_index={clip_asset.get('clean_index') if clip_asset else 'NONE'}"
+            )
+
 
             if clip_asset:
 
@@ -8731,6 +8789,18 @@ class VendorImportJob(models.Model):
                 already_used = (
                     asset.get("clean_index")
                     in used_asset_indexes
+                )
+
+                _logger.warning(
+                    f"[VARIANT CANDIDATE] "
+
+                    f"variant={variant_text} "
+
+                    f"index={asset.get('clean_index')} "
+
+                    f"color={asset.get('dominant_color')} "
+
+                    f"used={already_used}"
                 )
 
                 asset_score = 0
@@ -8786,6 +8856,13 @@ class VendorImportJob(models.Model):
                     or ""
 
                 ).lower()
+
+                _logger.warning(
+                    f"[VARIANT CANDIDATE] "
+                    f"variant={variant_text} "
+                    f"color={dominant_color} "
+                    f"used={already_used}"
+                )
 
                 # =====================================
                 # HARD LIFESTYLE REJECTION
