@@ -8059,12 +8059,32 @@ class VendorImportJob(models.Model):
 
             pixels = np.array(filtered_pixels)
 
+            _logger.warning(
+
+                f"[COLOR FILTER] "
+
+                f"remaining_pixels={len(filtered_pixels)}"
+            )
+
             median = np.median(
                 pixels,
                 axis=0
             )
 
             r, g, b = median
+
+            _logger.warning(
+
+                f"[COLOR RAW] "
+
+                f"pixels={len(pixels)} "
+
+                f"median_r={int(r)} "
+
+                f"median_g={int(g)} "
+
+                f"median_b={int(b)}"
+            )
 
             # =====================================
             # DARK COLOR ANALYSIS
@@ -8103,6 +8123,17 @@ class VendorImportJob(models.Model):
                 (
                     brightness < 90
                 )
+            )
+
+            _logger.warning(
+
+                f"[COLOR RATIOS] "
+
+                f"dark={dark_pixels_ratio:.3f} "
+
+                f"very_dark={very_dark_ratio:.3f} "
+
+                f"dark_blue={dark_blue_ratio:.3f}"
             )
 
             # =====================================
@@ -8319,6 +8350,18 @@ class VendorImportJob(models.Model):
                     f"v={v:.1f}"
                 )
                 return "pink"
+
+
+            _logger.warning(
+
+                f"[COLOR UNKNOWN] "
+
+                f"h={h:.1f} "
+
+                f"s={s:.1f} "
+
+                f"v={v:.1f}"
+            )
 
             return "unknown"
 
@@ -14973,8 +15016,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
