@@ -7833,7 +7833,11 @@ class VendorImportJob(models.Model):
 
                         "width": crop_width,
                          
-                        "height": crop_height  
+                        "height": crop_height,
+
+                        "x": x,
+
+                        "y": y
                     })
 
                     _logger.warning(
@@ -7992,45 +7996,57 @@ class VendorImportJob(models.Model):
 
                 is_duplicate = False
 
+               
                 # =====================================
                 # COMPARE AGAINST EXISTING
                 # =====================================
 
-                for existing_hash in visual_hashes:
+                for existing_idx, existing_hash in enumerate(visual_hashes):
 
                     hash_distance = (
                         current_hash - existing_hash
                     )
 
-                    # =================================
-                    # DUPLICATE THRESHOLD
-                    # =================================
+                    _logger.warning(
+
+                        f"[DEDUPE CHECK] "
+
+                        f"candidate={len(deduped)} "
+
+                        f"existing={existing_idx} "
+
+                        f"distance={hash_distance}"
+                    )
 
                     if hash_distance <= 6:
 
                         _logger.warning(
 
-                                f"[DUPLICATE MATCH] "
+                            f"[DUPLICATE MATCH] "
 
-                                f"distance={hash_distance}"
+                            f"candidate={len(deduped)} "
+
+                            f"existing={existing_idx} "
+
+                            f"distance={hash_distance}"
                         )
 
                         is_duplicate = True
 
                         break
 
+
                 if is_duplicate:
 
                     _logger.warning(
 
-                        "[VISUAL DUPLICATE SKIPPED]"
-                    )
-
-                    _logger.warning(
-
-                        f"[DEDUPE REMOVED] "
-
-                        f"hash_distance={hash_distance}"
+                        f"[VISUAL DUPLICATE SKIPPED] "
+                        f"x={asset.get('x')} "
+                        f"y={asset.get('y')} "
+                        f"distance={hash_distance} "
+                        f"score={asset.get('score')} "
+                        f"hero={asset.get('hero_score')} "
+                        f"gallery={asset.get('gallery_score')}"
                     )
 
                     continue
@@ -8039,6 +8055,22 @@ class VendorImportJob(models.Model):
                     current_hash
                 )
 
+                _logger.warning(
+
+                    f"[DEDUPE KEPT] "
+
+                    f"x={asset.get('x')} "
+
+                    f"y={asset.get('y')} "
+
+                    f"score={asset.get('score')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
+                    f"size={asset.get('width')}x{asset.get('height')}"
+                )
                 deduped.append(asset)
 
             except Exception as e:
