@@ -7838,6 +7838,19 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
+                        f"[CROP SAVED] "
+
+                        f"count={len(candidate_crops)} "
+
+                        f"hero={hero_score} "
+
+                        f"gallery={gallery_score} "
+
+                        f"size={crop_width}x{crop_height}"
+                    )
+
+                    _logger.warning(
+
                         f"[SEGMENT COLOR DEBUG] "
 
                         f"size={crop_width}x{crop_height} "
@@ -7902,6 +7915,15 @@ class VendorImportJob(models.Model):
                     candidate_crops
                 )
 
+                _logger.warning(
+
+                    f"[PAGE CROPS ADDED] "
+
+                    f"added={len(candidate_crops)} "
+
+                    f"running_total={len(segmented_images)}"
+                )
+
             except Exception as e:
 
                 _logger.warning(
@@ -7916,9 +7938,25 @@ class VendorImportJob(models.Model):
 
         visual_hashes = []
 
+        for idx, asset in enumerate(segmented_images):
+
+            _logger.warning(
+
+                f"[PRE-DEDUPE ASSET] "
+
+                f"idx={idx} "
+
+                f"score={asset.get('score')} "
+
+                f"hero={asset.get('hero_score')} "
+
+                f"gallery={asset.get('gallery_score')}"
+            )
+
         _logger.warning(
         f"[PRE-DEDUPE COUNT] total={len(segmented_images)}"
         )
+        
         for asset in segmented_images:
 
             try:
@@ -7970,6 +8008,13 @@ class VendorImportJob(models.Model):
 
                     if hash_distance <= 6:
 
+                        _logger.warning(
+
+                                f"[DUPLICATE MATCH] "
+
+                                f"distance={hash_distance}"
+                        )
+
                         is_duplicate = True
 
                         break
@@ -7979,6 +8024,13 @@ class VendorImportJob(models.Model):
                     _logger.warning(
 
                         "[VISUAL DUPLICATE SKIPPED]"
+                    )
+
+                    _logger.warning(
+
+                        f"[DEDUPE REMOVED] "
+
+                        f"hash_distance={hash_distance}"
                     )
 
                     continue
@@ -8164,8 +8216,18 @@ class VendorImportJob(models.Model):
             # =====================================
             # DARK NAVY DETECTION
             # =====================================
+            _logger.warning(
+                "[BLUE CHECK] "
+                f"h={h:.1f} "
+                f"s={s:.1f} "
+                f"v={v:.1f} "
+                f"dark_blue={dark_blue_ratio:.3f}"
+            )
 
-            if dark_blue_ratio > 0.18:
+            if (
+                dark_blue_ratio > 0.18
+                and not (260 <= h < 320)
+            ):
 
                 _logger.warning(
                     "[DOMINANT COLOR] result=navy (dark blue detection)"
