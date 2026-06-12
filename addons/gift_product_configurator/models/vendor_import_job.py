@@ -8214,6 +8214,21 @@ class VendorImportJob(models.Model):
                 return "black"
 
             # =====================================
+            # RGB → HSV
+            # =====================================
+
+            h, s, v = colorsys.rgb_to_hsv(
+
+                r / 255.0,
+                g / 255.0,
+                b / 255.0
+            )
+
+            h = h * 360
+            s = s * 100
+            v = v * 100
+
+            # =====================================
             # DARK NAVY DETECTION
             # =====================================
             _logger.warning(
@@ -8234,21 +8249,6 @@ class VendorImportJob(models.Model):
                 )
 
                 return "navy"
-
-            # =====================================
-            # RGB → HSV
-            # =====================================
-
-            h, s, v = colorsys.rgb_to_hsv(
-
-                r / 255.0,
-                g / 255.0,
-                b / 255.0
-            )
-
-            h = h * 360
-            s = s * 100
-            v = v * 100
 
             # =====================================
             # BLACK
@@ -8284,6 +8284,19 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if s < 15:
+
+                if v > 65:
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=silver "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+                    return "silver"
+
+
                 _logger.warning(
                     f"[DOMINANT COLOR] "
                     f"result=grey "
