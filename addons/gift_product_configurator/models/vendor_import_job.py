@@ -7394,7 +7394,7 @@ class VendorImportJob(models.Model):
                 dilated = cv2.dilate(
                     thresh,
                     kernel,
-                    iterations=2
+                    iterations=1
                 )
 
                 # =========================================
@@ -7439,10 +7439,24 @@ class VendorImportJob(models.Model):
                     filtered_contours.append(contour)
 
                 contours = filtered_contours[:40]
+                _logger.warning(
+                    f"[CONTOUR SUMMARY] "
+                    f"raw={len(filtered_contours)} "
+                    f"used={len(contours)}"
+                )
 
                 candidate_crops = []
 
                 for contour in contours:
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    _logger.warning(
+                        f"[CONTOUR FOUND] "
+                        f"x={x} "
+                        f"y={y} "
+                        f"w={w} "
+                        f"h={h}"
+                    )
 
                     x, y, w, h = cv2.boundingRect(contour)
 
@@ -7450,7 +7464,7 @@ class VendorImportJob(models.Model):
                     # SIZE FILTERS
                     # =====================================
 
-                    if w < 120 or h < 120:
+                    if w < 80 or h < 80:
                         _logger.warning(
                             f"[SEGMENT REJECT] "
                             f"tiny contour={w}x{h}"
@@ -7468,7 +7482,7 @@ class VendorImportJob(models.Model):
                     area = w * h
 
                     # reject tiny fragments
-                    if area < 25000:
+                    if area < 12000:
                        
                         _logger.warning(
                             f"[SEGMENT REJECT] "
@@ -7496,6 +7510,11 @@ class VendorImportJob(models.Model):
                         crop
                     )
 
+                    _logger.warning(
+                        f"[TRIM RESULT] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
+
                     # =====================================
                     # VALIDATE
                     # =====================================
@@ -7503,8 +7522,11 @@ class VendorImportJob(models.Model):
                     if not self._is_valid_product_crop(crop):
 
                         _logger.warning(
-                            "[SEGMENT REJECT] "
-                            "invalid product crop"
+                            f"[SEGMENT REJECT INVALID] "
+                            f"x={x} "
+                            f"y={y} "
+                            f"w={w} "
+                            f"h={h}"
                         )
 
                         continue
