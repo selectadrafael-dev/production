@@ -7995,6 +7995,7 @@ class VendorImportJob(models.Model):
                 )
 
                 is_duplicate = False
+                hash_distance = -1
 
                
                 # =====================================
@@ -8018,6 +8019,7 @@ class VendorImportJob(models.Model):
                         f"distance={hash_distance}"
                     )
 
+
                     if hash_distance <= 6:
 
                         _logger.warning(
@@ -8028,7 +8030,15 @@ class VendorImportJob(models.Model):
 
                             f"existing={existing_idx} "
 
-                            f"distance={hash_distance}"
+                            f"distance={hash_distance} "
+
+                            f"x={asset.get('x')} "
+
+                            f"y={asset.get('y')} "
+
+                            f"w={asset.get('width')} "
+
+                            f"h={asset.get('height')}"
                         )
 
                         is_duplicate = True
@@ -8041,11 +8051,21 @@ class VendorImportJob(models.Model):
                     _logger.warning(
 
                         f"[VISUAL DUPLICATE SKIPPED] "
+
                         f"x={asset.get('x')} "
+
                         f"y={asset.get('y')} "
+
+                        f"w={asset.get('width')} "
+
+                        f"h={asset.get('height')} "
+
                         f"distance={hash_distance} "
+
                         f"score={asset.get('score')} "
+
                         f"hero={asset.get('hero_score')} "
+
                         f"gallery={asset.get('gallery_score')}"
                     )
 
