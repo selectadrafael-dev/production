@@ -7328,9 +7328,9 @@ class VendorImportJob(models.Model):
             )
         return prepared
 
-    # =====================================================
+    # =======================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
-    # =====================================================
+    # =======================================================
 
     def _segment_catalog_images(self, images):
        
