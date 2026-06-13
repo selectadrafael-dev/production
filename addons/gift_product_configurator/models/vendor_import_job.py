@@ -9092,12 +9092,17 @@ class VendorImportJob(models.Model):
                 "brown",
                 "beige"
             ]
+            
 
             for color in color_map:
 
-                if color in normalized_variant_text:
+                    if color not in normalized_variant_text:
+                        continue
 
-                    variant_color_detected = color
+                    if variant_color_detected is None:
+                        variant_color_detected = color
+
+                    variant_color = variant_color_detected
 
                     break
 
@@ -9404,7 +9409,6 @@ class VendorImportJob(models.Model):
                         continue
 
                     variant_color = color
-                    variant_color_detected = color
 
                     _logger.warning(
 
