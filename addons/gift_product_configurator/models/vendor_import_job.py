@@ -7753,7 +7753,15 @@ class VendorImportJob(models.Model):
 
                     skin_ratio = np.mean(skin_mask)
 
+
                     if skin_ratio > 0.28:
+
+                        _logger.warning(
+                            f"[HUMAN DETECTED] "
+                            f"skin_ratio={skin_ratio:.3f} "
+                            f"x={x} y={y} "
+                            f"w={w} h={h}"
+                        )
 
                         human_penalty = 40
 
@@ -7837,6 +7845,15 @@ class VendorImportJob(models.Model):
                         f"ratio={ratio:.2f}"
                     )
 
+                    _logger.warning(
+                        f"[CROP POSITION] "
+                        f"x={x} "
+                        f"y={y} "
+                        f"w={w} "
+                        f"h={h} "
+                        f"hero={hero_score} "
+                        f"gallery={gallery_score}"
+                    )
                    
                     candidate_crops.append({
 
