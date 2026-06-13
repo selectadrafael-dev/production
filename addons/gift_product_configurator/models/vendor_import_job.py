@@ -8045,6 +8045,14 @@ class VendorImportJob(models.Model):
                     if hash_distance == 0:
 
                         _logger.warning(
+                            f"[EXACT DUPLICATE]"
+                            f" candidate_x={asset.get('x')}"
+                            f" candidate_y={asset.get('y')}"
+                            f" candidate_w={asset.get('width')}"
+                            f" candidate_h={asset.get('height')}"
+                        )
+
+                        _logger.warning(
 
                             f"[DUPLICATE MATCH] "
 
@@ -8359,6 +8367,48 @@ class VendorImportJob(models.Model):
 
             if s < 15:
 
+                # PURE WHITE
+
+                if v > 88:
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=white "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+
+                    return "white"
+
+                # BEIGE / CREAM
+
+                if (
+
+                    r > g > b
+
+                    and
+
+                    (r - b) > 12
+
+                    and
+
+                    v > 65
+
+                ):
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=beige "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+
+                    return "beige"
+
+                # SILVER
+
                 if v > 65:
 
                     _logger.warning(
@@ -8368,8 +8418,8 @@ class VendorImportJob(models.Model):
                         f"s={s:.1f} "
                         f"v={v:.1f}"
                     )
-                    return "silver"
 
+                    return "silver"
 
                 _logger.warning(
                     f"[DOMINANT COLOR] "
@@ -8378,6 +8428,7 @@ class VendorImportJob(models.Model):
                     f"s={s:.1f} "
                     f"v={v:.1f}"
                 )
+
                 return "grey"
 
             # =====================================
