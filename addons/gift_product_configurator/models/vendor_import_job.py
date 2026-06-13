@@ -11001,6 +11001,16 @@ class VendorImportJob(models.Model):
                     segmented_assets
                 )
 
+                for a in asset_pool:
+
+                    _logger.warning(
+                        f"[POOL VERIFY] "
+                        f"idx={a.get('index')} "
+                        f"color={a.get('dominant_color')} "
+                        f"lifestyle={a.get('is_lifestyle')} "
+                        f"size={a.get('width')}x{a.get('height')}"
+                    )
+
                 _logger.warning(
                     f"[ASSET POOL CONTENT] "
                     f"product={product_data.get('name')} "
