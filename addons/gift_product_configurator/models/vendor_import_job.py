@@ -7837,6 +7837,7 @@ class VendorImportJob(models.Model):
                         f"ratio={ratio:.2f}"
                     )
 
+                   
                     candidate_crops.append({
 
                         "image": encoded,
@@ -7854,12 +7855,16 @@ class VendorImportJob(models.Model):
                         "background_ratio": background_ratio,
 
                         "width": crop_width,
-                         
+
                         "height": crop_height,
 
                         "x": x,
 
-                        "y": y
+                        "y": y,
+
+                        "crop_area": crop_area,
+
+                        "coverage_ratio": coverage_ratio
                     })
 
                     _logger.warning(
@@ -9091,6 +9096,18 @@ class VendorImportJob(models.Model):
                     f"used={already_used}"
                 )
 
+                _logger.warning(
+
+                    f"[MATCH CANDIDATE] "
+
+                    f"variant={variant_text} "
+
+                    f"asset_color={asset.get('dominant_color')} "
+
+                    f"asset_index={asset.get('index')}"
+
+                )
+
                 asset_score = 0
 
                 if (
@@ -9234,29 +9251,47 @@ class VendorImportJob(models.Model):
 
                 color_map = [
 
-                    "red",
-                    "blue",
+                    "light blue",
+                    "royal blue",
+                    "sky blue",
                     "navy",
+
+                    "blue",
+
+                    "lime green",
+                    "dark green",
+
                     "green",
-                    "lime",
-                    "yellow",
+
+                    "red",
                     "orange",
+                    "yellow",
                     "white",
                     "black",
-                    "gray",
                     "grey",
-                    "light_grey",
-                    "charcoal",
+                    "gray",
                     "silver",
                     "purple",
                     "pink",
-                    "brown"
+                    "brown",
+                    "beige"
                 ]
 
                 for color in color_map:
 
                     if color not in normalized_variant_text:
                         continue
+
+                    variant_color = color
+
+                    _logger.warning(
+
+                        f"[VARIANT COLOR DETECTED] "
+
+                        f"variant={normalized_variant_text} "
+
+                        f"color={variant_color}"
+                    )
 
                     _logger.warning(
 
@@ -9447,6 +9482,7 @@ class VendorImportJob(models.Model):
 
                     f"score={best_score}"
                 )
+
 
             return best_asset
 
