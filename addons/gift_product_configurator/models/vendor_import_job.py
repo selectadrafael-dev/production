@@ -9067,6 +9067,40 @@ class VendorImportJob(models.Model):
                 f"pool={len(asset_pool)}"
             )
 
+            variant_color_detected = None
+
+            color_map = [
+                "light blue",
+                "royal blue",
+                "sky blue",
+                "navy",
+                "blue",
+                "lime green",
+                "dark green",
+                "olive",
+                "green",
+                "red",
+                "orange",
+                "yellow",
+                "white",
+                "black",
+                "grey",
+                "gray",
+                "silver",
+                "purple",
+                "pink",
+                "brown",
+                "beige"
+            ]
+
+            for color in color_map:
+
+                if color in normalized_variant_text:
+
+                    variant_color_detected = color
+
+                    break
+
             clip_asset = self._clip_match_variant(
 
                 variant_text,
@@ -9116,6 +9150,17 @@ class VendorImportJob(models.Model):
             # =====================================
 
             for asset in asset_pool:
+                
+                dominant_color = str(
+
+                    asset.get(
+                        "dominant_color",
+                        ""
+                    )
+
+                    or ""
+
+                ).lower()
 
                 already_used = (
                     asset.get("clean_index")
@@ -9149,21 +9194,74 @@ class VendorImportJob(models.Model):
                 asset_score = 0
 
                 if (
-
                     clip_asset
-
                     and
-
                     asset.get("clean_index")
                     ==
                     clip_asset.get("clean_index")
-
                 ):
 
-                    asset_score += clip_asset.get(
+                    # =====================================
+                    # CLIP MUST RESPECT COLOR MATCHING
+                    # =====================================
+
+                    clip_boost = clip_asset.get(
                         "clip_boost",
                         0
                     )
+
+                    if variant_color_detected is None:
+
+                        asset_score += clip_boost
+
+                    elif dominant_color == variant_color_detected:
+
+                        asset_score += clip_boost
+
+                    elif (
+                        variant_color_detected == "blue"
+                        and
+                        dominant_color in [
+                            "light blue",
+                            "royal blue",
+                            "sky blue"
+                        ]
+                    ):
+
+                        asset_score += int(
+                            clip_boost * 0.75
+                        )
+
+                    elif (
+                        variant_color_detected == "green"
+                        and
+                        dominant_color == "olive"
+                    ):
+
+                        asset_score += int(
+                            clip_boost * 0.75
+                        )
+
+                    elif (
+                        variant_color_detected == "olive"
+                        and
+                        dominant_color == "green"
+                    ):
+
+                        asset_score += int(
+                            clip_boost * 0.75
+                        )
+
+                    else:
+
+                        asset_score -= 120
+
+                        _logger.warning(
+                            f"[CLIP COLOR BLOCKED] "
+                            f"variant={variant_text} "
+                            f"variant_color={variant_color_detected} "
+                            f"clip_color={dominant_color}"
+                        )
                 
                 if already_used:
 
@@ -9187,18 +9285,6 @@ class VendorImportJob(models.Model):
                         0
                     )
                 )
-
-
-                dominant_color = str(
-
-                    asset.get(
-                        "dominant_color",
-                        ""
-                    )
-
-                    or ""
-
-                ).lower()
 
                 _logger.warning(
                     f"[VARIANT CANDIDATE] "
@@ -9293,14 +9379,11 @@ class VendorImportJob(models.Model):
                     "royal blue",
                     "sky blue",
                     "navy",
-
                     "blue",
-
                     "lime green",
                     "dark green",
-
+                    "olive",
                     "green",
-
                     "red",
                     "orange",
                     "yellow",
@@ -9321,6 +9404,7 @@ class VendorImportJob(models.Model):
                         continue
 
                     variant_color = color
+                    variant_color_detected = color
 
                     _logger.warning(
 
@@ -9376,6 +9460,22 @@ class VendorImportJob(models.Model):
                     ):
 
                         asset_score += 90
+
+                    elif (
+                        color == "olive"
+                        and
+                        dominant_color == "green"
+                    ):
+
+                        asset_score += 70
+
+                    elif (
+                        color == "green"
+                        and
+                        dominant_color == "olive"
+                    ):
+
+                        asset_score += 70
 
                     # =====================================
                     # STRICT NAVY / BLUE SEPARATION
