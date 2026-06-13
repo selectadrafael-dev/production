@@ -8042,7 +8042,7 @@ class VendorImportJob(models.Model):
                     )
 
 
-                    if hash_distance <= 6:
+                    if hash_distance == 0:
 
                         _logger.warning(
 
