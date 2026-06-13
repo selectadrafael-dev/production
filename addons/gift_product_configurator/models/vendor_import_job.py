@@ -7388,7 +7388,7 @@ class VendorImportJob(models.Model):
 
                 kernel = cv2.getStructuringElement(
                     cv2.MORPH_RECT,
-                    (9, 9)
+                    (5, 5)
                 )
 
                 dilated = cv2.dilate(
@@ -7854,6 +7854,8 @@ class VendorImportJob(models.Model):
                         f"hero={hero_score} "
                         f"gallery={gallery_score}"
                     )
+
+                    is_lifestyle = skin_ratio > 0.28
                    
                     candidate_crops.append({
 
@@ -7881,7 +7883,11 @@ class VendorImportJob(models.Model):
 
                         "crop_area": crop_area,
 
-                        "coverage_ratio": coverage_ratio
+                        "coverage_ratio": coverage_ratio,
+
+                        "is_lifestyle": is_lifestyle,
+
+                        "skin_ratio": float(skin_ratio)
                     })
 
                     _logger.warning(
