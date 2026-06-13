@@ -10877,6 +10877,23 @@ class VendorImportJob(models.Model):
                 )
 
                 _logger.warning(
+                    f"[ASSET POOL CONTENT] "
+                    f"product={product_data.get('name')} "
+                    f"count={len(asset_pool)}"
+                )
+
+                for a in asset_pool:
+
+                    _logger.warning(
+                        f"[POOL ASSET] "
+                        f"idx={a.get('index')} "
+                        f"color={a.get('dominant_color')} "
+                        f"hero={a.get('hero_score')} "
+                        f"gallery={a.get('gallery_score')} "
+                        f"used={a.get('index') in used_asset_indexes if 'used_asset_indexes' in locals() else False}"
+                    )
+
+                _logger.warning(
 
                     f"[PDF ASSET POOL] "
 
@@ -11109,6 +11126,19 @@ class VendorImportJob(models.Model):
                     # PASS 1:
                     # BUILD ALL ATTRIBUTE LINES FIRST
                     # =======================================
+
+                    _logger.warning(
+                        f"[VARIANT LIST] "
+                        f"{product_data.get('name')} "
+                        f"| total={len(variants)}"
+                    )
+
+                    for v in variants:
+
+                        _logger.warning(
+                            f"[VARIANT FOUND] "
+                            f"{v.get('attributes')}"
+                        )
 
                     for variant in variants:
 
