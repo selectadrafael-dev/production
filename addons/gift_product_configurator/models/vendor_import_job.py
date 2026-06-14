@@ -5301,11 +5301,23 @@ class VendorImportJob(models.Model):
             try:
 
                 parsed = json.loads(result)
+                
+                _logger.warning(
+                    f"[AI RAW RESPONSE] "
+                    f"{result[:4000]}"
+                )
+
                 try:
 
                     for pidx, product in enumerate(parsed):
 
                         variants = product.get("variants", [])
+
+                        _logger.warning(
+                            f"[AI COLOR SUMMARY] "
+                            f"product={pidx} "
+                            f"colors={[v.get('attributes', {}).get('Color', '') for v in variants]}"
+                        )
 
                         _logger.warning(
                             f"[AI PRODUCT] "
@@ -5323,6 +5335,32 @@ class VendorImportJob(models.Model):
                                 f"attributes={variant.get('attributes', {})}"
                             )
 
+                        seen_colors = set()
+
+                        for vidx, variant in enumerate(variants):
+
+                            color = (
+                                variant.get("attributes", {})
+                                .get("Color", "")
+                                .strip()
+                                .lower()
+                            )
+
+                            raw_color = (
+                                variant.get("attributes", {})
+                                .get("Color", "")
+                            )
+
+                            if color in seen_colors:
+
+                                _logger.warning(
+                                    f"[AI DUPLICATE COLOR] "
+                                    f"product={pidx} "
+                                    f"raw={raw_color} "
+                                    f"normalized={color}"
+                                )
+
+                            seen_colors.add(color)
                 except Exception as e:
 
                     _logger.warning(
