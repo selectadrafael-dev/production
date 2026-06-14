@@ -860,7 +860,23 @@ def extract():
         # ===============================
         # SORT BEST FIRST
         # ===============================
+        _logger.warning(
+            f"[EXTRACTOR TOTAL CANDIDATES] "
+            f"{len(candidate_images)}"
+        )
 
+        for idx, item in enumerate(candidate_images):
+
+            crop = item["crop"]
+
+            _logger.warning(
+                f"[EXTRACTOR RANK] "
+                f"idx={idx} "
+                f"score={item['score']} "
+                f"w={crop.shape[1]} "
+                f"h={crop.shape[0]}"
+            )
+            
         candidate_images = sorted(
 
             candidate_images,
@@ -870,7 +886,7 @@ def extract():
             reverse=True
         )
 
-        MAX_IMAGES_PER_PAGE = 12
+        MAX_IMAGES_PER_PAGE = 20
 
         image_list = []
 
