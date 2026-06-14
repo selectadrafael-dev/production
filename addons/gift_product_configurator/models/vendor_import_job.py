@@ -3719,13 +3719,23 @@ class VendorImportJob(models.Model):
 
                         all_page_images = []
 
-                        for block in normalized_blocks:
+                        _logger.warning(
+                            f"[PAGE IMAGE DEBUG 1] "
+                            f"blocks={len(normalized_blocks)}"
+                        )
 
+                        for block in normalized_blocks:
+                           
                             all_page_images.extend(
                                 block.get("images", [])
                             )
 
                             self._safe_commit_progress()
+                            
+                        _logger.warning(
+                            f"[PAGE IMAGE DEBUG 2] "
+                            f"images={len(all_page_images)}"
+                        )
                         
                         if all_page_images:
 
@@ -8426,6 +8436,37 @@ class VendorImportJob(models.Model):
         _logger.warning(
             f"[POST-DEDUPE COUNT] total={len(deduped)}"
         )
+
+        
+        for asset in deduped:
+
+            _logger.warning(
+                f"[PRE-DEDUPE ASSET] "
+                f"hero={asset.get('hero_score')} "
+                f"gallery={asset.get('gallery_score')}"
+            )
+
+        if deduped:
+
+            sample = deduped[0]
+
+            _logger.warning(
+                f"[SEGMENT RETURN SAMPLE] "
+                f"keys={list(sample.keys())}"
+            )
+
+            _logger.warning(
+                f"[SEGMENT RETURN VALUES] "
+                f"hero={sample.get('hero_score')} "
+                f"gallery={sample.get('gallery_score')} "
+                f"lifestyle={sample.get('is_lifestyle')} "
+                f"width={sample.get('width')} "
+                f"height={sample.get('height')} "
+                f"x={sample.get('x')} "
+                f"y={sample.get('y')}"
+            )
+
+
         return deduped
 
     # ============================================
