@@ -1788,6 +1788,13 @@ class VendorImportJob(models.Model):
             'color name'
         ]
 
+        _logger.warning(
+            "[ATTRIBUTE VALUE INPUT] "
+            f"attribute={attr_name} "
+            f"value={attr_value} "
+            f"is_color={is_color_attribute}"
+        )
+
         attribute = self.env[
             'product.attribute'
         ].search([
@@ -1921,6 +1928,12 @@ class VendorImportJob(models.Model):
 
                     normalized_color,
 
+                    normalized_color
+                )
+
+                _logger.warning(
+                    "[COLOR NORMALIZATION] raw=%s | normalized=%s",
+                    attr_value,
                     normalized_color
                 )
 
@@ -3617,13 +3630,30 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
-                            # ===========================
-                            # CLEAN CATALOG SEGMENTATION
-                            # ===========================
+                            if images and isinstance(images[0], dict):
 
-                            images = self._segment_catalog_images(
-                                images
-                            )
+                                _logger.warning(
+                                    "[RENDER METADATA MODE]"
+                                )
+
+                                _logger.warning(
+                                    f"[METADATA SAMPLE] "
+                                    f"keys={list(images[0].keys())}"
+                                )
+
+                                _logger.warning(
+                                    "[SKIP RESEGMENTATION]"
+                                )
+
+                            else:
+
+                                _logger.warning(
+                                    "[LEGACY IMAGE MODE]"
+                                )
+
+                                images = self._segment_catalog_images(
+                                    images
+                                )
 
 
                             if (
@@ -3706,13 +3736,37 @@ class VendorImportJob(models.Model):
 
                         all_page_images = []
 
-                        for block in normalized_blocks:
+                        _logger.warning(
+                            f"[PAGE IMAGE DEBUG 1] "
+                            f"blocks={len(normalized_blocks)}"
+                        )
 
+                        for block in normalized_blocks:
+                           
                             all_page_images.extend(
                                 block.get("images", [])
                             )
 
                             self._safe_commit_progress()
+
+                        _logger.warning(
+                            f"[PAGE IMAGE DEBUG 2] "
+                            f"images={len(all_page_images)}"
+                        )
+                        
+                        if all_page_images:
+
+                            first = all_page_images[0]
+
+                            _logger.warning(
+                                f"[PAGE IMAGE SAMPLE] "
+                                f"keys={list(first.keys()) if isinstance(first, dict) else type(first)} "
+                                f"lifestyle={first.get('is_lifestyle') if isinstance(first, dict) else 'NA'} "
+                                f"width={first.get('width') if isinstance(first, dict) else 'NA'} "
+                                f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
+                                f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
+                                f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
+                            )
 
                         self.env[
                             'vendor.import.page'
@@ -3842,7 +3896,7 @@ class VendorImportJob(models.Model):
             )
 
 
-    # ---------------- Send to OPENAI URL ----------------
+    # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
 
         import re
@@ -4506,6 +4560,36 @@ class VendorImportJob(models.Model):
                 "[]"
             )
 
+            for block in page_blocks:
+
+                imgs = block.get("images", [])
+
+                if imgs:
+
+                    sample = imgs[0]
+
+                    # if isinstance(sample, dict):
+                    if isinstance(sample, dict):
+
+                        _logger.warning(
+                            f"[EXTRACTED IMAGE SAMPLE] "
+                            f"keys={list(sample.keys())}"
+                        )
+
+                        _logger.warning(
+                            f"[EXTRACTED IMAGE VALUES] "
+                            f"width={sample.get('width')} "
+                            f"height={sample.get('height')} "
+                            f"x={sample.get('x')} "
+                            f"y={sample.get('y')} "
+                            f"lifestyle={sample.get('is_lifestyle')} "
+                            f"hero={sample.get('hero_score')} "
+                            f"gallery={sample.get('gallery_score')}"
+                        )
+
+                        
+                    break
+
         except Exception as e:
 
             _logger.warning(
@@ -4661,6 +4745,28 @@ class VendorImportJob(models.Model):
             f"| valid={len(page_images)}"
         )
 
+
+        if page_images:
+
+            sample = page_images[0]
+
+            _logger.warning(
+                f"[AI SAVE IMAGE SAMPLE] "
+                f"keys={list(sample.keys())}"
+            )
+
+            _logger.warning(
+                f"[AI SAVE IMAGE DATA] "
+                f"width={sample.get('width')} "
+                f"height={sample.get('height')} "
+                f"x={sample.get('x')} "
+                f"y={sample.get('y')} "
+                f"lifestyle={sample.get('is_lifestyle')} "
+                f"hero={sample.get('hero_score')} "
+                f"gallery={sample.get('gallery_score')}"
+            )
+
+
         # =====================================
         # NO VALID IMAGE FAILSAFE
         # =====================================
@@ -4681,6 +4787,7 @@ class VendorImportJob(models.Model):
                 existing_map[
                     p.get("page")
                 ] = p
+
 
             existing_map[
                 next_record.page_number
@@ -5097,7 +5204,6 @@ class VendorImportJob(models.Model):
         {page_stock}
         """
 
-
         # =====================================================
         # AI CALL
         # =====================================================
@@ -5288,6 +5394,185 @@ class VendorImportJob(models.Model):
             try:
 
                 parsed = json.loads(result)
+                
+                _logger.warning(
+                    f"[AI RAW RESPONSE] "
+                    f"{result[:4000]}"
+                )
+
+                #=========prevent hero img from product variants=========
+                for product in parsed:
+
+                    hero_index = product.get(
+                        "hero_image_index"
+                    )
+
+                    variants = product.get(
+                        "variants",
+                        []
+                    )
+
+                    clean_variants = []
+
+                    for variant in variants:
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        color = (
+                            variant.get(
+                                "attributes",
+                                {}
+                            ).get(
+                                "Color",
+                                ""
+                            )
+                        )
+
+                        if (
+                            hero_index is not None
+                            and
+                            image_index is not None
+                            and
+                            image_index == hero_index
+                        ):
+
+                            _logger.warning(
+                                f"[AI VARIANT REMOVED HERO] "
+                                f"color={color} "
+                                f"image_index={image_index} "
+                                f"hero_index={hero_index}"
+                            )
+
+                            continue
+
+                        clean_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = clean_variants
+
+                #==========prevent variant duplicate==========
+                    seen_colors = set()
+
+                    deduped_variants = []
+
+                    for variant in product["variants"]:
+
+                        color = (
+                            variant.get(
+                                "attributes",
+                                {}
+                            ).get(
+                                "Color",
+                                ""
+                            )
+                            .strip()
+                            .lower()
+                        )
+
+                        if not color:
+                            deduped_variants.append(
+                                variant
+                            )
+                            continue
+
+                        if color in seen_colors:
+
+                            _logger.warning(
+                                f"[AI VARIANT REMOVED DUPLICATE] "
+                                f"color={color}"
+                            )
+
+                            continue
+
+                        seen_colors.add(color)
+
+                        deduped_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = deduped_variants
+
+                for product in parsed:
+
+                    for variant in product.get("variants", []):
+
+                        color = variant.get(
+                            "attributes",
+                            {}
+                        ).get("Color")
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        _logger.warning(
+                            f"[AI COLOR->IMAGE] "
+                            f"color={color} "
+                            f"image_index={image_index}"
+                        )
+
+                try:
+
+                    for pidx, product in enumerate(parsed):
+
+                        variants = product.get("variants", [])
+
+                        _logger.warning(
+                            f"[AI COLOR SUMMARY] "
+                            f"product={pidx} "
+                            f"colors={[v.get('attributes', {}).get('Color', '') for v in variants]}"
+                        )
+
+                        _logger.warning(
+                            f"[AI PRODUCT] "
+                            f"page={next_record.page_number} "
+                            f"product={pidx} "
+                            f"name={product.get('name')}"
+                        )
+
+                        for vidx, variant in enumerate(variants):
+
+                            _logger.warning(
+                                f"[AI VARIANT] "
+                                f"product={pidx} "
+                                f"variant={vidx} "
+                                f"attributes={variant.get('attributes', {})}"
+                            )
+
+                        seen_colors = set()
+
+                        for vidx, variant in enumerate(variants):
+
+                            color = (
+                                variant.get("attributes", {})
+                                .get("Color", "")
+                                .strip()
+                                .lower()
+                            )
+
+                            raw_color = (
+                                variant.get("attributes", {})
+                                .get("Color", "")
+                            )
+
+                            if color in seen_colors:
+
+                                _logger.warning(
+                                    f"[AI DUPLICATE COLOR] "
+                                    f"product={pidx} "
+                                    f"raw={raw_color} "
+                                    f"normalized={color}"
+                                )
+
+                            seen_colors.add(color)
+                except Exception as e:
+
+                    _logger.warning(
+                        f"[AI VARIANT LOG FAILED] {str(e)}"
+                    )
 
             except Exception as e:
 
@@ -6960,6 +7245,10 @@ class VendorImportJob(models.Model):
                 # =====================================
                 # SUPPORT OLD + NEW FORMAT
                 # =====================================
+                _logger.warning(
+                    f"[POOL RAW ASSET] "
+                    f"keys={list(asset.keys()) if isinstance(asset, dict) else 'string'}"
+                )
 
                 if isinstance(asset, dict):
 
@@ -7306,31 +7595,26 @@ class VendorImportJob(models.Model):
         )
 
         for asset in prepared:
+           
             _logger.warning(
-
                 f"[POOL FINAL] "
-
                 f"index={asset.get('clean_index')} "
-
                 f"color={asset.get('dominant_color')} "
-
+                f"lifestyle={asset.get('is_lifestyle')} "
+                f"x={asset.get('x')} "
+                f"y={asset.get('y')} "
                 f"hero={asset.get('hero_score')} "
-
                 f"gallery={asset.get('gallery_score')} "
-
                 f"score={asset.get('score')} "
-
                 f"collage={asset.get('is_collage')} "
-
                 f"width={asset.get('width')} "
-
                 f"height={asset.get('height')}"
             )
         return prepared
 
-    # =====================================================
+    # =======================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
-    # =====================================================
+    # =======================================================
 
     def _segment_catalog_images(self, images):
        
@@ -7394,7 +7678,7 @@ class VendorImportJob(models.Model):
                 dilated = cv2.dilate(
                     thresh,
                     kernel,
-                    iterations=2
+                    iterations=1
                 )
 
                 # =========================================
@@ -7439,10 +7723,24 @@ class VendorImportJob(models.Model):
                     filtered_contours.append(contour)
 
                 contours = filtered_contours[:40]
+                _logger.warning(
+                    f"[CONTOUR SUMMARY] "
+                    f"raw={len(filtered_contours)} "
+                    f"used={len(contours)}"
+                )
 
                 candidate_crops = []
 
                 for contour in contours:
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    _logger.warning(
+                        f"[CONTOUR FOUND] "
+                        f"x={x} "
+                        f"y={y} "
+                        f"w={w} "
+                        f"h={h}"
+                    )
 
                     x, y, w, h = cv2.boundingRect(contour)
 
@@ -7450,7 +7748,7 @@ class VendorImportJob(models.Model):
                     # SIZE FILTERS
                     # =====================================
 
-                    if w < 120 or h < 120:
+                    if w < 80 or h < 80:
                         _logger.warning(
                             f"[SEGMENT REJECT] "
                             f"tiny contour={w}x{h}"
@@ -7468,7 +7766,7 @@ class VendorImportJob(models.Model):
                     area = w * h
 
                     # reject tiny fragments
-                    if area < 25000:
+                    if area < 12000:
                        
                         _logger.warning(
                             f"[SEGMENT REJECT] "
@@ -7488,23 +7786,63 @@ class VendorImportJob(models.Model):
                     x2 = min(x + w + pad, original_width)
                     y2 = min(y + h + pad, original_height)
 
+
+                    _logger.warning(
+                        f"[BEFORE CROP] "
+                        f"x1={x1} y1={y1} x2={x2} y2={y2}"
+                    )
+
                     crop = pil_image.crop(
                         (x1, y1, x2, y2)
+                    )
+
+                    _logger.warning(
+                        f"[AFTER CROP] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
                     )
 
                     crop = self._trim_catalog_whitespace(
                         crop
                     )
 
+                    if not crop:
+
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"trim returned None "
+                            f"x={x} y={y} w={w} h={h}"
+                        )
+
+                        continue
+
+                    _logger.warning(
+                        f"[TRIM RESULT] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
+
+                    _logger.warning(
+                        f"[POST TRIM] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
+
+                  
                     # =====================================
                     # VALIDATE
                     # =====================================
 
-                    if not self._is_valid_product_crop(crop):
+                    valid_crop = self._is_valid_product_crop(crop)
+
+                    _logger.warning(
+                        f"[VALIDATION RESULT] "
+                        f"valid={valid_crop} "
+                        f"x={x} y={y} w={w} h={h}"
+                    )
+
+                    if not valid_crop:
 
                         _logger.warning(
-                            "[SEGMENT REJECT] "
-                            "invalid product crop"
+                            f"[SEGMENT REJECT INVALID] "
+                            f"x={x} y={y} w={w} h={h}"
                         )
 
                         continue
@@ -7815,6 +8153,33 @@ class VendorImportJob(models.Model):
                         f"ratio={ratio:.2f}"
                     )
 
+                    # =====================================
+                    # LIFESTYLE DETECTION
+                    # =====================================
+
+                    is_lifestyle = False
+
+                    if skin_ratio > 0.12:
+
+                        is_lifestyle = True
+
+                    elif (
+                        coverage_ratio > 0.18
+                        and
+                        background_ratio < 0.30
+                    ):
+
+                        is_lifestyle = True
+
+                    _logger.warning(
+                        f"[LIFESTYLE CHECK] "
+                        f"skin={skin_ratio:.3f} "
+                        f"coverage={coverage_ratio:.3f} "
+                        f"bg={background_ratio:.3f} "
+                        f"lifestyle={is_lifestyle}"
+                    )
+
+                   
                     candidate_crops.append({
 
                         "image": encoded,
@@ -7832,9 +8197,32 @@ class VendorImportJob(models.Model):
                         "background_ratio": background_ratio,
 
                         "width": crop_width,
-                         
-                        "height": crop_height  
+
+                        "height": crop_height,
+
+                        "x": x,
+
+                        "y": y,
+
+                        "crop_area": crop_area,
+
+                        "coverage_ratio": coverage_ratio,
+
+                        "is_lifestyle": is_lifestyle
                     })
+
+                    _logger.warning(
+
+                        f"[CROP SAVED] "
+
+                        f"count={len(candidate_crops)} "
+
+                        f"hero={hero_score} "
+
+                        f"gallery={gallery_score} "
+
+                        f"size={crop_width}x{crop_height}"
+                    )
 
                     _logger.warning(
 
@@ -7875,8 +8263,17 @@ class VendorImportJob(models.Model):
                 # =========================================
                 # FALLBACK
                 # =========================================
+                _logger.warning(
+                    f"[SEGMENT SUMMARY BEFORE FALLBACK] "
+                    f"candidate_crops={len(candidate_crops)} "
+                    f"contours={len(contours)}"
+                )
 
                 if not candidate_crops:
+
+                    _logger.warning(
+                        "[SEGMENT FALLBACK TRIGGERED]"
+                    )
 
                     buffer = BytesIO()
 
@@ -7902,6 +8299,15 @@ class VendorImportJob(models.Model):
                     candidate_crops
                 )
 
+                _logger.warning(
+
+                    f"[PAGE CROPS ADDED] "
+
+                    f"added={len(candidate_crops)} "
+
+                    f"running_total={len(segmented_images)}"
+                )
+
             except Exception as e:
 
                 _logger.warning(
@@ -7916,9 +8322,25 @@ class VendorImportJob(models.Model):
 
         visual_hashes = []
 
+        for idx, asset in enumerate(segmented_images):
+
+            _logger.warning(
+
+                f"[PRE-DEDUPE ASSET] "
+
+                f"idx={idx} "
+
+                f"score={asset.get('score')} "
+
+                f"hero={asset.get('hero_score')} "
+
+                f"gallery={asset.get('gallery_score')}"
+            )
+
         _logger.warning(
         f"[PRE-DEDUPE COUNT] total={len(segmented_images)}"
         )
+        
         for asset in segmented_images:
 
             try:
@@ -7953,32 +8375,86 @@ class VendorImportJob(models.Model):
                 )
 
                 is_duplicate = False
+                hash_distance = -1
 
+               
                 # =====================================
                 # COMPARE AGAINST EXISTING
                 # =====================================
 
-                for existing_hash in visual_hashes:
+                for existing_idx, existing_hash in enumerate(visual_hashes):
 
                     hash_distance = (
                         current_hash - existing_hash
                     )
 
-                    # =================================
-                    # DUPLICATE THRESHOLD
-                    # =================================
+                    _logger.warning(
 
-                    if hash_distance <= 6:
+                        f"[DEDUPE CHECK] "
+
+                        f"candidate={len(deduped)} "
+
+                        f"existing={existing_idx} "
+
+                        f"distance={hash_distance}"
+                    )
+
+
+                    if hash_distance == 0:
+
+                        _logger.warning(
+                            f"[EXACT DUPLICATE]"
+                            f" candidate_x={asset.get('x')}"
+                            f" candidate_y={asset.get('y')}"
+                            f" candidate_w={asset.get('width')}"
+                            f" candidate_h={asset.get('height')}"
+                        )
+
+                        _logger.warning(
+
+                            f"[DUPLICATE MATCH] "
+
+                            f"candidate={len(deduped)} "
+
+                            f"existing={existing_idx} "
+
+                            f"distance={hash_distance} "
+
+                            f"x={asset.get('x')} "
+
+                            f"y={asset.get('y')} "
+
+                            f"w={asset.get('width')} "
+
+                            f"h={asset.get('height')}"
+                        )
 
                         is_duplicate = True
 
                         break
 
+
                 if is_duplicate:
 
                     _logger.warning(
 
-                        "[VISUAL DUPLICATE SKIPPED]"
+                        f"[VISUAL DUPLICATE SKIPPED] "
+
+                        f"x={asset.get('x')} "
+
+                        f"y={asset.get('y')} "
+
+                        f"w={asset.get('width')} "
+
+                        f"h={asset.get('height')} "
+
+                        f"distance={hash_distance} "
+
+                        f"score={asset.get('score')} "
+
+                        f"hero={asset.get('hero_score')} "
+
+                        f"gallery={asset.get('gallery_score')}"
                     )
 
                     continue
@@ -7987,6 +8463,22 @@ class VendorImportJob(models.Model):
                     current_hash
                 )
 
+                _logger.warning(
+
+                    f"[DEDUPE KEPT] "
+
+                    f"x={asset.get('x')} "
+
+                    f"y={asset.get('y')} "
+
+                    f"score={asset.get('score')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
+                    f"size={asset.get('width')}x{asset.get('height')}"
+                )
                 deduped.append(asset)
 
             except Exception as e:
@@ -8002,11 +8494,42 @@ class VendorImportJob(models.Model):
         _logger.warning(
             f"[POST-DEDUPE COUNT] total={len(deduped)}"
         )
+
+        
+        for asset in deduped:
+
+            _logger.warning(
+                f"[PRE-DEDUPE ASSET] "
+                f"hero={asset.get('hero_score')} "
+                f"gallery={asset.get('gallery_score')}"
+            )
+
+        if deduped:
+
+            sample = deduped[0]
+
+            _logger.warning(
+                f"[SEGMENT RETURN SAMPLE] "
+                f"keys={list(sample.keys())}"
+            )
+
+            _logger.warning(
+                f"[SEGMENT RETURN VALUES] "
+                f"hero={sample.get('hero_score')} "
+                f"gallery={sample.get('gallery_score')} "
+                f"lifestyle={sample.get('is_lifestyle')} "
+                f"width={sample.get('width')} "
+                f"height={sample.get('height')} "
+                f"x={sample.get('x')} "
+                f"y={sample.get('y')}"
+            )
+
+
         return deduped
 
-    # =======================================
+    # ============================================
     # ADVANCED DOMINANT COLOR DETECTION
-    # =======================================
+    # ============================================
     
     def _detect_dominant_color(
 
@@ -8059,12 +8582,32 @@ class VendorImportJob(models.Model):
 
             pixels = np.array(filtered_pixels)
 
+            _logger.warning(
+
+                f"[COLOR FILTER] "
+
+                f"remaining_pixels={len(filtered_pixels)}"
+            )
+
             median = np.median(
                 pixels,
                 axis=0
             )
 
             r, g, b = median
+
+            _logger.warning(
+
+                f"[COLOR RAW] "
+
+                f"pixels={len(pixels)} "
+
+                f"median_r={int(r)} "
+
+                f"median_g={int(g)} "
+
+                f"median_b={int(b)}"
+            )
 
             # =====================================
             # DARK COLOR ANALYSIS
@@ -8105,6 +8648,54 @@ class VendorImportJob(models.Model):
                 )
             )
 
+            _logger.warning(
+
+                f"[COLOR RATIOS] "
+
+                f"dark={dark_pixels_ratio:.3f} "
+
+                f"very_dark={very_dark_ratio:.3f} "
+
+                f"dark_blue={dark_blue_ratio:.3f}"
+            )
+
+             # =====================================
+            # RGB → HSV
+            # =====================================
+
+            h, s, v = colorsys.rgb_to_hsv(
+
+                r / 255.0,
+                g / 255.0,
+                b / 255.0
+            )
+
+            h = h * 360
+            s = s * 100
+            v = v * 100
+
+            # =====================================
+            # DARK NAVY DETECTION
+            # =====================================
+            _logger.warning(
+                "[BLUE CHECK] "
+                f"h={h:.1f} "
+                f"s={s:.1f} "
+                f"v={v:.1f} "
+                f"dark_blue={dark_blue_ratio:.3f}"
+            )
+
+            if (
+                dark_blue_ratio > 0.18
+                and not (260 <= h < 320)
+            ):
+
+                _logger.warning(
+                    "[DOMINANT COLOR] result=navy (dark blue detection)"
+                )
+
+                return "navy"
+
             # =====================================
             # TRUE BLACK DETECTION
             # =====================================
@@ -8129,33 +8720,6 @@ class VendorImportJob(models.Model):
             ):
 
                 return "black"
-
-            # =====================================
-            # DARK NAVY DETECTION
-            # =====================================
-
-            if dark_blue_ratio > 0.18:
-
-                _logger.warning(
-                    "[DOMINANT COLOR] result=navy (dark blue detection)"
-                )
-
-                return "navy"
-
-            # =====================================
-            # RGB → HSV
-            # =====================================
-
-            h, s, v = colorsys.rgb_to_hsv(
-
-                r / 255.0,
-                g / 255.0,
-                b / 255.0
-            )
-
-            h = h * 360
-            s = s * 100
-            v = v * 100
 
             # =====================================
             # BLACK
@@ -8191,6 +8755,61 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if s < 15:
+
+                # PURE WHITE
+
+                if v > 88:
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=white "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+
+                    return "white"
+
+                # BEIGE / CREAM
+
+                if (
+
+                    r > g > b
+
+                    and
+
+                    (r - b) > 12
+
+                    and
+
+                    v > 65
+
+                ):
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=beige "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+
+                    return "beige"
+
+                # SILVER
+
+                if v > 65:
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=silver "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+
+                    return "silver"
+
                 _logger.warning(
                     f"[DOMINANT COLOR] "
                     f"result=grey "
@@ -8198,6 +8817,7 @@ class VendorImportJob(models.Model):
                     f"s={s:.1f} "
                     f"v={v:.1f}"
                 )
+
                 return "grey"
 
             # =====================================
@@ -8247,6 +8867,24 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if 70 <= h < 170:
+
+                # OLIVE
+
+                if (
+                    70 <= h <= 105
+                    and s < 55
+                    and v < 65
+                ):
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=olive "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+                    return "olive"
+
                 _logger.warning(
                     f"[DOMINANT COLOR] "
                     f"result=green "
@@ -8256,11 +8894,13 @@ class VendorImportJob(models.Model):
                 )
                 return "green"
 
-            # =====================================
+            # =======================================
             # BLUE
-            # =====================================
+            # =======================================
 
             if 170 <= h < 260:
+
+                # NAVY
 
                 if v < 45:
                     _logger.warning(
@@ -8272,7 +8912,9 @@ class VendorImportJob(models.Model):
                     )
                     return "navy"
 
-                if s < 35:
+                # LIGHT BLUE
+
+                if v > 65:
                     _logger.warning(
                         f"[DOMINANT COLOR] "
                         f"result=light blue "
@@ -8281,7 +8923,6 @@ class VendorImportJob(models.Model):
                         f"v={v:.1f}"
                     )
                     return "light blue"
-
 
                 _logger.warning(
                     f"[DOMINANT COLOR] "
@@ -8320,6 +8961,18 @@ class VendorImportJob(models.Model):
                 )
                 return "pink"
 
+
+            _logger.warning(
+
+                f"[COLOR UNKNOWN] "
+
+                f"h={h:.1f} "
+
+                f"s={s:.1f} "
+
+                f"v={v:.1f}"
+            )
+
             return "unknown"
 
         except Exception as e:
@@ -8332,7 +8985,6 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
-
 
     # =============================================================
     # CLIP IMAGE / VARIANT MATCH
@@ -8533,6 +9185,15 @@ class VendorImportJob(models.Model):
                 f"matched_color="
                 f"{matched_asset.get('dominant_color')} "
 
+                f"score={similarity_score}"
+            )
+
+            _logger.warning(
+                "[CLIP RAW RESULT] "
+                f"variant={variant_text} "
+                f"matched_color={matched_asset.get('dominant_color')} "
+                f"index={matched_asset.get('clean_index')} "
+                f"is_lifestyle={matched_asset.get('is_lifestyle')} "
                 f"score={similarity_score}"
             )
 
@@ -8797,39 +9458,42 @@ class VendorImportJob(models.Model):
             )
 
 
+
             if clip_asset:
 
                 clip_index = clip_asset.get(
                     "clean_index"
                 )
 
-                if clip_index in used_asset_indexes:
+                if clip_index not in used_asset_indexes:
 
-                    _logger.warning(
-
-                        f"[CLIP DUPLICATE BLOCKED] "
-
-                        f"variant={variant_text}"
+                    used_asset_indexes.add(
+                        clip_index
                     )
 
-                else:
-
-                    clip_asset["clip_boost"] = 220
-
                     _logger.warning(
-
-                        f"[CLIP MATCH SUCCESS] "
-
+                        f"[CLIP DIRECT MATCH] "
                         f"variant={variant_text} "
-
-                        f"color={clip_asset.get('dominant_color')}"
+                        f"color={clip_asset.get('dominant_color')} "
+                        f"index={clip_index}"
                     )
+
+                    return clip_asset
 
             # =====================================
             # SCORE ASSETS
             # =====================================
 
             for asset in asset_pool:
+                if asset.get("is_lifestyle"):
+
+                    _logger.warning(
+                        f"[VARIANT SKIP LIFESTYLE] "
+                        f"variant={variant_text} "
+                        f"asset={asset.get('clean_index')}"
+                    )
+
+                    continue
 
                 already_used = (
                     asset.get("clean_index")
@@ -8846,6 +9510,18 @@ class VendorImportJob(models.Model):
                     f"color={asset.get('dominant_color')} "
 
                     f"used={already_used}"
+                )
+
+                _logger.warning(
+
+                    f"[MATCH CANDIDATE] "
+
+                    f"variant={variant_text} "
+
+                    f"asset_color={asset.get('dominant_color')} "
+
+                    f"asset_index={asset.get('index')}"
+
                 )
 
                 asset_score = 0
@@ -8991,29 +9667,47 @@ class VendorImportJob(models.Model):
 
                 color_map = [
 
-                    "red",
-                    "blue",
+                    "light blue",
+                    "royal blue",
+                    "sky blue",
                     "navy",
+
+                    "blue",
+
+                    "lime green",
+                    "dark green",
+
                     "green",
-                    "lime",
-                    "yellow",
+
+                    "red",
                     "orange",
+                    "yellow",
                     "white",
                     "black",
-                    "gray",
                     "grey",
-                    "light_grey",
-                    "charcoal",
+                    "gray",
                     "silver",
                     "purple",
                     "pink",
-                    "brown"
+                    "brown",
+                    "beige"
                 ]
 
                 for color in color_map:
 
                     if color not in normalized_variant_text:
                         continue
+
+                    variant_color = color
+
+                    _logger.warning(
+
+                        f"[VARIANT COLOR DETECTED] "
+
+                        f"variant={normalized_variant_text} "
+
+                        f"color={variant_color}"
+                    )
 
                     _logger.warning(
 
@@ -9128,6 +9822,13 @@ class VendorImportJob(models.Model):
                 # ---------------------------------
                 # BEST MATCH
                 # ---------------------------------
+                _logger.warning(
+                    "[MATCH SCORE] "
+                    f"variant={variant_text} "
+                    f"asset_index={asset.get('clean_index')} "
+                    f"color={dominant_color} "
+                    f"score={asset_score}"
+                )
 
                 if asset_score > best_score:
 
@@ -9204,6 +9905,7 @@ class VendorImportJob(models.Model):
 
                     f"score={best_score}"
                 )
+
 
             return best_asset
 
@@ -10283,7 +10985,7 @@ class VendorImportJob(models.Model):
         self._safe_commit_progress()
 
 
-    #==========create pdf product====================================
+    #==========create pdf product==========================================
 
     def create_products_pdf(self):
 
@@ -10983,6 +11685,13 @@ class VendorImportJob(models.Model):
                                 ):
 
                                     variant_record = pv
+
+                                    _logger.warning(
+                                        f"[VARIANT RECORD MATCHED] "
+                                        f"variant={variant_name} "
+                                        f"odoo_variant={pv.display_name}"
+                                    )
+
                                     break
 
                         # ---------------------------------
@@ -11006,7 +11715,19 @@ class VendorImportJob(models.Model):
                         if variant_record:
 
                             try:
-                                
+                                _logger.warning(
+                                    f"[CREATE VARIANT INPUT] "
+                                    f"variant={variant.get('attributes', {})} "
+                                    f"image_index={variant.get('image_index')} "
+                                    f"used_assets={sorted(list(used_asset_indexes))}"
+                                )
+
+                                _logger.warning(
+                                    f"[CREATE VARIANT INPUT] "
+                                    f"color={variant.get('attributes', {}).get('Color')} "
+                                    f"image_index={variant.get('image_index')}"
+                                )
+
                                 matched_asset = self._match_variant_image(
 
                                     variant,
@@ -11021,6 +11742,14 @@ class VendorImportJob(models.Model):
                                 # =====================================
 
                                 if matched_asset:
+
+                                    _logger.warning(
+                                        f"[VARIANT MATCH RESULT] "
+                                        f"color={variant.get('attributes', {}).get('Color')} "
+                                        f"asset={matched_asset.get('index')} "
+                                        f"pool_color={matched_asset.get('dominant_color')} "
+                                        f"clean={matched_asset.get('clean_index')}"
+                                    )
 
                                     variant_record.image_1920 = (
                                         matched_asset.get(
@@ -11044,13 +11773,26 @@ class VendorImportJob(models.Model):
                                             f"| index={asset_index}"
                                         )
 
+
                                     _logger.warning(
 
                                         f"[VARIANT IMAGE APPLIED] "
 
-                                        f"{variant_name} "
+                                        f"variant={variant_name} "
 
-                                        f"| asset={matched_asset.get('index')}"
+                                        f"| asset={matched_asset.get('index')} "
+
+                                        f"| color={matched_asset.get('dominant_color')} "
+
+                                        f"| lifestyle={matched_asset.get('is_lifestyle')} "
+
+                                        f"| width={matched_asset.get('width')} "
+
+                                        f"| height={matched_asset.get('height')} "
+
+                                        f"| x={matched_asset.get('x')} "
+
+                                        f"| y={matched_asset.get('y')}"
                                     )
 
                             except Exception as e:
@@ -11622,6 +12364,26 @@ class VendorImportJob(models.Model):
 
             try:
 
+                asset = next(
+                    (
+                        a for a in asset_pool
+                        if a.get("clean_index") == index
+                    ),
+                    {}
+                )
+
+                _logger.warning(
+                    f"[GALLERY CANDIDATE] "
+                    f"index={index} "
+                    f"color={asset.get('dominant_color')} "
+                    f"lifestyle={asset.get('is_lifestyle')} "
+                    f"width={asset.get('width')} "
+                    f"height={asset.get('height')} "
+                    f"x={asset.get('x')} "
+                    f"y={asset.get('y')}"
+                )
+
+
                 gallery_image = (
                     self._resolve_asset_image(
 
@@ -11656,6 +12418,13 @@ class VendorImportJob(models.Model):
                     'image_1920':
                         gallery_image
                 })
+
+                _logger.warning(
+                    f"[GALLERY ADDED] "
+                    f"index={index} "
+                    f"color={asset.get('dominant_color')} "
+                    f"lifestyle={asset.get('is_lifestyle')}"
+                )
 
                 used_hashes.add(
                     image_hash
