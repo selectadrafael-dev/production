@@ -5307,6 +5307,25 @@ class VendorImportJob(models.Model):
                     f"{result[:4000]}"
                 )
 
+                for product in parsed:
+
+                    for variant in product.get("variants", []):
+
+                        color = variant.get(
+                            "attributes",
+                            {}
+                        ).get("Color")
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        _logger.warning(
+                            f"[AI COLOR->IMAGE] "
+                            f"color={color} "
+                            f"image_index={image_index}"
+                        )
+
                 try:
 
                     for pidx, product in enumerate(parsed):
@@ -11373,6 +11392,12 @@ class VendorImportJob(models.Model):
                                     variant_record = pv
                                     break
 
+                                _logger.warning(
+                                    f"[VARIANT RECORD MATCHED] "
+                                    f"variant={variant_name} "
+                                    f"odoo_variant={pv.display_name}"
+                                )
+
                         # ---------------------------------
                         # SAFE FALLBACK
                         # ---------------------------------
@@ -11394,7 +11419,13 @@ class VendorImportJob(models.Model):
                         if variant_record:
 
                             try:
-                                
+                                _logger.warning(
+                                    f"[CREATE VARIANT INPUT] "
+                                    f"variant={variant.get('attributes', {})} "
+                                    f"image_index={variant.get('image_index')} "
+                                    f"used_assets={sorted(list(used_asset_indexes))}"
+                                )
+
                                 matched_asset = self._match_variant_image(
 
                                     variant,
