@@ -7057,7 +7057,11 @@ class VendorImportJob(models.Model):
                 # =====================================
                 # SUPPORT OLD + NEW FORMAT
                 # =====================================
-
+                _logger.warning(
+                    f"[POOL RAW ASSET] "
+                    f"keys={list(asset.keys()) if isinstance(asset, dict) else 'string'}"
+                )
+                
                 if isinstance(asset, dict):
 
                     img = asset.get("image")
@@ -11396,7 +11400,7 @@ class VendorImportJob(models.Model):
                                         f"variant={variant_name} "
                                         f"odoo_variant={pv.display_name}"
                                     )
-                                    
+
                                     break
 
                         # ---------------------------------
