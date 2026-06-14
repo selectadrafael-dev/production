@@ -7782,18 +7782,36 @@ class VendorImportJob(models.Model):
                         f"size={crop.size[0]}x{crop.size[1]}"
                     )
 
+                    if crop:
+
+                        _logger.warning(
+                            f"[POST TRIM] "
+                            f"size={crop.size[0]}x{crop.size[1]}"
+                        )
+
+                    else:
+
+                        _logger.warning(
+                            "[POST TRIM] crop=None"
+                        )
+
                     # =====================================
                     # VALIDATE
                     # =====================================
 
-                    if not self._is_valid_product_crop(crop):
+                    valid_crop = self._is_valid_product_crop(crop)
+
+                    _logger.warning(
+                        f"[VALIDATION RESULT] "
+                        f"valid={valid_crop} "
+                        f"x={x} y={y} w={w} h={h}"
+                    )
+
+                    if not valid_crop:
 
                         _logger.warning(
                             f"[SEGMENT REJECT INVALID] "
-                            f"x={x} "
-                            f"y={y} "
-                            f"w={w} "
-                            f"h={h}"
+                            f"x={x} y={y} w={w} h={h}"
                         )
 
                         continue
