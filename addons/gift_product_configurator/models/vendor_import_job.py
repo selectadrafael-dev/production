@@ -5307,6 +5307,101 @@ class VendorImportJob(models.Model):
                     f"{result[:4000]}"
                 )
 
+                #=========prevent hero img from product variants=========
+                for product in parsed:
+
+                    hero_index = product.get(
+                        "hero_image_index"
+                    )
+
+                    variants = product.get(
+                        "variants",
+                        []
+                    )
+
+                    clean_variants = []
+
+                    for variant in variants:
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        color = (
+                            variant.get(
+                                "attributes",
+                                {}
+                            ).get(
+                                "Color",
+                                ""
+                            )
+                        )
+
+                        if (
+                            hero_index is not None
+                            and
+                            image_index is not None
+                            and
+                            image_index == hero_index
+                        ):
+
+                            _logger.warning(
+                                f"[AI VARIANT REMOVED HERO] "
+                                f"color={color} "
+                                f"image_index={image_index} "
+                                f"hero_index={hero_index}"
+                            )
+
+                            continue
+
+                        clean_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = clean_variants
+
+                #==========prevent variant duplicate==========
+                    seen_colors = set()
+
+                    deduped_variants = []
+
+                    for variant in product["variants"]:
+
+                        color = (
+                            variant.get(
+                                "attributes",
+                                {}
+                            ).get(
+                                "Color",
+                                ""
+                            )
+                            .strip()
+                            .lower()
+                        )
+
+                        if not color:
+                            deduped_variants.append(
+                                variant
+                            )
+                            continue
+
+                        if color in seen_colors:
+
+                            _logger.warning(
+                                f"[AI VARIANT REMOVED DUPLICATE] "
+                                f"color={color}"
+                            )
+
+                            continue
+
+                        seen_colors.add(color)
+
+                        deduped_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = deduped_variants
+
                 for product in parsed:
 
                     for variant in product.get("variants", []):
@@ -7061,7 +7156,7 @@ class VendorImportJob(models.Model):
                     f"[POOL RAW ASSET] "
                     f"keys={list(asset.keys()) if isinstance(asset, dict) else 'string'}"
                 )
-                
+
                 if isinstance(asset, dict):
 
                     img = asset.get("image")
@@ -12083,6 +12178,8 @@ class VendorImportJob(models.Model):
                     f"x={asset.get('x')} "
                     f"y={asset.get('y')}"
                 )
+
+
                 gallery_image = (
                     self._resolve_asset_image(
 
