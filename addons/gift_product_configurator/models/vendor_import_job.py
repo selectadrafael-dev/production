@@ -3869,7 +3869,7 @@ class VendorImportJob(models.Model):
             )
 
 
-    # ---------------- Send to OPENAI URL ----------------
+    # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
 
         import re
@@ -4541,6 +4541,7 @@ class VendorImportJob(models.Model):
 
                     sample = imgs[0]
 
+                    # if isinstance(sample, dict):
                     if isinstance(sample, dict):
 
                         _logger.warning(
@@ -4548,6 +4549,18 @@ class VendorImportJob(models.Model):
                             f"keys={list(sample.keys())}"
                         )
 
+                        _logger.warning(
+                            f"[EXTRACTED IMAGE VALUES] "
+                            f"width={sample.get('width')} "
+                            f"height={sample.get('height')} "
+                            f"x={sample.get('x')} "
+                            f"y={sample.get('y')} "
+                            f"lifestyle={sample.get('is_lifestyle')} "
+                            f"hero={sample.get('hero_score')} "
+                            f"gallery={sample.get('gallery_score')}"
+                        )
+
+                        
                     break
 
         except Exception as e:
