@@ -11390,13 +11390,14 @@ class VendorImportJob(models.Model):
                                 ):
 
                                     variant_record = pv
-                                    break
 
-                                _logger.warning(
-                                    f"[VARIANT RECORD MATCHED] "
-                                    f"variant={variant_name} "
-                                    f"odoo_variant={pv.display_name}"
-                                )
+                                    _logger.warning(
+                                        f"[VARIANT RECORD MATCHED] "
+                                        f"variant={variant_name} "
+                                        f"odoo_variant={pv.display_name}"
+                                    )
+                                    
+                                    break
 
                         # ---------------------------------
                         # SAFE FALLBACK
@@ -12060,6 +12061,24 @@ class VendorImportJob(models.Model):
 
             try:
 
+                asset = next(
+                    (
+                        a for a in asset_pool
+                        if a.get("clean_index") == index
+                    ),
+                    {}
+                )
+
+                _logger.warning(
+                    f"[GALLERY CANDIDATE] "
+                    f"index={index} "
+                    f"color={asset.get('dominant_color')} "
+                    f"lifestyle={asset.get('is_lifestyle')} "
+                    f"width={asset.get('width')} "
+                    f"height={asset.get('height')} "
+                    f"x={asset.get('x')} "
+                    f"y={asset.get('y')}"
+                )
                 gallery_image = (
                     self._resolve_asset_image(
 
@@ -12094,6 +12113,13 @@ class VendorImportJob(models.Model):
                     'image_1920':
                         gallery_image
                 })
+
+                _logger.warning(
+                    f"[GALLERY ADDED] "
+                    f"index={index} "
+                    f"color={asset.get('dominant_color')} "
+                    f"lifestyle={asset.get('is_lifestyle')}"
+                )
 
                 used_hashes.add(
                     image_hash
