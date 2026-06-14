@@ -11547,6 +11547,14 @@ class VendorImportJob(models.Model):
 
                                 if matched_asset:
 
+                                    _logger.warning(
+                                        f"[VARIANT MATCH RESULT] "
+                                        f"color={variant.get('attributes', {}).get('Color')} "
+                                        f"asset={matched_asset.get('index')} "
+                                        f"pool_color={matched_asset.get('dominant_color')} "
+                                        f"clean={matched_asset.get('clean_index')}"
+                                    )
+
                                     variant_record.image_1920 = (
                                         matched_asset.get(
                                             "image"
