@@ -7769,10 +7769,20 @@ class VendorImportJob(models.Model):
                     x2 = min(x + w + pad, original_width)
                     y2 = min(y + h + pad, original_height)
 
+
+                    _logger.warning(
+                        f"[BEFORE CROP] "
+                        f"x1={x1} y1={y1} x2={x2} y2={y2}"
+                    )
+
                     crop = pil_image.crop(
                         (x1, y1, x2, y2)
                     )
 
+                    _logger.warning(
+                        f"[AFTER CROP] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
 
                     crop = self._trim_catalog_whitespace(
                         crop
