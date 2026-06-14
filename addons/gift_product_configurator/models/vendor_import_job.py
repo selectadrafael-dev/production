@@ -11426,6 +11426,12 @@ class VendorImportJob(models.Model):
                                     f"used_assets={sorted(list(used_asset_indexes))}"
                                 )
 
+                                _logger.warning(
+                                    f"[CREATE VARIANT INPUT] "
+                                    f"color={variant.get('attributes', {}).get('Color')} "
+                                    f"image_index={variant.get('image_index')}"
+                                )
+
                                 matched_asset = self._match_variant_image(
 
                                     variant,
