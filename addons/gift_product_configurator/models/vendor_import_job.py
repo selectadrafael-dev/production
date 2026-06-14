@@ -8143,9 +8143,9 @@ class VendorImportJob(models.Model):
         )
         return deduped
 
-    # =======================================
+    # ============================================
     # ADVANCED DOMINANT COLOR DETECTION
-    # =======================================
+    # ============================================
     
     def _detect_dominant_color(
 
