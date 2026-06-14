@@ -8804,6 +8804,15 @@ class VendorImportJob(models.Model):
                 f"score={similarity_score}"
             )
 
+            _logger.warning(
+                "[CLIP RAW RESULT] "
+                f"variant={variant_text} "
+                f"matched_color={matched_asset.get('dominant_color')} "
+                f"index={matched_asset.get('clean_index')} "
+                f"is_lifestyle={matched_asset.get('is_lifestyle')} "
+                f"score={similarity_score}"
+            )
+            
             return matched_asset
 
         except Exception as e:
@@ -9433,7 +9442,7 @@ class VendorImportJob(models.Model):
                     f"color={dominant_color} "
                     f"score={asset_score}"
                 )
-                
+
                 if asset_score > best_score:
 
                     best_score = asset_score
