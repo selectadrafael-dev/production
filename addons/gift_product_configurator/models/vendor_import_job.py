@@ -1925,6 +1925,12 @@ class VendorImportJob(models.Model):
                 )
 
                 _logger.warning(
+                    "[COLOR NORMALIZATION] raw=%s | normalized=%s",
+                    attr_value,
+                    normalized_color
+                )
+
+                _logger.warning(
 
                     f"[COLOR VARIANT DEBUG] "
 
@@ -7306,24 +7312,19 @@ class VendorImportJob(models.Model):
         )
 
         for asset in prepared:
+           
             _logger.warning(
-
                 f"[POOL FINAL] "
-
                 f"index={asset.get('clean_index')} "
-
                 f"color={asset.get('dominant_color')} "
-
+                f"lifestyle={asset.get('is_lifestyle')} "
+                f"x={asset.get('x')} "
+                f"y={asset.get('y')} "
                 f"hero={asset.get('hero_score')} "
-
                 f"gallery={asset.get('gallery_score')} "
-
                 f"score={asset.get('score')} "
-
                 f"collage={asset.get('is_collage')} "
-
                 f"width={asset.get('width')} "
-
                 f"height={asset.get('height')}"
             )
         return prepared
@@ -8812,7 +8813,7 @@ class VendorImportJob(models.Model):
                 f"is_lifestyle={matched_asset.get('is_lifestyle')} "
                 f"score={similarity_score}"
             )
-            
+
             return matched_asset
 
         except Exception as e:
@@ -11359,13 +11360,26 @@ class VendorImportJob(models.Model):
                                             f"| index={asset_index}"
                                         )
 
+
                                     _logger.warning(
 
                                         f"[VARIANT IMAGE APPLIED] "
 
-                                        f"{variant_name} "
+                                        f"variant={variant_name} "
 
-                                        f"| asset={matched_asset.get('index')}"
+                                        f"| asset={matched_asset.get('index')} "
+
+                                        f"| color={matched_asset.get('dominant_color')} "
+
+                                        f"| lifestyle={matched_asset.get('is_lifestyle')} "
+
+                                        f"| width={matched_asset.get('width')} "
+
+                                        f"| height={matched_asset.get('height')} "
+
+                                        f"| x={matched_asset.get('x')} "
+
+                                        f"| y={matched_asset.get('y')}"
                                     )
 
                             except Exception as e:
