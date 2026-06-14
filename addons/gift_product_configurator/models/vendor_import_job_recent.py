@@ -8330,6 +8330,35 @@ class VendorImportJob(models.Model):
 
                 ]).lower()
 
+                real_assets = [
+
+                    a for a in asset_pool
+
+                    if not a.get(
+                        "is_lifestyle",
+                        False
+                    )
+                ]
+
+                _logger.warning(
+
+                    f"[VARIANT POOLS] "
+
+                    f"real={len(real_assets)} "
+
+                    f"lifestyle={len(lifestyle_assets)}"
+                )
+
+                lifestyle_assets = [
+
+                    a for a in asset_pool
+
+                    if a.get(
+                        "is_lifestyle",
+                        False
+                    )
+                ]
+
             # =====================================
             # SCORE ASSETS
             # =====================================
