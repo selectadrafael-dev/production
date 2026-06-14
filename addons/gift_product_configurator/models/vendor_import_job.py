@@ -10599,7 +10599,7 @@ class VendorImportJob(models.Model):
         self._safe_commit_progress()
 
 
-    #==========create pdf product====================================
+    #==========create pdf product==========================================
 
     def create_products_pdf(self):
 
