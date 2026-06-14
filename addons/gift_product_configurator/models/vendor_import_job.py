@@ -7773,28 +7773,32 @@ class VendorImportJob(models.Model):
                         (x1, y1, x2, y2)
                     )
 
+
                     crop = self._trim_catalog_whitespace(
                         crop
                     )
+
+                    if not crop:
+
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"trim returned None "
+                            f"x={x} y={y} w={w} h={h}"
+                        )
+
+                        continue
 
                     _logger.warning(
                         f"[TRIM RESULT] "
                         f"size={crop.size[0]}x{crop.size[1]}"
                     )
 
-                    if crop:
+                    _logger.warning(
+                        f"[POST TRIM] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
 
-                        _logger.warning(
-                            f"[POST TRIM] "
-                            f"size={crop.size[0]}x{crop.size[1]}"
-                        )
-
-                    else:
-
-                        _logger.warning(
-                            "[POST TRIM] crop=None"
-                        )
-
+                  
                     # =====================================
                     # VALIDATE
                     # =====================================
