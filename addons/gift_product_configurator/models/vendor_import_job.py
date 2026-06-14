@@ -8028,6 +8028,32 @@ class VendorImportJob(models.Model):
                         f"ratio={ratio:.2f}"
                     )
 
+                    # =====================================
+                    # LIFESTYLE DETECTION
+                    # =====================================
+
+                    is_lifestyle = False
+
+                    if skin_ratio > 0.12:
+
+                        is_lifestyle = True
+
+                    elif (
+                        coverage_ratio > 0.18
+                        and
+                        background_ratio < 0.30
+                    ):
+
+                        is_lifestyle = True
+
+                    _logger.warning(
+                        f"[LIFESTYLE CHECK] "
+                        f"skin={skin_ratio:.3f} "
+                        f"coverage={coverage_ratio:.3f} "
+                        f"bg={background_ratio:.3f} "
+                        f"lifestyle={is_lifestyle}"
+                    )
+
                    
                     candidate_crops.append({
 
@@ -8055,7 +8081,9 @@ class VendorImportJob(models.Model):
 
                         "crop_area": crop_area,
 
-                        "coverage_ratio": coverage_ratio
+                        "coverage_ratio": coverage_ratio,
+
+                        "is_lifestyle": is_lifestyle
                     })
 
                     _logger.warning(
@@ -9298,6 +9326,15 @@ class VendorImportJob(models.Model):
             # =====================================
 
             for asset in asset_pool:
+                if asset.get("is_lifestyle"):
+
+                    _logger.warning(
+                        f"[VARIANT SKIP LIFESTYLE] "
+                        f"variant={variant_text} "
+                        f"asset={asset.get('clean_index')}"
+                    )
+
+                    continue
 
                 already_used = (
                     asset.get("clean_index")
