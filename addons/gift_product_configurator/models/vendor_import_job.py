@@ -3726,6 +3726,20 @@ class VendorImportJob(models.Model):
                             )
 
                             self._safe_commit_progress()
+                        
+                        if all_page_images:
+
+                            first = all_page_images[0]
+
+                            _logger.warning(
+                                f"[PAGE IMAGE SAMPLE] "
+                                f"keys={list(first.keys()) if isinstance(first, dict) else type(first)} "
+                                f"lifestyle={first.get('is_lifestyle') if isinstance(first, dict) else 'NA'} "
+                                f"width={first.get('width') if isinstance(first, dict) else 'NA'} "
+                                f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
+                                f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
+                                f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
+                            )
 
                         self.env[
                             'vendor.import.page'
@@ -4519,6 +4533,23 @@ class VendorImportJob(models.Model):
                 "[]"
             )
 
+            for block in page_blocks:
+
+                imgs = block.get("images", [])
+
+                if imgs:
+
+                    sample = imgs[0]
+
+                    if isinstance(sample, dict):
+
+                        _logger.warning(
+                            f"[EXTRACTED IMAGE SAMPLE] "
+                            f"keys={list(sample.keys())}"
+                        )
+
+                    break
+
         except Exception as e:
 
             _logger.warning(
@@ -4674,6 +4705,28 @@ class VendorImportJob(models.Model):
             f"| valid={len(page_images)}"
         )
 
+
+        if page_images:
+
+            sample = page_images[0]
+
+            _logger.warning(
+                f"[AI SAVE IMAGE SAMPLE] "
+                f"keys={list(sample.keys())}"
+            )
+
+            _logger.warning(
+                f"[AI SAVE IMAGE DATA] "
+                f"width={sample.get('width')} "
+                f"height={sample.get('height')} "
+                f"x={sample.get('x')} "
+                f"y={sample.get('y')} "
+                f"lifestyle={sample.get('is_lifestyle')} "
+                f"hero={sample.get('hero_score')} "
+                f"gallery={sample.get('gallery_score')}"
+            )
+
+
         # =====================================
         # NO VALID IMAGE FAILSAFE
         # =====================================
@@ -4694,6 +4747,7 @@ class VendorImportJob(models.Model):
                 existing_map[
                     p.get("page")
                 ] = p
+
 
             existing_map[
                 next_record.page_number
@@ -5109,7 +5163,6 @@ class VendorImportJob(models.Model):
 
         {page_stock}
         """
-
 
         # =====================================================
         # AI CALL
