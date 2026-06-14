@@ -8275,32 +8275,7 @@ class VendorImportJob(models.Model):
                 f"dark_blue={dark_blue_ratio:.3f}"
             )
 
-            # =====================================
-            # TRUE BLACK DETECTION
-            # =====================================
-
-            if (
-
-                very_dark_ratio > 0.24
-
-                or
-
-                (
-                    dark_pixels_ratio > 0.40
-
-                    and
-
-                    abs(r - g) < 24
-
-                    and
-
-                    abs(g - b) < 24
-                )
-            ):
-
-                return "black"
-
-            # =====================================
+             # =====================================
             # RGB → HSV
             # =====================================
 
@@ -8336,6 +8311,31 @@ class VendorImportJob(models.Model):
                 )
 
                 return "navy"
+
+            # =====================================
+            # TRUE BLACK DETECTION
+            # =====================================
+
+            if (
+
+                very_dark_ratio > 0.24
+
+                or
+
+                (
+                    dark_pixels_ratio > 0.40
+
+                    and
+
+                    abs(r - g) < 24
+
+                    and
+
+                    abs(g - b) < 24
+                )
+            ):
+
+                return "black"
 
             # =====================================
             # BLACK
@@ -8483,6 +8483,24 @@ class VendorImportJob(models.Model):
             # =====================================
 
             if 70 <= h < 170:
+
+                # OLIVE
+
+                if (
+                    70 <= h <= 105
+                    and s < 55
+                    and v < 65
+                ):
+
+                    _logger.warning(
+                        f"[DOMINANT COLOR] "
+                        f"result=olive "
+                        f"h={h:.1f} "
+                        f"s={s:.1f} "
+                        f"v={v:.1f}"
+                    )
+                    return "olive"
+
                 _logger.warning(
                     f"[DOMINANT COLOR] "
                     f"result=green "
@@ -8492,11 +8510,13 @@ class VendorImportJob(models.Model):
                 )
                 return "green"
 
-            # =====================================
+            # =======================================
             # BLUE
-            # =====================================
+            # =======================================
 
             if 170 <= h < 260:
+
+                # NAVY
 
                 if v < 45:
                     _logger.warning(
@@ -8508,7 +8528,9 @@ class VendorImportJob(models.Model):
                     )
                     return "navy"
 
-                if s < 35:
+                # LIGHT BLUE
+
+                if v > 65:
                     _logger.warning(
                         f"[DOMINANT COLOR] "
                         f"result=light blue "
@@ -8517,7 +8539,6 @@ class VendorImportJob(models.Model):
                         f"v={v:.1f}"
                     )
                     return "light blue"
-
 
                 _logger.warning(
                     f"[DOMINANT COLOR] "
@@ -8580,7 +8601,6 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
-
 
     # =============================================================
     # CLIP IMAGE / VARIANT MATCH
