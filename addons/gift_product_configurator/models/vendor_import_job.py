@@ -3731,7 +3731,7 @@ class VendorImportJob(models.Model):
                             )
 
                             self._safe_commit_progress()
-                            
+
                         _logger.warning(
                             f"[PAGE IMAGE DEBUG 2] "
                             f"images={len(all_page_images)}"
@@ -8214,8 +8214,17 @@ class VendorImportJob(models.Model):
                 # =========================================
                 # FALLBACK
                 # =========================================
+                _logger.warning(
+                    f"[SEGMENT SUMMARY BEFORE FALLBACK] "
+                    f"candidate_crops={len(candidate_crops)} "
+                    f"contours={len(contours)}"
+                )
 
                 if not candidate_crops:
+
+                    _logger.warning(
+                        "[SEGMENT FALLBACK TRIGGERED]"
+                    )
 
                     buffer = BytesIO()
 
