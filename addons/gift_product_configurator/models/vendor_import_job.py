@@ -1788,6 +1788,13 @@ class VendorImportJob(models.Model):
             'color name'
         ]
 
+        _logger.warning(
+            "[ATTRIBUTE VALUE INPUT] "
+            f"attribute={attr_name} "
+            f"value={attr_value} "
+            f"is_color={is_color_attribute}"
+        )
+
         attribute = self.env[
             'product.attribute'
         ].search([
@@ -5294,6 +5301,33 @@ class VendorImportJob(models.Model):
             try:
 
                 parsed = json.loads(result)
+                try:
+
+                    for pidx, product in enumerate(parsed):
+
+                        variants = product.get("variants", [])
+
+                        _logger.warning(
+                            f"[AI PRODUCT] "
+                            f"page={next_record.page_number} "
+                            f"product={pidx} "
+                            f"name={product.get('name')}"
+                        )
+
+                        for vidx, variant in enumerate(variants):
+
+                            _logger.warning(
+                                f"[AI VARIANT] "
+                                f"product={pidx} "
+                                f"variant={vidx} "
+                                f"attributes={variant.get('attributes', {})}"
+                            )
+
+                except Exception as e:
+
+                    _logger.warning(
+                        f"[AI VARIANT LOG FAILED] {str(e)}"
+                    )
 
             except Exception as e:
 
