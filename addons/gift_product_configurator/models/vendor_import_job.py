@@ -9426,7 +9426,14 @@ class VendorImportJob(models.Model):
                 # ---------------------------------
                 # BEST MATCH
                 # ---------------------------------
-
+                _logger.warning(
+                    "[MATCH SCORE] "
+                    f"variant={variant_text} "
+                    f"asset_index={asset.get('clean_index')} "
+                    f"color={dominant_color} "
+                    f"score={asset_score}"
+                )
+                
                 if asset_score > best_score:
 
                     best_score = asset_score
