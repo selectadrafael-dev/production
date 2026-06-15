@@ -9458,33 +9458,27 @@ class VendorImportJob(models.Model):
             )
 
 
+
             if clip_asset:
 
                 clip_index = clip_asset.get(
                     "clean_index"
                 )
 
-                if clip_index in used_asset_indexes:
+                if clip_index not in used_asset_indexes:
 
-                    _logger.warning(
-
-                        f"[CLIP DUPLICATE BLOCKED] "
-
-                        f"variant={variant_text}"
+                    used_asset_indexes.add(
+                        clip_index
                     )
 
-                else:
-
-                    clip_asset["clip_boost"] = 220
-
                     _logger.warning(
-
-                        f"[CLIP MATCH SUCCESS] "
-
+                        f"[CLIP DIRECT MATCH] "
                         f"variant={variant_text} "
-
-                        f"color={clip_asset.get('dominant_color')}"
+                        f"color={clip_asset.get('dominant_color')} "
+                        f"index={clip_index}"
                     )
+
+                    return clip_asset
 
             # =====================================
             # SCORE ASSETS
