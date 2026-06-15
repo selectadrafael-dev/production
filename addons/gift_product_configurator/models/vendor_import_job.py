@@ -5412,8 +5412,6 @@ class VendorImportJob(models.Model):
                         []
                     )
 
-                    clean_variants = []
-
                     for variant in variants:
 
                         image_index = variant.get(
@@ -5439,21 +5437,13 @@ class VendorImportJob(models.Model):
                         ):
 
                             _logger.warning(
-                                f"[AI VARIANT REMOVED HERO] "
+
+                                f"[AI HERO SHARED WITH VARIANT] "
                                 f"color={color} "
-                                f"image_index={image_index} "
-                                f"hero_index={hero_index}"
+                                f"image_index={image_index}"
                             )
 
-                            continue
-
-                        clean_variants.append(
-                            variant
-                        )
-
-                    product["variants"] = clean_variants
-
-                #==========prevent variant duplicate==========
+                    #==========prevent variant duplicate==========
                     seen_colors = set()
 
                     deduped_variants = []
@@ -5473,9 +5463,11 @@ class VendorImportJob(models.Model):
                         )
 
                         if not color:
+
                             deduped_variants.append(
                                 variant
                             )
+
                             continue
 
                         if color in seen_colors:
