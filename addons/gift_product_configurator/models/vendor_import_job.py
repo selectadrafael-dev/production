@@ -3630,37 +3630,6 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
-                            # if images and isinstance(images[0], dict):
-
-                            #     _logger.warning(
-                            #         "[RENDER METADATA MODE]"
-                            #     )
-
-                            # else:
-
-                            #     _logger.warning(
-                            #         "[LEGACY IMAGE MODE]"
-                            #     )
-
-                            # # ===========================
-                            # # CLEAN CATALOG SEGMENTATION
-                            # # ===========================
-
-                            # if images and isinstance(images[0], dict):
-
-                            #     _logger.warning(
-                            #         "[RENDER METADATA MODE]"
-                            #     )
-
-                            #     _logger.warning(
-                            #         f"[METADATA SAMPLE] "
-                            #         f"keys={list(images[0].keys())}"
-                            #     )
-
-                            #     _logger.warning(
-                            #         "[SKIP RESEGMENTATION]"
-                            #     )
-
                             if images and isinstance(images[0], dict):
 
                                 _logger.warning(
