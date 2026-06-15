@@ -854,6 +854,18 @@ def extract():
                 1 + (center_factor * 0.18)
             )
 
+            _logger.warning(
+
+                f"[RENDER CROP] "
+
+                f"w={w} "
+
+                f"h={h} "
+
+                f"ratio={aspect_ratio:.2f} "
+
+                f"lifestyle={is_lifestyle}"
+            )
 
             candidate_images.append({
 
@@ -956,6 +968,12 @@ def extract():
                         False
                     )
                 })
+
+                if item.get("is_lifestyle"):
+
+                    _logger.warning(
+                        "[RENDER LIFESTYLE SENT]"
+                    )
 
                 
                 _logger.warning(
