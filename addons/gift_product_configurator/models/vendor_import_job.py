@@ -7283,6 +7283,7 @@ class VendorImportJob(models.Model):
                         "centered_object",
                         False
                     )
+                    
 
                 else:
 
@@ -7507,12 +7508,16 @@ class VendorImportJob(models.Model):
                     "centered_object": centered_object,
                 })
 
+
                 _logger.warning(
+
                     f"[POOL ADD] "
+
                     f"index={len(prepared)-1} "
+
                     f"color={dominant_color} "
-                    f"hero={hero_score} "
-                    f"gallery={gallery_score}"
+
+                    f"lifestyle={asset.get('is_lifestyle')}"
                 )
 
                 seen[image_hash] = {
@@ -9432,6 +9437,47 @@ class VendorImportJob(models.Model):
                     variant_text or ""
                 ).strip().lower()
 
+
+                real_assets = [
+
+                    a for a in asset_pool
+
+                    if (
+
+                        not a.get(
+                            "is_lifestyle",
+                            False
+                        )
+
+                        and
+
+                        (
+                            a.get("width", 0)
+                            *
+                            a.get("height", 0)
+                        ) < 250000
+                    )
+                ]
+
+                lifestyle_assets = [
+
+                    a for a in asset_pool
+
+                    if a.get(
+                        "is_lifestyle",
+                        False
+                    )
+                ]
+
+                _logger.warning(
+
+                    f"[VARIANT POOLS] "
+
+                    f"real={len(real_assets)} "
+
+                    f"lifestyle={len(lifestyle_assets)}"
+                )
+
             # =====================================
             # CLIP SEMANTIC MATCH
             # =====================================
@@ -9442,12 +9488,17 @@ class VendorImportJob(models.Model):
                 f"pool={len(asset_pool)}"
             )
 
-            clip_asset = self._clip_match_variant(
 
-                variant_text,
+            clip_asset = None
 
-                asset_pool
-            )
+            if real_assets:
+
+                clip_asset = self._clip_match_variant(
+
+                    variant_text,
+
+                    real_assets
+                )
 
             _logger.warning(
                 f"[CLIP RESULT] "
@@ -9484,7 +9535,30 @@ class VendorImportJob(models.Model):
             # SCORE ASSETS
             # =====================================
 
-            for asset in asset_pool:
+            # for asset in asset_pool:
+            candidate_pool = []
+
+            unused_real = [
+
+                a for a in real_assets
+
+                if a.get("clean_index")
+                not in used_asset_indexes
+            ]
+
+            if unused_real:
+
+                candidate_pool = unused_real
+
+            elif real_assets:
+
+                candidate_pool = real_assets
+
+            else:
+
+                candidate_pool = lifestyle_assets
+
+            for asset in candidate_pool:
                 if asset.get("is_lifestyle"):
 
                     _logger.warning(
