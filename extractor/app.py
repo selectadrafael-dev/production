@@ -801,7 +801,12 @@ def extract():
             # HUMAN FILTER
             # =================================
 
-            aspect_ratio = h / float(w)
+            aspect_ratio = h / float(max(w, 1))
+
+            is_lifestyle = False
+
+            if aspect_ratio > 2.2:
+                is_lifestyle = True
 
             # portrait human-like layout
 
@@ -849,11 +854,22 @@ def extract():
                 1 + (center_factor * 0.18)
             )
 
+
             candidate_images.append({
 
                 "crop": crop,
 
-                "score": score
+                "score": score,
+
+                "x": x,
+                "y": y,
+
+                "width": w,
+                "height": h,
+
+                "aspect_ratio": aspect_ratio,
+
+                "is_lifestyle": is_lifestyle
             })
 
 
@@ -922,9 +938,24 @@ def extract():
 
                 ).decode("utf-8")
 
-                image_list.append(
-                    image_base64
-                )
+
+                image_list.append({
+
+                    "image": image_base64,
+
+                    "score": item.get("score", 0),
+
+                    "x": item.get("x", 0),
+                    "y": item.get("y", 0),
+
+                    "width": item.get("width", 0),
+                    "height": item.get("height", 0),
+
+                    "is_lifestyle": item.get(
+                        "is_lifestyle",
+                        False
+                    )
+                })
 
                 
                 _logger.warning(
@@ -971,9 +1002,21 @@ def extract():
 
                     ).decode("utf-8")
 
-                    image_list.append(
-                            fallback_base64
-                    )
+
+                    image_list.append({
+
+                        "image": fallback_base64,
+
+                        "score": 0,
+
+                        "x": 0,
+                        "y": 0,
+
+                        "width": fallback_img.width,
+                        "height": fallback_img.height,
+
+                        "is_lifestyle": False
+                    })
 
                     _logger.warning(
 
@@ -1011,6 +1054,29 @@ def extract():
 
             f"| KEPT: {len(image_list)}"
         )
+
+        if image_list:
+
+            sample = image_list[0]
+
+            _logger.warning(
+
+                f"[RENDER IMAGE SAMPLE] "
+
+                f"keys={list(sample.keys())}"
+
+            )
+
+            _logger.warning(
+
+                f"[RENDER IMAGE DATA] "
+
+                f"width={sample.get('width')} "
+
+                f"height={sample.get('height')} "
+
+                f"lifestyle={sample.get('is_lifestyle')}"
+            )
 
         pages_data.append({
             "page": page_number + 1,
