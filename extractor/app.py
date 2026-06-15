@@ -803,10 +803,20 @@ def extract():
 
             aspect_ratio = h / float(max(w, 1))
 
-            is_lifestyle = False
+            lifestyle_score = 0
 
-            if aspect_ratio > 2.2:
-                is_lifestyle = True
+            if w > 300 and h > 300:
+                lifestyle_score += 1
+
+            if h > w:
+                lifestyle_score += 1
+
+            if (w * h) > 120000:
+                lifestyle_score += 1
+
+            is_lifestyle = lifestyle_score >= 2
+
+
 
             # portrait human-like layout
 
@@ -863,6 +873,21 @@ def extract():
                 f"h={h} "
 
                 f"ratio={aspect_ratio:.2f} "
+
+                f"lifestyle={is_lifestyle}"
+            )
+
+            _logger.warning(
+
+                f"[RENDER CLASSIFY] "
+
+                f"w={w} "
+
+                f"h={h} "
+
+                f"ratio={aspect_ratio:.2f} "
+
+                f"score={lifestyle_score} "
 
                 f"lifestyle={is_lifestyle}"
             )
