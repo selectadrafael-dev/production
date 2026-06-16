@@ -5412,6 +5412,53 @@ class VendorImportJob(models.Model):
                     f"{result[:4000]}"
                 )
 
+                for product in parsed:
+
+                    hero_index = product.get(
+                        "hero_image_index"
+                    )
+
+                    variants = product.get(
+                        "variants",
+                        []
+                    )
+
+                    clean_variants = []
+
+                    for variant in variants:
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        if (
+                            isinstance(image_index, int)
+                            and
+                            0 <= image_index < len(page_images)
+                        ):
+
+                            asset = page_images[
+                                image_index
+                            ]
+
+                            if asset.get(
+                                "is_lifestyle"
+                            ):
+
+                                _logger.warning(
+                                    f"[AI REMOVED LIFESTYLE VARIANT] "
+                                    f"color={variant.get('attributes', {}).get('Color')} "
+                                    f"image_index={image_index}"
+                                )
+
+                                continue
+
+                        clean_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = clean_variants
+
                 #=========prevent hero img from product variants=========
                 for product in parsed:
 
