@@ -3319,144 +3319,60 @@ class VendorImportJob(models.Model):
 
     #-----------discover_page_regions-----------------------
     def _discover_page_regions(
+        self,
+        page_images
+    ):
 
-            self,
+        regions = []
 
-            page_image
-
+        for idx, image_data in enumerate(
+            page_images
         ):
 
-            """
-            V2 REGION DISCOVERY
+            regions.append({
 
-            Finds all meaningful page blocks.
+                "region_id": idx,
 
-            Currently logs only.
-            """
+                "x": image_data.get("x"),
 
-            import cv2
-            import numpy as np
+                "y": image_data.get("y"),
 
-            regions = []
+                "width": image_data.get("width"),
 
-            try:
+                "height": image_data.get("height"),
 
-                image_bytes = base64.b64decode(
-                    page_image
+                "is_lifestyle": image_data.get(
+                    "is_lifestyle"
                 )
 
-                np_arr = np.frombuffer(
-                    image_bytes,
-                    np.uint8
-                )
+            })
 
-                img = cv2.imdecode(
-                    np_arr,
-                    cv2.IMREAD_COLOR
-                )
+            _logger.warning(
 
-                if img is None:
+                f"[V2 REGION] "
 
-                    _logger.warning(
-                        "[V2 REGION] INVALID IMAGE"
-                    )
+                f"id={idx} "
 
-                    return []
+                f"x={image_data.get('x')} "
 
-                gray = cv2.cvtColor(
-                    img,
-                    cv2.COLOR_BGR2GRAY
-                )
+                f"y={image_data.get('y')} "
 
-                thresh = cv2.threshold(
+                f"w={image_data.get('width')} "
 
-                    gray,
+                f"h={image_data.get('height')} "
 
-                    240,
+                f"lifestyle={image_data.get('is_lifestyle')}"
+            )
 
-                    255,
+        _logger.warning(
 
-                    cv2.THRESH_BINARY_INV
+            f"[V2 REGION COUNT] "
 
-                )[1]
+            f"{len(regions)}"
 
-                contours, _ = cv2.findContours(
+        )
 
-                    thresh,
-
-                    cv2.RETR_EXTERNAL,
-
-                    cv2.CHAIN_APPROX_SIMPLE
-
-                )
-
-                for contour in contours:
-
-                    x, y, w, h = cv2.boundingRect(
-                        contour
-                    )
-
-                    area = w * h
-
-                    if area < 10000:
-                        continue
-
-                    region = {
-
-                        "bbox": [
-
-                            x,
-                            y,
-                            w,
-                            h
-
-                        ],
-
-                        "area": area
-
-                    }
-
-                    regions.append(
-                        region
-                    )
-
-                    _logger.warning(
-
-                        f"[V2 REGION] "
-
-                        f"x={x} "
-
-                        f"y={y} "
-
-                        f"w={w} "
-
-                        f"h={h} "
-
-                        f"area={area}"
-
-                    )
-
-                _logger.warning(
-
-                    f"[V2 REGION COUNT] "
-
-                    f"{len(regions)}"
-
-                )
-
-                return regions
-
-            except Exception as e:
-
-                _logger.warning(
-
-                    f"[V2 REGION FAILED] "
-
-                    f"{str(e)}"
-
-                )
-
-                return []
+        return regions
 
     #----------------build_product_candidates---------------
     def _build_product_candidates(
@@ -3503,6 +3419,8 @@ class VendorImportJob(models.Model):
 
                     f"regions=1"
 
+                    f"area={region.get('area')}"
+
                 )
 
             _logger.warning(
@@ -3527,15 +3445,14 @@ class VendorImportJob(models.Model):
 
             return []
     
+    
     #---------run_catalogue_v2-------------------------------
     def _run_catalogue_v2(
-
         self,
-
-        page_image
-
+        page_images
     ):
 
+        
         """
         V2 ENTRYPOINT
 
@@ -3544,14 +3461,18 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            "[V2 PIPELINE START]"
+                    f"[V2 PIPELINE START] "
+
+                    f"images={len(page_images)}"
+
         )
+        
 
         regions = (
 
             self._discover_page_regions(
 
-                page_image
+                page_images
             )
         )
 
@@ -3582,6 +3503,8 @@ class VendorImportJob(models.Model):
                 candidates
 
         }
+   
+
     #===============etxract pdf=============================
     def extract_pdf(self):
 
@@ -4034,6 +3957,25 @@ class VendorImportJob(models.Model):
                                 f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
                                 f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
                                 f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
+                            )
+
+                        # =====================================
+                        # V2 DEBUG ONLY
+                        # =====================================
+
+                        try:
+
+                            if all_page_images:
+
+                                self._run_catalogue_v2(
+                                    all_page_images
+                                )
+
+                        except Exception as e:
+
+                            _logger.warning(
+                                f"[V2 TEST FAILED] "
+                                f"{str(e)}"
                             )
 
                         self.env[
