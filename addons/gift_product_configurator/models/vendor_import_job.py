@@ -3311,6 +3311,154 @@ class VendorImportJob(models.Model):
 
      # ---------------- Extract PDF ----------------
  
+    # =====================================================
+    #======================================================
+    # UNIVERSAL CATALOGUE V2 (ISOLATED PIPELINE)
+    # =====================================================
+    #======================================================
+
+    #-----------discover_page_regions-----------------------
+    def _discover_page_regions(
+
+            self,
+
+            page_image
+
+        ):
+
+            """
+            V2 REGION DISCOVERY
+
+            Finds all meaningful page blocks.
+
+            Currently logs only.
+            """
+
+            import cv2
+            import numpy as np
+
+            regions = []
+
+            try:
+
+                image_bytes = base64.b64decode(
+                    page_image
+                )
+
+                np_arr = np.frombuffer(
+                    image_bytes,
+                    np.uint8
+                )
+
+                img = cv2.imdecode(
+                    np_arr,
+                    cv2.IMREAD_COLOR
+                )
+
+                if img is None:
+
+                    _logger.warning(
+                        "[V2 REGION] INVALID IMAGE"
+                    )
+
+                    return []
+
+                gray = cv2.cvtColor(
+                    img,
+                    cv2.COLOR_BGR2GRAY
+                )
+
+                thresh = cv2.threshold(
+
+                    gray,
+
+                    240,
+
+                    255,
+
+                    cv2.THRESH_BINARY_INV
+
+                )[1]
+
+                contours, _ = cv2.findContours(
+
+                    thresh,
+
+                    cv2.RETR_EXTERNAL,
+
+                    cv2.CHAIN_APPROX_SIMPLE
+
+                )
+
+                for contour in contours:
+
+                    x, y, w, h = cv2.boundingRect(
+                        contour
+                    )
+
+                    area = w * h
+
+                    if area < 10000:
+                        continue
+
+                    region = {
+
+                        "bbox": [
+
+                            x,
+                            y,
+                            w,
+                            h
+
+                        ],
+
+                        "area": area
+
+                    }
+
+                    regions.append(
+                        region
+                    )
+
+                    _logger.warning(
+
+                        f"[V2 REGION] "
+
+                        f"x={x} "
+
+                        f"y={y} "
+
+                        f"w={w} "
+
+                        f"h={h} "
+
+                        f"area={area}"
+
+                    )
+
+                _logger.warning(
+
+                    f"[V2 REGION COUNT] "
+
+                    f"{len(regions)}"
+
+                )
+
+                return regions
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[V2 REGION FAILED] "
+
+                    f"{str(e)}"
+
+                )
+
+                return []
+
+
     #===============etxract pdf=============================
     def extract_pdf(self):
 
