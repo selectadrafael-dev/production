@@ -3381,6 +3381,19 @@ class VendorImportJob(models.Model):
 
         return regions
 
+    #--------collage filter--------------------------------
+    def _detect_collage_regions(
+        self,
+        page_images
+    ):
+        
+        _logger.warning(
+            f"[V2 COLLAGE CHECK] "
+            f"index={idx} "
+            f"width={width} "
+            f"height={height}"
+        )
+
     #----------------build_product_candidates---------------
     def _build_product_candidates(
 
@@ -3501,6 +3514,22 @@ class VendorImportJob(models.Model):
 
         )
 
+        asset_pool = (
+
+            self._build_universal_asset_pool(
+
+                page_images
+            )
+        )
+
+        _logger.warning(
+
+            f"[V2 ASSET COUNT] "
+
+            f"{len(asset_pool)}"
+
+        )
+
         return {
 
             "regions":
@@ -3511,6 +3540,165 @@ class VendorImportJob(models.Model):
 
         }
    
+
+    # =====================================================
+    # UNIVERSAL ASSET INTELLIGENCE V2
+    # =====================================================
+
+    def _analyze_page_structure(
+
+        self,
+
+        page_images
+
+    ):
+
+        total_images = len(
+            page_images
+        )
+
+        lifestyle_count = sum(
+
+            1
+
+            for img in page_images
+
+            if img.get(
+                "is_lifestyle"
+            )
+
+        )
+
+        total_area = 0
+
+        largest_area = 0
+
+        for img in page_images:
+
+            area = (
+
+                img.get(
+                    "width",
+                    0
+                )
+
+                *
+
+                img.get(
+                    "height",
+                    0
+                )
+
+            )
+
+            total_area += area
+
+            largest_area = max(
+
+                largest_area,
+
+                area
+
+            )
+
+        structure = "unknown"
+
+        if total_images == 1:
+
+            structure = "single_region"
+
+        elif lifestyle_count >= 1:
+
+            structure = "mixed_marketing"
+
+        elif total_images >= 6:
+
+            structure = "variant_grid"
+
+        result = {
+
+            "structure":
+                structure,
+
+            "image_count":
+                total_images,
+
+            "lifestyle_count":
+                lifestyle_count,
+
+            "largest_area":
+                largest_area,
+
+            "total_area":
+                total_area
+
+        }
+
+        _logger.warning(
+
+            f"[V2 STRUCTURE] "
+
+            f"{result}"
+
+        )
+
+        return result
+
+    #------------future entry point-------------------------
+    def _build_universal_asset_pool(
+
+        self,
+
+        page_images
+
+    ):
+
+        analysis = (
+
+            self._analyze_page_structure(
+
+                page_images
+            )
+        )
+
+        assets = []
+
+        structure = analysis.get(
+            "structure"
+        )
+
+        _logger.warning(
+
+            f"[V2 ASSET MODE] "
+
+            f"{structure}"
+        )
+
+        #
+        # Strategy 1
+        #
+
+        if structure == "variant_grid":
+
+            assets = page_images
+
+        #
+        # Strategy 2
+        #
+
+        elif structure == "mixed_marketing":
+
+            assets = page_images
+
+        #
+        # Strategy 3
+        #
+
+        elif structure == "single_region":
+
+            assets = page_images
+
+        return assets
 
     #===============etxract pdf=============================
     def extract_pdf(self):
