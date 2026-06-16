@@ -5507,6 +5507,12 @@ class VendorImportJob(models.Model):
 
                     for pidx, product in enumerate(parsed):
 
+                        _logger.warning(
+                            f"[POST CLEANUP VARIANTS] "
+                            f"product={product.get('name')} "
+                            f"colors={[(v.get('attributes', {}).get('Color'), v.get('image_index')) for v in product.get('variants', [])]}"
+                        )
+
                         variants = product.get("variants", [])
 
                         _logger.warning(
@@ -9512,8 +9518,6 @@ class VendorImportJob(models.Model):
                 f"clip_color={clip_asset.get('dominant_color') if clip_asset else 'NONE'} "
                 f"clip_index={clip_asset.get('clean_index') if clip_asset else 'NONE'}"
             )
-
-
 
             if clip_asset:
 
