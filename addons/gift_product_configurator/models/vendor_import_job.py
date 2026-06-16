@@ -5291,6 +5291,41 @@ class VendorImportJob(models.Model):
                 reverse=True
             )
 
+            # =====================================
+            # REAL PRODUCTS FIRST FOR AI
+            # =====================================
+
+            real_assets = [
+
+                a for a in sorted_page_images
+
+                if not a.get("is_lifestyle")
+            ]
+
+            lifestyle_assets = [
+
+                a for a in sorted_page_images
+
+                if a.get("is_lifestyle")
+            ]
+
+            sorted_page_images = (
+
+                real_assets +
+
+                lifestyle_assets
+            )
+
+            _logger.warning(
+
+                f"[AI INPUT REORDER] "
+
+                f"real={len(real_assets)} "
+
+                f"lifestyle={len(lifestyle_assets)}"
+            )
+
+
             for idx, asset in enumerate(
                 sorted_page_images[:MAX_IMAGES]
             ):
@@ -5346,7 +5381,6 @@ class VendorImportJob(models.Model):
 
                         f"{str(e)}"
                     )
-
 
             response = client.responses.create(
 
@@ -5404,10 +5438,13 @@ class VendorImportJob(models.Model):
                         "hero_image_index"
                     )
 
+
                     variants = product.get(
                         "variants",
                         []
                     )
+
+                    clean_variants = []
 
                     for variant in variants:
 
@@ -5433,13 +5470,53 @@ class VendorImportJob(models.Model):
                             image_index == hero_index
                         ):
 
-                            _logger.warning(
+                            hero_asset = next(
 
+                                (
+                                    img
+
+                                    for img in page_images
+
+                                    if img.get("clean_index") == image_index
+                                ),
+
+                                {}
+                            )
+
+                            if hero_asset.get("is_lifestyle"):
+
+                                _logger.warning(
+
+                                    f"[AI REMOVED LIFESTYLE HERO VARIANT] "
+
+                                    f"color={color} "
+
+                                    f"image_index={image_index}"
+                                )
+
+                                continue
+
+
+                        if (
+                            hero_index is not None
+                            and
+                            image_index is not None
+                            and
+                            image_index == hero_index
+                        ):
+
+                            _logger.warning(
                                 f"[AI HERO SHARED WITH VARIANT] "
                                 f"color={color} "
                                 f"image_index={image_index}"
                             )
 
+                        clean_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = clean_variants
+                    
                     #==========prevent variant duplicate==========
                     seen_colors = set()
 
