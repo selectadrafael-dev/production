@@ -9521,10 +9521,24 @@ class VendorImportJob(models.Model):
                     "clean_index"
                 )
 
+                _logger.warning(
+                    f"[CLIP USAGE CHECK] "
+                    f"variant={variant_text} "
+                    f"clip_index={clip_index} "
+                    f"used={clip_index in used_asset_indexes} "
+                    f"used_indexes={sorted(list(used_asset_indexes))}"
+                )
+
                 if clip_index not in used_asset_indexes:
 
                     used_asset_indexes.add(
                         clip_index
+                    )
+
+                    _logger.warning(
+                        f"[CLIP RESERVED] "
+                        f"variant={variant_text} "
+                        f"clip_index={clip_index}"
                     )
 
                     _logger.warning(
@@ -11764,63 +11778,121 @@ class VendorImportJob(models.Model):
 
                             ]).lower()
 
+                        # for pv in product_variants:
+
+                        #     combo = " ".join([
+
+                        #         v.name.lower()
+
+                        #         for v in (
+                        #             pv.product_template_variant_value_ids
+                        #         )
+
+                        #     ])
+
+                        #     if combo:
+
+                        #         combo_words = combo.split()
+
+                        #         variant_words = (
+                        #             variant_name.split()
+                        #         )
+
+                        #         match_count = 0
+
+                        #         for word in variant_words:
+
+                        #             if word in combo_words:
+
+                        #                 match_count += 1
+
+
+                        #         required_matches = max(
+
+                        #             1,
+
+                        #             min(
+                        #                 len(variant_words),
+                        #                 2
+                        #             )
+                        #         )
+
+                        #         if (
+
+                        #             variant_words
+
+                        #             and
+
+                        #             match_count >= required_matches
+                        #         ):
+
+                        #             variant_record = pv
+
+                        #             _logger.warning(
+                        #                 f"[VARIANT RECORD MATCHED] "
+                        #                 f"variant={variant_name} "
+                        #                 f"odoo_variant={pv.display_name}"
+                        #             )
+
+                        #             break
+
                         for pv in product_variants:
 
-                            combo = " ".join([
+                            combo_values = [
 
-                                v.name.lower()
+                                v.name.strip().lower()
 
                                 for v in (
                                     pv.product_template_variant_value_ids
                                 )
+                            ]
 
-                            ])
+                            color_value = (
+                                attributes.get("Color", "")
+                                .strip()
+                                .lower()
+                            )
 
-                            if combo:
+                            size_value = (
+                                attributes.get("Size", "")
+                                .strip()
+                                .lower()
+                            )
 
-                                combo_words = combo.split()
+                            color_match = (
 
-                                variant_words = (
-                                    variant_name.split()
+                                not color_value
+
+                                or
+
+                                color_value in combo_values
+                            )
+
+                            size_match = (
+
+                                not size_value
+
+                                or
+
+                                size_value in combo_values
+                            )
+
+                            if color_match and size_match:
+
+                                variant_record = pv
+
+                                _logger.warning(
+
+                                    f"[VARIANT RECORD MATCHED] "
+
+                                    f"color={color_value} "
+
+                                    f"size={size_value} "
+
+                                    f"odoo_variant={pv.display_name}"
                                 )
 
-                                match_count = 0
-
-                                for word in variant_words:
-
-                                    if word in combo_words:
-
-                                        match_count += 1
-
-
-                                required_matches = max(
-
-                                    1,
-
-                                    min(
-                                        len(variant_words),
-                                        2
-                                    )
-                                )
-
-                                if (
-
-                                    variant_words
-
-                                    and
-
-                                    match_count >= required_matches
-                                ):
-
-                                    variant_record = pv
-
-                                    _logger.warning(
-                                        f"[VARIANT RECORD MATCHED] "
-                                        f"variant={variant_name} "
-                                        f"odoo_variant={pv.display_name}"
-                                    )
-
-                                    break
+                                break
 
                         # ---------------------------------
                         # SAFE FALLBACK
