@@ -3526,7 +3526,62 @@ class VendorImportJob(models.Model):
             )
 
             return []
-        
+    
+    #---------run_catalogue_v2-------------------------------
+    def _run_catalogue_v2(
+
+        self,
+
+        page_image
+
+    ):
+
+        """
+        V2 ENTRYPOINT
+
+        Logging only.
+        """
+
+        _logger.warning(
+
+            "[V2 PIPELINE START]"
+        )
+
+        regions = (
+
+            self._discover_page_regions(
+
+                page_image
+            )
+        )
+
+        candidates = (
+
+            self._build_product_candidates(
+
+                regions
+            )
+        )
+
+        _logger.warning(
+
+            f"[V2 PIPELINE COMPLETE] "
+
+            f"regions={len(regions)} "
+
+            f"candidates={len(candidates)}"
+
+        )
+
+        return {
+
+            "regions":
+                regions,
+
+            "candidates":
+                candidates
+
+        }
     #===============etxract pdf=============================
     def extract_pdf(self):
 
