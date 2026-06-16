@@ -4360,7 +4360,7 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF OPENAI ================================
+    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -5923,7 +5923,1656 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
+
+
+    #==============PDF OPENAI Recently Updated===========================
     
+    def send_to_openai_pdf(self):
+
+        import json
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+
+            raise Exception(
+                "OpenAI API key not configured"
+            )
+
+
+        client = OpenAI(
+            api_key=api_key
+        )
+
+
+        _logger.warning(
+            "[PDF AI] START"
+        )
+
+
+        # =====================================================
+        # LOAD PAGE RECORDS
+        # =====================================================
+
+        page_records = self.env[
+            'vendor.import.page'
+        ].search([
+
+            ('job_id', '=', self.id)
+
+        ], order='page_number asc')
+
+
+        total_available_pages = len(
+            page_records
+        )
+
+
+        _logger.warning(
+
+            f"[PDF AI] "
+
+            f"TOTAL PAGE RECORDS="
+
+            f"{total_available_pages}"
+        )
+
+
+        if total_available_pages <= 0:
+
+            _logger.warning(
+                "[PDF AI] "
+                "NO PAGE RECORDS FOUND"
+            )
+
+            return
+
+
+        # =====================================================
+        # LOAD EXISTING AI RESPONSE
+        # =====================================================
+
+        existing_pages = []
+
+
+        if self.ai_response:
+
+            try:
+
+                loaded = json.loads(
+                    self.ai_response
+                )
+
+                if isinstance(
+                    loaded,
+                    list
+                ):
+
+                    existing_pages = loaded
+
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI] "
+
+                    f"LOAD EXISTING FAILED "
+
+                    f"| {str(e)}"
+                )
+
+                existing_pages = []
+
+
+        # =====================================================
+        # FIND ALREADY PROCESSED PAGES
+        # =====================================================
+
+        processed_pages = set()
+
+
+        for p in existing_pages:
+
+            page_num = p.get("page")
+
+            if page_num:
+
+                processed_pages.add(
+                    page_num
+                )
+
+
+        _logger.warning(
+
+            f"[PDF AI] "
+
+            f"PROCESSED PAGES="
+
+            f"{sorted(list(processed_pages))}"
+        )
+
+
+        # =====================================================
+        # FIND NEXT UNPROCESSED PAGE
+        # =====================================================
+
+        next_record = None
+
+
+        for record in page_records:
+
+            if (
+
+                record.page_number
+
+                not in processed_pages
+
+            ):
+
+                next_record = record
+
+                break
+
+
+        # =====================================================
+        # ALL COMPLETE
+        # =====================================================
+
+        if not next_record:
+
+            _logger.warning(
+                "[PDF AI] COMPLETE ✅"
+            )
+
+            self.last_ai_page = (
+                total_available_pages
+            )
+
+            self.state = "pdf_creating"
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            return
+
+
+        _logger.warning(
+
+            f"[PDF AI] "
+
+            f"PROCESSING PAGE "
+
+            f"{next_record.page_number}"
+        )
+
+
+        # =====================================================
+        # LOAD PAGE DATA
+        # =====================================================
+
+        try:
+
+            page_blocks = json.loads(
+
+                next_record.extracted_json
+                or
+                "[]"
+            )
+
+            for block in page_blocks:
+
+                imgs = block.get("images", [])
+
+                if imgs:
+
+                    sample = imgs[0]
+
+                    # if isinstance(sample, dict):
+                    if isinstance(sample, dict):
+
+                        _logger.warning(
+                            f"[EXTRACTED IMAGE SAMPLE] "
+                            f"keys={list(sample.keys())}"
+                        )
+
+                        _logger.warning(
+                            f"[EXTRACTED IMAGE VALUES] "
+                            f"width={sample.get('width')} "
+                            f"height={sample.get('height')} "
+                            f"x={sample.get('x')} "
+                            f"y={sample.get('y')} "
+                            f"lifestyle={sample.get('is_lifestyle')} "
+                            f"hero={sample.get('hero_score')} "
+                            f"gallery={sample.get('gallery_score')}"
+                        )
+
+                        
+                    break
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[PDF AI] "
+
+                f"PAGE LOAD FAILED "
+
+                f"| PAGE "
+
+                f"{next_record.page_number} "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        if not page_blocks:
+
+            _logger.warning(
+
+                f"[PDF AI] "
+
+                f"EMPTY PAGE BLOCKS "
+
+                f"| PAGE "
+
+                f"{next_record.page_number}"
+            )
+
+            return
+
+
+        # =====================================================
+        # BUILD PAGE DATA
+        # =====================================================
+
+        page_text = "\n".join([
+
+            p.get("text", "")
+
+            for p in page_blocks
+
+        ])
+
+
+        page_images = []
+
+        for p in page_blocks:
+
+            raw_images = p.get("images", [])
+
+            # =====================================
+            # NORMALIZE STRUCTURED ASSETS
+            # =====================================
+
+            for img in raw_images:
+
+                if isinstance(img, dict):
+
+                    if img.get("image"):
+
+                        page_images.append(img)
+
+                elif isinstance(img, str):
+
+                    page_images.append({
+
+                        "image": img,
+
+                        "score": 0,
+
+                        "is_collage": False
+                    })
+
+        # =====================================================
+        # VALIDATE PAGE IMAGES
+        # =====================================================
+
+        valid_page_images = []
+
+        for asset in page_images:
+
+            try:
+
+                # segmented assets are now dicts
+                if isinstance(asset, dict):
+
+                    image_data = asset.get(
+                        "image"
+                    )
+
+                else:
+
+                    image_data = asset
+
+                if not image_data:
+                    continue
+
+                if not self._is_valid_ai_image(
+                    image_data
+                ):
+
+                    _logger.warning(
+
+                        f"[PDF AI] INVALID IMAGE "
+
+                        f"| PAGE "
+
+                        f"{next_record.page_number}"
+                    )
+
+                    continue
+
+                valid_page_images.append(
+                    asset
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI IMAGE ERROR] "
+
+                    f"{str(e)}"
+                )
+
+        page_images = valid_page_images
+        # =========================================
+        # REBUILD CLEAN IMAGE INDEX MAP
+        # =========================================
+
+        normalized_page_images = []
+
+        for idx, asset in enumerate(page_images):
+
+            if isinstance(asset, dict):
+
+                asset["clean_index"] = idx
+
+                normalized_page_images.append(asset)
+
+
+        page_images = normalized_page_images
+
+        _logger.warning(
+
+            f"[PDF AI IMAGES] "
+
+            f"PAGE={next_record.page_number} "
+
+            f"| valid={len(page_images)}"
+        )
+
+
+        if page_images:
+
+            sample = page_images[0]
+
+            _logger.warning(
+                f"[AI SAVE IMAGE SAMPLE] "
+                f"keys={list(sample.keys())}"
+            )
+
+            _logger.warning(
+                f"[AI SAVE IMAGE DATA] "
+                f"width={sample.get('width')} "
+                f"height={sample.get('height')} "
+                f"x={sample.get('x')} "
+                f"y={sample.get('y')} "
+                f"lifestyle={sample.get('is_lifestyle')} "
+                f"hero={sample.get('hero_score')} "
+                f"gallery={sample.get('gallery_score')}"
+            )
+
+
+        # =====================================
+        # NO VALID IMAGE FAILSAFE
+        # =====================================
+
+        if not page_images:
+
+            _logger.warning(
+
+                f"[PDF NO VALID IMAGE] "
+
+                f"PAGE={next_record.page_number}"
+            )
+
+            existing_map = {}
+
+            for p in existing_pages:
+
+                existing_map[
+                    p.get("page")
+                ] = p
+
+
+            existing_map[
+                next_record.page_number
+            ] = {
+
+                "page": next_record.page_number,
+
+                "products": [],
+
+                "images": [],
+
+                "failed": True,
+
+                "reason": "no_valid_images"
+            }
+
+            combined_pages = sorted(
+
+                list(existing_map.values()),
+
+                key=lambda x: x.get(
+                    "page",
+                    0
+                )
+            )
+
+            self.ai_response = json.dumps(
+                combined_pages
+            )
+
+            self.last_ai_page = len(
+                combined_pages
+            )
+
+            self.state = "pdf_ai"
+
+            self.flush_recordset()
+
+            self.env.cr.commit()
+
+            return
+
+        page_price = ""
+
+        page_stock = ""
+
+
+        for p in page_blocks:
+
+            if (
+
+                not page_price
+
+                and
+
+                p.get("price")
+
+            ):
+
+                page_price = (
+                    p.get("price")
+                )
+
+
+            if (
+
+                not page_stock
+
+                and
+
+                p.get("stock")
+
+            ):
+
+                page_stock = (
+                    p.get("stock")
+                )
+
+
+        # =====================================================
+        # PROMPT
+        # =====================================================
+
+        prompt = f"""
+        You are an AI ecommerce catalog extraction engine.
+
+        Analyze:
+        - catalog page text
+        - detected catalog images
+
+        Extract ALL visible products accurately.
+
+        ==================================================
+        OUTPUT RULES
+        ==================================================
+
+        Return ONLY valid JSON array.
+
+        No markdown.
+        No explanations.
+        No extra text.
+
+        ==================================================
+        CORE EXTRACTION RULES
+        ==================================================
+
+        This input represents ONE catalog page.
+
+        A page may contain:
+        - one product
+        - multiple products
+        - one product with variants
+        - isolated thumbnails
+        - grouped color variations
+
+
+        IMPORTANT:
+
+        If products appear without clear title blocks,
+        still extract them.
+
+        If multiple standalone products appear on one page:
+        - infer product grouping visually
+        - detect visible variants
+        - create products even if title is missing
+
+        Pens, bottles, shirts, caps and accessories
+        must NEVER be ignored simply because:
+        - title is small
+        - products are grouped
+        - products are arranged in grid layout
+
+
+        IMPORTANT:
+
+        Aggressively detect ALL visible ecommerce products.
+
+        If a catalog page shows:
+        - 8 shirts
+        - 10 caps
+        - 6 bottles
+
+        extract ALL visible variants.
+
+        Prefer over-detection rather than missing products.
+
+        ==================================================
+        PRODUCT GROUPING RULES
+        ==================================================
+
+        Group products as variants ONLY when:
+        - same product shape
+        - same structure
+        - same dimensions
+        - same branding
+        - same item or product fall on same page
+        - only color/material/size changes
+
+        Examples:
+        - same cap in different colors
+        - same polo shirt in different colors
+        - same bottle in different colors
+
+        Otherwise:
+        create separate products.
+
+        ==================================================
+        TITLE RULES
+        ==================================================
+
+        CRITICAL:
+
+        ALWAYS prioritize the REAL PRODUCT TITLE
+        even if:
+
+        * title is small
+        * title is thin font
+        * title is placed left/right/middle
+        * title are mostly separated from images
+        * description text is visually larger
+
+        The TRUE PRODUCT TITLE is usually:
+
+        * short
+        * product-like
+        * catalog heading
+        * model/product name
+        * appears before specifications/features
+
+        GOOD TITLES:
+
+        * 5 PANEL CAP
+        * 6 PANEL CAP
+        * SOL'S PERFECT MEN POLO SHIRT PIQUÉ 180
+        * Travel Mug
+        * Wireless Charging Pad
+        * Sports Bottle
+
+        BAD TITLES:
+
+        * Heavy Brushed 100% Cotton
+        * Metal closure
+        * Rib 1x1 collar and cuffs
+        * Double wall stainless steel
+        * Capacity 500ml
+
+        NEVER use:
+
+        * feature sentences
+        * material lines
+        * specification paragraphs
+        * bullet descriptions
+        * marketing text
+        * capacity text
+        * packaging text
+        * closure text
+
+        IMPORTANT:
+
+        If a short product-like title exists ANYWHERE on the page,
+        ALWAYS prefer it over nearby description text.
+
+        Even if:
+
+        * description text is larger
+        * feature text is closer to images
+        * title is isolated
+        * title is positioned differently
+
+        For apparel/caps/shirts/bottles:
+        titles are often:
+
+        * SHORT
+        * UPPERCASE
+        * placed above or beside specifications
+
+        Always prioritize those titles.
+
+        NEVER shorten product titles.
+
+        NEVER summarize titles.
+
+        NEVER reduce:
+
+        * "Basic Unisex T-Shirt"
+        to:
+        * "T-Shirt"
+
+        ALWAYS preserve the FULL visible catalog title exactly as printed on the page.
+
+        If multiple words appear in the title heading:
+        include ALL of them.
+
+        Do not simplify titles.
+
+        ==================================================
+        DESCRIPTION RULES
+        ==================================================
+
+        Build rich ecommerce descriptions using:
+        - subtitle
+        - features
+        - specifications
+        - bullet points
+        - dimensions
+        - materials
+        - capacities
+        - branding info
+        - packaging info
+
+        Combine useful text naturally.
+
+        ==================================================
+        PRICE RULES
+        ==================================================
+
+        Aggressively search for price.
+
+        Prices and stocks may appear:
+        - near title
+        - beside variants
+        - inside tables
+        - inside text blocks
+        - in corners
+
+        Detect:
+        - $
+        - €
+        - £
+        - ₦
+        - USD
+        - EUR
+        - GBP
+
+        Examples:
+        - $2.99
+        - USD 4.25
+        - €8.50
+
+        If no price exists:
+        return empty string.
+
+        Extract:
+        - visible product price
+        - visible stock quantity
+        - visible product code
+        ==================================================
+        MOST CRITICAL
+        ==================================================
+        NO PRODUCT SHOULD MISS OUT OR BE IGNORED EXCEPT BLANK PAGE, 
+        TOTAL NUMBER OF PAGES SHOULD GENERAGES SAME NUMBERS OF 
+        PRODUCTS WITH EACH PRODUCTS HAS IT'S VARIANTS WHERE 
+        MULTIPLE ITEMS APPEAR 
+        ON SINGLE PAGE ACCURATELY. 
+        ==================================================
+        IMAGE RULES
+        ==================================================
+
+        Prefer professional ecommerce images:
+        - isolated products
+        - clean background
+        - centered products
+        - full visibility
+
+        Avoid:
+        - large text blocks
+        - banners
+        - lifestyle scenes
+        - infographic layouts
+
+        If isolated variants exist:
+        prefer them over model/lifestyle photos.
+
+        ==================================================
+        STOCK EXTRACTION RULES:
+        ==================================================
+        PRICE EXTRACTION IS CRITICAL.
+
+        Extract: 
+        - stock quantity ONLY when
+        actual available inventory is explicitly stated.
+
+        - visible stock quantity
+
+        Examples:
+        - "Stock: 11 pcs"
+        - "Available: 25"
+        - "In stock: 8"
+
+        DO NOT extract:
+        - delivery times
+        - MOQ
+
+        If no real stock quantity exists:
+        set:
+
+        "stock_qty": 0
+
+        ==================================================
+        VARIANT RULES
+        ==================================================
+
+        Each variant should contain:
+
+        {{
+            "attributes": {{
+                "Color": "",
+                "Size": ""
+            }},
+
+            "image_index": null,
+            "price": "",
+            "stock_qty": 0
+        }}
+
+        ==================================================
+        OUTPUT FORMAT
+        ==================================================
+
+        [
+            {{
+                "name": "",
+                "subtitle": "",
+                "description": "",
+                "bullet_features": [],
+                "material": "",
+                "dimensions": "",
+                "stock_qty": 0,
+                "price": "",
+                "currency": "",
+                "product_code": "",
+                "hero_image_index": null,
+                "gallery_image_indexes": [],
+                "variants": []
+            }}
+        ]
+
+        ==================================================
+        PAGE TEXT
+        ==================================================
+
+        {page_text}
+
+        ==================================================
+        DETECTED PRICE
+        ==================================================
+
+        {page_price}
+
+        ==================================================
+        DETECTED STOCK
+        ==================================================
+
+        {page_stock}
+        """
+
+        # =====================================================
+        # AI CALL
+        # =====================================================
+
+        try:
+            
+
+            MAX_IMAGES = 24
+
+            image_inputs = []
+
+
+            def ai_visibility_score(asset):
+
+                base = asset.get(
+                    "score",
+                    0
+                )
+
+                # =====================================
+                # BOOST CLEAN ISOLATED PRODUCTS
+                # =====================================
+
+                if not asset.get("is_collage"):
+
+                    base *= 1.35
+
+                # =====================================
+                # BOOST SMALL/MEDIUM PRODUCT SHOTS
+                # =====================================
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    )
+
+                    or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    )
+
+                    or 0
+                )
+
+                area = width * height
+
+                if area < 350000:
+
+                    base *= 1.25
+
+                # =====================================
+                # PENALIZE HUMAN/LIFESTYLE IMAGES
+                # =====================================
+
+                dominant = str(
+
+                    asset.get(
+                        "dominant_color"
+                    )
+
+                    or ""
+
+                ).lower()
+
+                if dominant in [
+                    "skin",
+                    "beige"
+                ]:
+
+                    base *= 0.7
+
+                return base
+
+
+            sorted_page_images = sorted(
+
+                page_images,
+
+                key=ai_visibility_score,
+
+                reverse=True
+            )
+
+            # =====================================
+            # REAL PRODUCTS FIRST FOR AI
+            # =====================================
+
+            real_assets = [
+
+                a for a in sorted_page_images
+
+                if not a.get("is_lifestyle")
+            ]
+
+            lifestyle_assets = [
+
+                a for a in sorted_page_images
+
+                if a.get("is_lifestyle")
+            ]
+
+            sorted_page_images = (
+
+                real_assets +
+
+                lifestyle_assets
+            )
+
+            _logger.warning(
+
+                f"[AI INPUT REORDER] "
+
+                f"real={len(real_assets)} "
+
+                f"lifestyle={len(lifestyle_assets)}"
+            )
+
+
+            for idx, asset in enumerate(
+                sorted_page_images[:MAX_IMAGES]
+            ):
+
+                _logger.warning(
+
+                    f"[AI IMAGE INPUT] "
+
+                    f"rank={idx} "
+
+                    f"score={asset.get('score')} "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"collage={asset.get('is_collage')}"
+                )
+
+            for asset in sorted_page_images[:MAX_IMAGES]:
+
+                try:
+
+                    # =====================================
+                    # SUPPORT DICT ASSETS
+                    # =====================================
+
+                    if isinstance(asset, dict):
+
+                        image_data = asset.get(
+                            "image"
+                        )
+
+                    else:
+
+                        image_data = asset
+
+                    if not image_data:
+                        continue
+
+                    image_inputs.append({
+
+                        "type": "input_image",
+
+                        "image_url":
+
+                            f"data:image/jpeg;base64,{image_data}"
+                    })
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[IMAGE INPUT BUILD FAILED] "
+
+                        f"{str(e)}"
+                    )
+
+            response = client.responses.create(
+
+                model="gpt-4.1",
+
+                input=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": prompt
+                        }
+                    ] + image_inputs
+                }],
+
+                timeout=60
+            )
+
+
+            result = (
+                response.output_text or ""
+            ).strip()
+
+
+            result = result.replace(
+                "```json",
+                ""
+            )
+
+            result = result.replace(
+                "```",
+                ""
+            ).strip()
+
+
+            if not result:
+
+                raise Exception(
+                    "EMPTY AI RESPONSE"
+                )
+
+            try:
+
+                parsed = json.loads(result)
+                
+                _logger.warning(
+                    f"[AI RAW RESPONSE] "
+                    f"{result[:4000]}"
+                )
+
+                #=========prevent hero img from product variants=========
+                for product in parsed:
+
+                    hero_index = product.get(
+                        "hero_image_index"
+                    )
+
+
+                    variants = product.get(
+                        "variants",
+                        []
+                    )
+
+                    clean_variants = []
+
+                    for variant in variants:
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        color = (
+                            variant.get(
+                                "attributes",
+                                {}
+                            ).get(
+                                "Color",
+                                ""
+                            )
+                        )
+
+                        if (
+                            hero_index is not None
+                            and
+                            image_index is not None
+                            and
+                            image_index == hero_index
+                        ):
+
+                            hero_asset = next(
+
+                                (
+                                    img
+
+                                    for img in page_images
+
+                                    if img.get("clean_index") == image_index
+                                ),
+
+                                {}
+                            )
+
+                            if hero_asset.get("is_lifestyle"):
+
+                                _logger.warning(
+
+                                    f"[AI REMOVED LIFESTYLE HERO VARIANT] "
+
+                                    f"color={color} "
+
+                                    f"image_index={image_index}"
+                                )
+
+                                continue
+
+
+                        if (
+                            hero_index is not None
+                            and
+                            image_index is not None
+                            and
+                            image_index == hero_index
+                        ):
+
+                            _logger.warning(
+                                f"[AI HERO SHARED WITH VARIANT] "
+                                f"color={color} "
+                                f"image_index={image_index}"
+                            )
+
+                        clean_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = clean_variants
+                    
+                    #==========prevent variant duplicate==========
+                    seen_colors = set()
+
+                    deduped_variants = []
+
+                    for variant in product["variants"]:
+
+                        color = (
+                            variant.get(
+                                "attributes",
+                                {}
+                            ).get(
+                                "Color",
+                                ""
+                            )
+                            .strip()
+                            .lower()
+                        )
+
+                        if not color:
+
+                            deduped_variants.append(
+                                variant
+                            )
+
+                            continue
+
+                        if color in seen_colors:
+
+                            _logger.warning(
+                                f"[AI VARIANT REMOVED DUPLICATE] "
+                                f"color={color}"
+                            )
+
+                            continue
+
+                        seen_colors.add(color)
+
+                        deduped_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = deduped_variants
+
+                for product in parsed:
+
+                    for variant in product.get("variants", []):
+
+                        color = variant.get(
+                            "attributes",
+                            {}
+                        ).get("Color")
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        _logger.warning(
+                            f"[AI COLOR->IMAGE] "
+                            f"color={color} "
+                            f"image_index={image_index}"
+                        )
+
+                try:
+
+                    for pidx, product in enumerate(parsed):
+
+                        _logger.warning(
+                            f"[POST CLEANUP VARIANTS] "
+                            f"product={product.get('name')} "
+                            f"colors={[(v.get('attributes', {}).get('Color'), v.get('image_index')) for v in product.get('variants', [])]}"
+                        )
+
+                        variants = product.get("variants", [])
+
+                        _logger.warning(
+                            f"[AI COLOR SUMMARY] "
+                            f"product={pidx} "
+                            f"colors={[v.get('attributes', {}).get('Color', '') for v in variants]}"
+                        )
+
+                        _logger.warning(
+                            f"[AI PRODUCT] "
+                            f"page={next_record.page_number} "
+                            f"product={pidx} "
+                            f"name={product.get('name')}"
+                        )
+
+                        for vidx, variant in enumerate(variants):
+
+                            _logger.warning(
+                                f"[AI VARIANT] "
+                                f"product={pidx} "
+                                f"variant={vidx} "
+                                f"attributes={variant.get('attributes', {})}"
+                            )
+
+                        seen_colors = set()
+
+                        for vidx, variant in enumerate(variants):
+
+                            color = (
+                                variant.get("attributes", {})
+                                .get("Color", "")
+                                .strip()
+                                .lower()
+                            )
+
+                            raw_color = (
+                                variant.get("attributes", {})
+                                .get("Color", "")
+                            )
+
+                            if color in seen_colors:
+
+                                _logger.warning(
+                                    f"[AI DUPLICATE COLOR] "
+                                    f"product={pidx} "
+                                    f"raw={raw_color} "
+                                    f"normalized={color}"
+                                )
+
+                            seen_colors.add(color)
+                except Exception as e:
+
+                    _logger.warning(
+                        f"[AI VARIANT LOG FAILED] {str(e)}"
+                    )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF AI JSON FAILED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| {str(e)}"
+                )
+
+                _logger.warning(
+
+                    f"[PDF AI RAW OUTPUT] "
+
+                    f"{result[:1200]}"
+                )
+
+                _logger.warning(
+
+                    f"[PDF AI PAGE SKIPPED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| INVALID JSON"
+                )
+
+                # =====================================
+                # MARK PAGE AS SKIPPED
+                # =====================================
+
+                existing_map = {}
+
+                for p in existing_pages:
+
+                    existing_map[
+                        p.get("page")
+                    ] = p
+
+                existing_map[
+                    next_record.page_number
+                ] = {
+
+                    "page": next_record.page_number,
+
+                    "products": [],
+
+                    "images": [],
+
+                    "failed": True
+                }
+
+                combined_pages = sorted(
+
+                    list(existing_map.values()),
+
+                    key=lambda x: x.get(
+                        "page",
+                        0
+                    )
+                )
+
+                self.ai_response = json.dumps(
+                    combined_pages
+                )
+
+                self.last_ai_page = len(
+                    combined_pages
+                )
+
+                self._safe_commit_progress()
+
+                return
+
+            if not parsed:
+
+                _logger.warning(
+
+                    f"[PDF AI EMPTY RESPONSE] "
+
+                    f"PAGE={next_record.page_number}"
+                )
+
+
+                _logger.warning(
+
+                    f"[PDF AI PAGE SKIPPED] "
+
+                    f"PAGE={next_record.page_number} "
+
+                    f"| EMPTY RESPONSE"
+                )
+
+                existing_map = {}
+
+                for p in existing_pages:
+
+                    existing_map[
+                        p.get("page")
+                    ] = p
+
+                existing_map[
+                    next_record.page_number
+                ] = {
+
+                    "page": next_record.page_number,
+
+                    "products": [],
+
+                    "images": [],
+
+                    "failed": True
+                }
+
+                combined_pages = sorted(
+
+                    list(existing_map.values()),
+
+                    key=lambda x: x.get(
+                        "page",
+                        0
+                    )
+                )
+
+                self.ai_response = json.dumps(
+                    combined_pages
+                )
+
+                self.last_ai_page = len(
+                    combined_pages
+                )
+
+                self._safe_commit_progress()
+
+                return
+
+
+            if not isinstance(
+                parsed,
+                list
+            ):
+
+                parsed = []
+
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[PDF AI] "
+
+                f"FAILED "
+
+                f"| PAGE "
+
+                f"{next_record.page_number} "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        # =====================================================
+        # SMART IMAGE MATCHING
+        # =====================================================
+
+        for prod in parsed:
+
+            try:
+
+                product_name = (
+                    prod.get("name")
+                    or ""
+                )
+
+
+                best_index = prod.get(
+                    "hero_image_index"
+                )
+
+                # =====================================
+                # VALIDATE CLEAN INDEX
+                # =====================================
+
+                valid_indexes = [
+
+                    a.get("clean_index")
+
+                    for a in page_images
+
+                    if isinstance(a, dict)
+                ]
+
+                if (
+
+                    best_index is None
+
+                    or
+
+                    not isinstance(best_index, int)
+
+                    or
+
+                    best_index not in valid_indexes
+                ):
+
+                    best_index = (
+                        self.match_image_index_with_ai(
+                            product_name,
+                            page_images
+                        )
+                    )
+
+                    if isinstance(best_index, int):
+
+                        try:
+
+                            matched_asset = page_images[
+                                best_index
+                            ]
+
+                            if isinstance(matched_asset, dict):
+
+                                best_index = matched_asset.get(
+                                    "clean_index"
+                                )
+
+                        except Exception:
+                            pass
+
+                if best_index is not None:
+
+                    prod["hero_image_index"] = (
+                        best_index
+                    )
+
+                    _logger.warning(
+
+                        f"[PDF HERO INDEX] "
+
+                        f"{product_name} "
+
+                        f"-> {best_index}"
+                    )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[PDF IMAGE MATCH FAILED] "
+
+                    f"{str(e)}"
+
+                )
+
+        # =====================================================
+        # MERGE RESULTS
+        # =====================================================
+
+        existing_map = {}
+
+
+        for p in existing_pages:
+
+            existing_map[
+                p.get("page")
+            ] = p
+
+
+        existing_map[
+            next_record.page_number
+        ] = {
+
+            "page": next_record.page_number,
+
+            "products": parsed,
+
+            "images": page_images
+        }
+
+
+        combined_pages = sorted(
+
+            list(existing_map.values()),
+
+            key=lambda x: x.get(
+                "page",
+                0
+            )
+        )
+
+
+        # =====================================================
+        # SAVE
+        # =====================================================
+
+        self.ai_response = json.dumps(
+            combined_pages
+        )
+
+
+        self.last_ai_page = len(
+            combined_pages
+        )
+
+
+        _logger.warning(
+
+            f"[PDF AI] "
+
+            f"PAGE SAVED "
+
+            f"| PAGE "
+
+            f"{next_record.page_number}"
+        )
+
+
+        # =====================================================
+        # NEXT STATE
+        # =====================================================
+
+        if (
+
+            self.last_ai_page
+
+            <
+
+            total_available_pages
+
+        ):
+
+            self.state = "pdf_ai"
+
+            _logger.warning(
+
+                f"[PDF AI] CONTINUE "
+
+                f"{self.last_ai_page}/"
+
+                f"{total_available_pages}"
+            )
+
+        else:
+
+            _logger.warning(
+                "[PDF AI] COMPLETE ✅"
+            )
+
+            self.state = "pdf_creating"
+
+
+        self.flush_recordset()
+        self.env.cr.commit()
+
+        return
+     
+   
    
     #===========Excel Open AI================================
     def send_to_openai_excel(self):
