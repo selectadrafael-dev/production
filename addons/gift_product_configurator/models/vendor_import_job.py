@@ -1970,6 +1970,13 @@ class VendorImportJob(models.Model):
 
                     primary_color_text = normalized_color
 
+                    if "(" in primary_color_text:
+
+                        primary_color_text = (
+                            primary_color_text
+                            .split("(")[0]
+                            .strip()
+                        )
                     split_keywords = [
 
                         " with ",
@@ -2134,7 +2141,22 @@ class VendorImportJob(models.Model):
                 value.html_color or ""
             ).strip()
 
-            if not existing_html:
+            expected_hex = self._resolve_color_hex(
+                attr_value
+            )
+
+            if expected_hex and value.html_color != expected_hex:
+
+                value.write({
+                    'html_color': expected_hex
+                })
+
+                _logger.warning(
+                    f"[COLOR PATCHED]"
+                    f"{attr_value}"
+                    f" old={value.html_color}"
+                    f" new={expected_hex}"
+                )
 
                 normalized_color = " ".join(
 
@@ -7443,6 +7465,12 @@ class VendorImportJob(models.Model):
 
                     "score": score,
 
+                    "clean_index": (
+                        asset.get("clean_index")
+                        if isinstance(asset, dict)
+                        else None
+                    ),
+
                     # =====================================
                     # SEPARATED SCORING SYSTEM
                     # =====================================
@@ -7498,6 +7526,7 @@ class VendorImportJob(models.Model):
                     "background_ratio": background_ratio,
 
                     "centered_object": centered_object,
+                    
                 })
 
 
@@ -7542,6 +7571,13 @@ class VendorImportJob(models.Model):
         # =====================================
         # SORT BEST FIRST
         # =====================================
+        for asset in prepared:
+
+            _logger.warning(
+                f"[POOL BEFORE SORT] "
+                f"clean_index={asset.get('clean_index')} "
+                f"color={asset.get('dominant_color')}"
+            )
 
         prepared = sorted(
 
@@ -7564,7 +7600,6 @@ class VendorImportJob(models.Model):
                     False
                 ),
 
-                # ONLY TIE-BREAKERS
                 -x.get("y", 0),
 
                 -x.get("x", 0)
@@ -7573,16 +7608,18 @@ class VendorImportJob(models.Model):
 
             reverse=True
         )
-
+       
         # =====================================
-        # REBUILD INDEXES AFTER SORT
+        # PRESERVE ORIGINAL EXTRACT INDEXES
         # =====================================
 
         for idx, asset in enumerate(prepared):
 
-           asset["index"] = idx
+            asset["index"] = idx
 
-           asset["clean_index"] = idx
+            if asset.get("clean_index") is None:
+
+                asset["clean_index"] = idx
 
         _logger.warning(
 
@@ -7608,6 +7645,7 @@ class VendorImportJob(models.Model):
                 f"height={asset.get('height')}"
             )
         return prepared
+
 
     # =======================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
@@ -9736,15 +9774,14 @@ class VendorImportJob(models.Model):
                     "light blue",
                     "royal blue",
                     "sky blue",
-                    "navy",
-
+                    "royal blue",
+                    "navy blue",
+                    "light blue",
+                    "sky blue",
                     "blue",
-
                     "lime green",
                     "dark green",
-
                     "green",
-
                     "red",
                     "orange",
                     "yellow",
@@ -9788,6 +9825,46 @@ class VendorImportJob(models.Model):
                     if color == dominant_color:
 
                         asset_score += 90
+                    
+                    # =====================================
+                    # WHITE FAMILY
+                    # =====================================
+
+                    elif (
+                        color == "white"
+                        and
+                        dominant_color in [
+                            "beige",
+                            "cream",
+                            "ivory"
+                        ]
+                    ):
+                        asset_score += 60
+
+                    elif (
+                        color in ["beige", "cream", "ivory"]
+                        and
+                        dominant_color == "white"
+                    ):
+                        asset_score += 40
+
+                    # =====================================
+                    # WHITE vs YELLOW
+                    # =====================================
+
+                    elif (
+                        color == "white"
+                        and
+                        dominant_color == "yellow"
+                    ):
+                        asset_score -= 200
+
+                    elif (
+                        color == "yellow"
+                        and
+                        dominant_color == "white"
+                    ):
+                        asset_score -= 200
 
                     elif (
 
@@ -9864,6 +9941,19 @@ class VendorImportJob(models.Model):
 
                         asset_score -= 140
 
+                    elif (
+                        "royal blue" in normalized_variant_text
+                        and
+                        dominant_color == "navy"
+                    ):
+                        asset_score -= 140
+
+                    elif (
+                        "navy" in normalized_variant_text
+                        and
+                        dominant_color == "blue"
+                    ):
+                        asset_score -= 120
                 # ------------------------------------
                 # HERO BONUS
                 # ------------------------------------
@@ -9909,11 +9999,8 @@ class VendorImportJob(models.Model):
             if not best_asset:
 
                 remaining_assets = [
-
                     a
-
-                    for a in asset_pool
-
+                    for a in real_assets
                     if (
                         a.get("clean_index")
                         not in used_asset_indexes
@@ -11950,6 +12037,16 @@ class VendorImportJob(models.Model):
         ], limit=1)
 
         if product:
+            _logger.warning(
+
+                f"[FINGERPRINT COLLISION] "
+
+                f"title={product_data.get('title')} "
+
+                f"fingerprint={vendor_fingerprint} "
+
+                f"existing={product.name}"
+            )
 
             return product, False
 
