@@ -1,3 +1,6 @@
+#=======================
+#Most recent 1
+#===========================
 from odoo import models, fields, api
 import base64
 import logging
@@ -1958,6 +1961,7 @@ class VendorImportJob(models.Model):
                     normalized_color
                 )
 
+
                 # ======================================
                 # PARTIAL MATCH FALLBACK
                 # ======================================
@@ -1970,13 +1974,6 @@ class VendorImportJob(models.Model):
 
                     primary_color_text = normalized_color
 
-                    if "(" in primary_color_text:
-
-                        primary_color_text = (
-                            primary_color_text
-                            .split("(")[0]
-                            .strip()
-                        )
                     split_keywords = [
 
                         " with ",
@@ -2141,64 +2138,74 @@ class VendorImportJob(models.Model):
                 value.html_color or ""
             ).strip()
 
-            normalized_color = " ".join(
+            if not existing_html:
 
-                attr_value
-                .lower()
-                .replace("-", " ")
-                .replace("_", " ")
-                .split()
-            )
+                normalized_color = " ".join(
 
-            COLOR_ALIASES = {
-
-                'lt blue': 'light blue',
-                'dk blue': 'navy blue',
-                'dk navy': 'navy blue',
-                'royal': 'royal blue',
-                'lime': 'lime green',
-                'charcoal marl': 'charcoal',
-                'heather navy': 'navy blue',
-                'heather blue': 'blue',
-                'heather grey': 'grey',
-                'heather gray': 'gray',
-                'sky': 'sky blue',
-                'off white': 'white',
-                'natural': 'beige',
-            }
-
-            normalized_color = COLOR_ALIASES.get(
-
-                normalized_color,
-
-                normalized_color
-            )
-
-            color_hex = self.COLOR_HEX_MAP.get(
-                normalized_color
-            )
-
-            if (
-                color_hex
-                and
-                existing_html != color_hex
-            ):
-
-                value.write({
-
-                    'html_color': color_hex
-                })
-
-                _logger.warning(
-
-                    f"[PATCH EXISTING COLOR] "
-
-                    f"{attr_value} "
-
-                    f"old={existing_html} "
-
-                    f"new={color_hex}"
+                    attr_value
+                    .lower()
+                    .replace("-", " ")
+                    .replace("_", " ")
+                    .split()
                 )
+
+                COLOR_ALIASES = {
+
+                    'lt blue': 'light blue',
+                    'dk blue': 'navy blue',
+                    'dk navy': 'navy blue',
+                    'royal': 'royal blue',
+                    'lime': 'lime green',
+                    'charcoal marl': 'charcoal',
+                    'heather navy': 'navy blue',
+                    'heather blue': 'blue',
+                    'heather grey': 'grey',
+                    'heather gray': 'gray',
+                    'sky': 'sky blue',
+                    'off white': 'white',
+                    'natural': 'beige',
+                }
+
+                normalized_color = COLOR_ALIASES.get(
+
+                    normalized_color,
+
+                    normalized_color
+                )
+
+                color_hex = self.COLOR_HEX_MAP.get(
+                    normalized_color
+                )
+
+              
+                # =====================================
+                # APPLY PATCHED HTML COLOR
+                # =====================================
+
+                if color_hex:
+
+                    value.write({
+
+                        'html_color': color_hex
+                    })
+
+                    _logger.warning(
+
+                        f"[PATCH EXISTING COLOR] "
+
+                        f"{attr_value} "
+
+                        f"→ {color_hex}"
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[PATCH FAILED NO HEX] "
+
+                        f"{attr_value}"
+                    )
 
         return attribute, value
 
@@ -7440,12 +7447,6 @@ class VendorImportJob(models.Model):
 
                     "score": score,
 
-                    "clean_index": (
-                        asset.get("clean_index")
-                        if isinstance(asset, dict)
-                        else None
-                    ),
-
                     # =====================================
                     # SEPARATED SCORING SYSTEM
                     # =====================================
@@ -7501,7 +7502,6 @@ class VendorImportJob(models.Model):
                     "background_ratio": background_ratio,
 
                     "centered_object": centered_object,
-                    
                 })
 
 
@@ -7546,13 +7546,6 @@ class VendorImportJob(models.Model):
         # =====================================
         # SORT BEST FIRST
         # =====================================
-        for asset in prepared:
-
-            _logger.warning(
-                f"[POOL BEFORE SORT] "
-                f"clean_index={asset.get('clean_index')} "
-                f"color={asset.get('dominant_color')}"
-            )
 
         prepared = sorted(
 
@@ -7575,6 +7568,7 @@ class VendorImportJob(models.Model):
                     False
                 ),
 
+                # ONLY TIE-BREAKERS
                 -x.get("y", 0),
 
                 -x.get("x", 0)
@@ -7583,18 +7577,16 @@ class VendorImportJob(models.Model):
 
             reverse=True
         )
-       
+
         # =====================================
-        # PRESERVE ORIGINAL EXTRACT INDEXES
+        # REBUILD INDEXES AFTER SORT
         # =====================================
 
         for idx, asset in enumerate(prepared):
 
-            asset["index"] = idx
+           asset["index"] = idx
 
-            if asset.get("clean_index") is None:
-
-                asset["clean_index"] = idx
+           asset["clean_index"] = idx
 
         _logger.warning(
 
@@ -7620,7 +7612,6 @@ class VendorImportJob(models.Model):
                 f"height={asset.get('height')}"
             )
         return prepared
-
 
     # =======================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
@@ -9393,7 +9384,8 @@ class VendorImportJob(models.Model):
 
             return 0    
 
-    # =====================================
+
+     # =====================================
     # PROFESSIONAL VARIANT IMAGE MATCHER
     # =====================================
   
@@ -9521,24 +9513,10 @@ class VendorImportJob(models.Model):
                     "clean_index"
                 )
 
-                _logger.warning(
-                    f"[CLIP USAGE CHECK] "
-                    f"variant={variant_text} "
-                    f"clip_index={clip_index} "
-                    f"used={clip_index in used_asset_indexes} "
-                    f"used_indexes={sorted(list(used_asset_indexes))}"
-                )
-
                 if clip_index not in used_asset_indexes:
 
                     used_asset_indexes.add(
                         clip_index
-                    )
-
-                    _logger.warning(
-                        f"[CLIP RESERVED] "
-                        f"variant={variant_text} "
-                        f"clip_index={clip_index}"
                     )
 
                     _logger.warning(
@@ -9763,14 +9741,15 @@ class VendorImportJob(models.Model):
                     "light blue",
                     "royal blue",
                     "sky blue",
-                    "royal blue",
-                    "navy blue",
-                    "light blue",
-                    "sky blue",
+                    "navy",
+
                     "blue",
+
                     "lime green",
                     "dark green",
+
                     "green",
+
                     "red",
                     "orange",
                     "yellow",
@@ -9814,46 +9793,6 @@ class VendorImportJob(models.Model):
                     if color == dominant_color:
 
                         asset_score += 90
-                    
-                    # =====================================
-                    # WHITE FAMILY
-                    # =====================================
-
-                    elif (
-                        color == "white"
-                        and
-                        dominant_color in [
-                            "beige",
-                            "cream",
-                            "ivory"
-                        ]
-                    ):
-                        asset_score += 60
-
-                    elif (
-                        color in ["beige", "cream", "ivory"]
-                        and
-                        dominant_color == "white"
-                    ):
-                        asset_score += 40
-
-                    # =====================================
-                    # WHITE vs YELLOW
-                    # =====================================
-
-                    elif (
-                        color == "white"
-                        and
-                        dominant_color == "yellow"
-                    ):
-                        asset_score -= 200
-
-                    elif (
-                        color == "yellow"
-                        and
-                        dominant_color == "white"
-                    ):
-                        asset_score -= 200
 
                     elif (
 
@@ -9930,19 +9869,6 @@ class VendorImportJob(models.Model):
 
                         asset_score -= 140
 
-                    elif (
-                        "royal blue" in normalized_variant_text
-                        and
-                        dominant_color == "navy"
-                    ):
-                        asset_score -= 140
-
-                    elif (
-                        "navy" in normalized_variant_text
-                        and
-                        dominant_color == "blue"
-                    ):
-                        asset_score -= 120
                 # ------------------------------------
                 # HERO BONUS
                 # ------------------------------------
@@ -9988,8 +9914,11 @@ class VendorImportJob(models.Model):
             if not best_asset:
 
                 remaining_assets = [
+
                     a
-                    for a in real_assets
+
+                    for a in asset_pool
+
                     if (
                         a.get("clean_index")
                         not in used_asset_indexes
@@ -11778,121 +11707,63 @@ class VendorImportJob(models.Model):
 
                             ]).lower()
 
-                        # for pv in product_variants:
-
-                        #     combo = " ".join([
-
-                        #         v.name.lower()
-
-                        #         for v in (
-                        #             pv.product_template_variant_value_ids
-                        #         )
-
-                        #     ])
-
-                        #     if combo:
-
-                        #         combo_words = combo.split()
-
-                        #         variant_words = (
-                        #             variant_name.split()
-                        #         )
-
-                        #         match_count = 0
-
-                        #         for word in variant_words:
-
-                        #             if word in combo_words:
-
-                        #                 match_count += 1
-
-
-                        #         required_matches = max(
-
-                        #             1,
-
-                        #             min(
-                        #                 len(variant_words),
-                        #                 2
-                        #             )
-                        #         )
-
-                        #         if (
-
-                        #             variant_words
-
-                        #             and
-
-                        #             match_count >= required_matches
-                        #         ):
-
-                        #             variant_record = pv
-
-                        #             _logger.warning(
-                        #                 f"[VARIANT RECORD MATCHED] "
-                        #                 f"variant={variant_name} "
-                        #                 f"odoo_variant={pv.display_name}"
-                        #             )
-
-                        #             break
-
                         for pv in product_variants:
 
-                            combo_values = [
+                            combo = " ".join([
 
-                                v.name.strip().lower()
+                                v.name.lower()
 
                                 for v in (
                                     pv.product_template_variant_value_ids
                                 )
-                            ]
 
-                            color_value = (
-                                attributes.get("Color", "")
-                                .strip()
-                                .lower()
-                            )
+                            ])
 
-                            size_value = (
-                                attributes.get("Size", "")
-                                .strip()
-                                .lower()
-                            )
+                            if combo:
 
-                            color_match = (
+                                combo_words = combo.split()
 
-                                not color_value
-
-                                or
-
-                                color_value in combo_values
-                            )
-
-                            size_match = (
-
-                                not size_value
-
-                                or
-
-                                size_value in combo_values
-                            )
-
-                            if color_match and size_match:
-
-                                variant_record = pv
-
-                                _logger.warning(
-
-                                    f"[VARIANT RECORD MATCHED] "
-
-                                    f"color={color_value} "
-
-                                    f"size={size_value} "
-
-                                    f"odoo_variant={pv.display_name}"
+                                variant_words = (
+                                    variant_name.split()
                                 )
 
-                                break
+                                match_count = 0
+
+                                for word in variant_words:
+
+                                    if word in combo_words:
+
+                                        match_count += 1
+
+
+                                required_matches = max(
+
+                                    1,
+
+                                    min(
+                                        len(variant_words),
+                                        2
+                                    )
+                                )
+
+                                if (
+
+                                    variant_words
+
+                                    and
+
+                                    match_count >= required_matches
+                                ):
+
+                                    variant_record = pv
+
+                                    _logger.warning(
+                                        f"[VARIANT RECORD MATCHED] "
+                                        f"variant={variant_name} "
+                                        f"odoo_variant={pv.display_name}"
+                                    )
+
+                                    break
 
                         # ---------------------------------
                         # SAFE FALLBACK
@@ -16153,3 +16024,6 @@ class VendorImportJob(models.Model):
         except Exception:
 
             return 1.0
+
+
+
