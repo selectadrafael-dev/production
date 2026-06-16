@@ -3458,7 +3458,75 @@ class VendorImportJob(models.Model):
 
                 return []
 
+    #----------------build_product_candidates---------------
+    def _build_product_candidates(
 
+        self,
+
+        regions
+
+    ):
+
+        """
+        V2 PRODUCT GROUPING
+
+        Currently logs only.
+        """
+
+        candidates = []
+
+        try:
+
+            for idx, region in enumerate(
+                regions
+            ):
+
+                candidate = {
+
+                    "candidate_id":
+                        idx + 1,
+
+                    "regions":
+                        [region]
+
+                }
+
+                candidates.append(
+                    candidate
+                )
+
+                _logger.warning(
+
+                    f"[V2 PRODUCT CANDIDATE] "
+
+                    f"id={idx+1} "
+
+                    f"regions=1"
+
+                )
+
+            _logger.warning(
+
+                f"[V2 CANDIDATE COUNT] "
+
+                f"{len(candidates)}"
+
+            )
+
+            return candidates
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[V2 CANDIDATE FAILED] "
+
+                f"{str(e)}"
+
+            )
+
+            return []
+        
     #===============etxract pdf=============================
     def extract_pdf(self):
 
