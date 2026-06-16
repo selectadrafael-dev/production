@@ -1970,6 +1970,13 @@ class VendorImportJob(models.Model):
 
                     primary_color_text = normalized_color
 
+                    if "(" in primary_color_text:
+
+                        primary_color_text = (
+                            primary_color_text
+                            .split("(")[0]
+                            .strip()
+                        )
                     split_keywords = [
 
                         " with ",
@@ -2134,74 +2141,64 @@ class VendorImportJob(models.Model):
                 value.html_color or ""
             ).strip()
 
-            if not existing_html:
+            normalized_color = " ".join(
 
-                normalized_color = " ".join(
+                attr_value
+                .lower()
+                .replace("-", " ")
+                .replace("_", " ")
+                .split()
+            )
 
-                    attr_value
-                    .lower()
-                    .replace("-", " ")
-                    .replace("_", " ")
-                    .split()
+            COLOR_ALIASES = {
+
+                'lt blue': 'light blue',
+                'dk blue': 'navy blue',
+                'dk navy': 'navy blue',
+                'royal': 'royal blue',
+                'lime': 'lime green',
+                'charcoal marl': 'charcoal',
+                'heather navy': 'navy blue',
+                'heather blue': 'blue',
+                'heather grey': 'grey',
+                'heather gray': 'gray',
+                'sky': 'sky blue',
+                'off white': 'white',
+                'natural': 'beige',
+            }
+
+            normalized_color = COLOR_ALIASES.get(
+
+                normalized_color,
+
+                normalized_color
+            )
+
+            color_hex = self.COLOR_HEX_MAP.get(
+                normalized_color
+            )
+
+            if (
+                color_hex
+                and
+                existing_html != color_hex
+            ):
+
+                value.write({
+
+                    'html_color': color_hex
+                })
+
+                _logger.warning(
+
+                    f"[PATCH EXISTING COLOR] "
+
+                    f"{attr_value} "
+
+                    f"old={existing_html} "
+
+                    f"new={color_hex}"
                 )
-
-                COLOR_ALIASES = {
-
-                    'lt blue': 'light blue',
-                    'dk blue': 'navy blue',
-                    'dk navy': 'navy blue',
-                    'royal': 'royal blue',
-                    'lime': 'lime green',
-                    'charcoal marl': 'charcoal',
-                    'heather navy': 'navy blue',
-                    'heather blue': 'blue',
-                    'heather grey': 'grey',
-                    'heather gray': 'gray',
-                    'sky': 'sky blue',
-                    'off white': 'white',
-                    'natural': 'beige',
-                }
-
-                normalized_color = COLOR_ALIASES.get(
-
-                    normalized_color,
-
-                    normalized_color
-                )
-
-                color_hex = self.COLOR_HEX_MAP.get(
-                    normalized_color
-                )
-
-              
-                # =====================================
-                # APPLY PATCHED HTML COLOR
-                # =====================================
-
-                if color_hex:
-
-                    value.write({
-
-                        'html_color': color_hex
-                    })
-
-                    _logger.warning(
-
-                        f"[PATCH EXISTING COLOR] "
-
-                        f"{attr_value} "
-
-                        f"→ {color_hex}"
-                    )
-
-                else:
-
-                    _logger.warning(
-
-                        f"[PATCH FAILED NO HEX] "
-
-                        f"{attr_value}"
-                    )
 
         return attribute, value
 
@@ -3314,6 +3311,395 @@ class VendorImportJob(models.Model):
 
      # ---------------- Extract PDF ----------------
  
+    # =====================================================
+    #======================================================
+    # UNIVERSAL CATALOGUE V2 (ISOLATED PIPELINE)
+    # =====================================================
+    #======================================================
+
+    #-----------discover_page_regions-----------------------
+    def _discover_page_regions(
+        self,
+        page_images
+    ):
+
+        regions = []
+
+        for idx, image_data in enumerate(
+            page_images
+        ):
+
+           
+            regions.append({
+
+                "region_id": idx,
+
+                "x": image_data.get("x"),
+
+                "y": image_data.get("y"),
+
+                "width": image_data.get("width"),
+
+                "height": image_data.get("height"),
+
+                "area": (
+                    image_data.get("width", 0)
+                    *
+                    image_data.get("height", 0)
+                ),
+
+                "is_lifestyle": image_data.get(
+                    "is_lifestyle"
+                )
+
+            })
+
+            _logger.warning(
+
+                f"[V2 REGION] "
+
+                f"id={idx} "
+
+                f"x={image_data.get('x')} "
+
+                f"y={image_data.get('y')} "
+
+                f"w={image_data.get('width')} "
+
+                f"h={image_data.get('height')} "
+
+                f"lifestyle={image_data.get('is_lifestyle')}"
+            )
+
+        _logger.warning(
+
+            f"[V2 REGION COUNT] "
+
+            f"{len(regions)}"
+
+        )
+
+        return regions
+
+    #--------collage filter--------------------------------
+    def _detect_collage_regions(
+        self,
+        page_images
+    ):
+        
+        _logger.warning(
+            f"[V2 COLLAGE CHECK] "
+            f"index={idx} "
+            f"width={width} "
+            f"height={height}"
+        )
+
+    #----------------build_product_candidates---------------
+    def _build_product_candidates(
+
+        self,
+
+        regions
+
+    ):
+
+        """
+        V2 PRODUCT GROUPING
+
+        Currently logs only.
+        """
+
+        candidates = []
+
+        try:
+
+            for idx, region in enumerate(
+                regions
+            ):
+
+                candidate = {
+
+                    "candidate_id":
+                        idx + 1,
+
+                    "regions":
+                        [region]
+
+                }
+
+                candidates.append(
+                    candidate
+                )
+
+                _logger.warning(
+
+                    f"[V2 PRODUCT CANDIDATE] "
+
+                    f"id={idx+1} "
+
+                    f"regions=1"
+
+                    f"area={region.get('area')}"
+
+                )
+
+            _logger.warning(
+
+                f"[V2 CANDIDATE COUNT] "
+
+                f"{len(candidates)}"
+
+            )
+
+            return candidates
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[V2 CANDIDATE FAILED] "
+
+                f"{str(e)}"
+
+            )
+
+            return []
+    
+    
+    #---------run_catalogue_v2-------------------------------
+    def _run_catalogue_v2(
+        self,
+        page_images
+    ):
+
+        
+        """
+        V2 ENTRYPOINT
+
+        Logging only.
+        """
+
+        _logger.warning(
+
+                    f"[V2 PIPELINE START] "
+
+                    f"images={len(page_images)}"
+
+        )
+        
+
+        regions = (
+
+            self._discover_page_regions(
+
+                page_images
+            )
+        )
+
+        candidates = (
+
+            self._build_product_candidates(
+
+                regions
+            )
+        )
+
+        _logger.warning(
+
+            f"[V2 PIPELINE COMPLETE] "
+
+            f"regions={len(regions)} "
+
+            f"candidates={len(candidates)}"
+
+        )
+
+        asset_pool = (
+
+            self._build_universal_asset_pool(
+
+                page_images
+            )
+        )
+
+        _logger.warning(
+
+            f"[V2 ASSET COUNT] "
+
+            f"{len(asset_pool)}"
+
+        )
+
+        return {
+
+            "regions":
+                regions,
+
+            "candidates":
+                candidates
+
+        }
+   
+
+    # =====================================================
+    # UNIVERSAL ASSET INTELLIGENCE V2
+    # =====================================================
+
+    def _analyze_page_structure(
+
+        self,
+
+        page_images
+
+    ):
+
+        total_images = len(
+            page_images
+        )
+
+        lifestyle_count = sum(
+
+            1
+
+            for img in page_images
+
+            if img.get(
+                "is_lifestyle"
+            )
+
+        )
+
+        total_area = 0
+
+        largest_area = 0
+
+        for img in page_images:
+
+            area = (
+
+                img.get(
+                    "width",
+                    0
+                )
+
+                *
+
+                img.get(
+                    "height",
+                    0
+                )
+
+            )
+
+            total_area += area
+
+            largest_area = max(
+
+                largest_area,
+
+                area
+
+            )
+
+        structure = "unknown"
+
+        if total_images == 1:
+
+            structure = "single_region"
+
+        elif lifestyle_count >= 1:
+
+            structure = "mixed_marketing"
+
+        elif total_images >= 6:
+
+            structure = "variant_grid"
+
+        result = {
+
+            "structure":
+                structure,
+
+            "image_count":
+                total_images,
+
+            "lifestyle_count":
+                lifestyle_count,
+
+            "largest_area":
+                largest_area,
+
+            "total_area":
+                total_area
+
+        }
+
+        _logger.warning(
+
+            f"[V2 STRUCTURE] "
+
+            f"{result}"
+
+        )
+
+        return result
+
+    #------------future entry point-------------------------
+    def _build_universal_asset_pool(
+
+        self,
+
+        page_images
+
+    ):
+
+        analysis = (
+
+            self._analyze_page_structure(
+
+                page_images
+            )
+        )
+
+        assets = []
+
+        structure = analysis.get(
+            "structure"
+        )
+
+        _logger.warning(
+
+            f"[V2 ASSET MODE] "
+
+            f"{structure}"
+        )
+
+        #
+        # Strategy 1
+        #
+
+        if structure == "variant_grid":
+
+            assets = page_images
+
+        #
+        # Strategy 2
+        #
+
+        elif structure == "mixed_marketing":
+
+            assets = page_images
+
+        #
+        # Strategy 3
+        #
+
+        elif structure == "single_region":
+
+            assets = page_images
+
+        return assets
+
     #===============etxract pdf=============================
     def extract_pdf(self):
 
@@ -3766,6 +4152,25 @@ class VendorImportJob(models.Model):
                                 f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
                                 f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
                                 f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
+                            )
+
+                        # =====================================
+                        # V2 DEBUG ONLY
+                        # =====================================
+
+                        try:
+
+                            if all_page_images:
+
+                                self._run_catalogue_v2(
+                                    all_page_images
+                                )
+
+                        except Exception as e:
+
+                            _logger.warning(
+                                f"[V2 TEST FAILED] "
+                                f"{str(e)}"
                             )
 
                         self.env[
@@ -4360,7 +4765,7 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF OPENAI ================================
+    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -5294,6 +5699,21 @@ class VendorImportJob(models.Model):
                 reverse=True
             )
 
+            _logger.warning(
+                "[AI ORDER START]"
+            )
+
+            for ai_pos, asset in enumerate(
+                sorted_page_images[:MAX_IMAGES]
+            ):
+
+                _logger.warning(
+                    f"[AI ORDER] "
+                    f"position={ai_pos} "
+                    f"clean_index={asset.get('clean_index')} "
+                    f"lifestyle={asset.get('is_lifestyle')}"
+                )
+
             for idx, asset in enumerate(
                 sorted_page_images[:MAX_IMAGES]
             ):
@@ -5400,7 +5820,6 @@ class VendorImportJob(models.Model):
                     f"{result[:4000]}"
                 )
 
-                #=========prevent hero img from product variants=========
                 for product in parsed:
 
                     hero_index = product.get(
@@ -5413,6 +5832,52 @@ class VendorImportJob(models.Model):
                     )
 
                     clean_variants = []
+
+                    for variant in variants:
+
+                        image_index = variant.get(
+                            "image_index"
+                        )
+
+                        if (
+                            isinstance(image_index, int)
+                            and
+                            0 <= image_index < len(page_images)
+                        ):
+
+                            asset = page_images[
+                                image_index
+                            ]
+
+                            if asset.get(
+                                "is_lifestyle"
+                            ):
+
+                                _logger.warning(
+                                    f"[AI REMOVED LIFESTYLE VARIANT] "
+                                    f"color={variant.get('attributes', {}).get('Color')} "
+                                    f"image_index={image_index}"
+                                )
+
+                                continue
+
+                        clean_variants.append(
+                            variant
+                        )
+
+                    product["variants"] = clean_variants
+
+                #=========prevent hero img from product variants=========
+                for product in parsed:
+
+                    hero_index = product.get(
+                        "hero_image_index"
+                    )
+
+                    variants = product.get(
+                        "variants",
+                        []
+                    )
 
                     for variant in variants:
 
@@ -5439,21 +5904,13 @@ class VendorImportJob(models.Model):
                         ):
 
                             _logger.warning(
-                                f"[AI VARIANT REMOVED HERO] "
+
+                                f"[AI HERO SHARED WITH VARIANT] "
                                 f"color={color} "
-                                f"image_index={image_index} "
-                                f"hero_index={hero_index}"
+                                f"image_index={image_index}"
                             )
 
-                            continue
-
-                        clean_variants.append(
-                            variant
-                        )
-
-                    product["variants"] = clean_variants
-
-                #==========prevent variant duplicate==========
+                    #==========prevent variant duplicate==========
                     seen_colors = set()
 
                     deduped_variants = []
@@ -5473,9 +5930,11 @@ class VendorImportJob(models.Model):
                         )
 
                         if not color:
+
                             deduped_variants.append(
                                 variant
                             )
+
                             continue
 
                         if color in seen_colors:
@@ -5931,9 +6390,11 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-    
+
+
    
     #===========Excel Open AI================================
+    
     def send_to_openai_excel(self):
 
         import json
@@ -7451,6 +7912,12 @@ class VendorImportJob(models.Model):
 
                     "score": score,
 
+                    "clean_index": (
+                        asset.get("clean_index")
+                        if isinstance(asset, dict)
+                        else None
+                    ),
+
                     # =====================================
                     # SEPARATED SCORING SYSTEM
                     # =====================================
@@ -7506,6 +7973,7 @@ class VendorImportJob(models.Model):
                     "background_ratio": background_ratio,
 
                     "centered_object": centered_object,
+                    
                 })
 
 
@@ -7550,6 +8018,13 @@ class VendorImportJob(models.Model):
         # =====================================
         # SORT BEST FIRST
         # =====================================
+        for asset in prepared:
+
+            _logger.warning(
+                f"[POOL BEFORE SORT] "
+                f"clean_index={asset.get('clean_index')} "
+                f"color={asset.get('dominant_color')}"
+            )
 
         prepared = sorted(
 
@@ -7572,7 +8047,6 @@ class VendorImportJob(models.Model):
                     False
                 ),
 
-                # ONLY TIE-BREAKERS
                 -x.get("y", 0),
 
                 -x.get("x", 0)
@@ -7581,16 +8055,18 @@ class VendorImportJob(models.Model):
 
             reverse=True
         )
-
+       
         # =====================================
-        # REBUILD INDEXES AFTER SORT
+        # PRESERVE ORIGINAL EXTRACT INDEXES
         # =====================================
 
         for idx, asset in enumerate(prepared):
 
-           asset["index"] = idx
+            asset["index"] = idx
 
-           asset["clean_index"] = idx
+            if asset.get("clean_index") is None:
+
+                asset["clean_index"] = idx
 
         _logger.warning(
 
@@ -7616,6 +8092,7 @@ class VendorImportJob(models.Model):
                 f"height={asset.get('height')}"
             )
         return prepared
+
 
     # =======================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
@@ -8991,6 +9468,7 @@ class VendorImportJob(models.Model):
 
             return "unknown"
 
+
     # =============================================================
     # CLIP IMAGE / VARIANT MATCH
     # =============================================================
@@ -9508,18 +9986,30 @@ class VendorImportJob(models.Model):
                 f"clip_index={clip_asset.get('clean_index') if clip_asset else 'NONE'}"
             )
 
-
-
             if clip_asset:
 
                 clip_index = clip_asset.get(
                     "clean_index"
                 )
 
+                _logger.warning(
+                    f"[CLIP USAGE CHECK] "
+                    f"variant={variant_text} "
+                    f"clip_index={clip_index} "
+                    f"used={clip_index in used_asset_indexes} "
+                    f"used_indexes={sorted(list(used_asset_indexes))}"
+                )
+
                 if clip_index not in used_asset_indexes:
 
                     used_asset_indexes.add(
                         clip_index
+                    )
+
+                    _logger.warning(
+                        f"[CLIP RESERVED] "
+                        f"variant={variant_text} "
+                        f"clip_index={clip_index}"
                     )
 
                     _logger.warning(
@@ -9744,15 +10234,14 @@ class VendorImportJob(models.Model):
                     "light blue",
                     "royal blue",
                     "sky blue",
-                    "navy",
-
+                    "royal blue",
+                    "navy blue",
+                    "light blue",
+                    "sky blue",
                     "blue",
-
                     "lime green",
                     "dark green",
-
                     "green",
-
                     "red",
                     "orange",
                     "yellow",
@@ -9796,6 +10285,46 @@ class VendorImportJob(models.Model):
                     if color == dominant_color:
 
                         asset_score += 90
+                    
+                    # =====================================
+                    # WHITE FAMILY
+                    # =====================================
+
+                    elif (
+                        color == "white"
+                        and
+                        dominant_color in [
+                            "beige",
+                            "cream",
+                            "ivory"
+                        ]
+                    ):
+                        asset_score += 60
+
+                    elif (
+                        color in ["beige", "cream", "ivory"]
+                        and
+                        dominant_color == "white"
+                    ):
+                        asset_score += 40
+
+                    # =====================================
+                    # WHITE vs YELLOW
+                    # =====================================
+
+                    elif (
+                        color == "white"
+                        and
+                        dominant_color == "yellow"
+                    ):
+                        asset_score -= 200
+
+                    elif (
+                        color == "yellow"
+                        and
+                        dominant_color == "white"
+                    ):
+                        asset_score -= 200
 
                     elif (
 
@@ -9872,6 +10401,19 @@ class VendorImportJob(models.Model):
 
                         asset_score -= 140
 
+                    elif (
+                        "royal blue" in normalized_variant_text
+                        and
+                        dominant_color == "navy"
+                    ):
+                        asset_score -= 140
+
+                    elif (
+                        "navy" in normalized_variant_text
+                        and
+                        dominant_color == "blue"
+                    ):
+                        asset_score -= 120
                 # ------------------------------------
                 # HERO BONUS
                 # ------------------------------------
@@ -9917,11 +10459,8 @@ class VendorImportJob(models.Model):
             if not best_asset:
 
                 remaining_assets = [
-
                     a
-
-                    for a in asset_pool
-
+                    for a in real_assets
                     if (
                         a.get("clean_index")
                         not in used_asset_indexes
@@ -11710,63 +12249,121 @@ class VendorImportJob(models.Model):
 
                             ]).lower()
 
+                        # for pv in product_variants:
+
+                        #     combo = " ".join([
+
+                        #         v.name.lower()
+
+                        #         for v in (
+                        #             pv.product_template_variant_value_ids
+                        #         )
+
+                        #     ])
+
+                        #     if combo:
+
+                        #         combo_words = combo.split()
+
+                        #         variant_words = (
+                        #             variant_name.split()
+                        #         )
+
+                        #         match_count = 0
+
+                        #         for word in variant_words:
+
+                        #             if word in combo_words:
+
+                        #                 match_count += 1
+
+
+                        #         required_matches = max(
+
+                        #             1,
+
+                        #             min(
+                        #                 len(variant_words),
+                        #                 2
+                        #             )
+                        #         )
+
+                        #         if (
+
+                        #             variant_words
+
+                        #             and
+
+                        #             match_count >= required_matches
+                        #         ):
+
+                        #             variant_record = pv
+
+                        #             _logger.warning(
+                        #                 f"[VARIANT RECORD MATCHED] "
+                        #                 f"variant={variant_name} "
+                        #                 f"odoo_variant={pv.display_name}"
+                        #             )
+
+                        #             break
+
                         for pv in product_variants:
 
-                            combo = " ".join([
+                            combo_values = [
 
-                                v.name.lower()
+                                v.name.strip().lower()
 
                                 for v in (
                                     pv.product_template_variant_value_ids
                                 )
+                            ]
 
-                            ])
+                            color_value = (
+                                attributes.get("Color", "")
+                                .strip()
+                                .lower()
+                            )
 
-                            if combo:
+                            size_value = (
+                                attributes.get("Size", "")
+                                .strip()
+                                .lower()
+                            )
 
-                                combo_words = combo.split()
+                            color_match = (
 
-                                variant_words = (
-                                    variant_name.split()
+                                not color_value
+
+                                or
+
+                                color_value in combo_values
+                            )
+
+                            size_match = (
+
+                                not size_value
+
+                                or
+
+                                size_value in combo_values
+                            )
+
+                            if color_match and size_match:
+
+                                variant_record = pv
+
+                                _logger.warning(
+
+                                    f"[VARIANT RECORD MATCHED] "
+
+                                    f"color={color_value} "
+
+                                    f"size={size_value} "
+
+                                    f"odoo_variant={pv.display_name}"
                                 )
 
-                                match_count = 0
-
-                                for word in variant_words:
-
-                                    if word in combo_words:
-
-                                        match_count += 1
-
-
-                                required_matches = max(
-
-                                    1,
-
-                                    min(
-                                        len(variant_words),
-                                        2
-                                    )
-                                )
-
-                                if (
-
-                                    variant_words
-
-                                    and
-
-                                    match_count >= required_matches
-                                ):
-
-                                    variant_record = pv
-
-                                    _logger.warning(
-                                        f"[VARIANT RECORD MATCHED] "
-                                        f"variant={variant_name} "
-                                        f"odoo_variant={pv.display_name}"
-                                    )
-
-                                    break
+                                break
 
                         # ---------------------------------
                         # SAFE FALLBACK
@@ -11958,6 +12555,16 @@ class VendorImportJob(models.Model):
         ], limit=1)
 
         if product:
+            _logger.warning(
+
+                f"[FINGERPRINT COLLISION] "
+
+                f"title={product_data.get('title')} "
+
+                f"fingerprint={vendor_fingerprint} "
+
+                f"existing={product.name}"
+            )
 
             return product, False
 
@@ -12545,6 +13152,26 @@ class VendorImportJob(models.Model):
             return
 
         try:
+           
+            template = variant_record.product_tmpl_id
+
+            template.write({
+
+                'type': 'product',
+
+                'allow_out_of_stock_order': True,
+
+                'show_availability': True,
+
+                'available_threshold': 1000,
+            })
+
+            _logger.warning(
+
+                f"[INVENTORY WEBSITE ENABLED] "
+
+                f"{template.name}"
+            )
 
             quant = stock_quant_obj.search([
 
@@ -13689,7 +14316,17 @@ class VendorImportJob(models.Model):
                 # =====================================================
 
                 if not product and vendor_id:
+                    # _logger.warning(
 
+                    #     f"[FINGERPRINT] "
+
+                    #     f"title={product_data.get('title')} "
+
+                    #     f"group={variant_group} "
+
+                    #     f"fingerprint={vendor_fingerprint}"
+                    # )
+                    
                     product = product_obj.search([
 
                         (
@@ -13792,6 +14429,41 @@ class VendorImportJob(models.Model):
                     product = product_obj.create(
                         vals
                     )
+
+                    # =====================================
+                    # ENABLE WEBSITE STOCK DISPLAY
+                    # =====================================
+
+                    try:
+
+                        product.write({
+
+                            'allow_out_of_stock_order': True,
+
+                            'show_availability': True,
+
+                            'available_threshold': 1000,
+                        })
+
+                        _logger.warning(
+
+                            f"[WEBSITE STOCK ENABLED] "
+
+                            f"{product.name}"
+                        )
+
+                    except Exception as e:
+
+                        _logger.warning(
+
+                            f"[WEBSITE STOCK FAILED] "
+
+                            f"{str(e)}"
+                        )
+
+                    # =====================================
+                    # TRANSLATION
+                    # =====================================
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
@@ -16017,3 +16689,4 @@ class VendorImportJob(models.Model):
         except Exception:
 
             return 1.0
+
