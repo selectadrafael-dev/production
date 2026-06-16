@@ -1961,6 +1961,7 @@ class VendorImportJob(models.Model):
                     normalized_color
                 )
 
+
                 # ======================================
                 # PARTIAL MATCH FALLBACK
                 # ======================================

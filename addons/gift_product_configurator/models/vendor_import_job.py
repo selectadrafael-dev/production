@@ -2141,89 +2141,64 @@ class VendorImportJob(models.Model):
                 value.html_color or ""
             ).strip()
 
-            expected_hex = self._resolve_color_hex(
+            normalized_color = " ".join(
+
                 attr_value
+                .lower()
+                .replace("-", " ")
+                .replace("_", " ")
+                .split()
             )
 
-            if expected_hex and value.html_color != expected_hex:
+            COLOR_ALIASES = {
+
+                'lt blue': 'light blue',
+                'dk blue': 'navy blue',
+                'dk navy': 'navy blue',
+                'royal': 'royal blue',
+                'lime': 'lime green',
+                'charcoal marl': 'charcoal',
+                'heather navy': 'navy blue',
+                'heather blue': 'blue',
+                'heather grey': 'grey',
+                'heather gray': 'gray',
+                'sky': 'sky blue',
+                'off white': 'white',
+                'natural': 'beige',
+            }
+
+            normalized_color = COLOR_ALIASES.get(
+
+                normalized_color,
+
+                normalized_color
+            )
+
+            color_hex = self.COLOR_HEX_MAP.get(
+                normalized_color
+            )
+
+            if (
+                color_hex
+                and
+                existing_html != color_hex
+            ):
 
                 value.write({
-                    'html_color': expected_hex
+
+                    'html_color': color_hex
                 })
 
                 _logger.warning(
-                    f"[COLOR PATCHED]"
-                    f"{attr_value}"
-                    f" old={value.html_color}"
-                    f" new={expected_hex}"
+
+                    f"[PATCH EXISTING COLOR] "
+
+                    f"{attr_value} "
+
+                    f"old={existing_html} "
+
+                    f"new={color_hex}"
                 )
-
-                normalized_color = " ".join(
-
-                    attr_value
-                    .lower()
-                    .replace("-", " ")
-                    .replace("_", " ")
-                    .split()
-                )
-
-                COLOR_ALIASES = {
-
-                    'lt blue': 'light blue',
-                    'dk blue': 'navy blue',
-                    'dk navy': 'navy blue',
-                    'royal': 'royal blue',
-                    'lime': 'lime green',
-                    'charcoal marl': 'charcoal',
-                    'heather navy': 'navy blue',
-                    'heather blue': 'blue',
-                    'heather grey': 'grey',
-                    'heather gray': 'gray',
-                    'sky': 'sky blue',
-                    'off white': 'white',
-                    'natural': 'beige',
-                }
-
-                normalized_color = COLOR_ALIASES.get(
-
-                    normalized_color,
-
-                    normalized_color
-                )
-
-                color_hex = self.COLOR_HEX_MAP.get(
-                    normalized_color
-                )
-
-              
-                # =====================================
-                # APPLY PATCHED HTML COLOR
-                # =====================================
-
-                if color_hex:
-
-                    value.write({
-
-                        'html_color': color_hex
-                    })
-
-                    _logger.warning(
-
-                        f"[PATCH EXISTING COLOR] "
-
-                        f"{attr_value} "
-
-                        f"→ {color_hex}"
-                    )
-
-                else:
-
-                    _logger.warning(
-
-                        f"[PATCH FAILED NO HEX] "
-
-                        f"{attr_value}"
-                    )
 
         return attribute, value
 
