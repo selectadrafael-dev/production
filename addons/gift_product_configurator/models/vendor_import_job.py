@@ -4357,8 +4357,7 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF OPENAI ================================
-     # =========== PDF OPENAI BACKUP ================================
+    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -5291,6 +5290,21 @@ class VendorImportJob(models.Model):
 
                 reverse=True
             )
+
+            _logger.warning(
+                "[AI ORDER START]"
+            )
+
+            for ai_pos, asset in enumerate(
+                sorted_page_images[:MAX_IMAGES]
+            ):
+
+                _logger.warning(
+                    f"[AI ORDER] "
+                    f"position={ai_pos} "
+                    f"clean_index={asset.get('clean_index')} "
+                    f"lifestyle={asset.get('is_lifestyle')}"
+                )
 
             for idx, asset in enumerate(
                 sorted_page_images[:MAX_IMAGES]
@@ -8998,6 +9012,7 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
+
 
     # =============================================================
     # CLIP IMAGE / VARIANT MATCH
