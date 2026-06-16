@@ -3329,6 +3329,7 @@ class VendorImportJob(models.Model):
             page_images
         ):
 
+           
             regions.append({
 
                 "region_id": idx,
@@ -3340,6 +3341,12 @@ class VendorImportJob(models.Model):
                 "width": image_data.get("width"),
 
                 "height": image_data.get("height"),
+
+                "area": (
+                    image_data.get("width", 0)
+                    *
+                    image_data.get("height", 0)
+                ),
 
                 "is_lifestyle": image_data.get(
                     "is_lifestyle"
