@@ -3686,6 +3686,10 @@ class VendorImportJob(models.Model):
                 round(
                     largest_ratio,
                     2
+                ),
+
+                 "avg_area": round(
+                    total_area / max(total_images, 1)
                 )
 
         }
@@ -3925,23 +3929,26 @@ class VendorImportJob(models.Model):
 
             )
 
-            #
+          
             # Future segmentation trigger
-            #
+          
+            segmented_assets.append(
+                asset
+            )
 
-            if area > 500000:
+            if self._is_collage_candidate(
+
+                asset
+
+            ):
 
                 _logger.warning(
 
-                    f"[V2 LARGE REGION] "
+                    f"[V2 COLLAGE CANDIDATE] "
 
                     f"asset={idx}"
 
                 )
-
-            segmented_assets.append(
-                asset
-            )
 
         _logger.warning(
 
@@ -3952,6 +3959,60 @@ class VendorImportJob(models.Model):
         )
 
         return segmented_assets
+
+    #------------detect collage candidate-------------------
+    def _is_collage_candidate(
+
+        self,
+
+        asset
+
+    ):
+
+        width = int(
+            asset.get(
+                "width",
+                0
+            ) or 0
+        )
+
+        height = int(
+            asset.get(
+                "height",
+                0
+            ) or 0
+        )
+
+        area = width * height
+
+        is_lifestyle = asset.get(
+            "is_lifestyle",
+            False
+        )
+
+        candidate = (
+
+            area > 500000
+
+            and
+
+            not is_lifestyle
+
+        )
+
+        _logger.warning(
+
+            f"[V2 COLLAGE CHECK] "
+
+            f"area={area} "
+
+            f"lifestyle={is_lifestyle} "
+
+            f"candidate={candidate}"
+
+        )
+
+        return candidate
 
     #===============etxract pdf=============================
     def extract_pdf(self):
@@ -8209,6 +8270,20 @@ class VendorImportJob(models.Model):
 
                 ratio = width / float(max(height, 1))
 
+                _logger.warning(
+
+                    f"[HUMAN CHECK] "
+
+                    f"width={width} "
+
+                    f"height={height} "
+
+                    f"area={width * height} "
+
+                    f"lifestyle={asset.get('is_lifestyle')}"
+
+                )
+
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
@@ -8223,6 +8298,26 @@ class VendorImportJob(models.Model):
                         f"ratio={ratio:.2f} "
 
                         f"size={width}x{height}"
+                    )
+
+
+                    _logger.warning(
+
+                        f"[HUMAN REJECT DETAIL] "
+
+                        f"ratio={ratio:.2f} "
+
+                        f"width={width} "
+
+                        f"height={height} "
+
+                        f"area={width * height} "
+
+                        f"lifestyle={asset.get('is_lifestyle', False) if isinstance(asset, dict) else False}"
+
+                        f"x={asset.get('x', 0) if isinstance(asset, dict) else 0} "
+
+                        f"y={asset.get('y', 0) if isinstance(asset, dict) else 0}"
                     )
 
                     continue
