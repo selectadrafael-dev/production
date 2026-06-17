@@ -4150,6 +4150,7 @@ class VendorImportJob(models.Model):
             asset = sorted_page_images[
                 ai_index
             ]
+            
 
             return asset.get(
                 "clean_index"
@@ -6441,6 +6442,7 @@ class VendorImportJob(models.Model):
                 )
 
                 #===========convert_ai_index_to_clean_index==========
+              
                 for product in parsed:
 
                     hero = product.get(
@@ -6454,14 +6456,42 @@ class VendorImportJob(models.Model):
                         ] = (
 
                             self._convert_ai_index_to_clean_index(
-
                                 hero,
-
                                 sorted_page_images
-
                             )
 
                         )
+
+                    # HERO VALIDATION HERE
+                    hero = product.get(
+                        "hero_image_index"
+                    )
+
+                    if (
+                        isinstance(hero, int)
+                        and
+                        0 <= hero < len(page_images)
+                    ):
+
+                        hero_asset = page_images[
+                            hero
+                        ]
+
+                        if hero_asset.get(
+                            "is_lifestyle"
+                        ):
+
+                         
+                            _logger.warning(
+
+                                f"[HERO REJECTED LIFESTYLE] "
+
+                                f"hero={hero}"
+                            )
+
+                            product[
+                                "hero_image_index"
+                            ] = None
 
                     for variant in product.get(
                         "variants",
@@ -6479,15 +6509,13 @@ class VendorImportJob(models.Model):
                             ] = (
 
                                 self._convert_ai_index_to_clean_index(
-
                                     idx,
-
                                     sorted_page_images
-
                                 )
 
                             )
 
+                           
                 # =====================================
                 # REPAIR GPT IMAGE MAPPING
                 # =====================================
@@ -6519,7 +6547,7 @@ class VendorImportJob(models.Model):
 
                             f"{variant.get('image_index')}"
                         )
-                        
+
                 for idx, product in enumerate(parsed):
 
                     parsed[idx] = (
