@@ -5935,6 +5935,15 @@ class VendorImportJob(models.Model):
 
                     base *= 0.7
 
+                # =====================================
+                # STRONG LIFESTYLE PENALTY
+                # ====================================
+
+                if asset.get(
+                    "is_lifestyle"
+                ):
+                    base *= 0.05
+
                 return base
 
 
