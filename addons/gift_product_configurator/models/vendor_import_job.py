@@ -4133,6 +4133,32 @@ class VendorImportJob(models.Model):
 
         return candidate
 
+    #------------convert_ai_index_to_clean_index-------------------
+
+    def _convert_ai_index_to_clean_index(
+
+        self,
+
+        ai_index,
+
+        sorted_page_images
+
+    ):
+
+        try:
+
+            asset = sorted_page_images[
+                ai_index
+            ]
+
+            return asset.get(
+                "clean_index"
+            )
+
+        except Exception:
+
+            return ai_index
+
     #===============etxract pdf=============================
     def extract_pdf(self):
 
@@ -6414,10 +6440,86 @@ class VendorImportJob(models.Model):
                     f"{result[:4000]}"
                 )
 
+                #===========convert_ai_index_to_clean_index==========
+                for product in parsed:
+
+                    hero = product.get(
+                        "hero_image_index"
+                    )
+
+                    if isinstance(hero, int):
+
+                        product[
+                            "hero_image_index"
+                        ] = (
+
+                            self._convert_ai_index_to_clean_index(
+
+                                hero,
+
+                                sorted_page_images
+
+                            )
+
+                        )
+
+                    for variant in product.get(
+                        "variants",
+                        []
+                    ):
+
+                        idx = variant.get(
+                            "image_index"
+                        )
+
+                        if isinstance(idx, int):
+
+                            variant[
+                                "image_index"
+                            ] = (
+
+                                self._convert_ai_index_to_clean_index(
+
+                                    idx,
+
+                                    sorted_page_images
+
+                                )
+
+                            )
+
                 # =====================================
                 # REPAIR GPT IMAGE MAPPING
                 # =====================================
+                _logger.warning(
+                    "[INDEX CONVERSION COMPLETE]"
+                )
 
+                for product in parsed:
+
+                    _logger.warning(
+
+                        f"[INDEX HERO] "
+
+                        f"{product.get('hero_image_index')}"
+                    )
+
+                    for variant in product.get(
+                        "variants",
+                        []
+                    ):
+
+                        _logger.warning(
+
+                            f"[INDEX VARIANT] "
+
+                            f"{variant.get('attributes',{}).get('Color')} "
+
+                            f"-> "
+
+                            f"{variant.get('image_index')}"
+                        )
+                        
                 for idx, product in enumerate(parsed):
 
                     parsed[idx] = (
