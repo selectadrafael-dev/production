@@ -8461,18 +8461,6 @@ class VendorImportJob(models.Model):
                 # REJECT LIFESTYLE / HUMAN IMAGES
                 # =====================================
 
-                _logger.warning(
-
-                    f"[PRODUCT SHAPE CHECK] "
-
-                    f"ratio={ratio:.2f} "
-
-                    f"area={width * height} "
-
-                    f"lifestyle={asset.get('is_lifestyle')}"
-
-                )
-
                 width = (
 
                     asset.get("width", 0)
@@ -8539,7 +8527,20 @@ class VendorImportJob(models.Model):
                 )
 
                 # tall portrait images
-                if ratio < 0.72 and height > width * 1.20:
+            
+                if (
+
+                    ratio < 0.72
+
+                    and
+
+                    height > width * 1.20
+
+                    and
+
+                    not is_product_shape
+
+                ):
 
                     _logger.warning(
 
