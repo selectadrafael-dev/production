@@ -8246,9 +8246,22 @@ class VendorImportJob(models.Model):
                     f"color={dominant_color}"
                 )
 
+
                 # =====================================
                 # REJECT LIFESTYLE / HUMAN IMAGES
                 # =====================================
+
+                _logger.warning(
+
+                    f"[PRODUCT SHAPE CHECK] "
+
+                    f"ratio={ratio:.2f} "
+
+                    f"area={width * height} "
+
+                    f"lifestyle={asset.get('is_lifestyle')}"
+
+                )
 
                 width = (
 
@@ -8287,6 +8300,33 @@ class VendorImportJob(models.Model):
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
+
+                is_product_shape = (
+
+                not asset.get(
+                        "is_lifestyle",
+                        False
+                    )
+
+                    and
+
+                    (width * height) > 50000
+
+                )
+
+                _logger.warning(
+
+                    f"[PRODUCT SHAPE CHECK] "
+
+                    f"ratio={ratio:.2f} "
+
+                    f"area={width * height} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"is_product_shape={is_product_shape}"
+
+                )
 
                 # tall portrait images
                 if ratio < 0.72 and height > width * 1.20:
