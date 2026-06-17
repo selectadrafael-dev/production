@@ -3737,6 +3737,7 @@ class VendorImportJob(models.Model):
             )
 
             assets = page_images
+            
 
         elif structure == "single_region":
 
@@ -3744,7 +3745,13 @@ class VendorImportJob(models.Model):
                 "[V2 STRATEGY] SEGMENTATION_CANDIDATE"
             )
 
-            assets = page_images
+            assets = (
+
+                self._segment_single_region(
+
+                    page_images
+                )
+            )
 
         else:
 
@@ -3812,6 +3819,29 @@ class VendorImportJob(models.Model):
         )
 
         return ordered_assets
+
+    #------------segment single region---------------------
+    def _segment_single_region(
+
+        self,
+
+        page_images
+
+    ):
+
+        _logger.warning(
+
+            f"[V2 SEGMENTATION START] "
+
+            f"images={len(page_images)}"
+
+        )
+
+        #
+        # Future segmentation engine
+        #
+
+        return page_images
 
 
     #===============etxract pdf=============================
