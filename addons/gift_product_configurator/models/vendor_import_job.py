@@ -5315,7 +5315,7 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF OPENAI BACKUP ================================
+    # =========== PDF OPENAI BACKUP ==========================
     
     def send_to_openai_pdf(self):
 
@@ -7200,7 +7200,7 @@ class VendorImportJob(models.Model):
 
 
    
-    #===========Excel Open AI================================
+    #===========Excel Open AI==================================
     
     def send_to_openai_excel(self):
 
