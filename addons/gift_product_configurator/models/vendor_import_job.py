@@ -7013,14 +7013,48 @@ class VendorImportJob(models.Model):
                     best_index not in valid_indexes
                 ):
 
-                    best_index = (
-                        self.match_image_index_with_ai(
-                            product_name,
-                            page_images
+                    candidate_images = [
+
+                        img
+
+                        for img in page_images
+
+                        if not img.get(
+                            "is_lifestyle"
                         )
+
+                    ]
+
+                    _logger.warning(
+
+                        f"[HERO FALLBACK FILTER] "
+
+                        f"before={len(page_images)} "
+
+                        f"after={len(candidate_images)}"
+
+                    )
+
+                    best_index = (
+
+                        self.match_image_index_with_ai(
+
+                            product_name,
+
+                            candidate_images
+
+                        )
+
                     )
 
                     if isinstance(best_index, int):
+                        _logger.warning(
+
+                            f"[HERO FALLBACK RESULT] "
+
+                            f"raw_index={best_index}"
+
+                        )
 
                         try:
 
