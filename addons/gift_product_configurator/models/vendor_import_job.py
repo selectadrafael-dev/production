@@ -11421,7 +11421,7 @@ class VendorImportJob(models.Model):
             return False
 
 
-    #============marchin AI===================================================
+    #============marching AI===================================================
     # LEGACY IMAGE PAYLOAD MATCHER
     # Deprecated after migration to
     # index-based asset orchestration.
@@ -11436,7 +11436,105 @@ class VendorImportJob(models.Model):
             return None
 
         # limit images for performance
+        _logger.warning(
+
+            f"[MATCH REQUEST] "
+
+            f"product={product_name} "
+
+            f"images={len(images)}"
+
+        )
+
+        for idx, img in enumerate(images):
+
+            try:
+
+                _logger.warning(
+
+                    f"[MATCH INPUT] "
+
+                    f"idx={idx} "
+
+                    f"type={type(img)} "
+
+                    f"length={len(img) if img else 0} "
+
+                    f"prefix={str(img)[:40] if img else 'EMPTY'}"
+
+                )
+
+            except Exception:
+
+                _logger.warning(
+
+                    f"[MATCH INPUT FAILED] "
+
+                    f"idx={idx}"
+
+                )
+
+
         images = images[:5]
+
+        valid_images = []
+
+        for img in images:
+
+            if not img:
+
+                _logger.warning(
+                    "[MATCH SKIP] EMPTY"
+                )
+
+                continue
+
+            if not isinstance(
+                img,
+                str
+            ):
+
+                _logger.warning(
+                    "[MATCH SKIP] NOT STRING"
+                )
+
+                continue
+
+            if img.startswith(
+                "data:image"
+            ):
+
+                img = img.split(
+                    ",",
+                    1
+                )[-1]
+
+            valid_images.append(
+                img
+            )
+
+        images = valid_images
+
+        _logger.warning(
+
+            f"[MATCH VALID IMAGES] "
+
+            f"{len(images)}"
+
+        )
+
+        if not images:
+
+            _logger.warning(
+
+                "[MATCH ABORT] "
+
+                "NO VALID IMAGES"
+
+            )
+
+            return None
+        
         image_inputs = [
         {
                 "type": "input_image",
@@ -11482,6 +11580,15 @@ class VendorImportJob(models.Model):
         """
 
         try:
+
+            _logger.warning(
+
+                f"[MATCH OPENAI SEND] "
+
+                f"images={len(image_inputs)}"
+
+            )
+            
             response = client.responses.create(
                 model="gpt-4.1",
                 input=[{
