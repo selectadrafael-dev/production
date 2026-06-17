@@ -11588,7 +11588,7 @@ class VendorImportJob(models.Model):
                 f"images={len(image_inputs)}"
 
             )
-            
+
             response = client.responses.create(
                 model="gpt-4.1",
                 input=[{
@@ -11634,29 +11634,6 @@ class VendorImportJob(models.Model):
                 if not img:
                     continue
 
-                img_lower = img.lower()
-
-                bad_keywords = [
-
-                    "banner",
-
-                    "lifestyle",
-
-                    "infographic",
-
-                    "specification",
-
-                    "sizechart",
-
-                    "dimensions"
-                ]
-
-                if any(
-                    k in img_lower
-                    for k in bad_keywords
-                ):
-                    continue
-
                 filtered_images.append(img)
 
             except Exception:
@@ -11668,6 +11645,111 @@ class VendorImportJob(models.Model):
 
         images = images[:8]
 
+        _logger.warning(
+
+            f"[INDEX MATCH REQUEST] "
+
+            f"product={product_name} "
+
+            f"images={len(images)}"
+
+        )
+
+        valid_images = []
+
+        for idx, img in enumerate(images):
+
+            try:
+
+
+                _logger.warning(
+
+                    f"[INDEX MATCH INPUT] "
+
+                    f"idx={idx} "
+
+                    f"type={type(img)} "
+
+                    f"length={len(img) if img else 0} "
+
+                    f"prefix={str(img)[:40] if img else 'EMPTY'}"
+
+                )
+
+                if not img:
+
+                    _logger.warning(
+
+                        f"[INDEX MATCH SKIP] "
+
+                        f"idx={idx} EMPTY"
+
+                    )
+
+                    continue
+
+                if not isinstance(
+                    img,
+                    str
+                ):
+
+                    _logger.warning(
+
+                        f"[INDEX MATCH SKIP] "
+
+                        f"idx={idx} NOT_STRING"
+
+                    )
+
+                    continue
+
+                if img.startswith(
+                    "data:image"
+                ):
+
+                    img = img.split(
+                        ",",
+                        1
+                    )[-1]
+
+                valid_images.append(
+                    img
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[INDEX MATCH VALIDATION FAILED] "
+
+                    f"idx={idx} "
+
+                    f"{str(e)}"
+
+                )
+
+        images = valid_images
+
+        if not images:
+
+            _logger.warning(
+
+                "[INDEX MATCH ABORT] "
+
+                "NO VALID IMAGES"
+
+            )
+
+            return None
+
+        _logger.warning(
+
+            f"[INDEX MATCH VALID] "
+
+            f"{len(images)}"
+
+        )
+
         image_inputs = []
 
         for idx, img in enumerate(images):
@@ -11676,6 +11758,18 @@ class VendorImportJob(models.Model):
                 "type": "input_text",
                 "text": f"IMAGE INDEX: {idx}"
             })
+
+            if len(img) < 100:
+
+                _logger.warning(
+
+                    f"[INDEX MATCH SHORT IMAGE] "
+
+                    f"idx={idx} "
+
+                    f"length={len(img)}"
+
+                )
 
             image_inputs.append({
                 "type": "input_image",
@@ -11711,6 +11805,13 @@ class VendorImportJob(models.Model):
         """
 
         try:
+            _logger.warning(
+
+                f"[INDEX MATCH OPENAI SEND] "
+
+                f"images={len(images)}"
+
+            )
 
             response = client.responses.create(
 
