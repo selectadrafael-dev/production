@@ -6224,6 +6224,26 @@ class VendorImportJob(models.Model):
             )
 
             _logger.warning(
+                "[AI INDEX MAP]"
+            )
+
+            for idx, asset in enumerate(
+                sorted_page_images
+            ):
+
+                _logger.warning(
+
+                    f"[AI MAP] "
+
+                    f"ai_index={idx} "
+
+                    f"clean_index={asset.get('clean_index')} "
+
+                    f"lifestyle={asset.get('is_lifestyle')}"
+
+                )
+
+            _logger.warning(
                 "[POST SORT ORDER]"
             )
 
