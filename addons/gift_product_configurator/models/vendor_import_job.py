@@ -3524,6 +3524,26 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
+            f"[V2 RETURNED ASSETS] "
+
+            f"{len(asset_pool)}"
+
+        )
+
+        for idx, asset in enumerate(asset_pool[:5]):
+
+            _logger.warning(
+
+                f"[V2 RETURN] "
+
+                f"position={idx} "
+
+                f"lifestyle={asset.get('is_lifestyle')}"
+
+            )
+
+        _logger.warning(
+
             f"[V2 ASSET COUNT] "
 
             f"{len(asset_pool)}"
@@ -3536,7 +3556,10 @@ class VendorImportJob(models.Model):
                 regions,
 
             "candidates":
-                candidates
+                candidates,
+
+            "asset_pool":
+                asset_pool
 
         }
    
@@ -3737,7 +3760,7 @@ class VendorImportJob(models.Model):
             )
 
             assets = page_images
-            
+
 
         elif structure == "single_region":
 
@@ -3808,6 +3831,7 @@ class VendorImportJob(models.Model):
             lifestyle_assets
         )
 
+
         _logger.warning(
 
             f"[V2 DEMOTION] "
@@ -3817,6 +3841,27 @@ class VendorImportJob(models.Model):
             f"lifestyle={len(lifestyle_assets)}"
 
         )
+
+        for idx, asset in enumerate(
+
+            ordered_assets
+
+        ):
+
+            _logger.warning(
+
+                f"[V2 DEMOTION ORDER] "
+
+                f"position={idx} "
+
+                f"lifestyle={asset.get('is_lifestyle')} "
+
+                f"width={asset.get('width')} "
+
+                f"height={asset.get('height')}"
+
+            )
+
 
         return ordered_assets
 
@@ -4304,11 +4349,46 @@ class VendorImportJob(models.Model):
 
                         try:
 
+                            v2_result = None
+
                             if all_page_images:
 
-                                self._run_catalogue_v2(
-                                    all_page_images
+                                v2_result = (
+
+                                    self._run_catalogue_v2(
+
+                                        all_page_images
+                                    )
+
                                 )
+
+                                if (
+
+                                    v2_result
+
+                                    and
+
+                                    v2_result.get(
+                                        "asset_pool"
+                                    )
+
+                                ):
+
+                                    all_page_images = (
+
+                                        v2_result.get(
+                                            "asset_pool"
+                                        )
+
+                                    )
+
+                                    _logger.warning(
+
+                                        f"[V2 APPLIED] "
+
+                                        f"assets={len(all_page_images)}"
+
+                                    )
 
                         except Exception as e:
 
