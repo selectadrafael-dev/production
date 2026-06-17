@@ -3865,6 +3865,7 @@ class VendorImportJob(models.Model):
 
         return ordered_assets
 
+    
     #------------segment single region---------------------
     def _segment_single_region(
 
@@ -3882,12 +3883,75 @@ class VendorImportJob(models.Model):
 
         )
 
-        #
-        # Future segmentation engine
-        #
+        segmented_assets = []
 
-        return page_images
+        for idx, asset in enumerate(
 
+            page_images
+
+        ):
+
+            width = int(
+
+                asset.get(
+                    "width",
+                    0
+                ) or 0
+
+            )
+
+            height = int(
+
+                asset.get(
+                    "height",
+                    0
+                ) or 0
+
+            )
+
+            area = width * height
+
+            _logger.warning(
+
+                f"[V2 SEGMENT CHECK] "
+
+                f"asset={idx} "
+
+                f"w={width} "
+
+                f"h={height} "
+
+                f"area={area}"
+
+            )
+
+            #
+            # Future segmentation trigger
+            #
+
+            if area > 500000:
+
+                _logger.warning(
+
+                    f"[V2 LARGE REGION] "
+
+                    f"asset={idx}"
+
+                )
+
+            segmented_assets.append(
+                asset
+            )
+
+        _logger.warning(
+
+            f"[V2 SEGMENT RESULT] "
+
+            f"assets={len(segmented_assets)}"
+
+        )
+
+        return segmented_assets
 
     #===============etxract pdf=============================
     def extract_pdf(self):
