@@ -3957,13 +3957,44 @@ class VendorImportJob(models.Model):
 
                 )
 
+
+                usable_indexes = [
+
+                    idx
+
+                    for idx, img in enumerate(
+                        page_images
+                    )
+
+                    if not img.get(
+                        "is_lifestyle"
+                    )
+
+                ]
+
+                _logger.warning(
+
+                    f"[MAPPING USABLE INDEXES] "
+
+                    f"{usable_indexes}"
+
+                )
+
                 for idx, variant in enumerate(
                     variants
                 ):
 
+                    if idx >= len(
+                        usable_indexes
+                    ):
+
+                        break
+
                     variant[
                         "image_index"
-                    ] = idx
+                    ] = usable_indexes[
+                        idx
+                    ]
 
                     _logger.warning(
 
@@ -3971,7 +4002,7 @@ class VendorImportJob(models.Model):
 
                         f"color={variant.get('attributes', {}).get('Color')} "
 
-                        f"new_index={idx}"
+                        f"new_index={usable_indexes[idx]}"
 
                     )
 
