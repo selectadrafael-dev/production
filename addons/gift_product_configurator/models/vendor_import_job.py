@@ -8561,6 +8561,33 @@ class VendorImportJob(models.Model):
                 hero_score = score
                 gallery_score = score
 
+                # =====================================
+                # LIFESTYLE HERO PENALTY
+                # =====================================
+
+                if isinstance(asset, dict) and asset.get(
+                    "is_lifestyle",
+                    False
+                ):
+
+                    hero_score -= 2000000
+
+                    gallery_score -= 2000000
+
+                    _logger.warning(
+
+                        "[LIFESTYLE HERO PENALTY] "
+
+                        f"clean_index={asset.get('clean_index')} "
+
+                        f"original_score={score} "
+
+                        f"new_hero_score={hero_score} "
+
+                        f"new_gallery_score={gallery_score}"
+
+                    )
+
                 try:
 
                     dominant_color = (
@@ -8874,6 +8901,24 @@ class VendorImportJob(models.Model):
                 f"color={asset.get('dominant_color')}"
             )
 
+        _logger.warning(
+
+            "[HERO SCORE REVIEW]"
+        )
+
+        for asset in prepared:
+
+            _logger.warning(
+
+                f"[HERO CANDIDATE] "
+
+                f"clean={asset.get('clean_index')} "
+
+                f"hero={asset.get('hero_score')} "
+
+                f"lifestyle={asset.get('is_lifestyle')}"
+
+            )
         prepared = sorted(
 
             prepared,
