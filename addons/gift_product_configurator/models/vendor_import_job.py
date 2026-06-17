@@ -3601,20 +3601,47 @@ class VendorImportJob(models.Model):
 
             )
 
+        largest_ratio = (
+
+            largest_area /
+
+            max(
+                total_area,
+                1
+            )
+
+        )
+
         structure = "unknown"
 
         if total_images == 1:
 
             structure = "single_region"
 
-        elif lifestyle_count >= 1:
-
-            structure = "mixed_marketing"
-
         elif total_images >= 6:
 
             structure = "variant_grid"
 
+        elif (
+
+            lifestyle_count > 0
+
+            and
+
+            largest_ratio > 0.70
+
+        ):
+
+            structure = "hero_marketing"
+
+        elif lifestyle_count >= 1:
+
+            structure = "mixed_marketing"
+        else:
+
+            structure = "unknown"
+
+        
         result = {
 
             "structure":
@@ -3630,7 +3657,13 @@ class VendorImportJob(models.Model):
                 largest_area,
 
             "total_area":
-                total_area
+                total_area,
+
+            "largest_ratio":
+                round(
+                    largest_ratio,
+                    2
+                )
 
         }
 
@@ -3669,36 +3702,117 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
+            f"[V2 ROUTER] "
+
+            f"structure={structure}"
+
+        )
+
+        if structure == "variant_grid":
+
+            _logger.warning(
+                "[V2 STRATEGY] DIRECT_ASSETS"
+            )
+
+            assets = page_images
+
+        elif structure == "hero_marketing":
+
+            _logger.warning(
+                "[V2 STRATEGY] DEMOTE_LIFESTYLE"
+            )
+
+            assets = (
+
+                self._demote_lifestyle_assets(
+
+                    page_images
+                )
+            )
+
+        elif structure == "mixed_marketing":
+
+            _logger.warning(
+                "[V2 STRATEGY] MIXED_ASSETS"
+            )
+
+            assets = page_images
+
+        elif structure == "single_region":
+
+            _logger.warning(
+                "[V2 STRATEGY] SEGMENTATION_CANDIDATE"
+            )
+
+            assets = page_images
+
+        else:
+
+            _logger.warning(
+                "[V2 STRATEGY] UNKNOWN"
+            )
+
+            assets = page_images
+
+        _logger.warning(
+
             f"[V2 ASSET MODE] "
 
             f"{structure}"
         )
 
-        #
-        # Strategy 1
-        #
-
-        if structure == "variant_grid":
-
-            assets = page_images
-
-        #
-        # Strategy 2
-        #
-
-        elif structure == "mixed_marketing":
-
-            assets = page_images
-
-        #
-        # Strategy 3
-        #
-
-        elif structure == "single_region":
-
-            assets = page_images
 
         return assets
+
+
+    #------------demote lifestyle assets-------------------
+    def _demote_lifestyle_assets(
+
+        self,
+
+        page_images
+
+    ):
+
+        lifestyle_assets = []
+
+        real_assets = []
+
+        for asset in page_images:
+
+            if asset.get(
+                "is_lifestyle"
+            ):
+
+                lifestyle_assets.append(
+                    asset
+                )
+
+            else:
+
+                real_assets.append(
+                    asset
+                )
+
+        ordered_assets = (
+
+            real_assets
+            +
+            lifestyle_assets
+        )
+
+        _logger.warning(
+
+            f"[V2 DEMOTION] "
+
+            f"real={len(real_assets)} "
+
+            f"lifestyle={len(lifestyle_assets)}"
+
+        )
+
+        return ordered_assets
+
 
     #===============etxract pdf=============================
     def extract_pdf(self):
@@ -16488,8 +16602,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # =====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
