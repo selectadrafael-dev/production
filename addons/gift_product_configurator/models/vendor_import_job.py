@@ -3677,7 +3677,7 @@ class VendorImportJob(models.Model):
 
         return result
 
-    #------------future entry point-------------------------
+    #------------future entry point------------------------
     def _build_universal_asset_pool(
 
         self,
