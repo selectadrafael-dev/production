@@ -3869,7 +3869,126 @@ class VendorImportJob(models.Model):
 
         return ordered_assets
 
-    
+
+    #------------repair variant mapping-----------------------
+    def _repair_variant_image_mapping(
+
+        self,
+
+        product,
+
+        page_images
+
+    ):
+
+        try:
+
+            variants = product.get(
+                "variants",
+                []
+            )
+
+            if not variants:
+
+                return product
+
+            usable_assets = [
+
+                img
+
+                for img in page_images
+
+                if not img.get(
+                    "is_lifestyle"
+                )
+
+            ]
+
+            current_indexes = [
+
+                v.get(
+                    "image_index"
+                )
+
+                for v in variants
+
+                if v.get(
+                    "image_index"
+                ) is not None
+            ]
+
+            unique_indexes = set(
+                current_indexes
+            )
+
+            _logger.warning(
+
+                f"[MAPPING REPAIR CHECK] "
+
+                f"variants={len(variants)} "
+
+                f"assets={len(usable_assets)} "
+
+                f"unique_indexes={len(unique_indexes)}"
+
+            )
+
+            if (
+
+                len(variants) > 1
+
+                and
+
+                len(unique_indexes) == 1
+
+                and
+
+                len(usable_assets)
+                >=
+                len(variants)
+
+            ):
+
+                _logger.warning(
+
+                    "[MAPPING REPAIR] "
+
+                    "AUTO DISTRIBUTE"
+
+                )
+
+                for idx, variant in enumerate(
+                    variants
+                ):
+
+                    variant[
+                        "image_index"
+                    ] = idx
+
+                    _logger.warning(
+
+                        f"[MAPPING FIX] "
+
+                        f"color={variant.get('attributes', {}).get('Color')} "
+
+                        f"new_index={idx}"
+
+                    )
+
+            return product
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[MAPPING REPAIR FAILED] "
+
+                f"{str(e)}"
+
+            )
+
+            return product
+
     #------------segment single region---------------------
     def _segment_single_region(
 
@@ -6274,6 +6393,24 @@ class VendorImportJob(models.Model):
                     f"[AI RAW RESPONSE] "
                     f"{result[:4000]}"
                 )
+
+                # =====================================
+                # REPAIR GPT IMAGE MAPPING
+                # =====================================
+
+                for idx, product in enumerate(parsed):
+
+                    parsed[idx] = (
+
+                        self._repair_variant_image_mapping(
+
+                            product,
+
+                            page_images
+
+                        )
+
+                    )
 
                 for product in parsed:
 
