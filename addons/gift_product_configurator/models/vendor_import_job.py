@@ -13152,6 +13152,26 @@ class VendorImportJob(models.Model):
             return
 
         try:
+           
+            template = variant_record.product_tmpl_id
+
+            template.write({
+
+                'type': 'product',
+
+                'allow_out_of_stock_order': True,
+
+                'show_availability': True,
+
+                'available_threshold': 1000,
+            })
+
+            _logger.warning(
+
+                f"[INVENTORY WEBSITE ENABLED] "
+
+                f"{template.name}"
+            )
 
             quant = stock_quant_obj.search([
 
@@ -14296,7 +14316,17 @@ class VendorImportJob(models.Model):
                 # =====================================================
 
                 if not product and vendor_id:
+                    # _logger.warning(
 
+                    #     f"[FINGERPRINT] "
+
+                    #     f"title={product_data.get('title')} "
+
+                    #     f"group={variant_group} "
+
+                    #     f"fingerprint={vendor_fingerprint}"
+                    # )
+                    
                     product = product_obj.search([
 
                         (
@@ -14399,6 +14429,41 @@ class VendorImportJob(models.Model):
                     product = product_obj.create(
                         vals
                     )
+
+                    # =====================================
+                    # ENABLE WEBSITE STOCK DISPLAY
+                    # =====================================
+
+                    try:
+
+                        product.write({
+
+                            'allow_out_of_stock_order': True,
+
+                            'show_availability': True,
+
+                            'available_threshold': 1000,
+                        })
+
+                        _logger.warning(
+
+                            f"[WEBSITE STOCK ENABLED] "
+
+                            f"{product.name}"
+                        )
+
+                    except Exception as e:
+
+                        _logger.warning(
+
+                            f"[WEBSITE STOCK FAILED] "
+
+                            f"{str(e)}"
+                        )
+
+                    # =====================================
+                    # TRANSLATION
+                    # =====================================
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
