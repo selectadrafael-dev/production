@@ -4384,6 +4384,30 @@ class VendorImportJob(models.Model):
 
                                     _logger.warning(
 
+                                        f"[V2 SAVED ASSET COUNT] "
+
+                                        f"{len(all_page_images)}"
+
+                                    )
+
+                                    for idx, asset in enumerate(
+
+                                        all_page_images[:5]
+
+                                    ):
+
+                                        _logger.warning(
+
+                                            f"[V2 SAVED ORDER] "
+
+                                            f"position={idx} "
+
+                                            f"lifestyle={asset.get('is_lifestyle')}"
+
+                                        )
+
+                                    _logger.warning(
+
                                         f"[V2 APPLIED] "
 
                                         f"assets={len(all_page_images)}"
