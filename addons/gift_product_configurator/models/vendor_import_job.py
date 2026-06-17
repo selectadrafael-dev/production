@@ -6071,7 +6071,30 @@ class VendorImportJob(models.Model):
 
                 return base
 
+            _logger.warning(
+                "[PRE SORT ORDER]"
+            )
 
+            for idx, asset in enumerate(page_images):
+
+                _logger.warning(
+
+                    f"[PRE SORT] "
+
+                    f"idx={idx} "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"score={asset.get('score')} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"width={asset.get('width')} "
+
+                    f"height={asset.get('height')}"
+
+                )
+                
             sorted_page_images = sorted(
 
                 page_images,
@@ -6082,8 +6105,58 @@ class VendorImportJob(models.Model):
             )
 
             _logger.warning(
+                "[POST SORT ORDER]"
+            )
+
+            for idx, asset in enumerate(sorted_page_images):
+
+                _logger.warning(
+
+                    f"[POST SORT] "
+
+                    f"idx={idx} "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"score={asset.get('score')} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"width={asset.get('width')} "
+
+                    f"height={asset.get('height')}"
+
+                )
+
+            _logger.warning(
                 "[AI ORDER START]"
             )
+
+            _logger.warning(
+
+                f"[PRE AI ORDER COUNT] "
+
+                f"{len(page_images)}"
+
+            )
+
+            for idx, img in enumerate(page_images):
+
+                _logger.warning(
+
+                    f"[PRE AI ORDER] "
+
+                    f"idx={idx} "
+
+                    f"clean={img.get('clean_index')} "
+
+                    f"lifestyle={img.get('is_lifestyle')} "
+
+                    f"width={img.get('width')} "
+
+                    f"height={img.get('height')}"
+
+                )
 
             for ai_pos, asset in enumerate(
                 sorted_page_images[:MAX_IMAGES]
