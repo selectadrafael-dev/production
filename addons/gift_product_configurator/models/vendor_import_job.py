@@ -11688,6 +11688,15 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                if isinstance(
+                    img,
+                    dict
+                ):
+
+                    img = img.get(
+                        "image"
+                    )
+
                 if not isinstance(
                     img,
                     str
