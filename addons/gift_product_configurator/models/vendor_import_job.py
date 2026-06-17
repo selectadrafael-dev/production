@@ -12947,9 +12947,76 @@ class VendorImportJob(models.Model):
                     f"| images={len(product_images)}"
                 )
 
+              
                 # =====================================
-                # FALLBACK TO PAGE IMAGES
+                # REBUILD IMAGES FROM AI INDEXES
                 # =====================================
+
+                if not product_images and page_images:
+
+                    used_indexes = set()
+
+                    hero_index = product_data.get(
+                        "hero_image_index"
+                    )
+
+                    if isinstance(hero_index, int):
+
+                        used_indexes.add(
+                            hero_index
+                        )
+
+                    for idx in product_data.get(
+                        "gallery_image_indexes",
+                        []
+                    ):
+
+                        if isinstance(idx, int):
+
+                            used_indexes.add(idx)
+
+                    for variant in product_data.get(
+                        "variants",
+                        []
+                    ):
+
+                        idx = variant.get(
+                            "image_index"
+                        )
+
+                        if isinstance(idx, int):
+
+                            used_indexes.add(idx)
+
+                    rebuilt_images = []
+
+                    for idx in sorted(
+                        used_indexes
+                    ):
+
+                        if 0 <= idx < len(
+                            page_images
+                        ):
+
+                            rebuilt_images.append(
+                                page_images[idx]
+                            )
+
+                    if rebuilt_images:
+
+                        product_images = rebuilt_images
+
+                        _logger.warning(
+
+                            f"[INDEX IMAGE REBUILD] "
+
+                            f"{product_data.get('name')} "
+
+                            f"| indexes={sorted(list(used_indexes))} "
+
+                            f"| images={len(product_images)}"
+
+                        )
 
                 if not product_images:
 
@@ -13038,6 +13105,20 @@ class VendorImportJob(models.Model):
                 asset_pool = self._prepare_asset_pool(
                     segmented_assets
                 )
+
+                for asset in asset_pool:
+
+                    _logger.warning(
+
+                        f"[POOL SOURCE] "
+
+                        f"clean={asset.get('clean_index')} "
+
+                        f"color={asset.get('detected_color')} "
+
+                        f"lifestyle={asset.get('is_lifestyle')}"
+
+                    )
 
                 _logger.warning(
 
