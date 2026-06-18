@@ -1178,7 +1178,7 @@ def extract():
                     f"{str(e)}"
                 )
         
-        # 🔒 limit text
+        # 🔒 ======limit text=======
         text = text[:3500]
 
         _logger.warning(
