@@ -3547,6 +3547,24 @@ class VendorImportJob(models.Model):
 
         )
 
+        for idx, region in enumerate(
+            v3_regions[:10]
+        ):
+
+            _logger.warning(
+
+                f"[V3 REGION RETURN] "
+
+                f"position={idx} "
+
+                f"clean={region.get('clean_index')} "
+
+                f"width={region.get('width')} "
+
+                f"height={region.get('height')}"
+
+            )
+
         for idx, asset in enumerate(asset_pool[:5]):
 
             _logger.warning(
@@ -3567,6 +3585,7 @@ class VendorImportJob(models.Model):
 
         )
 
+       
         return {
 
             "regions":
@@ -3576,7 +3595,10 @@ class VendorImportJob(models.Model):
                 candidates,
 
             "asset_pool":
-                asset_pool
+                asset_pool,
+
+            "v3_regions":
+                v3_regions
 
         }
    
