@@ -4278,6 +4278,28 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
+            f"[V3 IMAGE SIZE] "
+
+            f"base64_length={len(asset.get('image', ''))}"
+
+        )
+
+        image_data = asset.get(
+            "image"
+        )
+
+        if image_data:
+
+            _logger.warning(
+
+                f"[V3 IMAGE PREFIX] "
+
+                f"{image_data[:50]}"
+
+            )
+
+        _logger.warning(
+
             f"[V3 SEGMENT ANALYZE] "
 
             f"width={width} "
@@ -4306,6 +4328,7 @@ class VendorImportJob(models.Model):
         )
 
         return segments
+
 
     #------------detect collage candidate-------------------
     def _is_collage_candidate(
