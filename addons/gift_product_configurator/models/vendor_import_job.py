@@ -6158,6 +6158,7 @@ class VendorImportJob(models.Model):
                 )
 
 
+
         try:
 
             sample = existing_map.get(
@@ -6165,11 +6166,14 @@ class VendorImportJob(models.Model):
             )
 
             if sample:
+
                 _logger.warning(
-                    ...
+                    f"[AI RESPONSE PAGE IMAGE] "
+                    f"exists={bool(sample.get('page_image'))} "
+                    f"width={sample.get('page_width')} "
+                    f"height={sample.get('page_height')}"
                 )
 
-           
         except Exception as e:
 
             _logger.warning(
