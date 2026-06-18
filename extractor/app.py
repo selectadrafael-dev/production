@@ -1213,9 +1213,32 @@ def extract():
                 f"lifestyle={sample.get('is_lifestyle')}"
             )
 
+        page_buffer = io.BytesIO()
+
+        img.save(
+            page_buffer,
+            format="JPEG",
+            quality=85
+        )
+
+        page_base64 = base64.b64encode(
+            page_buffer.getvalue()
+        ).decode("utf-8")
+
         pages_data.append({
+
             "page": page_number + 1,
+
             "text": text,
+
+            "page_image": page_base64,
+
+            "page_image_size": len(page_base64),
+
+            "page_width": img.width,
+
+            "page_height": img.height,
+
             "images": image_list
         })
 
