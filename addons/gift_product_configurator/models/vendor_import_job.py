@@ -3571,7 +3571,7 @@ class VendorImportJob(models.Model):
 
                             continue
 
-
+                       
                         page_data = response.json()
 
 
@@ -3596,6 +3596,31 @@ class VendorImportJob(models.Model):
                         else:
 
                             pages = []
+
+                        
+                        # =========================
+                        # PAGE IMAGE DEBUG
+                        # =========================
+
+                        if pages:
+
+                            page = pages[0]
+
+                            _logger.warning(
+                                f"[PAGE IMAGE EXISTS] "
+                                f"{bool(page.get('page_image'))}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE SIZE] "
+                                f"{page.get('page_image_size')}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE DIMENSIONS] "
+                                f"{page.get('page_width')}x"
+                                f"{page.get('page_height')}"
+                            )
 
 
                         if not pages:
