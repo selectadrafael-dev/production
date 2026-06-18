@@ -62,6 +62,14 @@ def split_catalog_image(pil_image):
             cv2.CHAIN_APPROX_SIMPLE
         )
 
+        _logger.warning(
+
+            f"[CONTOUR COUNT] "
+
+            f"{len(contours)}"
+
+        )
+
         results = []
 
         for contour in contours:
@@ -72,6 +80,22 @@ def split_catalog_image(pil_image):
                 continue
 
             x, y, w, h = cv2.boundingRect(contour)
+
+            _logger.warning(
+
+                f"[CONTOUR FOUND] "
+
+                f"x={x} "
+
+                f"y={y} "
+
+                f"w={w} "
+
+                f"h={h} "
+
+                f"area={w*h}"
+
+            )
            
             area = cv2.contourArea(
                 contour
@@ -693,7 +717,60 @@ def extract():
             cv2.CHAIN_APPROX_SIMPLE
         )
 
+        if len(contours) <= 2:
+
+            _logger.warning(
+
+                "[EDGE SEGMENTATION MODE]"
+
+            )
+
+            edges = cv2.Canny(
+
+                gray,
+
+                50,
+
+                150
+
+            )
+
+            edge_contours, _ = cv2.findContours(
+
+                edges,
+
+                cv2.RETR_EXTERNAL,
+
+                cv2.CHAIN_APPROX_SIMPLE
+
+            )
+
+            _logger.warning(
+
+                f"[EDGE CONTOUR COUNT] "
+
+                f"{len(edge_contours)}"
+
+            )
+
+            if len(edge_contours) > len(contours):
+
+                contours = edge_contours
+
+                _logger.warning(
+
+                    "[EDGE CONTOURS SELECTED]"
+
+                )
+
         candidate_images = []
+        _logger.warning(
+
+            f"[CONTOUR COUNT] "
+
+            f"{len(contours)}"
+
+        )
 
         # ===============================
         # EXTRACT CROPS
@@ -715,7 +792,6 @@ def extract():
             )
 
             # skip tiny areas
-
             if w < 90 or h < 90:
 
                 _logger.warning(
@@ -723,6 +799,22 @@ def extract():
                     f"[EXTRACTOR REJECT SMALL] "
 
                     f"w={w} h={h}"
+                )
+
+                _logger.warning(
+
+                    f"[CONTOUR FOUND] "
+
+                    f"x={x} "
+
+                    f"y={y} "
+
+                    f"w={w} "
+
+                    f"h={h} "
+
+                    f"area={w*h}"
+
                 )
 
                 continue
