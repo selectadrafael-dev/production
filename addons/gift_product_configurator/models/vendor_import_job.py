@@ -3530,6 +3530,23 @@ class VendorImportJob(models.Model):
 
         )
 
+        #===========region 3 logic=========================
+        v3_regions = (
+
+            self._discover_product_regions_v3(
+
+                asset_pool
+            )
+        )
+
+        _logger.warning(
+
+            f"[V3 REGION COUNT] "
+
+            f"{len(v3_regions)}"
+
+        )
+
         for idx, asset in enumerate(asset_pool[:5]):
 
             _logger.warning(
@@ -3798,6 +3815,42 @@ class VendorImportJob(models.Model):
 
         return assets
 
+    # =====================================
+    # V3 PRODUCT REGION DISCOVERY
+    # =====================================
+
+    def _discover_product_regions_v3(
+
+        self,
+
+        page_images
+
+    ):
+
+        _logger.warning(
+
+            f"[V3 REGION START] "
+
+            f"images={len(page_images)}"
+
+        )
+
+        discovered_regions = []
+
+        for asset in page_images:
+
+            discovered_regions.append(asset)
+
+            _logger.warning(
+
+                f"[V3 REGION] "
+
+                f"clean={asset.get('clean_index')}"
+
+            )
+
+        return discovered_regions
+    
 
     #------------demote lifestyle assets-------------------
     def _demote_lifestyle_assets(
