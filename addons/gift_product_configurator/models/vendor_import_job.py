@@ -4874,12 +4874,15 @@ class VendorImportJob(models.Model):
             existing_map[
                 next_record.page_number
             ] = {
-
                 "page": next_record.page_number,
 
-                "products": parsed,
+                "products": [],
 
-                "images": page_images,
+                "images": [],
+
+                "failed": True,
+
+                "reason": "no_valid_images",
 
                 "page_image": page_image,
 
@@ -4898,31 +4901,10 @@ class VendorImportJob(models.Model):
                 )
             )
 
-            try:
-
-                sample = combined_pages[0]
-
-                _logger.warning(
-                    f"[AI RESPONSE PAGE IMAGE] "
-                    f"exists={bool(sample.get('page_image'))} "
-                    f"width={sample.get('page_width')} "
-                    f"height={sample.get('page_height')}"
-                )
-
-            except Exception as e:
-
-                _logger.warning(
-                    f"[AI RESPONSE PAGE IMAGE FAILED] {str(e)}"
-                )
-
+           
             if combined_pages:
 
                 sample = combined_pages[0]
-
-                _logger.warning(
-                    f"[AI RESPONSE PAGE IMAGE] "
-                    f"{bool(sample.get('page_image'))}"
-                )
 
             self.ai_response = json.dumps(
                 combined_pages
@@ -5777,6 +5759,7 @@ class VendorImportJob(models.Model):
                         p.get("page")
                     ] = p
 
+
                 existing_map[
                     next_record.page_number
                 ] = {
@@ -5787,8 +5770,15 @@ class VendorImportJob(models.Model):
 
                     "images": [],
 
-                    "failed": True
+                    "failed": True,
+
+                    "page_image": page_image,
+
+                    "page_width": page_width,
+
+                    "page_height": page_height
                 }
+
 
                 combined_pages = sorted(
 
@@ -5839,6 +5829,7 @@ class VendorImportJob(models.Model):
                         p.get("page")
                     ] = p
 
+
                 existing_map[
                     next_record.page_number
                 ] = {
@@ -5849,9 +5840,16 @@ class VendorImportJob(models.Model):
 
                     "images": [],
 
-                    "failed": True
+                    "failed": True,
+
+                    "page_image": page_image,
+
+                    "page_width": page_width,
+
+                    "page_height": page_height
                 }
 
+            
                 combined_pages = sorted(
 
                     list(existing_map.values()),
@@ -6016,7 +6014,13 @@ class VendorImportJob(models.Model):
 
             "products": parsed,
 
-            "images": page_images
+            "images": page_images,
+
+            "page_image": page_image,
+
+            "page_width": page_width,
+
+            "page_height": page_height
         }
 
 
@@ -6029,6 +6033,26 @@ class VendorImportJob(models.Model):
                 0
             )
         )
+
+        try:
+
+            sample = existing_map.get(
+                next_record.page_number
+            )
+
+            _logger.warning(
+            f"[AI RESPONSE PAGE IMAGE] "
+            f"exists={bool(sample.get('page_image'))} "
+            f"width={sample.get('page_width')} "
+            f"height={sample.get('page_height')}"
+                    )
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[AI RESPONSE PAGE IMAGE FAILED] "
+                f"{str(e)}"
+            )
 
 
         # =====================================================
