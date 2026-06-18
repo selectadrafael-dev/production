@@ -3658,6 +3658,21 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
+                            page_image = p.get(
+                                "page_image",
+                                ""
+                            )
+
+                            page_width = p.get(
+                                "page_width",
+                                0
+                            )
+
+                            page_height = p.get(
+                                "page_height",
+                                0
+                            )
+
                             if images and isinstance(images[0], dict):
 
                                 _logger.warning(
@@ -3742,7 +3757,13 @@ class VendorImportJob(models.Model):
 
                                 "stock": stock,
 
-                                "images": images
+                                "images": images,
+
+                                "page_image": page_image,
+
+                                "page_width": page_width,
+
+                                "page_height": page_height
                             })
 
 
@@ -4588,6 +4609,38 @@ class VendorImportJob(models.Model):
                 "[]"
             )
 
+            page_image = ""
+            page_width = 0
+            page_height = 0
+
+            for block in page_blocks:
+
+                if block.get("page_image"):
+
+                    page_image = block.get(
+                        "page_image"
+                    )
+
+                    page_width = block.get(
+                        "page_width",
+                        0
+                    )
+
+                    page_height = block.get(
+                        "page_height",
+                        0
+                    )
+
+                    _logger.warning(
+                        f"[AI PAGE IMAGE] "
+                        f"exists={bool(page_image)} "
+                        f"size={len(page_image) if page_image else 0} "
+                        f"width={page_width} "
+                        f"height={page_height}"
+                    )
+
+                    break
+
             for block in page_blocks:
 
                 imgs = block.get("images", [])
@@ -4817,19 +4870,22 @@ class VendorImportJob(models.Model):
                 ] = p
 
 
+
             existing_map[
                 next_record.page_number
             ] = {
 
                 "page": next_record.page_number,
 
-                "products": [],
+                "products": parsed,
 
-                "images": [],
+                "images": page_images,
 
-                "failed": True,
+                "page_image": page_image,
 
-                "reason": "no_valid_images"
+                "page_width": page_width,
+
+                "page_height": page_height
             }
 
             combined_pages = sorted(
@@ -4841,6 +4897,15 @@ class VendorImportJob(models.Model):
                     0
                 )
             )
+
+            if combined_pages:
+
+                sample = combined_pages[0]
+
+                _logger.warning(
+                    f"[AI RESPONSE PAGE IMAGE] "
+                    f"{bool(sample.get('page_image'))}"
+                )
 
             self.ai_response = json.dumps(
                 combined_pages
