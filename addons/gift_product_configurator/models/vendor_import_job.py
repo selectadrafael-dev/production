@@ -3944,6 +3944,107 @@ class VendorImportJob(models.Model):
                 "[PDF GC] COMPLETE"
             )
 
+    #=========dpf validate_extraction_quality============== 
+
+    def _validate_extraction_quality(self, page_data):
+
+        score = 100
+        reasons = []
+
+        images = page_data.get("images", [])
+        products = page_data.get("products", [])
+
+        page_width = page_data.get("page_width", 0)
+        page_height = page_data.get("page_height", 0)
+
+        if not images:
+
+            reasons.append("no_images")
+            score -= 100
+
+        image_count = len(images)
+        product_count = len(products)
+
+        # --------------------------------
+        # Banner Dominance
+        # --------------------------------
+
+        for img in images:
+
+            coverage = img.get(
+                "coverage_ratio",
+                0
+            )
+
+            if (
+                img.get("is_lifestyle")
+                and
+                coverage > 0.60
+            ):
+
+                reasons.append(
+                    "banner_dominance"
+                )
+
+                score -= 40
+
+                break
+
+        # --------------------------------
+        # Asset Shortage
+        # --------------------------------
+
+        if (
+            product_count >= 3
+            and
+            image_count <= 2
+        ):
+
+            reasons.append(
+                "asset_shortage"
+            )
+
+            score -= 30
+
+        # --------------------------------
+        # Suspicious Crop Shapes
+        # --------------------------------
+
+        suspicious = 0
+
+        for img in images:
+
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+
+            if not w or not h:
+                continue
+
+            ratio = w / float(h)
+
+            if (
+                ratio > 3.0
+                or
+                ratio < 0.25
+            ):
+                suspicious += 1
+
+        if suspicious:
+
+            reasons.append(
+                "suspicious_crop_ratio"
+            )
+
+            score -= min(
+                suspicious * 5,
+                20
+            )
+
+        return {
+            "passed": score >= 60,
+            "score": score,
+            "reasons": reasons
+        }
 
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
@@ -6023,6 +6124,17 @@ class VendorImportJob(models.Model):
             "page_height": page_height
         }
 
+        validation = self._validate_extraction_quality(...)
+
+        existing_map[
+            next_record.page_number
+        ]["validation"] = validation
+
+        existing_map[
+            next_record.page_number
+        ]["recovery_required"] = (
+            not validation["passed"]
+        )
 
         combined_pages = sorted(
 
@@ -6033,6 +6145,19 @@ class VendorImportJob(models.Model):
                 0
             )
         )
+
+        _logger.warning(
+                f"[VALIDATION] "
+                f"passed={validation['passed']} "
+                f"score={validation['score']} "
+                f"reasons={validation['reasons']}"
+            )
+
+        if not validation["passed"]:
+                _logger.warning(
+                    "[RECOVERY REQUIRED]"
+                )
+
 
         try:
 
@@ -6047,6 +6172,7 @@ class VendorImportJob(models.Model):
             f"height={sample.get('page_height')}"
                     )
 
+           
         except Exception as e:
 
             _logger.warning(
@@ -10787,7 +10913,6 @@ class VendorImportJob(models.Model):
         except:
             return self._force_translate(text, lang)
 
-
     # ================= PRODUCT CREATION URL ================
 
     def create_products_url(self):
@@ -11325,7 +11450,6 @@ class VendorImportJob(models.Model):
             self.state = "url_creating"
 
         self._safe_commit_progress()
-
 
     #==========create pdf product==========================================
 
@@ -12251,7 +12375,6 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-
     #==========pdf product PRODUCT CREATE/GET====================================
     
     def _get_or_create_pdf_product(
@@ -12555,7 +12678,6 @@ class VendorImportJob(models.Model):
         ).create(vals)
 
         return product, True
-
 
     #==========create pdf CATEGORY RESOLVER====================================
     
@@ -13269,9 +13391,7 @@ class VendorImportJob(models.Model):
             "url": url_products,
         }
 
-    
     #==========Excel URl queue logic========================
-    
     def _queue_excel_urls(self, url_products):
 
         import json
@@ -13306,7 +13426,6 @@ class VendorImportJob(models.Model):
 
         self.excel_url_index = 0
 
-    
     #============Excel URL processor==========================
     def process_excel_url_queue(self):
 
@@ -13474,9 +13593,7 @@ class VendorImportJob(models.Model):
 
             self.env.invalidate_all()
 
-    
     #==========create excel product=================================
-    
     def create_products_excel(self):
 
         import json
@@ -14632,7 +14749,6 @@ class VendorImportJob(models.Model):
 
 
         self._safe_commit_progress()
-
 
     #=====excel group url update====================================
 
