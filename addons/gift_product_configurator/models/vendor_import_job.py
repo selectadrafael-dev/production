@@ -4898,6 +4898,23 @@ class VendorImportJob(models.Model):
                 )
             )
 
+            try:
+
+                sample = combined_pages[0]
+
+                _logger.warning(
+                    f"[AI RESPONSE PAGE IMAGE] "
+                    f"exists={bool(sample.get('page_image'))} "
+                    f"width={sample.get('page_width')} "
+                    f"height={sample.get('page_height')}"
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[AI RESPONSE PAGE IMAGE FAILED] {str(e)}"
+                )
+
             if combined_pages:
 
                 sample = combined_pages[0]
