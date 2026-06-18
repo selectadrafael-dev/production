@@ -4268,7 +4268,34 @@ class VendorImportJob(models.Model):
 
         segments = []
 
+        width = int(
+            asset.get("width", 0) or 0
+        )
+
+        height = int(
+            asset.get("height", 0) or 0
+        )
+
+        _logger.warning(
+
+            f"[V3 SEGMENT ANALYZE] "
+
+            f"width={width} "
+
+            f"height={height}"
+
+        )
+
+        # pass-through for now
         segments.append(asset)
+
+        _logger.warning(
+
+            f"[V3 SEGMENT PLACEHOLDER] "
+
+            f"single_region_detected=True"
+
+        )
 
         _logger.warning(
 
@@ -4683,14 +4710,35 @@ class VendorImportJob(models.Model):
                                     "[RENDER METADATA MODE]"
                                 )
 
-                                _logger.warning(
-                                    f"[METADATA SAMPLE] "
-                                    f"keys={list(images[0].keys())}"
-                                )
+                                try:
 
-                                _logger.warning(
-                                    "[SKIP RESEGMENTATION]"
-                                )
+                                    images = self._apply_v3_segmentation(
+
+                                        images
+
+                                    )
+
+                                    _logger.warning(
+
+                                        f"[V3 SEGMENT APPLIED] "
+
+                                        f"images={len(images)}"
+
+                                    )
+
+                                except Exception as e:
+
+                                    _logger.warning(
+
+                                        f"[V3 SEGMENT FAILED] "
+
+                                        f"{str(e)}"
+
+                                    )
+
+                                    _logger.warning(
+                                        "[SKIP RESEGMENTATION]"
+                                    )
 
                             else:
 
@@ -10105,6 +10153,51 @@ class VendorImportJob(models.Model):
 
 
         return deduped
+
+    # =====================================
+    # V3 GLOBAL SEGMENTATION ENTRY
+    # =====================================
+
+    def _apply_v3_segmentation(
+
+        self,
+
+        images
+
+    ):
+
+        _logger.warning(
+
+            f"[V3 GLOBAL START] "
+
+            f"images={len(images)}"
+
+        )
+
+        segmented = []
+
+        for asset in images:
+
+            segments = self._segment_region_v3(
+
+                asset
+
+            )
+
+            segmented.extend(
+
+                segments
+            )
+
+        _logger.warning(
+
+            f"[V3 GLOBAL RESULT] "
+
+            f"segments={len(segmented)}"
+
+        )
+
+        return segmented
 
     # ============================================
     # ADVANCED DOMINANT COLOR DETECTION
