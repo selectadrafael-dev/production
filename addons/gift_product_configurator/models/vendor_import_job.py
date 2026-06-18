@@ -4528,7 +4528,6 @@ class VendorImportJob(models.Model):
                 "OpenAI API key not configured"
             )
 
-
         client = OpenAI(
             api_key=api_key
         )
@@ -5001,11 +5000,6 @@ class VendorImportJob(models.Model):
                     0
                 )
             )
-
-           
-            if combined_pages:
-
-                sample = combined_pages[0]
 
             self.ai_response = json.dumps(
                 combined_pages
@@ -6124,7 +6118,12 @@ class VendorImportJob(models.Model):
             "page_height": page_height
         }
 
-        validation = self._validate_extraction_quality(...)
+        validation = self._validate_extraction_quality(
+
+            existing_map[
+                next_record.page_number
+            ]
+        )
 
         existing_map[
             next_record.page_number
@@ -6165,12 +6164,10 @@ class VendorImportJob(models.Model):
                 next_record.page_number
             )
 
-            _logger.warning(
-            f"[AI RESPONSE PAGE IMAGE] "
-            f"exists={bool(sample.get('page_image'))} "
-            f"width={sample.get('page_width')} "
-            f"height={sample.get('page_height')}"
-                    )
+            if sample:
+                _logger.warning(
+                    ...
+                )
 
            
         except Exception as e:
