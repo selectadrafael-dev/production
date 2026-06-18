@@ -1,3 +1,4 @@
+
 from odoo import models, fields, api
 import base64
 import logging
@@ -3311,1106 +3312,6 @@ class VendorImportJob(models.Model):
 
      # ---------------- Extract PDF ----------------
  
-    # =====================================================
-    #======================================================
-    # UNIVERSAL CATALOGUE V2 (ISOLATED PIPELINE)
-    # =====================================================
-    #======================================================
-
-    #-----------discover_page_regions-----------------------
-    def _discover_page_regions(
-        self,
-        page_images
-    ):
-
-        regions = []
-
-        for idx, image_data in enumerate(
-            page_images
-        ):
-
-           
-            regions.append({
-
-                "region_id": idx,
-
-                "x": image_data.get("x"),
-
-                "y": image_data.get("y"),
-
-                "width": image_data.get("width"),
-
-                "height": image_data.get("height"),
-
-                "area": (
-                    image_data.get("width", 0)
-                    *
-                    image_data.get("height", 0)
-                ),
-
-                "is_lifestyle": image_data.get(
-                    "is_lifestyle"
-                )
-
-            })
-
-            _logger.warning(
-
-                f"[V2 REGION] "
-
-                f"id={idx} "
-
-                f"x={image_data.get('x')} "
-
-                f"y={image_data.get('y')} "
-
-                f"w={image_data.get('width')} "
-
-                f"h={image_data.get('height')} "
-
-                f"lifestyle={image_data.get('is_lifestyle')}"
-            )
-
-        _logger.warning(
-
-            f"[V2 REGION COUNT] "
-
-            f"{len(regions)}"
-
-        )
-
-        return regions
-
-    #--------collage filter--------------------------------
-    def _detect_collage_regions(
-        self,
-        page_images
-    ):
-        
-        _logger.warning(
-            f"[V2 COLLAGE CHECK] "
-            f"index={idx} "
-            f"width={width} "
-            f"height={height}"
-        )
-
-    #----------------build_product_candidates---------------
-    def _build_product_candidates(
-
-        self,
-
-        regions
-
-    ):
-
-        """
-        V2 PRODUCT GROUPING
-
-        Currently logs only.
-        """
-
-        candidates = []
-
-        try:
-
-            for idx, region in enumerate(
-                regions
-            ):
-
-                candidate = {
-
-                    "candidate_id":
-                        idx + 1,
-
-                    "regions":
-                        [region]
-
-                }
-
-                candidates.append(
-                    candidate
-                )
-
-                _logger.warning(
-
-                    f"[V2 PRODUCT CANDIDATE] "
-
-                    f"id={idx+1} "
-
-                    f"regions=1"
-
-                    f"area={region.get('area')}"
-
-                )
-
-            _logger.warning(
-
-                f"[V2 CANDIDATE COUNT] "
-
-                f"{len(candidates)}"
-
-            )
-
-            return candidates
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[V2 CANDIDATE FAILED] "
-
-                f"{str(e)}"
-
-            )
-
-            return []
-    
-    
-    #---------run_catalogue_v2-------------------------------
-    def _run_catalogue_v2(
-        self,
-        page_images
-    ):
-
-        
-        """
-        V2 ENTRYPOINT
-
-        Logging only.
-        """
-
-        _logger.warning(
-
-                    f"[V2 PIPELINE START] "
-
-                    f"images={len(page_images)}"
-
-        )
-        
-
-        regions = (
-
-            self._discover_page_regions(
-
-                page_images
-            )
-        )
-
-        candidates = (
-
-            self._build_product_candidates(
-
-                regions
-            )
-        )
-
-        _logger.warning(
-
-            f"[V2 PIPELINE COMPLETE] "
-
-            f"regions={len(regions)} "
-
-            f"candidates={len(candidates)}"
-
-        )
-
-        asset_pool = (
-
-            self._build_universal_asset_pool(
-
-                page_images
-            )
-        )
-
-        _logger.warning(
-
-            f"[V2 RETURNED ASSETS] "
-
-            f"{len(asset_pool)}"
-
-        )
-
-        #===========region 3 logic=========================
-        v3_regions = (
-
-            self._discover_product_regions_v3(
-
-                asset_pool
-            )
-        )
-
-        _logger.warning(
-
-            f"[V3 REGION COUNT] "
-
-            f"{len(v3_regions)}"
-
-        )
-
-        for idx, region in enumerate(
-            v3_regions[:10]
-        ):
-
-            _logger.warning(
-
-                f"[V3 REGION RETURN] "
-
-                f"position={idx} "
-
-                f"clean={region.get('clean_index')} "
-
-                f"width={region.get('width')} "
-
-                f"height={region.get('height')}"
-
-            )
-
-        for idx, asset in enumerate(asset_pool[:5]):
-
-            _logger.warning(
-
-                f"[V2 RETURN] "
-
-                f"position={idx} "
-
-                f"lifestyle={asset.get('is_lifestyle')}"
-
-            )
-
-        _logger.warning(
-
-            f"[V2 ASSET COUNT] "
-
-            f"{len(asset_pool)}"
-
-        )
-
-       
-        return {
-
-            "regions":
-                regions,
-
-            "candidates":
-                candidates,
-
-            "asset_pool":
-                asset_pool,
-
-            "v3_regions":
-                v3_regions
-
-        }
-   
-
-    # =====================================================
-    # UNIVERSAL ASSET INTELLIGENCE V2
-    # =====================================================
-
-    def _analyze_page_structure(
-
-        self,
-
-        page_images
-
-    ):
-
-        total_images = len(
-            page_images
-        )
-
-        lifestyle_count = sum(
-
-            1
-
-            for img in page_images
-
-            if img.get(
-                "is_lifestyle"
-            )
-
-        )
-
-        total_area = 0
-
-        largest_area = 0
-
-        for img in page_images:
-
-            area = (
-
-                img.get(
-                    "width",
-                    0
-                )
-
-                *
-
-                img.get(
-                    "height",
-                    0
-                )
-
-            )
-
-            total_area += area
-
-            largest_area = max(
-
-                largest_area,
-
-                area
-
-            )
-
-        largest_ratio = (
-
-            largest_area /
-
-            max(
-                total_area,
-                1
-            )
-
-        )
-
-        structure = "unknown"
-
-        if total_images == 1:
-
-            structure = "single_region"
-
-        elif total_images >= 6:
-
-            structure = "variant_grid"
-
-        elif (
-
-            lifestyle_count > 0
-
-            and
-
-            largest_ratio > 0.70
-
-        ):
-
-            structure = "hero_marketing"
-
-        elif lifestyle_count >= 1:
-
-            structure = "mixed_marketing"
-        else:
-
-            structure = "unknown"
-
-        
-        result = {
-
-            "structure":
-                structure,
-
-            "image_count":
-                total_images,
-
-            "lifestyle_count":
-                lifestyle_count,
-
-            "largest_area":
-                largest_area,
-
-            "total_area":
-                total_area,
-
-            "largest_ratio":
-                round(
-                    largest_ratio,
-                    2
-                ),
-
-                 "avg_area": round(
-                    total_area / max(total_images, 1)
-                )
-
-        }
-
-        _logger.warning(
-
-            f"[V2 STRUCTURE] "
-
-            f"{result}"
-
-        )
-
-        return result
-
-    #------------future entry point------------------------
-    def _build_universal_asset_pool(
-
-        self,
-
-        page_images
-
-    ):
-
-        analysis = (
-
-            self._analyze_page_structure(
-
-                page_images
-            )
-        )
-
-        assets = []
-
-        structure = analysis.get(
-            "structure"
-        )
-
-        _logger.warning(
-
-            f"[V2 ROUTER] "
-
-            f"structure={structure}"
-
-        )
-
-        if structure == "variant_grid":
-
-            _logger.warning(
-                "[V2 STRATEGY] DIRECT_ASSETS"
-            )
-
-            assets = page_images
-
-        elif structure == "hero_marketing":
-
-            _logger.warning(
-                "[V2 STRATEGY] DEMOTE_LIFESTYLE"
-            )
-
-            assets = (
-
-                self._demote_lifestyle_assets(
-
-                    page_images
-                )
-            )
-
-        elif structure == "mixed_marketing":
-
-            _logger.warning(
-                "[V2 STRATEGY] MIXED_ASSETS"
-            )
-
-            assets = page_images
-
-
-        elif structure == "single_region":
-
-            _logger.warning(
-                "[V2 STRATEGY] SEGMENTATION_CANDIDATE"
-            )
-
-            assets = (
-
-                self._segment_single_region(
-
-                    page_images
-                )
-            )
-
-        else:
-
-            _logger.warning(
-                "[V2 STRATEGY] UNKNOWN"
-            )
-
-            assets = page_images
-
-        _logger.warning(
-
-            f"[V2 ASSET MODE] "
-
-            f"{structure}"
-        )
-
-
-        return assets
-
-    # =====================================
-    # V3 PRODUCT REGION DISCOVERY
-    # =====================================
-
-    def _discover_product_regions_v3(
-
-        self,
-
-        page_images
-
-    ):
-
-        _logger.warning(
-
-            f"[V3 REGION START] "
-
-            f"images={len(page_images)}"
-
-        )
-
-        discovered_regions = []
-
-        for asset in page_images:
-
-            discovered_regions.append(asset)
-
-            _logger.warning(
-
-                f"[V3 REGION] "
-
-                f"clean={asset.get('clean_index')}"
-
-            )
-
-        return discovered_regions
-    
-
-    #------------demote lifestyle assets-------------------
-    def _demote_lifestyle_assets(
-
-        self,
-
-        page_images
-
-    ):
-
-        lifestyle_assets = []
-
-        real_assets = []
-
-        for asset in page_images:
-
-            if asset.get(
-                "is_lifestyle"
-            ):
-
-                lifestyle_assets.append(
-                    asset
-                )
-
-            else:
-
-                real_assets.append(
-                    asset
-                )
-
-        ordered_assets = (
-
-            real_assets
-            +
-            lifestyle_assets
-        )
-
-
-        _logger.warning(
-
-            f"[V2 DEMOTION] "
-
-            f"real={len(real_assets)} "
-
-            f"lifestyle={len(lifestyle_assets)}"
-
-        )
-
-        for idx, asset in enumerate(
-
-            ordered_assets
-
-        ):
-
-            _logger.warning(
-
-                f"[V2 DEMOTION ORDER] "
-
-                f"position={idx} "
-
-                f"lifestyle={asset.get('is_lifestyle')} "
-
-                f"width={asset.get('width')} "
-
-                f"height={asset.get('height')}"
-
-            )
-
-
-        return ordered_assets
-
-
-    #------------repair variant mapping-----------------------
-    def _repair_variant_image_mapping(
-
-        self,
-
-        product,
-
-        page_images
-
-    ):
-
-        try:
-
-            variants = product.get(
-                "variants",
-                []
-            )
-
-            if not variants:
-
-                return product
-
-            usable_assets = [
-
-                img
-
-                for img in page_images
-
-                if not img.get(
-                    "is_lifestyle"
-                )
-
-            ]
-
-            current_indexes = [
-
-                v.get(
-                    "image_index"
-                )
-
-                for v in variants
-
-                if v.get(
-                    "image_index"
-                ) is not None
-            ]
-
-            unique_indexes = set(
-                current_indexes
-            )
-
-            _logger.warning(
-
-                f"[MAPPING REPAIR CHECK] "
-
-                f"variants={len(variants)} "
-
-                f"assets={len(usable_assets)} "
-
-                f"unique_indexes={len(unique_indexes)}"
-
-            )
-
-            if (
-
-                len(variants) > 1
-
-                and
-
-                len(unique_indexes) == 1
-
-                and
-
-                len(usable_assets)
-                >=
-                len(variants)
-
-            ):
-
-                _logger.warning(
-
-                    "[MAPPING REPAIR] "
-
-                    "AUTO DISTRIBUTE"
-
-                )
-
-
-                usable_indexes = [
-
-                    idx
-
-                    for idx, img in enumerate(
-                        page_images
-                    )
-
-                    if not img.get(
-                        "is_lifestyle"
-                    )
-
-                ]
-
-                _logger.warning(
-
-                    f"[MAPPING USABLE INDEXES] "
-
-                    f"{usable_indexes}"
-
-                )
-
-                for idx, variant in enumerate(
-                    variants
-                ):
-
-                    if idx >= len(
-                        usable_indexes
-                    ):
-
-                        break
-
-                    variant[
-                        "image_index"
-                    ] = usable_indexes[
-                        idx
-                    ]
-
-                    _logger.warning(
-
-                        f"[MAPPING FIX] "
-
-                        f"color={variant.get('attributes', {}).get('Color')} "
-
-                        f"new_index={usable_indexes[idx]}"
-
-                    )
-
-            return product
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[MAPPING REPAIR FAILED] "
-
-                f"{str(e)}"
-
-            )
-
-            return product
-
-    #------------segment single region---------------------
-    def _segment_single_region(
-
-        self,
-
-        page_images
-
-    ):
-
-        _logger.warning(
-
-            f"[V2 SEGMENTATION START] "
-
-            f"images={len(page_images)}"
-
-        )
-
-        segmented_assets = []
-
-        for idx, asset in enumerate(
-
-            page_images
-
-        ):
-
-            width = int(
-
-                asset.get(
-                    "width",
-                    0
-                ) or 0
-
-            )
-
-            height = int(
-
-                asset.get(
-                    "height",
-                    0
-                ) or 0
-
-            )
-
-            area = width * height
-
-            _logger.warning(
-
-                f"[V2 SEGMENT CHECK] "
-
-                f"asset={idx} "
-
-                f"w={width} "
-
-                f"h={height} "
-
-                f"area={area}"
-
-            )
-
-            # =====================================
-            # V3 SINGLE REGION DISCOVERY
-            # =====================================
-
-            if (
-
-                width > 900
-
-                and
-
-                height > 500
-
-            ):
-
-                _logger.warning(
-
-                    f"[V3 SEGMENT CANDIDATE] "
-
-                    f"asset={idx} "
-
-                    f"w={width} "
-
-                    f"h={height}"
-
-                )
-
-                try:
-
-                    v3_segments = self._segment_region_v3(
-
-                        asset
-
-                    )
-
-                    if v3_segments:
-
-                        segmented_assets.extend(
-
-                            v3_segments
-
-                        )
-
-                        _logger.warning(
-
-                            f"[V3 SEGMENT SUCCESS] "
-
-                            f"asset={idx} "
-
-                            f"segments={len(v3_segments)}"
-
-                        )
-
-                        continue
-
-                except Exception as e:
-
-                    _logger.warning(
-
-                        f"[V3 SEGMENT FAILED] "
-
-                        f"{str(e)}"
-
-                    )
-          
-            # Future segmentation trigger
-          
-            segmented_assets.append(
-                asset
-            )
-
-            if self._is_collage_candidate(
-
-                asset
-
-            ):
-
-                _logger.warning(
-
-                    f"[V2 COLLAGE CANDIDATE] "
-
-                    f"asset={idx}"
-
-                )
-
-        _logger.warning(
-
-            f"[V2 SEGMENT RESULT] "
-
-            f"assets={len(segmented_assets)}"
-
-        )
-
-        return segmented_assets
-
-    # =====================================
-    # V3 REGION SEGMENTER
-    # =====================================
-
-    def _segment_region_v3(
-
-        self,
-
-        asset
-
-    ):
-
-        _logger.warning(
-
-            "[V3 REGION SEGMENTER START]"
-
-        )
-
-        segments = []
-
-        width = int(
-            asset.get("width", 0) or 0
-        )
-
-        height = int(
-            asset.get("height", 0) or 0
-        )
-
-        _logger.warning(
-
-            f"[V3 IMAGE SIZE] "
-
-            f"base64_length={len(asset.get('image', ''))}"
-
-        )
-
-        image_data = asset.get(
-            "image"
-        )
-
-        if image_data:
-
-            _logger.warning(
-
-                f"[V3 IMAGE PREFIX] "
-
-                f"{image_data[:50]}"
-
-            )
-
-        _logger.warning(
-
-            f"[V3 SEGMENT ANALYZE] "
-
-            f"width={width} "
-
-            f"height={height}"
-
-        )
-
-        # pass-through for now
-        segments.append(asset)
-
-        _logger.warning(
-
-            f"[V3 SEGMENT PLACEHOLDER] "
-
-            f"single_region_detected=True"
-
-        )
-
-        _logger.warning(
-
-            f"[V3 REGION SEGMENTER RESULT] "
-
-            f"{len(segments)}"
-
-        )
-
-        return segments
-
-
-    #------------detect collage candidate-------------------
-    def _is_collage_candidate(
-
-        self,
-
-        asset
-
-    ):
-
-        width = int(
-            asset.get(
-                "width",
-                0
-            ) or 0
-        )
-
-        height = int(
-            asset.get(
-                "height",
-                0
-            ) or 0
-        )
-
-        area = width * height
-
-        is_lifestyle = asset.get(
-            "is_lifestyle",
-            False
-        )
-
-        candidate = (
-
-            area > 500000
-
-            and
-
-            not is_lifestyle
-
-        )
-
-        _logger.warning(
-
-            f"[V2 COLLAGE CHECK] "
-
-            f"area={area} "
-
-            f"lifestyle={is_lifestyle} "
-
-            f"candidate={candidate}"
-
-        )
-
-        return candidate
-
-    #------------convert_ai_index_to_clean_index-------------------
-
-    def _convert_ai_index_to_clean_index(
-
-        self,
-
-        ai_index,
-
-        sorted_page_images
-
-    ):
-
-        try:
-
-            asset = sorted_page_images[
-                ai_index
-            ]
-            
-
-            return asset.get(
-                "clean_index"
-            )
-
-        except Exception:
-
-            return ai_index
-
     #===============etxract pdf=============================
     def extract_pdf(self):
 
@@ -4733,35 +3634,14 @@ class VendorImportJob(models.Model):
                                     "[RENDER METADATA MODE]"
                                 )
 
-                                try:
+                                _logger.warning(
+                                    f"[METADATA SAMPLE] "
+                                    f"keys={list(images[0].keys())}"
+                                )
 
-                                    images = self._apply_v3_segmentation(
-
-                                        images
-
-                                    )
-
-                                    _logger.warning(
-
-                                        f"[V3 SEGMENT APPLIED] "
-
-                                        f"images={len(images)}"
-
-                                    )
-
-                                except Exception as e:
-
-                                    _logger.warning(
-
-                                        f"[V3 SEGMENT FAILED] "
-
-                                        f"{str(e)}"
-
-                                    )
-
-                                    _logger.warning(
-                                        "[SKIP RESEGMENTATION]"
-                                    )
+                                _logger.warning(
+                                    "[SKIP RESEGMENTATION]"
+                                )
 
                             else:
 
@@ -4884,84 +3764,6 @@ class VendorImportJob(models.Model):
                                 f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
                                 f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
                                 f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
-                            )
-
-                        # ========================================
-                        # V2 DEBUG ONLY
-                        # ========================================
-
-                        try:
-
-                            v2_result = None
-
-                            if all_page_images:
-
-                                v2_result = (
-
-                                    self._run_catalogue_v2(
-
-                                        all_page_images
-                                    )
-
-                                )
-
-                                if (
-
-                                    v2_result
-
-                                    and
-
-                                    v2_result.get(
-                                        "asset_pool"
-                                    )
-
-                                ):
-
-                                    all_page_images = (
-
-                                        v2_result.get(
-                                            "asset_pool"
-                                        )
-
-                                    )
-
-                                    _logger.warning(
-
-                                        f"[V2 SAVED ASSET COUNT] "
-
-                                        f"{len(all_page_images)}"
-
-                                    )
-
-                                    for idx, asset in enumerate(
-
-                                        all_page_images[:5]
-
-                                    ):
-
-                                        _logger.warning(
-
-                                            f"[V2 SAVED ORDER] "
-
-                                            f"position={idx} "
-
-                                            f"lifestyle={asset.get('is_lifestyle')}"
-
-                                        )
-
-                                    _logger.warning(
-
-                                        f"[V2 APPLIED] "
-
-                                        f"assets={len(all_page_images)}"
-
-                                    )
-
-                        except Exception as e:
-
-                            _logger.warning(
-                                f"[V2 TEST FAILED] "
-                                f"{str(e)}"
                             )
 
                         self.env[
@@ -5556,7 +4358,7 @@ class VendorImportJob(models.Model):
         return
 
 
-    # =========== PDF OPENAI BACKUP ==========================
+    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -6478,41 +5280,9 @@ class VendorImportJob(models.Model):
 
                     base *= 0.7
 
-                # =====================================
-                # STRONG LIFESTYLE PENALTY
-                # ====================================
-
-                if asset.get(
-                    "is_lifestyle"
-                ):
-                    base *= 0.05
-
                 return base
 
-            _logger.warning(
-                "[PRE SORT ORDER]"
-            )
 
-            for idx, asset in enumerate(page_images):
-
-                _logger.warning(
-
-                    f"[PRE SORT] "
-
-                    f"idx={idx} "
-
-                    f"clean={asset.get('clean_index')} "
-
-                    f"score={asset.get('score')} "
-
-                    f"lifestyle={asset.get('is_lifestyle')} "
-
-                    f"width={asset.get('width')} "
-
-                    f"height={asset.get('height')}"
-
-                )
-                
             sorted_page_images = sorted(
 
                 page_images,
@@ -6523,78 +5293,8 @@ class VendorImportJob(models.Model):
             )
 
             _logger.warning(
-                "[AI INDEX MAP]"
-            )
-
-            for idx, asset in enumerate(
-                sorted_page_images
-            ):
-
-                _logger.warning(
-
-                    f"[AI MAP] "
-
-                    f"ai_index={idx} "
-
-                    f"clean_index={asset.get('clean_index')} "
-
-                    f"lifestyle={asset.get('is_lifestyle')}"
-
-                )
-
-            _logger.warning(
-                "[POST SORT ORDER]"
-            )
-
-            for idx, asset in enumerate(sorted_page_images):
-
-                _logger.warning(
-
-                    f"[POST SORT] "
-
-                    f"idx={idx} "
-
-                    f"clean={asset.get('clean_index')} "
-
-                    f"score={asset.get('score')} "
-
-                    f"lifestyle={asset.get('is_lifestyle')} "
-
-                    f"width={asset.get('width')} "
-
-                    f"height={asset.get('height')}"
-
-                )
-
-            _logger.warning(
                 "[AI ORDER START]"
             )
-
-            _logger.warning(
-
-                f"[PRE AI ORDER COUNT] "
-
-                f"{len(page_images)}"
-
-            )
-
-            for idx, img in enumerate(page_images):
-
-                _logger.warning(
-
-                    f"[PRE AI ORDER] "
-
-                    f"idx={idx} "
-
-                    f"clean={img.get('clean_index')} "
-
-                    f"lifestyle={img.get('is_lifestyle')} "
-
-                    f"width={img.get('width')} "
-
-                    f"height={img.get('height')}"
-
-                )
 
             for ai_pos, asset in enumerate(
                 sorted_page_images[:MAX_IMAGES]
@@ -6712,127 +5412,6 @@ class VendorImportJob(models.Model):
                     f"[AI RAW RESPONSE] "
                     f"{result[:4000]}"
                 )
-
-                #===========convert_ai_index_to_clean_index==========
-              
-                for product in parsed:
-
-                    hero = product.get(
-                        "hero_image_index"
-                    )
-
-                    if isinstance(hero, int):
-
-                        product[
-                            "hero_image_index"
-                        ] = (
-
-                            self._convert_ai_index_to_clean_index(
-                                hero,
-                                sorted_page_images
-                            )
-
-                        )
-
-                    # HERO VALIDATION HERE
-                    hero = product.get(
-                        "hero_image_index"
-                    )
-
-                    if (
-                        isinstance(hero, int)
-                        and
-                        0 <= hero < len(page_images)
-                    ):
-
-                        hero_asset = page_images[
-                            hero
-                        ]
-
-                        if hero_asset.get(
-                            "is_lifestyle"
-                        ):
-
-                         
-                            _logger.warning(
-
-                                f"[HERO REJECTED LIFESTYLE] "
-
-                                f"hero={hero}"
-                            )
-
-                            product[
-                                "hero_image_index"
-                            ] = None
-
-                    for variant in product.get(
-                        "variants",
-                        []
-                    ):
-
-                        idx = variant.get(
-                            "image_index"
-                        )
-
-                        if isinstance(idx, int):
-
-                            variant[
-                                "image_index"
-                            ] = (
-
-                                self._convert_ai_index_to_clean_index(
-                                    idx,
-                                    sorted_page_images
-                                )
-
-                            )
-
-                           
-                # =====================================
-                # REPAIR GPT IMAGE MAPPING
-                # =====================================
-                _logger.warning(
-                    "[INDEX CONVERSION COMPLETE]"
-                )
-
-                for product in parsed:
-
-                    _logger.warning(
-
-                        f"[INDEX HERO] "
-
-                        f"{product.get('hero_image_index')}"
-                    )
-
-                    for variant in product.get(
-                        "variants",
-                        []
-                    ):
-
-                        _logger.warning(
-
-                            f"[INDEX VARIANT] "
-
-                            f"{variant.get('attributes',{}).get('Color')} "
-
-                            f"-> "
-
-                            f"{variant.get('image_index')}"
-                        )
-
-                for idx, product in enumerate(parsed):
-
-                    parsed[idx] = (
-
-                        self._repair_variant_image_mapping(
-
-                            product,
-
-                            page_images
-
-                        )
-
-                    )
 
                 for product in parsed:
 
@@ -7254,48 +5833,14 @@ class VendorImportJob(models.Model):
                     best_index not in valid_indexes
                 ):
 
-                    candidate_images = [
-
-                        img
-
-                        for img in page_images
-
-                        if not img.get(
-                            "is_lifestyle"
-                        )
-
-                    ]
-
-                    _logger.warning(
-
-                        f"[HERO FALLBACK FILTER] "
-
-                        f"before={len(page_images)} "
-
-                        f"after={len(candidate_images)}"
-
-                    )
-
                     best_index = (
-
                         self.match_image_index_with_ai(
-
                             product_name,
-
-                            candidate_images
-
+                            page_images
                         )
-
                     )
 
                     if isinstance(best_index, int):
-                        _logger.warning(
-
-                            f"[HERO FALLBACK RESULT] "
-
-                            f"raw_index={best_index}"
-
-                        )
 
                         try:
 
@@ -7441,7 +5986,7 @@ class VendorImportJob(models.Model):
 
 
    
-    #===========Excel Open AI==================================
+    #===========Excel Open AI================================
     
     def send_to_openai_excel(self):
 
@@ -8836,33 +7381,6 @@ class VendorImportJob(models.Model):
                 hero_score = score
                 gallery_score = score
 
-                # =====================================
-                # LIFESTYLE HERO PENALTY
-                # =====================================
-
-                if isinstance(asset, dict) and asset.get(
-                    "is_lifestyle",
-                    False
-                ):
-
-                    hero_score -= 2000000
-
-                    gallery_score -= 2000000
-
-                    _logger.warning(
-
-                        "[LIFESTYLE HERO PENALTY] "
-
-                        f"clean_index={asset.get('clean_index')} "
-
-                        f"original_score={score} "
-
-                        f"new_hero_score={hero_score} "
-
-                        f"new_gallery_score={gallery_score}"
-
-                    )
-
                 try:
 
                     dominant_color = (
@@ -8939,7 +7457,6 @@ class VendorImportJob(models.Model):
                     f"color={dominant_color}"
                 )
 
-
                 # =====================================
                 # REJECT LIFESTYLE / HUMAN IMAGES
                 # =====================================
@@ -8964,66 +7481,12 @@ class VendorImportJob(models.Model):
 
                 ratio = width / float(max(height, 1))
 
-                _logger.warning(
-
-                    f"[HUMAN CHECK] "
-
-                    f"width={width} "
-
-                    f"height={height} "
-
-                    f"area={width * height} "
-
-                    f"lifestyle={asset.get('is_lifestyle')}"
-
-                )
-
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
 
-                is_product_shape = (
-
-                not asset.get(
-                        "is_lifestyle",
-                        False
-                    )
-
-                    and
-
-                    (width * height) > 50000
-
-                )
-
-                _logger.warning(
-
-                    f"[PRODUCT SHAPE CHECK] "
-
-                    f"ratio={ratio:.2f} "
-
-                    f"area={width * height} "
-
-                    f"lifestyle={asset.get('is_lifestyle')} "
-
-                    f"is_product_shape={is_product_shape}"
-
-                )
-
                 # tall portrait images
-            
-                if (
-
-                    ratio < 0.72
-
-                    and
-
-                    height > width * 1.20
-
-                    and
-
-                    not is_product_shape
-
-                ):
+                if ratio < 0.72 and height > width * 1.20:
 
                     _logger.warning(
 
@@ -9032,26 +7495,6 @@ class VendorImportJob(models.Model):
                         f"ratio={ratio:.2f} "
 
                         f"size={width}x{height}"
-                    )
-
-
-                    _logger.warning(
-
-                        f"[HUMAN REJECT DETAIL] "
-
-                        f"ratio={ratio:.2f} "
-
-                        f"width={width} "
-
-                        f"height={height} "
-
-                        f"area={width * height} "
-
-                        f"lifestyle={asset.get('is_lifestyle', False) if isinstance(asset, dict) else False}"
-
-                        f"x={asset.get('x', 0) if isinstance(asset, dict) else 0} "
-
-                        f"y={asset.get('y', 0) if isinstance(asset, dict) else 0}"
                     )
 
                     continue
@@ -9176,24 +7619,6 @@ class VendorImportJob(models.Model):
                 f"color={asset.get('dominant_color')}"
             )
 
-        _logger.warning(
-
-            "[HERO SCORE REVIEW]"
-        )
-
-        for asset in prepared:
-
-            _logger.warning(
-
-                f"[HERO CANDIDATE] "
-
-                f"clean={asset.get('clean_index')} "
-
-                f"hero={asset.get('hero_score')} "
-
-                f"lifestyle={asset.get('is_lifestyle')}"
-
-            )
         prepared = sorted(
 
             prepared,
@@ -10176,51 +8601,6 @@ class VendorImportJob(models.Model):
 
 
         return deduped
-
-    # =====================================
-    # V3 GLOBAL SEGMENTATION ENTRY
-    # =====================================
-
-    def _apply_v3_segmentation(
-
-        self,
-
-        images
-
-    ):
-
-        _logger.warning(
-
-            f"[V3 GLOBAL START] "
-
-            f"images={len(images)}"
-
-        )
-
-        segmented = []
-
-        for asset in images:
-
-            segments = self._segment_region_v3(
-
-                asset
-
-            )
-
-            segmented.extend(
-
-                segments
-            )
-
-        _logger.warning(
-
-            f"[V3 GLOBAL RESULT] "
-
-            f"segments={len(segmented)}"
-
-        )
-
-        return segmented
 
     # ============================================
     # ADVANCED DOMINANT COLOR DETECTION
@@ -11786,7 +10166,7 @@ class VendorImportJob(models.Model):
             return False
 
 
-    #============marching AI===================================================
+    #============marchin AI===================================================
     # LEGACY IMAGE PAYLOAD MATCHER
     # Deprecated after migration to
     # index-based asset orchestration.
@@ -11801,105 +10181,7 @@ class VendorImportJob(models.Model):
             return None
 
         # limit images for performance
-        _logger.warning(
-
-            f"[MATCH REQUEST] "
-
-            f"product={product_name} "
-
-            f"images={len(images)}"
-
-        )
-
-        for idx, img in enumerate(images):
-
-            try:
-
-                _logger.warning(
-
-                    f"[MATCH INPUT] "
-
-                    f"idx={idx} "
-
-                    f"type={type(img)} "
-
-                    f"length={len(img) if img else 0} "
-
-                    f"prefix={str(img)[:40] if img else 'EMPTY'}"
-
-                )
-
-            except Exception:
-
-                _logger.warning(
-
-                    f"[MATCH INPUT FAILED] "
-
-                    f"idx={idx}"
-
-                )
-
-
         images = images[:5]
-
-        valid_images = []
-
-        for img in images:
-
-            if not img:
-
-                _logger.warning(
-                    "[MATCH SKIP] EMPTY"
-                )
-
-                continue
-
-            if not isinstance(
-                img,
-                str
-            ):
-
-                _logger.warning(
-                    "[MATCH SKIP] NOT STRING"
-                )
-
-                continue
-
-            if img.startswith(
-                "data:image"
-            ):
-
-                img = img.split(
-                    ",",
-                    1
-                )[-1]
-
-            valid_images.append(
-                img
-            )
-
-        images = valid_images
-
-        _logger.warning(
-
-            f"[MATCH VALID IMAGES] "
-
-            f"{len(images)}"
-
-        )
-
-        if not images:
-
-            _logger.warning(
-
-                "[MATCH ABORT] "
-
-                "NO VALID IMAGES"
-
-            )
-
-            return None
-        
         image_inputs = [
         {
                 "type": "input_image",
@@ -11945,15 +10227,6 @@ class VendorImportJob(models.Model):
         """
 
         try:
-
-            _logger.warning(
-
-                f"[MATCH OPENAI SEND] "
-
-                f"images={len(image_inputs)}"
-
-            )
-
             response = client.responses.create(
                 model="gpt-4.1",
                 input=[{
@@ -11999,6 +10272,29 @@ class VendorImportJob(models.Model):
                 if not img:
                     continue
 
+                img_lower = img.lower()
+
+                bad_keywords = [
+
+                    "banner",
+
+                    "lifestyle",
+
+                    "infographic",
+
+                    "specification",
+
+                    "sizechart",
+
+                    "dimensions"
+                ]
+
+                if any(
+                    k in img_lower
+                    for k in bad_keywords
+                ):
+                    continue
+
                 filtered_images.append(img)
 
             except Exception:
@@ -12010,120 +10306,6 @@ class VendorImportJob(models.Model):
 
         images = images[:8]
 
-        _logger.warning(
-
-            f"[INDEX MATCH REQUEST] "
-
-            f"product={product_name} "
-
-            f"images={len(images)}"
-
-        )
-
-        valid_images = []
-
-        for idx, img in enumerate(images):
-
-            try:
-
-
-                _logger.warning(
-
-                    f"[INDEX MATCH INPUT] "
-
-                    f"idx={idx} "
-
-                    f"type={type(img)} "
-
-                    f"length={len(img) if img else 0} "
-
-                    f"prefix={str(img)[:40] if img else 'EMPTY'}"
-
-                )
-
-                if not img:
-
-                    _logger.warning(
-
-                        f"[INDEX MATCH SKIP] "
-
-                        f"idx={idx} EMPTY"
-
-                    )
-
-                    continue
-
-                if isinstance(
-                    img,
-                    dict
-                ):
-
-                    img = img.get(
-                        "image"
-                    )
-
-                if not isinstance(
-                    img,
-                    str
-                ):
-
-                    _logger.warning(
-
-                        f"[INDEX MATCH SKIP] "
-
-                        f"idx={idx} NOT_STRING"
-
-                    )
-
-                    continue
-
-                if img.startswith(
-                    "data:image"
-                ):
-
-                    img = img.split(
-                        ",",
-                        1
-                    )[-1]
-
-                valid_images.append(
-                    img
-                )
-
-            except Exception as e:
-
-                _logger.warning(
-
-                    f"[INDEX MATCH VALIDATION FAILED] "
-
-                    f"idx={idx} "
-
-                    f"{str(e)}"
-
-                )
-
-        images = valid_images
-
-        if not images:
-
-            _logger.warning(
-
-                "[INDEX MATCH ABORT] "
-
-                "NO VALID IMAGES"
-
-            )
-
-            return None
-
-        _logger.warning(
-
-            f"[INDEX MATCH VALID] "
-
-            f"{len(images)}"
-
-        )
-
         image_inputs = []
 
         for idx, img in enumerate(images):
@@ -12132,18 +10314,6 @@ class VendorImportJob(models.Model):
                 "type": "input_text",
                 "text": f"IMAGE INDEX: {idx}"
             })
-
-            if len(img) < 100:
-
-                _logger.warning(
-
-                    f"[INDEX MATCH SHORT IMAGE] "
-
-                    f"idx={idx} "
-
-                    f"length={len(img)}"
-
-                )
 
             image_inputs.append({
                 "type": "input_image",
@@ -12179,13 +10349,6 @@ class VendorImportJob(models.Model):
         """
 
         try:
-            _logger.warning(
-
-                f"[INDEX MATCH OPENAI SEND] "
-
-                f"images={len(images)}"
-
-            )
 
             response = client.responses.create(
 
@@ -13233,76 +11396,9 @@ class VendorImportJob(models.Model):
                     f"| images={len(product_images)}"
                 )
 
-              
                 # =====================================
-                # REBUILD IMAGES FROM AI INDEXES
+                # FALLBACK TO PAGE IMAGES
                 # =====================================
-
-                if not product_images and page_images:
-
-                    used_indexes = set()
-
-                    hero_index = product_data.get(
-                        "hero_image_index"
-                    )
-
-                    if isinstance(hero_index, int):
-
-                        used_indexes.add(
-                            hero_index
-                        )
-
-                    for idx in product_data.get(
-                        "gallery_image_indexes",
-                        []
-                    ):
-
-                        if isinstance(idx, int):
-
-                            used_indexes.add(idx)
-
-                    for variant in product_data.get(
-                        "variants",
-                        []
-                    ):
-
-                        idx = variant.get(
-                            "image_index"
-                        )
-
-                        if isinstance(idx, int):
-
-                            used_indexes.add(idx)
-
-                    rebuilt_images = []
-
-                    for idx in sorted(
-                        used_indexes
-                    ):
-
-                        if 0 <= idx < len(
-                            page_images
-                        ):
-
-                            rebuilt_images.append(
-                                page_images[idx]
-                            )
-
-                    if rebuilt_images:
-
-                        product_images = rebuilt_images
-
-                        _logger.warning(
-
-                            f"[INDEX IMAGE REBUILD] "
-
-                            f"{product_data.get('name')} "
-
-                            f"| indexes={sorted(list(used_indexes))} "
-
-                            f"| images={len(product_images)}"
-
-                        )
 
                 if not product_images:
 
@@ -13391,20 +11487,6 @@ class VendorImportJob(models.Model):
                 asset_pool = self._prepare_asset_pool(
                     segmented_assets
                 )
-
-                for asset in asset_pool:
-
-                    _logger.warning(
-
-                        f"[POOL SOURCE] "
-
-                        f"clean={asset.get('clean_index')} "
-
-                        f"color={asset.get('detected_color')} "
-
-                        f"lifestyle={asset.get('is_lifestyle')}"
-
-                    )
 
                 _logger.warning(
 
@@ -14663,26 +12745,6 @@ class VendorImportJob(models.Model):
             return
 
         try:
-           
-            template = variant_record.product_tmpl_id
-
-            template.write({
-
-                'type': 'product',
-
-                'allow_out_of_stock_order': True,
-
-                'show_availability': True,
-
-                'available_threshold': 1000,
-            })
-
-            _logger.warning(
-
-                f"[INVENTORY WEBSITE ENABLED] "
-
-                f"{template.name}"
-            )
 
             quant = stock_quant_obj.search([
 
@@ -15827,17 +13889,7 @@ class VendorImportJob(models.Model):
                 # =====================================================
 
                 if not product and vendor_id:
-                    # _logger.warning(
 
-                    #     f"[FINGERPRINT] "
-
-                    #     f"title={product_data.get('title')} "
-
-                    #     f"group={variant_group} "
-
-                    #     f"fingerprint={vendor_fingerprint}"
-                    # )
-                    
                     product = product_obj.search([
 
                         (
@@ -15940,41 +13992,6 @@ class VendorImportJob(models.Model):
                     product = product_obj.create(
                         vals
                     )
-
-                    # =====================================
-                    # ENABLE WEBSITE STOCK DISPLAY
-                    # =====================================
-
-                    try:
-
-                        product.write({
-
-                            'allow_out_of_stock_order': True,
-
-                            'show_availability': True,
-
-                            'available_threshold': 1000,
-                        })
-
-                        _logger.warning(
-
-                            f"[WEBSITE STOCK ENABLED] "
-
-                            f"{product.name}"
-                        )
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"[WEBSITE STOCK FAILED] "
-
-                            f"{str(e)}"
-                        )
-
-                    # =====================================
-                    # TRANSLATION
-                    # =====================================
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
