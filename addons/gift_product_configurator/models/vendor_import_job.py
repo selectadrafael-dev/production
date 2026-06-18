@@ -3605,6 +3605,11 @@ class VendorImportJob(models.Model):
                         if pages:
 
                             page = pages[0]
+                            _logger.warning(
+                                f"[PAGE IMAGE PREVIEW] "
+                                f"page={page.get('page')} "
+                                f"images={len(page.get('images', []))}"
+                            )
 
                             _logger.warning(
                                 f"[PAGE IMAGE EXISTS] "
