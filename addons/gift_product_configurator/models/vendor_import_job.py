@@ -4154,6 +4154,69 @@ class VendorImportJob(models.Model):
 
             )
 
+            # =====================================
+            # V3 SINGLE REGION DISCOVERY
+            # =====================================
+
+            if (
+
+                width > 900
+
+                and
+
+                height > 500
+
+            ):
+
+                _logger.warning(
+
+                    f"[V3 SEGMENT CANDIDATE] "
+
+                    f"asset={idx} "
+
+                    f"w={width} "
+
+                    f"h={height}"
+
+                )
+
+                try:
+
+                    v3_segments = self._segment_region_v3(
+
+                        asset
+
+                    )
+
+                    if v3_segments:
+
+                        segmented_assets.extend(
+
+                            v3_segments
+
+                        )
+
+                        _logger.warning(
+
+                            f"[V3 SEGMENT SUCCESS] "
+
+                            f"asset={idx} "
+
+                            f"segments={len(v3_segments)}"
+
+                        )
+
+                        continue
+
+                except Exception as e:
+
+                    _logger.warning(
+
+                        f"[V3 SEGMENT FAILED] "
+
+                        f"{str(e)}"
+
+                    )
           
             # Future segmentation trigger
           
@@ -4184,6 +4247,38 @@ class VendorImportJob(models.Model):
         )
 
         return segmented_assets
+
+    # =====================================
+    # V3 REGION SEGMENTER
+    # =====================================
+
+    def _segment_region_v3(
+
+        self,
+
+        asset
+
+    ):
+
+        _logger.warning(
+
+            "[V3 REGION SEGMENTER START]"
+
+        )
+
+        segments = []
+
+        segments.append(asset)
+
+        _logger.warning(
+
+            f"[V3 REGION SEGMENTER RESULT] "
+
+            f"{len(segments)}"
+
+        )
+
+        return segments
 
     #------------detect collage candidate-------------------
     def _is_collage_candidate(
