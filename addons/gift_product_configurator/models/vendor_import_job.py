@@ -4284,14 +4284,6 @@ class VendorImportJob(models.Model):
 
                 return None
 
-            # _logger.warning(
-            #     f"[RECOVERY BANNER FOUND] "
-            #     f"width={dominant_banner.get('width')} "
-            #     f"height={dominant_banner.get('height')} "
-            #     f"x={dominant_banner.get('x')} "
-            #     f"y={dominant_banner.get('y')}"
-            # )
-
             _logger.warning(
                 f"[RECOVERY BANNER FOUND] "
                 f"width={dominant_banner.get('width')} "
@@ -4332,6 +4324,53 @@ class VendorImportJob(models.Model):
                 f"[RECOVERY BANNER COVERAGE] "
                 f"{coverage:.2f}"
             )
+
+            import base64
+            from io import BytesIO
+            from PIL import Image
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            if not page_image:
+
+                _logger.warning(
+                    "[RECOVERY] NO PAGE IMAGE"
+                )
+
+                return None
+
+            try:
+
+                image_bytes = base64.b64decode(
+                    page_image
+                )
+
+                page_img = Image.open(
+                    BytesIO(image_bytes)
+                )
+
+                crop = page_img.crop(
+                    (
+                        banner_x,
+                        banner_y,
+                        banner_x + banner_w,
+                        banner_y + banner_h
+                    )
+                )
+
+                _logger.warning(
+                    f"[RECOVERY CROP SUCCESS] "
+                    f"size={crop.size}"
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[RECOVERY CROP FAILED] "
+                    f"{str(e)}"
+                )
 
             return None
 
