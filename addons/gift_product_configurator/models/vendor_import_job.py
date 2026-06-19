@@ -4271,10 +4271,33 @@ class VendorImportJob(models.Model):
                     )
                 )
 
-                if coverage > 0.60:
+               
+                dominant_banner = None
+                largest_coverage = 0
 
-                    dominant_banner = img
-                    break
+                for img in images:
+
+                    w = img.get("width", 0)
+                    h = img.get("height", 0)
+
+                    if (
+                        not w
+                        or not h
+                        or not page_width
+                        or not page_height
+                    ):
+                        continue
+
+                    coverage = (
+                        (w * h)
+                        /
+                        float(page_width * page_height)
+                    )
+
+                    if coverage > largest_coverage:
+
+                        largest_coverage = coverage
+                        dominant_banner = img
 
             if not dominant_banner:
 
@@ -4886,6 +4909,79 @@ class VendorImportJob(models.Model):
                 f"[BANNER REGION COUNT] "
                 f"{len(regions)}"
             )
+            
+            if regions:
+
+                recovered_assets = []
+
+                for idx, region in enumerate(regions):
+
+                    start_x = region["start"]
+                    end_x = region["end"]
+
+                    region_width = end_x - start_x
+
+                    _logger.warning(
+                        f"[CLUSTER CANDIDATE] "
+                        f"start={start_x} "
+                        f"end={end_x} "
+                        f"width={region_width}"
+                    )
+                    
+                    if region_width < 30:
+                        continue
+
+                    seg = crop.crop(
+                        (
+                            start_x,
+                            0,
+                            end_x,
+                            crop.height
+                        )
+                    )
+
+                    buffer = BytesIO()
+
+                    seg.save(
+                        buffer,
+                        format="PNG"
+                    )
+
+                    recovered_assets.append({
+
+                        "image": base64.b64encode(
+                            buffer.getvalue()
+                        ).decode(),
+
+                        "width": seg.width,
+
+                        "height": seg.height,
+
+                        "x": start_x,
+
+                        "y": 0,
+
+                        "is_lifestyle": False,
+
+                        "recovered": True
+                    })
+
+                    _logger.warning(
+                        f"[CLUSTER ASSET CREATED] "
+                        f"idx={idx} "
+                        f"start={start_x} "
+                        f"end={end_x} "
+                        f"width={seg.width}"
+                    )
+
+                if recovered_assets:
+
+                    _logger.warning(
+                        f"[CLUSTER RETURN] "
+                        f"assets={len(recovered_assets)}"
+                    )
+
+                    return recovered_assets
 
             crop_width = crop.width
 
