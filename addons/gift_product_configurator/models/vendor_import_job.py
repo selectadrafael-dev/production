@@ -5134,11 +5134,37 @@ class VendorImportJob(models.Model):
                     if region_width < 30:
                         continue
 
+                    cluster_width = (
+                        end_x - start_x
+                    )
+
+                    padding = int(
+                        cluster_width * 0.50
+                    )
+
+                    expanded_start = max(
+                        0,
+                        start_x - padding
+                    )
+
+                    expanded_end = min(
+                        crop.width,
+                        end_x + padding
+                    )
+
+                    _logger.warning(
+                        f"[CLUSTER EXPANSION] "
+                        f"start={start_x} "
+                        f"end={end_x} "
+                        f"expanded_start={expanded_start} "
+                        f"expanded_end={expanded_end}"
+                    )
+
                     seg = crop.crop(
                         (
-                            start_x,
+                            expanded_start,
                             0,
-                            end_x,
+                            expanded_end,
                             crop.height
                         )
                     )
@@ -5305,6 +5331,7 @@ class VendorImportJob(models.Model):
             )
 
             return []
+
 
     #==========find_banner_product_regions=================
     def _find_banner_product_regions(
