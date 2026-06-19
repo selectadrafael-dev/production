@@ -4806,8 +4806,57 @@ class VendorImportJob(models.Model):
                     f"w={segment_width} "
                     f"h={crop.height}"
                 )
+            recovered_assets = []
 
-            return []
+            for region in regions:
+
+                seg = crop.crop(
+                    (
+                        region["x"],
+                        region["y"],
+                        region["x"] + region["width"],
+                        region["height"]
+                    )
+                )
+
+                buffer = BytesIO()
+
+                seg.save(
+                    buffer,
+                    format="PNG"
+                )
+
+                recovered_assets.append({
+
+                    "image": base64.b64encode(
+                        buffer.getvalue()
+                    ).decode(),
+
+                    "width": seg.width,
+
+                    "height": seg.height,
+
+                    "x": region["x"],
+
+                    "y": region["y"],
+
+                    "is_lifestyle": False,
+
+                    "recovered": True
+                })
+
+                _logger.warning(
+                    f"[BANNER ASSET CREATED] "
+                    f"w={seg.width} "
+                    f"h={seg.height}"
+                )
+
+            _logger.warning(
+                f"[BANNER RETURN] "
+                f"assets={len(recovered_assets)}"
+            )
+
+            return recovered_assets
 
         except Exception as e:
 
