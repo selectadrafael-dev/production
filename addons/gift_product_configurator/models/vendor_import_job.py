@@ -8577,12 +8577,35 @@ class VendorImportJob(models.Model):
 
                 ratio = width / float(max(height, 1))
 
+                recovered = (
+
+                    asset.get(
+                        "recovered",
+                        False
+                    )
+
+                    if isinstance(asset, dict)
+
+                    else False
+                )
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
 
                 # tall portrait images
-                if ratio < 0.72 and height > width * 1.20:
+                if (
+
+                    not recovered
+
+                    and
+
+                    ratio < 0.72
+
+                    and
+
+                    height > width * 1.20
+
+                ):
 
                     _logger.warning(
 
