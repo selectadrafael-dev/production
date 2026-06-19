@@ -3966,6 +3966,55 @@ class VendorImportJob(models.Model):
         product_count = len(products)
 
         # --------------------------------
+        # Largest Coverage Detection
+        # --------------------------------
+
+        largest_coverage = 0
+
+        for img in images:
+
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+
+            if (
+                not w
+                or
+                not h
+                or
+                not page_width
+                or
+                not page_height
+            ):
+                continue
+
+            coverage = (
+                (w * h)
+                /
+                float(page_width * page_height)
+            )
+
+            largest_coverage = max(
+                largest_coverage,
+                coverage
+            )
+
+        # --------------------------------
+        # Dominant Banner Page
+        # --------------------------------
+
+        if (
+            image_count <= 4
+            and
+            largest_coverage > 0.60
+        ):
+
+            reasons.append(
+                "dominant_banner_page"
+            )
+
+            score -= 50
+
+        # --------------------------------
         # Banner Dominance
         # --------------------------------
 
@@ -3989,6 +4038,49 @@ class VendorImportJob(models.Model):
                 score -= 40
 
                 break
+
+        # --------------------------------
+        # Banner + Fragments
+        # --------------------------------
+
+        small_assets = 0
+
+        for img in images:
+
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+
+            if (
+                not w
+                or
+                not h
+                or
+                not page_width
+                or
+                not page_height
+            ):
+                continue
+
+            coverage = (
+                (w * h)
+                /
+                float(page_width * page_height)
+            )
+
+            if coverage < 0.05:
+                small_assets += 1
+
+        if (
+            largest_coverage > 0.60
+            and
+            small_assets >= 2
+        ):
+
+            reasons.append(
+                "banner_plus_fragments"
+            )
+
+            score -= 30
 
         # --------------------------------
         # Asset Shortage
@@ -4039,6 +4131,14 @@ class VendorImportJob(models.Model):
                 suspicious * 5,
                 20
             )
+
+        _logger.warning(
+            f"[VALIDATION DEBUG] "
+            f"images={image_count} "
+            f"products={product_count} "
+            f"largest_coverage={largest_coverage:.2f} "
+            f"small_assets={small_assets}"
+        )
 
         return {
             "passed": score >= 60,
