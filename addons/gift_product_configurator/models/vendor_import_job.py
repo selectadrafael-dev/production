@@ -4284,12 +4284,53 @@ class VendorImportJob(models.Model):
 
                 return None
 
+            # _logger.warning(
+            #     f"[RECOVERY BANNER FOUND] "
+            #     f"width={dominant_banner.get('width')} "
+            #     f"height={dominant_banner.get('height')} "
+            #     f"x={dominant_banner.get('x')} "
+            #     f"y={dominant_banner.get('y')}"
+            # )
+
             _logger.warning(
                 f"[RECOVERY BANNER FOUND] "
                 f"width={dominant_banner.get('width')} "
                 f"height={dominant_banner.get('height')} "
                 f"x={dominant_banner.get('x')} "
                 f"y={dominant_banner.get('y')}"
+            )
+
+            banner_x = dominant_banner.get(
+                "x",
+                0
+            )
+
+            banner_y = dominant_banner.get(
+                "y",
+                0
+            )
+
+            banner_w = dominant_banner.get(
+                "width",
+                0
+            )
+
+            banner_h = dominant_banner.get(
+                "height",
+                0
+            )
+
+            coverage = (
+                (banner_w * banner_h)
+                /
+                float(
+                    page_width * page_height
+                )
+            )
+
+            _logger.warning(
+                f"[RECOVERY BANNER COVERAGE] "
+                f"{coverage:.2f}"
             )
 
             return None
@@ -5273,6 +5314,73 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
             return
+
+        # =====================================================
+        # PRE-AI VALIDATION / RECOVERY
+        # =====================================================
+
+        page_data = {
+
+            "page": next_record.page_number,
+
+            "products": [],
+
+            "images": page_images,
+
+            "page_image": page_image,
+
+            "page_width": page_width,
+
+            "page_height": page_height
+        }
+
+        validation = self._validate_extraction_quality(
+            page_data
+        )
+
+        page_data["validation"] = validation
+
+        page_data["recovery_required"] = (
+            not validation["passed"]
+        )
+
+        _logger.warning(
+            f"[VALIDATION] "
+            f"passed={validation['passed']} "
+            f"score={validation['score']} "
+            f"reasons={validation['reasons']}"
+        )
+
+        if page_data["recovery_required"]:
+
+            _logger.warning(
+                "[RECOVERY REQUIRED]"
+            )
+
+            recovery = self._ai_catalogue_recovery(
+                page_data
+            )
+
+            if recovery:
+
+                old_count = len(page_images)
+
+                page_images = recovery.get(
+                    "images",
+                    page_images
+                )
+
+                for idx, asset in enumerate(page_images):
+
+                    if isinstance(asset, dict):
+
+                        asset["clean_index"] = idx
+
+                _logger.warning(
+                    f"[RECOVERY APPLIED] "
+                    f"old_images={old_count} "
+                    f"new_images={len(page_images)}"
+                )
 
         page_price = ""
 
@@ -6375,71 +6483,6 @@ class VendorImportJob(models.Model):
             "page_height": page_height
         }
 
-        validation = self._validate_extraction_quality(
-
-            existing_map[
-                next_record.page_number
-            ]
-        )
-
-        existing_map[
-            next_record.page_number
-        ]["validation"] = validation
-
-        existing_map[
-            next_record.page_number
-        ]["recovery_required"] = (
-            not validation["passed"]
-        )
-
-        if existing_map[
-            next_record.page_number
-        ].get("recovery_required"):
-
-            recovery = self._ai_catalogue_recovery(
-
-                existing_map[
-                    next_record.page_number
-                ]
-            )
-
-            if recovery:
-
-                old_count = len(
-
-                    existing_map[
-                        next_record.page_number
-                    ].get(
-                        "images",
-                        []
-                    )
-                )
-
-                existing_map[
-                    next_record.page_number
-                ]["images"] = recovery.get(
-
-                    "images",
-
-                    existing_map[
-                        next_record.page_number
-                    ].get(
-                        "images",
-                        []
-                    )
-                )
-
-                existing_map[
-                    next_record.page_number
-                ]["recovery_applied"] = True
-
-                _logger.warning(
-
-                    f"[RECOVERY APPLIED] "
-                    f"old_images={old_count} "
-                    f"new_images={len(existing_map[next_record.page_number]['images'])}"
-                )
-
         combined_pages = sorted(
 
             list(existing_map.values()),
@@ -6449,44 +6492,7 @@ class VendorImportJob(models.Model):
                 0
             )
         )
-
-        _logger.warning(
-                f"[VALIDATION] "
-                f"passed={validation['passed']} "
-                f"score={validation['score']} "
-                f"reasons={validation['reasons']}"
-            )
-
-        if not validation["passed"]:
-                _logger.warning(
-                    "[RECOVERY REQUIRED]"
-                )
-
-
-
-        try:
-
-            sample = existing_map.get(
-                next_record.page_number
-            )
-
-            if sample:
-
-                _logger.warning(
-                    f"[AI RESPONSE PAGE IMAGE] "
-                    f"exists={bool(sample.get('page_image'))} "
-                    f"width={sample.get('page_width')} "
-                    f"height={sample.get('page_height')}"
-                )
-
-        except Exception as e:
-
-            _logger.warning(
-                f"[AI RESPONSE PAGE IMAGE FAILED] "
-                f"{str(e)}"
-            )
-
-
+        
         # =====================================================
         # SAVE
         # =====================================================
@@ -6551,8 +6557,6 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-
-
    
     #===========Excel Open AI================================
     
