@@ -4878,8 +4878,13 @@ class VendorImportJob(models.Model):
                 f"size={crop.size}"
             )
 
-            self._find_banner_product_regions(
+            regions = self._find_banner_product_regions(
                 crop
+            )
+
+            _logger.warning(
+                f"[BANNER REGION COUNT] "
+                f"{len(regions)}"
             )
 
             crop_width = crop.width
@@ -5074,17 +5079,48 @@ class VendorImportJob(models.Model):
                 f"count={len(peak_columns)}"
             )
 
-            max_density = max(
-                column_density
-            ) if column_density else 0
+            regions = []
+
+            if not peak_columns:
+
+                return []
+
+            start = peak_columns[0]
+            previous = peak_columns[0]
+
+            for col in peak_columns[1:]:
+
+                if col - previous > 20:
+
+                    regions.append({
+                        "start": start,
+                        "end": previous
+                    })
+
+                    start = col
+
+                previous = col
+
+            regions.append({
+                "start": start,
+                "end": previous
+            })
 
             _logger.warning(
-                f"[BANNER DENSITY] "
-                f"columns={len(column_density)} "
-                f"max={max_density}"
+                f"[BANNER CLUSTERS] "
+                f"count={len(regions)}"
             )
 
-            return []
+            for r in regions:
+
+                _logger.warning(
+                    f"[BANNER CLUSTER] "
+                    f"start={r['start']} "
+                    f"end={r['end']}"
+                )       
+
+    
+            return regions
 
         except Exception as e:
 
