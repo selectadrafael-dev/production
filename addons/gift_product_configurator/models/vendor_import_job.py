@@ -4695,7 +4695,7 @@ class VendorImportJob(models.Model):
             )
 
             return "unknown"
-
+    
     #==========extract_clean_products_from_image===========
     def _extract_clean_products_from_image(
         self,
@@ -4704,8 +4704,6 @@ class VendorImportJob(models.Model):
     ):
 
         try:
-
-            from PIL import Image
 
             _logger.warning(
                 f"[OBJECT EXTRACTOR START] "
@@ -4720,67 +4718,76 @@ class VendorImportJob(models.Model):
             width = gray.width
             height = gray.height
 
-            edge_density = []
+            background_samples = []
 
-            for x in range(width):
+            for y in range(height):
 
-                edge_count = 0
-
-                for y in range(
-                    1,
-                    height
-                ):
-
-                    current_pixel = gray.getpixel(
-                        (x, y)
+                background_samples.append(
+                    gray.getpixel(
+                        (0, y)
                     )
-
-                    previous_pixel = gray.getpixel(
-                        (x, y - 1)
-                    )
-
-                    diff = abs(
-                        current_pixel
-                        -
-                        previous_pixel
-                    )
-
-                    if diff > 15:
-
-                        edge_count += 1
-
-                edge_density.append(
-                    edge_count
                 )
 
-            max_density = max(
-                edge_density
-            ) if edge_density else 0
+                background_samples.append(
+                    gray.getpixel(
+                        (width - 1, y)
+                    )
+                )
 
-            if not max_density:
+            if not background_samples:
 
                 _logger.warning(
                     "[OBJECT EXTRACTOR] "
-                    "NO EDGES FOUND"
+                    "NO BACKGROUND SAMPLES"
                 )
 
                 return crop
 
-            threshold = (
-                max_density * 0.25
+            background_level = (
+                sum(background_samples)
+                /
+                len(background_samples)
             )
+
+            _logger.warning(
+                f"[BACKGROUND LEVEL] "
+                f"{background_level:.2f}"
+            )
+
+            background_threshold = 12
 
             active_columns = []
 
-            for idx, value in enumerate(
-                edge_density
-            ):
+            for x in range(width):
 
-                if value >= threshold:
+                object_pixels = 0
+
+                for y in range(height):
+
+                    pixel = gray.getpixel(
+                        (x, y)
+                    )
+
+                    if abs(
+                        pixel
+                        -
+                        background_level
+                    ) > background_threshold:
+
+                        object_pixels += 1
+
+                if object_pixels > (
+                    height * 0.05
+                ):
 
                     active_columns.append(
-                        idx
+                        x
                     )
+
+            _logger.warning(
+                f"[ACTIVE COLUMNS] "
+                f"count={len(active_columns)}"
+            )
 
             if not active_columns:
 
@@ -4858,31 +4865,6 @@ class VendorImportJob(models.Model):
 
             color_lookup = {}
 
-            # for idx, asset in enumerate(asset_pool):
-
-            #     _logger.warning(
-            #         f"[CORRECTION ASSET] "
-            #         f"idx={idx} "
-            #         f"color={asset.get('dominant_color')}"
-            #     )
-
-            #     color = (
-            #         asset.get(
-            #             "dominant_color",
-            #             ""
-            #         )
-            #         .strip()
-            #         .lower()
-            #     )
-
-            #     if color:
-
-            #         color_lookup[color] = idx
-            #         _logger.warning(
-            #         f"[COLOR LOOKUP] "
-            #         f"{color_lookup}"
-            #     )
-
             for idx, asset in enumerate(asset_pool):
 
                 _logger.warning(
@@ -4891,14 +4873,12 @@ class VendorImportJob(models.Model):
                     f"color={asset.get('dominant_color')}"
                 )
 
-                color = (
+                color = str(
                     asset.get(
-                        "dominant_color",
-                        ""
+                        "dominant_color"
                     )
-                    .strip()
-                    .lower()
-                )
+                        or ""
+                ).strip().lower()
 
                 if color:
 
@@ -4920,18 +4900,16 @@ class VendorImportJob(models.Model):
                     f"image_index={variant.get('image_index')}"
                 )
 
-                variant_color = (
+
+                variant_color = str(
                     variant.get(
                         "attributes",
                         {}
+                    ).get(
+                        "Color"
                     )
-                    .get(
-                        "Color",
-                        ""
-                    )
-                    .strip()
-                    .lower()
-                )
+                    or ""
+                ).strip().lower()
 
                 if variant_color in color_lookup:
 
@@ -4964,6 +4942,7 @@ class VendorImportJob(models.Model):
             )
 
             return product_data
+
 
     #==========detect_products_inside_banner===============
     def _detect_products_inside_banner(
