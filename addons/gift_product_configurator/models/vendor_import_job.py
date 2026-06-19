@@ -4509,23 +4509,43 @@ class VendorImportJob(models.Model):
                     float(page_width * page_height)
                 )
 
+                # candidates.append({
+
+                #     "index": idx,
+
+                #     "x": x,
+                #     "y": y,
+
+                #     "width": w,
+                #     "height": h,
+
+                #     "coverage": coverage,
+
+                #     "is_lifestyle": img.get(
+                #         "is_lifestyle",
+                #         False
+                #     )
+                # })
+
                 candidates.append({
 
-                    "index": idx,
+                "index": idx,
 
-                    "x": x,
-                    "y": y,
+                "asset": img,
 
-                    "width": w,
-                    "height": h,
+                "x": x,
+                "y": y,
 
-                    "coverage": coverage,
+                "width": w,
+                "height": h,
 
-                    "is_lifestyle": img.get(
-                        "is_lifestyle",
-                        False
-                    )
-                })
+                "coverage": coverage,
+
+                "is_lifestyle": img.get(
+                    "is_lifestyle",
+                    False
+                )
+            })
 
             candidates = sorted(
 
@@ -4548,7 +4568,38 @@ class VendorImportJob(models.Model):
                     f"lifestyle={c['is_lifestyle']}"
                 )
 
-            return []
+            recovered_assets = []
+
+            for c in candidates:
+
+                if c["is_lifestyle"]:
+                    continue
+
+                if c["coverage"] < 0.01:
+                    continue
+
+
+                recovered_assets.append(
+                    c["asset"]
+                )
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR RETURN] "
+                f"{len(recovered_assets)} assets"
+            )
+
+            for asset in recovered_assets:
+
+                _logger.warning(
+                    f"[RECOVERY KEEP] "
+                    f"width={asset.get('width')} "
+                    f"height={asset.get('height')} "
+                    f"x={asset.get('x')} "
+                    f"y={asset.get('y')} "
+                    f"lifestyle={asset.get('is_lifestyle')}"
+                )
+
+            return recovered_assets
 
         except Exception as e:
 
