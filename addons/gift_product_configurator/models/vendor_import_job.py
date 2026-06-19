@@ -4767,6 +4767,46 @@ class VendorImportJob(models.Model):
                 f"ratio={aspect_ratio:.2f}"
             )
 
+            estimated_products = max(
+                2,
+                round(aspect_ratio * 1.5)
+            )
+
+            _logger.warning(
+                f"[BANNER ESTIMATE] "
+                f"products={estimated_products}"
+            )
+
+            regions = []
+
+            segment_width = int(
+                crop.width / estimated_products
+            )
+
+            for idx in range(
+                estimated_products
+            ):
+
+                regions.append({
+
+                    "index": idx,
+
+                    "x": idx * segment_width,
+
+                    "y": 0,
+
+                    "width": segment_width,
+
+                    "height": crop.height
+                })
+
+                _logger.warning(
+                    f"[BANNER REGION] "
+                    f"idx={idx} "
+                    f"w={segment_width} "
+                    f"h={crop.height}"
+                )
+
             return []
 
         except Exception as e:
@@ -4777,6 +4817,7 @@ class VendorImportJob(models.Model):
             )
 
             return []
+
 
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
