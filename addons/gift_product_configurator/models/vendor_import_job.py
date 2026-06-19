@@ -4373,7 +4373,11 @@ class VendorImportJob(models.Model):
 
                 buffer = BytesIO()
 
-                detected_assets = self._recover_products_from_page_image(
+                # detected_assets = self._recover_products_from_page_image(
+                #     page_data
+                # )
+
+                detected_assets = self._detect_products_inside_banner(
                     page_data
                 )
 
@@ -4673,7 +4677,7 @@ class VendorImportJob(models.Model):
                 if color:
 
                     color_lookup[color] = idx
-                    
+
             _logger.warning(
                 f"[COLOR LOOKUP] "
                 f"{color_lookup}"
@@ -4874,6 +4878,10 @@ class VendorImportJob(models.Model):
                 f"size={crop.size}"
             )
 
+            self._find_banner_product_regions(
+                crop
+            )
+
             crop_width = crop.width
 
             crop_height = crop.height
@@ -4989,6 +4997,103 @@ class VendorImportJob(models.Model):
 
             return []
 
+    #==========find_banner_product_regions=================
+    def _find_banner_product_regions(
+        self,
+        crop
+    ):
+
+        try:
+
+            _logger.warning(
+                "[BANNER REGION DETECTOR START]"
+            )
+
+            width = crop.width
+            height = crop.height
+
+
+            column_density = []
+
+            for x in range(width):
+
+                count = 0
+
+                for y in range(height):
+
+                    pixel = crop.getpixel(
+                        (x, y)
+                    )
+
+                    if isinstance(
+                        pixel,
+                        int
+                    ):
+                        brightness = pixel
+
+                    else:
+                        brightness = (
+                            sum(pixel[:3]) / 3
+                        )
+
+                    if brightness < 240:
+                        count += 1
+
+                column_density.append(
+                    count
+                )
+
+            max_density = max(
+                column_density
+            ) if column_density else 0
+
+            _logger.warning(
+                f"[BANNER DENSITY] "
+                f"columns={len(column_density)} "
+                f"max={max_density}"
+            )
+
+            threshold = (
+                max_density * 0.25
+            )
+
+            peak_columns = []
+
+            for idx, value in enumerate(
+                column_density
+            ):
+
+                if value >= threshold:
+
+                    peak_columns.append(
+                        idx
+                    )
+
+            _logger.warning(
+                f"[BANNER PEAKS] "
+                f"count={len(peak_columns)}"
+            )
+
+            max_density = max(
+                column_density
+            ) if column_density else 0
+
+            _logger.warning(
+                f"[BANNER DENSITY] "
+                f"columns={len(column_density)} "
+                f"max={max_density}"
+            )
+
+            return []
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[BANNER REGION DETECTOR FAILED] "
+                f"{str(e)}"
+            )
+
+            return []
 
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
