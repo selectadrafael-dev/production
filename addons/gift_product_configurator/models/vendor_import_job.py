@@ -4366,7 +4366,27 @@ class VendorImportJob(models.Model):
                 )
 
                 buffer = BytesIO()
+                
+                segment_width = int(
+                    crop.width / 3
+                )
 
+                for idx in range(3):
+
+                    seg = crop.crop(
+                        (
+                            idx * segment_width,
+                            0,
+                            (idx + 1) * segment_width,
+                            crop.height
+                        )
+                    )
+
+                    _logger.warning(
+                        f"[RECOVERY SEGMENT] "
+                        f"index={idx} "
+                        f"size={seg.size}"
+                    )
                 crop.save(
                     buffer,
                     format="PNG"
