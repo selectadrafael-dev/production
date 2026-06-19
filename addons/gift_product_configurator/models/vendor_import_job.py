@@ -4612,6 +4612,49 @@ class VendorImportJob(models.Model):
 
             return []
         
+    #===========correct_variant_image_indexes================
+    def _correct_variant_image_indexes(
+        self,
+        product_data,
+        asset_pool
+    ):
+
+        try:
+
+            _logger.warning(
+                f"[VARIANT CORRECTION START] "
+                f"product={product_data.get('name')}"
+            )
+
+            for idx, asset in enumerate(asset_pool):
+
+                _logger.warning(
+                    f"[CORRECTION ASSET] "
+                    f"idx={idx} "
+                    f"color={asset.get('dominant_color')}"
+                )
+
+            for variant in product_data.get(
+                "variants",
+                []
+            ):
+
+                _logger.warning(
+                    f"[CORRECTION VARIANT] "
+                    f"color={variant.get('attributes', {}).get('Color')} "
+                    f"image_index={variant.get('image_index')}"
+                )
+
+            return product_data
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[VARIANT CORRECTION FAILED] "
+                f"{str(e)}"
+            )
+
+            return product_data
 
     #==========detect_products_inside_banner===============
     def _detect_products_inside_banner(
@@ -12673,6 +12716,11 @@ class VendorImportJob(models.Model):
 
                     vendor_fingerprint = (
                         f"{vendor_id}_{variant_group}"
+                    )
+
+                    product_data = self._correct_variant_image_indexes(
+                        product_data,
+                        asset_pool
                     )
 
                     product, created = (
