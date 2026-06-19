@@ -4190,7 +4190,15 @@ class VendorImportJob(models.Model):
                     f"y={img.get('y')}"
                 )
 
-            return None
+            return {
+
+                "images": page_data.get(
+                    "images",
+                    []
+                ),
+
+                "recovered": False
+            }
 
         except Exception as e:
 
@@ -6294,12 +6302,49 @@ class VendorImportJob(models.Model):
             next_record.page_number
         ].get("recovery_required"):
 
-            self._ai_catalogue_recovery(
+            recovery = self._ai_catalogue_recovery(
 
                 existing_map[
                     next_record.page_number
                 ]
             )
+
+            if recovery:
+
+                old_count = len(
+
+                    existing_map[
+                        next_record.page_number
+                    ].get(
+                        "images",
+                        []
+                    )
+                )
+
+                existing_map[
+                    next_record.page_number
+                ]["images"] = recovery.get(
+
+                    "images",
+
+                    existing_map[
+                        next_record.page_number
+                    ].get(
+                        "images",
+                        []
+                    )
+                )
+
+                existing_map[
+                    next_record.page_number
+                ]["recovery_applied"] = True
+
+                _logger.warning(
+
+                    f"[RECOVERY APPLIED] "
+                    f"old_images={old_count} "
+                    f"new_images={len(existing_map[next_record.page_number]['images'])}"
+                )
 
         combined_pages = sorted(
 
