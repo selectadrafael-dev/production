@@ -4626,6 +4626,33 @@ class VendorImportJob(models.Model):
                 f"product={product_data.get('name')}"
             )
 
+            color_lookup = {}
+
+            # for idx, asset in enumerate(asset_pool):
+
+            #     _logger.warning(
+            #         f"[CORRECTION ASSET] "
+            #         f"idx={idx} "
+            #         f"color={asset.get('dominant_color')}"
+            #     )
+
+            #     color = (
+            #         asset.get(
+            #             "dominant_color",
+            #             ""
+            #         )
+            #         .strip()
+            #         .lower()
+            #     )
+
+            #     if color:
+
+            #         color_lookup[color] = idx
+            #         _logger.warning(
+            #         f"[COLOR LOOKUP] "
+            #         f"{color_lookup}"
+            #     )
+
             for idx, asset in enumerate(asset_pool):
 
                 _logger.warning(
@@ -4633,6 +4660,24 @@ class VendorImportJob(models.Model):
                     f"idx={idx} "
                     f"color={asset.get('dominant_color')}"
                 )
+
+                color = (
+                    asset.get(
+                        "dominant_color",
+                        ""
+                    )
+                    .strip()
+                    .lower()
+                )
+
+                if color:
+
+                    color_lookup[color] = idx
+                    
+            _logger.warning(
+                f"[COLOR LOOKUP] "
+                f"{color_lookup}"
+            )
 
             for variant in product_data.get(
                 "variants",
@@ -4644,6 +4689,40 @@ class VendorImportJob(models.Model):
                     f"color={variant.get('attributes', {}).get('Color')} "
                     f"image_index={variant.get('image_index')}"
                 )
+
+                variant_color = (
+                    variant.get(
+                        "attributes",
+                        {}
+                    )
+                    .get(
+                        "Color",
+                        ""
+                    )
+                    .strip()
+                    .lower()
+                )
+
+                if variant_color in color_lookup:
+
+                    old_index = variant.get(
+                        "image_index"
+                    )
+
+                    new_index = color_lookup[
+                        variant_color
+                    ]
+
+                    variant["image_index"] = (
+                        new_index
+                    )
+
+                    _logger.warning(
+                        f"[CORRECTION APPLIED] "
+                        f"color={variant_color} "
+                        f"old={old_index} "
+                        f"new={new_index}"
+                    )
 
             return product_data
 
