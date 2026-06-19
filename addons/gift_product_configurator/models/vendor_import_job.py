@@ -4366,27 +4366,11 @@ class VendorImportJob(models.Model):
                 )
 
                 buffer = BytesIO()
-                
-                segment_width = int(
-                    crop.width / 3
+
+                self._recover_products_from_page_image(
+                    page_data
                 )
 
-                for idx in range(3):
-
-                    seg = crop.crop(
-                        (
-                            idx * segment_width,
-                            0,
-                            (idx + 1) * segment_width,
-                            crop.height
-                        )
-                    )
-
-                    _logger.warning(
-                        f"[RECOVERY SEGMENT] "
-                        f"index={idx} "
-                        f"size={seg.size}"
-                    )
                 crop.save(
                     buffer,
                     format="PNG"
@@ -4436,6 +4420,77 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
                 f"[RECOVERY BANNER FAILED] "
+                f"{str(e)}"
+            )
+
+            return None
+
+    #===============recover_products_from_page_image========
+    def _recover_products_from_page_image(
+        self,
+        page_data
+    ):
+
+        try:
+
+            validation = page_data.get(
+                "validation",
+                {}
+            )
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR START] "
+                f"images={len(images)} "
+                f"reasons={validation.get('reasons', [])}"
+            )
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR PAGE] "
+                f"exists={bool(page_image)}"
+            )
+
+            page_width = page_data.get(
+                "page_width",
+                0
+            )
+
+            page_height = page_data.get(
+                "page_height",
+                0
+            )
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR DIMENSIONS] "
+                f"{page_width}x{page_height}"
+            )
+
+            for idx, img in enumerate(images):
+
+                _logger.warning(
+                    f"[PRODUCT DETECTOR ASSET] "
+                    f"index={idx} "
+                    f"width={img.get('width')} "
+                    f"height={img.get('height')} "
+                    f"x={img.get('x')} "
+                    f"y={img.get('y')} "
+                    f"lifestyle={img.get('is_lifestyle')}"
+                )
+
+            return None
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR FAILED] "
                 f"{str(e)}"
             )
 
