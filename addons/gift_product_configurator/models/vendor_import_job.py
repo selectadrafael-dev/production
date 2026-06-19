@@ -4351,6 +4351,12 @@ class VendorImportJob(models.Model):
                     BytesIO(image_bytes)
                 )
 
+                _logger.warning(
+                    f"[RECOVERY SOURCE] "
+                    f"page={page_img.width}x{page_img.height} "
+                    f"banner={banner_w}x{banner_h}"
+                )
+
                 crop = page_img.crop(
                     (
                         banner_x,
@@ -4367,9 +4373,18 @@ class VendorImportJob(models.Model):
 
                 buffer = BytesIO()
 
-                self._recover_products_from_page_image(
+                detected_assets = self._recover_products_from_page_image(
                     page_data
                 )
+
+                if detected_assets:
+
+                    _logger.warning(
+                        f"[RECOVERY DETECTED PRODUCTS] "
+                        f"{len(detected_assets)}"
+                    )
+
+                    return detected_assets
 
                 crop.save(
                     buffer,
@@ -4414,7 +4429,7 @@ class VendorImportJob(models.Model):
                     f"{str(e)}"
                 )
 
-            return None
+            return []
 
         except Exception as e:
 
@@ -4423,8 +4438,8 @@ class VendorImportJob(models.Model):
                 f"{str(e)}"
             )
 
-            return None
-
+            return []
+    
     #===============recover_products_from_page_image========
     def _recover_products_from_page_image(
         self,
@@ -4453,39 +4468,87 @@ class VendorImportJob(models.Model):
                 f"reasons={validation.get('reasons', [])}"
             )
 
+            if not page_image:
+
+                return []
+
+            import base64
+            from io import BytesIO
+            from PIL import Image
+
+            page_img = Image.open(
+                BytesIO(
+                    base64.b64decode(page_image)
+                )
+            )
+
+            page_width = page_img.width
+            page_height = page_img.height
+
             _logger.warning(
                 f"[PRODUCT DETECTOR PAGE] "
-                f"exists={bool(page_image)}"
-            )
-
-            page_width = page_data.get(
-                "page_width",
-                0
-            )
-
-            page_height = page_data.get(
-                "page_height",
-                0
-            )
-
-            _logger.warning(
-                f"[PRODUCT DETECTOR DIMENSIONS] "
                 f"{page_width}x{page_height}"
             )
 
+            candidates = []
+
             for idx, img in enumerate(images):
 
-                _logger.warning(
-                    f"[PRODUCT DETECTOR ASSET] "
-                    f"index={idx} "
-                    f"width={img.get('width')} "
-                    f"height={img.get('height')} "
-                    f"x={img.get('x')} "
-                    f"y={img.get('y')} "
-                    f"lifestyle={img.get('is_lifestyle')}"
+                x = img.get("x", 0)
+                y = img.get("y", 0)
+
+                w = img.get("width", 0)
+                h = img.get("height", 0)
+
+                if not w or not h:
+                    continue
+
+                coverage = (
+                    (w * h)
+                    /
+                    float(page_width * page_height)
                 )
 
-            return None
+                candidates.append({
+
+                    "index": idx,
+
+                    "x": x,
+                    "y": y,
+
+                    "width": w,
+                    "height": h,
+
+                    "coverage": coverage,
+
+                    "is_lifestyle": img.get(
+                        "is_lifestyle",
+                        False
+                    )
+                })
+
+            candidates = sorted(
+
+                candidates,
+
+                key=lambda c:
+                    c["coverage"],
+
+                reverse=True
+            )
+
+            for c in candidates:
+
+                _logger.warning(
+                    f"[PRODUCT REGION] "
+                    f"idx={c['index']} "
+                    f"coverage={c['coverage']:.2f} "
+                    f"w={c['width']} "
+                    f"h={c['height']} "
+                    f"lifestyle={c['is_lifestyle']}"
+                )
+
+            return []
 
         except Exception as e:
 
@@ -4494,8 +4557,8 @@ class VendorImportJob(models.Model):
                 f"{str(e)}"
             )
 
-            return None
-
+            return []
+        
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
 
