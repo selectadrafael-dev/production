@@ -4190,13 +4190,22 @@ class VendorImportJob(models.Model):
                     f"y={img.get('y')}"
                 )
 
-            return {
+            recovered_images = self._recover_banner_products(
+                page_data
+            )
 
+            if recovered_images:
+
+                return {
+                    "images": recovered_images,
+                    "recovered": True
+                }
+
+            return {
                 "images": page_data.get(
                     "images",
                     []
                 ),
-
                 "recovered": False
             }
 
@@ -4204,6 +4213,91 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
                 f"[RECOVERY FAILED] "
+                f"{str(e)}"
+            )
+
+            return None
+
+    #===failed segement re-cropping=========================
+    def _recover_banner_products(self, page_data):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            dominant_banner = None
+
+            page_width = page_data.get(
+                "page_width",
+                0
+            )
+
+            page_height = page_data.get(
+                "page_height",
+                0
+            )
+
+            for img in images:
+
+                w = img.get(
+                    "width",
+                    0
+                )
+
+                h = img.get(
+                    "height",
+                    0
+                )
+
+                if (
+                    not w
+                    or
+                    not h
+                    or
+                    not page_width
+                    or
+                    not page_height
+                ):
+                    continue
+
+                coverage = (
+                    (w * h)
+                    /
+                    float(
+                        page_width * page_height
+                    )
+                )
+
+                if coverage > 0.60:
+
+                    dominant_banner = img
+                    break
+
+            if not dominant_banner:
+
+                _logger.warning(
+                    "[RECOVERY] NO DOMINANT BANNER"
+                )
+
+                return None
+
+            _logger.warning(
+                f"[RECOVERY BANNER FOUND] "
+                f"width={dominant_banner.get('width')} "
+                f"height={dominant_banner.get('height')} "
+                f"x={dominant_banner.get('x')} "
+                f"y={dominant_banner.get('y')}"
+            )
+
+            return None
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[RECOVERY BANNER FAILED] "
                 f"{str(e)}"
             )
 
