@@ -5415,6 +5415,61 @@ class VendorImportJob(models.Model):
                 f"count={len(regions)}"
             )
 
+            cluster_widths = [
+
+                r["end"] - r["start"]
+
+                for r in regions
+            ]
+
+            if cluster_widths:
+
+                sorted_widths = sorted(
+                    cluster_widths
+                )
+
+                median_width = sorted_widths[
+                    len(sorted_widths) // 2
+                ]
+
+            else:
+
+                median_width = 0
+
+            _logger.warning(
+                f"[CLUSTER MEDIAN] "
+                f"{median_width}"
+            )
+
+            filtered_regions = []
+
+            for r in regions:
+
+                width = (
+                    r["end"]
+                    -
+                    r["start"]
+                )
+
+                if (
+                    median_width
+                    and
+                    width < (median_width * 0.40)
+                ):
+
+                    _logger.warning(
+                        f"[CLUSTER REJECTED] "
+                        f"width={width}"
+                    )
+
+                    continue
+
+                filtered_regions.append(
+                    r
+                )
+
+            regions = filtered_regions
+
             for r in regions:
 
                 _logger.warning(
