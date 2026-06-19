@@ -4146,6 +4146,61 @@ class VendorImportJob(models.Model):
             "reasons": reasons
         }
 
+    #======recovery logic===================================
+    def _ai_catalogue_recovery(self, page_data):
+
+        try:
+
+            validation = page_data.get(
+                "validation",
+                {}
+            )
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            _logger.warning(
+                f"[RECOVERY START] "
+                f"images={len(images)} "
+                f"reasons={validation.get('reasons')}"
+            )
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            _logger.warning(
+                f"[RECOVERY PAGE] "
+                f"exists={bool(page_image)} "
+                f"width={page_data.get('page_width')} "
+                f"height={page_data.get('page_height')}"
+            )
+
+            for idx, img in enumerate(images):
+
+                _logger.warning(
+                    f"[RECOVERY ASSET] "
+                    f"index={idx} "
+                    f"lifestyle={img.get('is_lifestyle')} "
+                    f"width={img.get('width')} "
+                    f"height={img.get('height')} "
+                    f"x={img.get('x')} "
+                    f"y={img.get('y')}"
+                )
+
+            return None
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[RECOVERY FAILED] "
+                f"{str(e)}"
+            )
+
+            return None
+
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
 
@@ -6234,6 +6289,17 @@ class VendorImportJob(models.Model):
         ]["recovery_required"] = (
             not validation["passed"]
         )
+
+        if existing_map[
+            next_record.page_number
+        ].get("recovery_required"):
+
+            self._ai_catalogue_recovery(
+
+                existing_map[
+                    next_record.page_number
+                ]
+            )
 
         combined_pages = sorted(
 
