@@ -4365,6 +4365,44 @@ class VendorImportJob(models.Model):
                     f"size={crop.size}"
                 )
 
+                buffer = BytesIO()
+
+                crop.save(
+                    buffer,
+                    format="PNG"
+                )
+
+                cropped_b64 = base64.b64encode(
+                    buffer.getvalue()
+                ).decode()
+
+                recovered_asset = {
+
+                    "image": cropped_b64,
+
+                    "width": crop.width,
+
+                    "height": crop.height,
+
+                    "x": banner_x,
+
+                    "y": banner_y,
+
+                    "is_lifestyle": False,
+
+                    "recovered": True
+                }
+
+                _logger.warning(
+                    f"[RECOVERY ASSET CREATED] "
+                    f"width={crop.width} "
+                    f"height={crop.height}"
+                )
+
+                return [
+                    recovered_asset
+                ]
+
             except Exception as e:
 
                 _logger.warning(
