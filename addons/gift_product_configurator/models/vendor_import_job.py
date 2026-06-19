@@ -4490,6 +4490,26 @@ class VendorImportJob(models.Model):
                 f"{page_width}x{page_height}"
             )
 
+            validation_reasons = validation.get(
+                "reasons",
+                []
+            )
+
+            if (
+                "dominant_banner_page" in validation_reasons
+                or
+                "banner_plus_fragments" in validation_reasons
+            ):
+
+                _logger.warning(
+                    "[PRODUCT DETECTOR] "
+                    "BANNER DISCOVERY MODE"
+                )
+
+                return self._detect_products_inside_banner(
+                    page_data
+                )
+
             candidates = []
 
             for idx, img in enumerate(images):
@@ -4508,24 +4528,6 @@ class VendorImportJob(models.Model):
                     /
                     float(page_width * page_height)
                 )
-
-                # candidates.append({
-
-                #     "index": idx,
-
-                #     "x": x,
-                #     "y": y,
-
-                #     "width": w,
-                #     "height": h,
-
-                #     "coverage": coverage,
-
-                #     "is_lifestyle": img.get(
-                #         "is_lifestyle",
-                #         False
-                #     )
-                # })
 
                 candidates.append({
 
@@ -4610,6 +4612,172 @@ class VendorImportJob(models.Model):
 
             return []
         
+
+    #==========detect_products_inside_banner===============
+    def _detect_products_inside_banner(
+        self,
+        page_data
+    ):
+
+        try:
+
+            _logger.warning(
+                "[BANNER DISCOVERY START]"
+            )
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            page_width = page_data.get(
+                "page_width",
+                0
+            )
+
+            page_height = page_data.get(
+                "page_height",
+                0
+            )
+
+            dominant_banner = None
+
+            for img in images:
+
+                w = img.get(
+                    "width",
+                    0
+                )
+
+                h = img.get(
+                    "height",
+                    0
+                )
+
+                if (
+                    not w
+                    or
+                    not h
+                    or
+                    not page_width
+                    or
+                    not page_height
+                ):
+                    continue
+
+                coverage = (
+                    (w * h)
+                    /
+                    float(
+                        page_width * page_height
+                    )
+                )
+
+                if coverage > 0.60:
+
+                    dominant_banner = img
+                    break
+
+            if not dominant_banner:
+
+                _logger.warning(
+                    "[BANNER DISCOVERY] NO BANNER"
+                )
+
+                return []
+
+            banner_x = dominant_banner.get(
+                "x",
+                0
+            )
+
+            banner_y = dominant_banner.get(
+                "y",
+                0
+            )
+
+            banner_w = dominant_banner.get(
+                "width",
+                0
+            )
+
+            banner_h = dominant_banner.get(
+                "height",
+                0
+            )
+
+            _logger.warning(
+                f"[BANNER DISCOVERY] "
+                f"w={banner_w} "
+                f"h={banner_h} "
+                f"x={banner_x} "
+                f"y={banner_y}"
+            )
+
+            import base64
+            from io import BytesIO
+            from PIL import Image
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            if not page_image:
+
+                _logger.warning(
+                    "[BANNER DISCOVERY] NO PAGE IMAGE"
+                )
+
+                return []
+
+            page_img = Image.open(
+                BytesIO(
+                    base64.b64decode(
+                        page_image
+                    )
+                )
+            )
+
+            crop = page_img.crop(
+                (
+                    banner_x,
+                    banner_y,
+                    banner_x + banner_w,
+                    banner_y + banner_h
+                )
+            )
+
+            _logger.warning(
+                f"[BANNER CROP] "
+                f"size={crop.size}"
+            )
+
+            crop_width = crop.width
+
+            crop_height = crop.height
+
+            aspect_ratio = (
+                crop_width
+                /
+                float(crop_height)
+            )
+
+            _logger.warning(
+                f"[BANNER ANALYSIS] "
+                f"ratio={aspect_ratio:.2f}"
+            )
+
+            return []
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[BANNER DISCOVERY FAILED] "
+                f"{str(e)}"
+            )
+
+            return []
+
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
 
