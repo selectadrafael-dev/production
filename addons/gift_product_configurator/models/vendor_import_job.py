@@ -4599,6 +4599,22 @@ class VendorImportJob(models.Model):
 
             recovered_assets = []
 
+            classified_assets = []
+
+            for asset in recovered_assets:
+
+                asset["asset_type"] = (
+                    self._classify_recovered_asset(
+                        asset
+                    )
+                )
+
+                classified_assets.append(
+                    asset
+                )
+
+            recovered_assets = classified_assets
+
             for c in candidates:
 
                 if c["is_lifestyle"]:
@@ -4638,7 +4654,194 @@ class VendorImportJob(models.Model):
             )
 
             return []
-        
+
+    #==========classify_asset=================
+    def _classify_asset(
+        self,
+        asset
+    ):
+
+        try:
+
+            width = asset.get(
+                "width",
+                0
+            )
+
+            height = asset.get(
+                "height",
+                0
+            )
+
+            lifestyle = asset.get(
+                "is_lifestyle",
+                False
+            )
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER] "
+                f"w={width} "
+                f"h={height} "
+                f"lifestyle={lifestyle}"
+            )
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER FAILED] "
+                f"{str(e)}"
+            )
+
+            return "unknown"
+
+    #==========extract_clean_products_from_image===========
+    def _extract_clean_products_from_image(
+        self,
+        crop,
+        source_type="unknown"
+    ):
+
+        try:
+
+            from PIL import Image
+
+            _logger.warning(
+                f"[OBJECT EXTRACTOR START] "
+                f"source={source_type} "
+                f"size={crop.width}x{crop.height}"
+            )
+
+            gray = crop.convert(
+                "L"
+            )
+
+            width = gray.width
+            height = gray.height
+
+            edge_density = []
+
+            for x in range(width):
+
+                edge_count = 0
+
+                for y in range(
+                    1,
+                    height
+                ):
+
+                    current_pixel = gray.getpixel(
+                        (x, y)
+                    )
+
+                    previous_pixel = gray.getpixel(
+                        (x, y - 1)
+                    )
+
+                    diff = abs(
+                        current_pixel
+                        -
+                        previous_pixel
+                    )
+
+                    if diff > 15:
+
+                        edge_count += 1
+
+                edge_density.append(
+                    edge_count
+                )
+
+            max_density = max(
+                edge_density
+            ) if edge_density else 0
+
+            if not max_density:
+
+                _logger.warning(
+                    "[OBJECT EXTRACTOR] "
+                    "NO EDGES FOUND"
+                )
+
+                return crop
+
+            threshold = (
+                max_density * 0.25
+            )
+
+            active_columns = []
+
+            for idx, value in enumerate(
+                edge_density
+            ):
+
+                if value >= threshold:
+
+                    active_columns.append(
+                        idx
+                    )
+
+            if not active_columns:
+
+                _logger.warning(
+                    "[OBJECT EXTRACTOR] "
+                    "NO ACTIVE COLUMNS"
+                )
+
+                return crop
+
+            min_x = min(
+                active_columns
+            )
+
+            max_x = max(
+                active_columns
+            )
+
+            padding = 20
+
+            min_x = max(
+                0,
+                min_x - padding
+            )
+
+            max_x = min(
+                width,
+                max_x + padding
+            )
+
+            clean_crop = crop.crop(
+                (
+                    min_x,
+                    0,
+                    max_x,
+                    height
+                )
+            )
+
+            _logger.warning(
+                f"[OBJECT BOX] "
+                f"x1={min_x} "
+                f"x2={max_x}"
+            )
+
+            _logger.warning(
+                f"[OBJECT SIZE] "
+                f"{clean_crop.width}x{clean_crop.height}"
+            )
+
+            return clean_crop
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[OBJECT EXTRACTOR FAILED] "
+                f"{str(e)}"
+            )
+
+            return crop
+
     #===========correct_variant_image_indexes================
     def _correct_variant_image_indexes(
         self,
@@ -4927,7 +5130,7 @@ class VendorImportJob(models.Model):
                         f"end={end_x} "
                         f"width={region_width}"
                     )
-                    
+
                     if region_width < 30:
                         continue
 
@@ -4938,6 +5141,11 @@ class VendorImportJob(models.Model):
                             end_x,
                             crop.height
                         )
+                    )
+
+                    seg = self._extract_clean_products_from_image(
+                        seg,
+                        source_type="banner"
                     )
 
                     buffer = BytesIO()
@@ -5226,6 +5434,71 @@ class VendorImportJob(models.Model):
             )
 
             return []
+
+    #==========classify_recovered_asset=================
+    def _classify_recovered_asset(
+        self,
+        asset
+    ):
+
+        try:
+
+            width = asset.get(
+                "width",
+                0
+            )
+
+            height = asset.get(
+                "height",
+                0
+            )
+
+            lifestyle = asset.get(
+                "is_lifestyle",
+                False
+            )
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER] "
+                f"w={width} "
+                f"h={height} "
+                f"lifestyle={lifestyle}"
+            )
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER FAILED] "
+                f"{str(e)}"
+            )
+
+            return "unknown"
+
+    #==========rank_product_assets=================
+    def _rank_product_assets(
+        self,
+        assets
+        ):
+
+        try:
+
+            _logger.warning(
+                f"[ASSET RANKING] "
+                f"count={len(assets)}"
+            )
+
+            return assets
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[ASSET RANKING FAILED] "
+                f"{str(e)}"
+            )
+
+            return assets
 
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
