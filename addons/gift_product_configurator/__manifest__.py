@@ -9,7 +9,8 @@
    'product',
    'website',
    'website_sale',
-   'sale_management'
+   'sale_management',
+    "stock"
 ],
 "data": [
     "views/product_page.xml",

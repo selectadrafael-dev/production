@@ -260,6 +260,8 @@ class VendorImportJob(models.Model):
         ('excel_ai', 'Excel AI'),
         ('excel_creating', 'Excel Creating'),
 
+        ('excel_url_enrichment', 'Excel URL Enrichment'),
+
     ], default='draft')
 
 
@@ -1369,6 +1371,8 @@ class VendorImportJob(models.Model):
 
                 self.flush_recordset()
                 self.env.cr.commit()
+
+                return
 
 
             if self.state == 'excel_url_enrichment':

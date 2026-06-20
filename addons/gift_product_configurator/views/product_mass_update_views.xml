@@ -9,48 +9,140 @@
 
         <field name="arch"
                type="xml">
-            <form
-                string="Mass Update Products">
 
-                <group>
-                    <group>
-                        <field
-                            name="publish_products"/>
-                        <field
-                            name="unpublish_products"/>
+            <form string="Mass Update Products">
+
+                <sheet>
+
+                    <group string="Publishing">
+
+                        <group>
+
+                            <field name="publish_products"/>
+
+                        </group>
+
+                        <group>
+
+                            <field name="unpublish_products"/>
+
+                        </group>
+
                     </group>
-                </group>
 
-                <separator
-                    string="Price Update"/>
-                <group>
-                    <field name="update_price"/>
-                    
-                        <field
-                            name="update_method"
-                            invisible="update_price == False"/>
+                    <group string="Pricing">
 
-                        <field
-                            name="operation"
-                            invisible="update_price == False"/>
+                        <group>
 
-                        <field
-                            name="value"
-                            invisible="update_price == False"/>
+                            <field name="update_price"/>
 
-                </group>
+                        </group>
+
+                        <group invisible="not update_price">
+
+                            <field name="update_method"/>
+
+                            <field name="operation"/>
+
+                            <field name="value"/>
+
+                        </group>
+
+                    </group>
+
+                    <group string="Website Categories">
+
+                        <group>
+
+                            <field name="update_category"/>
+
+                        </group>
+
+                        <group invisible="not update_category">
+
+                            <field
+                                name="public_category_ids"
+                                widget="many2many_tags"
+                            />
+
+                        </group>
+
+                    </group>
+
+
+                        <group string="Inventory">
+
+                            <group>
+
+                                <field name="update_inventory"/>
+
+                                <field
+                                    name="warehouse_id"
+                                    invisible="not update_inventory"
+                                />
+
+                                <field
+                                    name="set_quantity"
+                                    invisible="not update_inventory"
+                                />
+
+                                <field
+                                    name="quantity"
+                                    invisible="
+                                        not update_inventory
+                                        or
+                                        not set_quantity
+                                    "
+                                />
+
+                            </group>
+
+                            <group
+                                invisible="not update_inventory">
+
+                                <field name="detailed_type"/>
+
+                                <field name="update_sale_ok"/>
+
+                                <field
+                                    name="sale_ok"
+                                    invisible="not update_sale_ok"
+                                />
+
+                                <field name="update_purchase_ok"/>
+
+                                <field
+                                    name="purchase_ok"
+                                    invisible="not update_purchase_ok"
+                                />
+
+                                <field name="tracking"/>
+
+                                <field
+                                    name="route_ids"
+                                    widget="many2many_tags"
+                                />
+
+                            </group>
+
+                        </group>
+
+                </sheet>
 
                 <footer>
 
                     <button
                         name="action_apply"
                         type="object"
-                        string="Apply"
-                        class="btn-primary"/>
+                        string="Apply Changes"
+                        class="btn btn-primary"
+                    />
 
                     <button
                         string="Cancel"
-                        special="cancel"/>
+                        special="cancel"
+                        class="btn btn-secondary"
+                    />
 
                 </footer>
 
@@ -78,13 +170,17 @@
 
         <field name="code">
 
-    action = {
-        'type': 'ir.actions.act_window',
-        'name': 'Mass Update',
-        'res_model': 'product.mass.update.wizard',
-        'view_mode': 'form',
-        'target': 'new',
-    }
+ 
+        action = {
+            'type': 'ir.actions.act_window',
+            'name': 'Mass Update Products',
+            'res_model': 'product.mass.update.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'active_ids': records.ids,
+            }
+        }
 
         </field>
 
