@@ -15850,14 +15850,51 @@ class VendorImportJob(models.Model):
         # VALIDATION
         # =====================================================
 
+        # if not self.ai_response:
+
+        #     _logger.warning(
+        #         "[EXCEL CREATE] NO AI RESPONSE"
+        #     )
+
+        #     return
+
         if not self.ai_response:
 
             _logger.warning(
-                "[EXCEL CREATE] NO AI RESPONSE"
+
+                "[EXCEL CREATE] "
+
+                "NO AI RESPONSE"
             )
 
-            return
+            # ====================================
+            # RECOVERY PATH
+            # ====================================
 
+            if self.is_excel_parsed:
+
+                _logger.warning(
+
+                    "[EXCEL CREATE] "
+
+                    "PARSED COMPLETE "
+
+                    "→ MOVE TO REVIEW"
+                )
+
+                self.last_error = (
+                    "Excel AI response missing"
+                )
+
+                self.last_known_state = (
+                    "excel_creating"
+                )
+
+                self.state = "review"
+
+                self._safe_commit_progress()
+
+            return
 
         try:
 
