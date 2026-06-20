@@ -15,14 +15,21 @@
         <field name="arch"
                type="xml">
 
-            <form string="Mass Update">
+            <form string="Mass Update Products">
 
                 <group>
 
-                    <field
-                        name="test_field"/>
+                    <field name="test_field"/>
 
                 </group>
+
+                <footer>
+
+                    <button
+                        string="Cancel"
+                        special="cancel"/>
+
+                </footer>
 
             </form>
 
