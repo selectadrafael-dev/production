@@ -1,10 +1,7 @@
 from odoo import models, fields
 
-raise Exception(
-    "PRODUCT MASS UPDATE WIZARD FILE IS BEING IMPORTED"
-)
-
 class ProductMassUpdateWizard(models.TransientModel):
     _name = "product.mass.update.wizard"
+    _description = "Product Mass Update Wizard"
 
     test_field = fields.Char()

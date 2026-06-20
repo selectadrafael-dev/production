@@ -5,7 +5,3 @@ access_vendor_import_page,vendor.import.page,model_vendor_import_page,gift_produ
 access_vendor_product_template,vendor.product.template,product.model_product_template,gift_product_configurator.group_product_vendor,1,1,1,1
 
 access_vendor_product_product,vendor.product.product,product.model_product_product,gift_product_configurator.group_product_vendor,1,1,1,1
-
-access_product_mass_update_wizard_user,access_product_mass_update_wizard_user,model_product_mass_update_wizard,base.group_user,1,1,1,1
-
-access_product_mass_update_wizard_vendor,access_product_mass_update_wizard_vendor,model_product_mass_update_wizard,gift_product_configurator.group_product_vendor,1,1,1,1

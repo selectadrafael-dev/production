@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <odoo>
+
     <record
         id="view_product_mass_update_wizard"
-        model="ir.ui.view"
-        >
+        model="ir.ui.view">
 
         <field name="name">
             product.mass.update.wizard.form
@@ -17,106 +17,16 @@
         <field name="arch"
                type="xml">
 
-            <form
-                string="Mass Update Products">
+            <form string="Mass Update">
 
                 <group>
-
-                    <group>
-
-                        <field
-                            name="publish_products"/>
-
-                        <field
-                            name="unpublish_products"/>
-
-                    </group>
-
+                    <field name="test_field"/>
                 </group>
-
-                <separator
-                    string="Price Update"/>
-
-                <group>
-
-                    <field
-                        name="update_price"/>
-
-                    <field
-                        name="update_method"
-                        attrs="{
-                        'invisible':
-                        [('update_price','=',False)]
-                        }"/>
-
-                    <field
-                        name="operation"
-                        attrs="{
-                        'invisible':
-                        [('update_price','=',False)]
-                        }"/>
-
-                    <field
-                        name="value"
-                        attrs="{
-                        'invisible':
-                        [('update_price','=',False)]
-                        }"/>
-
-                </group>
-
-                <footer>
-
-                    <button
-                        name="action_apply"
-                        type="object"
-                        string="Apply"
-                        class="btn-primary"/>
-
-                    <button
-                        string="Cancel"
-                        special="cancel"/>
-
-                </footer>
 
             </form>
 
         </field>
-    </record>
-
-    <record
-        id="action_product_mass_update"
-        model="ir.actions.server">
-
-        <field name="name">
-            Mass Update
-        </field>
-
-        <field name="model_id"
-            ref="product.model_product_template"/>
-
-        <field name="binding_model_id"
-            ref="product.model_product_template"/>
-
-        <field name="binding_type">
-            action
-        </field>
-
-        <field name="state">
-            code
-        </field>
-
-        <field name="code">
-
-    action = {
-        'type': 'ir.actions.act_window',
-        'name': 'Mass Update',
-        'res_model': 'product.mass.update.wizard',
-        'view_mode': 'form',
-        'target': 'new',
-    }
-
-        </field>
 
     </record>
+
 </odoo>
