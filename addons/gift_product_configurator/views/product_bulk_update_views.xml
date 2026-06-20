@@ -41,8 +41,8 @@
         <binding_model_id ref="product.model_product_template"/>
         <binding_view_types>list</binding_view_types>
         <state>code</state>
-        <code(s)>
-action = env.ref('gift_product_configurator.action_product_mass_update_wizard').read()[0]
-        </code(s)>
+         <code_block>
+action = env.ref('gift_product_configurator.action_product_mass_update_wizard').read()
+        </code_block>
     </record>
 </odoo>
