@@ -30,6 +30,10 @@
     'views/product_template_views.xml',
     'views/product_mass_update_views.xml',
 
+    #'views/product_purge_action.xml',
+    #'views/vendor_menu_security.xml',
+    #'views/vendor_product_menu.xml',
+    #'views/vendor_body_class.xml',
 ],
 "assets": {
     "web.assets_frontend": [

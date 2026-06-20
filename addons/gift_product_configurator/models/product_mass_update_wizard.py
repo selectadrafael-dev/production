@@ -1,21 +1,7 @@
-from odoo import (
-    fields,
-    models
-)
+from odoo import models, fields
 
-import logging
-
-_logger = logging.getLogger(__name__)
-
-_logger.warning(
-    "PRODUCT MASS UPDATE WIZARD FILE LOADED"
-)
-
-
-class ProductMassUpdateWizard(
-    models.TransientModel
-):
-
-    _name = "product.mass.update.wizard"
+class ProductMassUpdateWizard(models.TransientModel):
+    _name = 'product.mass.update.wizard'
+    _description = 'Product Mass Update Wizard'
 
     test_field = fields.Char()
