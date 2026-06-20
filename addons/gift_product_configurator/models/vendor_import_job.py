@@ -18025,3 +18025,94 @@ class VendorImportJob(models.Model):
 
             return 1.0
 
+    #=====publish mass product==========================
+    def action_publish_products(self):
+        active_ids = self.env.context.get(
+            'active_ids',
+            []
+        )
+
+        products = self.env[
+            'product.template'
+        ].browse(
+            active_ids
+        )
+
+        products.write({
+            'is_published': True
+        })
+
+    #=====Unpublished mass product==========================
+    def action_unpublish_products(self):
+        active_ids = self.env.context.get(
+            'active_ids',
+            []
+        )
+
+        products = self.env[
+            'product.template'
+        ].browse(
+            active_ids
+        )
+
+        products.write({
+            'is_published': False
+        })
+
+    #========bukl price update==================
+    def action_apply(self):
+
+        products = self.env[
+            'product.template'
+        ].browse(
+            self.env.context.get(
+                'active_ids',
+                []
+            )
+        )
+
+        for product in products:
+
+            current_price = product.list_price
+
+            if self.update_type == 'fixed':
+
+                if self.operation == 'set':
+                    new_price = self.value
+
+                elif self.operation == 'increase':
+                    new_price = (
+                        current_price +
+                        self.value
+                    )
+
+                else:
+                    new_price = (
+                        current_price -
+                        self.value
+                    )
+
+            else:
+
+                if self.operation == 'increase':
+                    new_price = (
+                        current_price *
+                        (
+                            1 +
+                            self.value / 100
+                        )
+                    )
+
+                else:
+                    new_price = (
+                        current_price *
+                        (
+                            1 -
+                            self.value / 100
+                        )
+                    )
+
+            product.list_price = max(
+                0,
+                new_price
+            )
