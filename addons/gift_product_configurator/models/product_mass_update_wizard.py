@@ -14,11 +14,10 @@ _logger.warning(
     "MASS UPDATE WIZARD FILE LOADED"
 )
 
-class ProductMassUpdateWizard(
-    models.TransientModel
-):
-    
+class ProductMassUpdateWizard(models.TransientModel):
+
     _name = "product.mass.update.wizard"
+    _description = "Product Mass Update Wizard"
 
     publish_products = fields.Boolean(
         string="Publish Products"
