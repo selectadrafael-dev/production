@@ -26,9 +26,9 @@
     'views/portal_vendor_button.xml',
     'security/security.xml',
     'security/product_vendor_rule.xml',
-    #'security/ir.model.access.csv',
+    'security/ir.model.access.csv',
     'views/product_template_views.xml',
-    #'views/product_mass_update_views.xml',
+    'views/product_mass_update_views.xml',
     'views/product_bulk_update_views.xml',
 ],
 "assets": {
