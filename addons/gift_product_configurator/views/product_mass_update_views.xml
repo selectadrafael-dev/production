@@ -3,7 +3,8 @@
 <odoo>
     <record
         id="view_product_mass_update_wizard"
-        model="ir.actions.server">
+        model="ir.ui.view"
+        >
 
         <field name="name">
             product.mass.update.wizard.form
