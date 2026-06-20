@@ -24,28 +24,19 @@
                 <separator
                     string="Price Update"/>
                 <group>
-                    <field
-                        name="update_price"/>
-                    <field
-                        name="update_method"
-                        attrs="{
-                        'invisible':
-                        [('update_price','=',False)]
-                        }"/>
+                    <field name="update_price"/>
+                    
+                        <field
+                            name="update_method"
+                            invisible="update_price == False"/>
 
-                    <field
-                        name="operation"
-                        attrs="{
-                        'invisible':
-                        [('update_price','=',False)]
-                        }"/>
+                        <field
+                            name="operation"
+                            invisible="update_price == False"/>
 
-                    <field
-                        name="value"
-                        attrs="{
-                        'invisible':
-                        [('update_price','=',False)]
-                        }"/>
+                        <field
+                            name="value"
+                            invisible="update_price == False"/>
 
                 </group>
 
