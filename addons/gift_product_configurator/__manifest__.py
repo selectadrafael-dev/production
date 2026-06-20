@@ -6,6 +6,7 @@
 "author": "SelectAd",
 'license': 'LGPL-3',
 "depends": [
+   'product',
    'website',
    'website_sale',
    'sale_management'
@@ -13,7 +14,6 @@
 "data": [
     "views/product_page.xml",
     'views/bestsellers_page.xml',
-    'views/shop_category_hero.xml',
     'views/shop_category_hero.xml',
     'views/product_public_category_form.xml',
     'data/sequence.xml',

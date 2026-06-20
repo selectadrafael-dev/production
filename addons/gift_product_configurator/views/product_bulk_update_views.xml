@@ -4,27 +4,16 @@
     <record id="test_product_template_view"
             model="ir.ui.view">
 
-        <field name="name">
-            test.product.template.view
-        </field>
+        <field name="name">test.product.template.view</field>
 
-        <field name="model">
-            product.template
-        </field>
+        <field name="model">product.template</field>
 
-        <field name="arch"
-               type="xml">
-
+        <field name="arch" type="xml">
             <form string="Test View">
-
                 <group>
-
                     <field name="name"/>
-
                 </group>
-
             </form>
-
         </field>
 
     </record>
