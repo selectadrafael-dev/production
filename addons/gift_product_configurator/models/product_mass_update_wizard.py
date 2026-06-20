@@ -9,9 +9,8 @@ from odoo.exceptions import UserError
 class ProductMassUpdateWizard(
     models.TransientModel
 ):
-    _name = (
-        "product.mass.update.wizard"
-    )
+    
+    _name = "product.mass.update.wizard"
 
     publish_products = fields.Boolean(
         string="Publish Products"
