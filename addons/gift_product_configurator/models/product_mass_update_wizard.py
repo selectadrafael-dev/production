@@ -1,5 +1,4 @@
 from odoo import (
-    api,
     fields,
     models
 )
@@ -12,4 +11,11 @@ _logger.warning(
     "PRODUCT MASS UPDATE WIZARD FILE LOADED"
 )
 
-from odoo.exceptions import UserError
+
+class ProductMassUpdateWizard(
+    models.TransientModel
+):
+
+    _name = "product.mass.update.wizard"
+
+    test_field = fields.Char()
