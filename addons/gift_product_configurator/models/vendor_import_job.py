@@ -15772,12 +15772,21 @@ class VendorImportJob(models.Model):
                     )
 
 
-            #group_id = ""
-
             enriched = (
                 self._extract_enrichment_data_from_url(
                     structured_data,
                     group_id
+                )
+            )
+
+            _logger.warning(
+
+                "[URL ENRICHED DATA]\n%s"
+
+                % json.dumps(
+                    enriched,
+                    indent=4,
+                    default=str
                 )
             )
 
@@ -16525,6 +16534,10 @@ class VendorImportJob(models.Model):
                     indent=4,
                     default=str
                 )
+            )
+
+            _logger.warning(
+                "[URL ENRICHMENT RETURNING DATA]"
             )
 
             return parsed
