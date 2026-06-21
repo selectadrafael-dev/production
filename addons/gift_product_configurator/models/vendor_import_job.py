@@ -15850,14 +15850,6 @@ class VendorImportJob(models.Model):
         # VALIDATION
         # =====================================================
 
-        # if not self.ai_response:
-
-        #     _logger.warning(
-        #         "[EXCEL CREATE] NO AI RESPONSE"
-        #     )
-
-        #     return
-
         if not self.ai_response:
 
             _logger.warning(
@@ -16974,56 +16966,65 @@ class VendorImportJob(models.Model):
                 "GROUP BATCH COMPLETE"
             )
 
+
+        # =========================================
+        # FULL IMPORT COMPLETED
+        # =========================================
+
+        if self.is_excel_parsed:
+
+            _logger.warning(
+                "[EXCEL IMPORT COMPLETE] ✅"
+            )
+
             # =========================================
-            # FULL IMPORT COMPLETED
+            # FINAL RESET
             # =========================================
 
-            if self.is_excel_parsed:
+            self.excel_created_index = 0
+
+            self.excel_ai_index = 0
+
+            queue = json.loads(
+                self.excel_url_queue or "[]"
+            )
+
+            _logger.warning(
+
+                f"[URL QUEUE FINAL CHECK] "
+
+                f"queue_count={len(queue)} | "
+
+                f"queue={queue}"
+            )
+
+            # =========================================
+            # URL ENRICHMENT REQUIRED
+            # =========================================
+
+            if queue:
 
                 _logger.warning(
-                    "[EXCEL IMPORT COMPLETE] ✅"
+
+                    "[EXCEL FLOW] "
+
+                    "START URL ENRICHMENT"
                 )
 
-                # =========================================
-                # FINAL RESET
-                # =========================================
+                self.excel_url_processing = True
 
-                self.excel_created_index = 0
+                self.excel_url_index = 0
 
-                self.excel_ai_index = 0
-
-                self.ai_response = False
-
-                queue = json.loads(
-                    self.excel_url_queue or "[]"
+                self.last_known_state = (
+                    "excel_url_enrichment"
                 )
 
-
-                if queue:
-
-                    self.state = "excel_url_enrichment"
-
-                else:
-
-                    if not self.completion_email_sent:
-
-                        self.send_completion_email()
-
-                    self.state = "done"
-
-                # cleanup URL queue
-
-                if hasattr(self, 'excel_url_processing'):
-
-                    self.excel_url_processing = False
-
-
-                if hasattr(self, 'excel_url_index'):
-
-                    self.excel_url_index = 0
+                self.state = (
+                    "excel_url_enrichment"
+                )
 
             # =========================================
-            # MORE PARSE ROWS REMAIN
+            # NO URLS FOUND
             # =========================================
 
             else:
@@ -17032,30 +17033,44 @@ class VendorImportJob(models.Model):
 
                     "[EXCEL FLOW] "
 
-                    "RETURN TO excel_parsing"
+                    "NO URL ENRICHMENT REQUIRED"
                 )
 
-                # IMPORTANT:
-                # KEEP CURRENT AI STATE
-                # for next parse batch
+                self.ai_response = False
 
-                self.state = 'excel_parsing'
+                self.excel_url_processing = False
 
-                _logger.warning(
+                self.excel_url_index = 0
 
-                    "[EXCEL FLOW] "
+                if not self.completion_email_sent:
 
-                    f"NEXT PARSE INDEX="
+                    self.send_completion_email()
 
-                    f"{self.excel_parse_index}"
-                )
+                self.state = "done"
+
+        # =========================================
+        # MORE PARSE ROWS REMAIN
+        # =========================================
 
         else:
 
-            self.state = 'excel_creating'
+            _logger.warning(
 
+                "[EXCEL FLOW] "
 
-        self._safe_commit_progress()
+                "RETURN TO excel_parsing"
+            )
+
+            self.state = 'excel_parsing'
+
+            _logger.warning(
+
+                "[EXCEL FLOW] "
+
+                f"NEXT PARSE INDEX="
+
+                f"{self.excel_parse_index}"
+            )
 
 
     # =====================================================
