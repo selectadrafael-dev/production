@@ -14869,9 +14869,87 @@ class VendorImportJob(models.Model):
 
                 - Extract numeric price carefully
                 - Extract stock carefully
-                - Ignore ranges like:
+                - Take note of coloumn heading, Stock, STOCK, STOK, QTY, Quantity, these are common stock column
+                - After you created price, any column having 1-4 digit number e.g (1, 2, 10, 50, 100, 1000, 50000) as stock where heading not clearly stated 
+                - Ignore ranges like for stock:
                     - 2-66
                     - 11-00
+
+                =====================================
+                COLUMN DETECTION RULES
+                =====================================
+
+                Excel files may:
+
+                - Have English headers
+                - Have foreign language headers
+                - Have no headers
+                - Have mixed headers
+
+                You must infer:
+
+                stock
+                price
+                discounted price
+                sku
+                product code
+                color
+                size
+                variant
+
+                Common examples:
+
+                STOCK:
+                - Stock
+                - Qty
+                - Quantity
+                - Inventory
+                - Available
+                - STOK
+
+                PRICE:
+                - Price
+                - Cost
+                - SATIŞ
+                - Sale Price
+                - Unit Price
+
+                DISCOUNT PRICE:
+                - Discount
+                - Discounted Price
+                - ENDİRİMLİ
+
+                PRODUCT CODE:
+                - SKU
+                - Article
+                - Item Number
+                - Product Code
+                - KOD
+
+                COLOR:
+                - Color
+                - Colour
+                - RƏNG
+
+                If headers are missing:
+
+                Infer based on patterns.
+
+                Examples:
+
+                94646 → likely product code
+
+                510 → likely stock quantity
+
+                5.5 → likely price
+
+                Black → likely color
+
+                Red → likely color
+
+                750ml → likely capacity
+
+                Do not ignore numeric columns.
 
                 =====================================
                 LINKS
