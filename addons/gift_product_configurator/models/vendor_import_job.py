@@ -15391,10 +15391,14 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"[URL ENRICHMENT WAIT] "
+                        f"[URL ENRICHMENT FAILED] "
 
                         f"{product_url}"
                     )
+
+                    self.excel_url_index = idx + 1
+
+                    self._safe_commit_progress()
 
                     continue
 
@@ -16471,12 +16475,42 @@ class VendorImportJob(models.Model):
                 timeout=60
             )
 
+            # =========================================
+            # GET AI RESPONSE TEXT
+            # =========================================
+
+            result = (
+
+                response.output_text
+
+                or ""
+
+            ).strip()
+
+            _logger.warning(
+
+                "[URL ENRICHMENT RAW RESPONSE]\n%s"
+
+                % result[:5000]
+            )
+
+            # =========================================
+            # CLEAN JSON WRAPPERS
+            # =========================================
 
             result = re.sub(
+
                 r"^```(?:json)?|```$",
+
                 "",
+
                 result
+
             ).strip()
+
+            # =========================================
+            # PARSE JSON
+            # =========================================
 
             parsed = json.loads(
                 result
