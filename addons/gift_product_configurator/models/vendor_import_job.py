@@ -2873,7 +2873,7 @@ class VendorImportJob(models.Model):
                 "[PDF GC] COMPLETE"
             )
 
-    #=========dpf validate_extraction_quality============== 
+    #=========pdf validate_extraction_quality============== 
 
     def _validate_extraction_quality(self, page_data):
 
@@ -15379,7 +15379,8 @@ class VendorImportJob(models.Model):
                 # ====================================
 
                 url_data = self._extract_url_product_data(
-                    product_url
+                    product_url,
+                    group_id
                 )
 
                 # ====================================
@@ -15534,16 +15535,41 @@ class VendorImportJob(models.Model):
 
                 vals = {}
 
-                if url_data.get("name"):
+                description_parts = []
 
-                    vals["name"] = (
-                        url_data["name"]
+                for field in [
+
+                    "subtitle",
+
+                    "description",
+
+                    "material",
+
+                    "capacity",
+
+                    "dimensions",
+
+                    "specifications"
+
+                ]:
+
+                    value = url_data.get(
+                        field
                     )
 
-                if url_data.get("description"):
+                    if value:
+
+                        description_parts.append(
+                            str(value)
+                        )
+
+                if description_parts:
 
                     vals["description_sale"] = (
-                        url_data["description"]
+
+                        "\n\n".join(
+                            description_parts
+                        )
                     )
 
                 # ====================================
@@ -15552,6 +15578,15 @@ class VendorImportJob(models.Model):
 
                 if vals:
 
+                    _logger.warning(
+
+                        "[URL DESCRIPTION]\n%s"
+
+                        % vals.get(
+                            "description_sale",
+                            ""
+                        )[:3000]
+                    )
                     product.write(vals)
 
                     _logger.warning(
@@ -15638,7 +15673,9 @@ class VendorImportJob(models.Model):
 
         self,
 
-        product_url
+        product_url,
+
+        group_id=""
      ):
 
         try:
@@ -15731,28 +15768,63 @@ class VendorImportJob(models.Model):
                     )
 
 
-            normalized = self._normalize_url_data(
-                structured_data
-            )
+            #group_id = ""
 
-            if not normalized:
-
-                return {}
-
-            url_data = (
-                self._extract_url_product_data_ai(
-                    normalized
+            enriched = (
+                self._extract_enrichment_data_from_url(
+                    structured_data,
+                    group_id
                 )
             )
 
+            if not enriched:
+
+                return {}
+            
             _logger.warning(
 
-                f"[EXCEL URL ENRICHMENT SUCCESS] "
+                f"[URL ENRICHMENT SUCCESS] "
 
                 f"{product_url}"
             )
 
-            return url_data
+            return {
+
+                "title":
+                    enriched.get(
+                        "title"
+                    ),
+
+                "subtitle":
+                    enriched.get(
+                        "subtitle"
+                    ),
+
+                "description":
+                    enriched.get(
+                        "description"
+                    ),
+
+                "material":
+                    enriched.get(
+                        "material"
+                    ),
+
+                "capacity":
+                    enriched.get(
+                        "capacity"
+                    ),
+
+                "dimensions":
+                    enriched.get(
+                        "dimensions"
+                    ),
+
+                "specifications":
+                    enriched.get(
+                        "specifications"
+                    )
+            }
 
         except Exception as e:
 
@@ -15764,6 +15836,7 @@ class VendorImportJob(models.Model):
             )
 
             return {}
+
 
     #=====excel group url update====================================
 
@@ -16308,6 +16381,130 @@ class VendorImportJob(models.Model):
 
             return False
 
+    #====extract_enrichment_data_from_url==================================
+    def _extract_enrichment_data_from_url(
+        self,
+        structured_data,
+        group_id
+    ):
+
+        import json
+        import re
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+            return {}
+
+        client = OpenAI(
+            api_key=api_key
+        )
+
+        combined_text = "\n\n".join([
+
+            str(
+                item.get(
+                    "text",
+                    ""
+                )
+            )
+
+            for item in structured_data
+
+        ])
+
+        if not combined_text.strip():
+            return {}
+
+        prompt = f"""
+        You are a product detail extraction engine.
+
+        PRODUCT CODE:
+        {group_id}
+
+        IMPORTANT:
+
+        - Do NOT summarize.
+        - Do NOT shorten.
+        - Do NOT rewrite.
+        - Do NOT invent information.
+        - Extract information exactly as written.
+
+        Return ONLY JSON:
+
+        {{
+            "title": "",
+            "subtitle": "",
+            "description": "",
+            "material": "",
+            "capacity": "",
+            "dimensions": "",
+            "specifications": ""
+        }}
+
+        TEXT:
+
+        {combined_text}
+        """
+
+        _logger.warning(
+
+            "[URL ENRICHMENT INPUT]\n%s"
+
+            % combined_text[:5000]
+        )
+
+        try:
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt,
+
+                temperature=0,
+
+                timeout=60
+            )
+
+
+            result = re.sub(
+                r"^```(?:json)?|```$",
+                "",
+                result
+            ).strip()
+
+            parsed = json.loads(
+                result
+            )
+
+            _logger.warning(
+
+                "[URL ENRICHMENT OUTPUT]\n%s"
+
+                % json.dumps(
+                    parsed,
+                    indent=4,
+                    default=str
+                )
+            )
+
+            return parsed
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT AI ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return {}
 
     #==========create excel product=================================
     def create_products_excel(self):
