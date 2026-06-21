@@ -15383,6 +15383,14 @@ class VendorImportJob(models.Model):
                     group_id
                 )
 
+                _logger.warning(
+
+                    f"[TARGET PRODUCT CODE] "
+
+                    f"{group_id}"
+                )
+
+
                 # ====================================
                 # APIFY STILL RUNNING
                 # ====================================
@@ -15424,11 +15432,25 @@ class VendorImportJob(models.Model):
                     )
                 )
 
+                # _logger.warning(
+
+                #     f"[URL DATA NAME] "
+
+                #     f"{url_data.get('name')}"
+                # )
+
                 _logger.warning(
 
-                    f"[URL DATA NAME] "
+                    f"[URL DATA TITLE] "
 
-                    f"{url_data.get('name')}"
+                    f"{url_data.get('title')}"
+                )
+
+                _logger.warning(
+
+                    f"[URL DATA SUBTITLE] "
+
+                    f"{url_data.get('subtitle')}"
                 )
 
                 _logger.warning(
@@ -15541,9 +15563,25 @@ class VendorImportJob(models.Model):
 
                 description_parts = []
 
-                for field in [
+                # ====================================
+                # ALWAYS KEEP SUBTITLE IF PRESENT
+                # ====================================
 
-                    "subtitle",
+                subtitle = url_data.get(
+                    "subtitle"
+                )
+
+                if subtitle:
+
+                    description_parts.append(
+                        str(subtitle)
+                    )
+
+                # ====================================
+                # EXTRA DETAILS
+                # ====================================
+
+                for field in [
 
                     "description",
 
@@ -15574,8 +15612,7 @@ class VendorImportJob(models.Model):
                         "\n\n".join(
                             description_parts
                         )
-                    )
-
+                    )       
                 # ====================================
                 # UPDATE PRODUCT
                 # ====================================
@@ -15601,7 +15638,7 @@ class VendorImportJob(models.Model):
 
                         f"-> "
 
-                        f"{url_data.get('name')}"
+                        f"{url_data.get('subtitle')}"
                     )
 
                 else:
@@ -16441,11 +16478,31 @@ class VendorImportJob(models.Model):
 
         IMPORTANT:
 
-        - Do NOT summarize.
-        - Do NOT shorten.
-        - Do NOT rewrite.
-        - Do NOT invent information.
-        - Extract information exactly as written.
+        You are given a PRODUCT CODE.
+
+        Find ONLY the product whose code exactly matches PRODUCT CODE.
+
+        Ignore every other product.
+
+        If the code exists:
+
+        - title = product code
+        - subtitle = full product title immediately after the code
+        - description = all text belonging to that product
+
+        Do NOT summarize.
+        Do NOT shorten.
+        Do NOT rewrite.
+        Do NOT invent information.
+        Extract information exactly as written.
+
+        Rules:
+        - title = product code (numeric identifier)
+        - subtitle = full product name line immediately after the code
+        - description = all descriptive text available for that product
+        - If material/capacity/dimensions/specifications are not present, leave them empty
+        - Never invent information
+        - Never summarize
 
         Return ONLY JSON:
 
@@ -16469,6 +16526,13 @@ class VendorImportJob(models.Model):
             "[URL ENRICHMENT INPUT]\n%s"
 
             % combined_text[:5000]
+        )
+
+        _logger.warning(
+
+            f"[AI TARGET PRODUCT] "
+
+            f"{group_id}"
         )
 
         try:
