@@ -16139,20 +16139,6 @@ class VendorImportJob(models.Model):
             f"TOTAL={len(grouped_keys)}"
         )
 
-        # ============================================
-        # BUILD URL QUEUE ONCE
-        # ============================================
-
-        if (
-            not self.excel_url_queue
-            and
-            not self.excel_created_index
-        ):
-
-            self._build_excel_url_queue(
-                grouped_products
-            )
-
         # =====================================================
         # BATCH GROUPS
         # =====================================================
@@ -16967,64 +16953,107 @@ class VendorImportJob(models.Model):
             )
 
 
-        # ============================================
-        # FULL IMPORT COMPLETED
-        # ============================================
+            # ============================================
+            # FULL IMPORT COMPLETED
+            # ============================================
 
-        if self.is_excel_parsed:
+            if self.is_excel_parsed:
+                _logger.warning(
 
-            _logger.warning(
-                "[EXCEL IMPORT COMPLETE] ✅"
-            )
+                    f"[EXCEL PARSED CHECK] "
 
-            # =========================================
-            # FINAL RESET
-            # =========================================
+                    f"is_excel_parsed={self.is_excel_parsed}"
+                )
 
-            self.excel_created_index = 0
+                _logger.warning(
+                    "[EXCEL IMPORT COMPLETE] ✅"
+                )
 
-            self.excel_ai_index = 0
+                # =========================================
+                # FINAL RESET
+                # =========================================
 
-            queue = json.loads(
-                self.excel_url_queue or "[]"
-            )
+                self.excel_created_index = 0
 
-            _logger.warning(
+                self.excel_ai_index = 0
 
-                f"[URL QUEUE FINAL CHECK] "
+                # =========================================
+                # BUILD URL QUEUE FROM FINAL PRODUCT SET
+                # =========================================
 
-                f"queue_count={len(queue)} | "
+                self._build_excel_url_queue(
+                    grouped_products
+                )
 
-                f"queue={queue}"
-            )
-
-            # =========================================
-            # URL ENRICHMENT REQUIRED
-            # =========================================
-
-            if queue:
+                queue = json.loads(
+                    self.excel_url_queue or "[]"
+                )
 
                 _logger.warning(
 
-                    "[EXCEL FLOW] "
+                    f"[URL QUEUE FINAL CHECK] "
 
-                    "START URL ENRICHMENT"
+                    f"queue_count={len(queue)} | "
+
+                    f"queue={queue}"
                 )
 
-                self.excel_url_processing = True
+                # =========================================
+                # URL ENRICHMENT REQUIRED
+                # =========================================
 
-                self.excel_url_index = 0
+                if queue:
 
-                self.last_known_state = (
-                    "excel_url_enrichment"
-                )
+                    _logger.warning(
 
-                self.state = (
-                    "excel_url_enrichment"
-                )
+                        "[EXCEL FLOW] "
+
+                        "START URL ENRICHMENT"
+                    )
+
+                    self.excel_url_processing = True
+
+                    self.excel_url_index = 0
+
+                    self.last_known_state = (
+                        "excel_url_enrichment"
+                    )
+
+                    self.state = (
+                        "excel_url_enrichment"
+                    )
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # =========================================
+                # NO URLS FOUND
+                # =========================================
+
+                else:
+
+                    _logger.warning(
+
+                        "[EXCEL FLOW] "
+
+                        "NO URL ENRICHMENT REQUIRED"
+                    )
+
+                    self.ai_response = False
+
+                    self.excel_url_processing = False
+
+                    self.excel_url_index = 0
+
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
+
+                    self.state = "done"
 
             # =========================================
-            # NO URLS FOUND
+            # MORE PARSE ROWS REMAIN
             # =========================================
 
             else:
@@ -17033,44 +17062,19 @@ class VendorImportJob(models.Model):
 
                     "[EXCEL FLOW] "
 
-                    "NO URL ENRICHMENT REQUIRED"
+                    "RETURN TO excel_parsing"
                 )
 
-                self.ai_response = False
+                self.state = 'excel_parsing'
 
-                self.excel_url_processing = False
+                _logger.warning(
 
-                self.excel_url_index = 0
+                    "[EXCEL FLOW] "
 
-                if not self.completion_email_sent:
+                    f"NEXT PARSE INDEX="
 
-                    self.send_completion_email()
-
-                self.state = "done"
-
-        # =========================================
-        # MORE PARSE ROWS REMAIN
-        # =========================================
-
-        else:
-
-            _logger.warning(
-
-                "[EXCEL FLOW] "
-
-                "RETURN TO excel_parsing"
-            )
-
-            self.state = 'excel_parsing'
-
-            _logger.warning(
-
-                "[EXCEL FLOW] "
-
-                f"NEXT PARSE INDEX="
-
-                f"{self.excel_parse_index}"
-            )
+                    f"{self.excel_parse_index}"
+                )
 
 
     # =====================================================
