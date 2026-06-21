@@ -15652,6 +15652,7 @@ class VendorImportJob(models.Model):
                         block.get("items", [])
                     )
 
+
             normalized = self._normalize_url_data(
                 structured_data
             )
@@ -15660,7 +15661,11 @@ class VendorImportJob(models.Model):
 
                 return {}
 
-            first_product = normalized[0]
+            url_data = (
+                self._extract_url_product_data_ai(
+                    normalized
+                )
+            )
 
             _logger.warning(
 
@@ -15669,27 +15674,7 @@ class VendorImportJob(models.Model):
                 f"{product_url}"
             )
 
-            return {
-
-                "name":
-                    first_product.get("name"),
-
-                "description":
-                    first_product.get(
-                        "description"
-                    ),
-
-                "category":
-                    first_product.get(
-                        "category"
-                    ),
-
-                "images":
-                    first_product.get(
-                        "images",
-                        []
-                    )
-            }
+            return url_data
 
         except Exception as e:
 
@@ -15884,6 +15869,191 @@ class VendorImportJob(models.Model):
             f"{len(queue)} queued"
         )
     
+    # ======================================================
+    # URL AI PRODUCT EXTRACTOR
+    # ======================================================
+
+    def _extract_url_product_data_ai(
+        self,
+        pages
+    ):
+
+        import json
+        import re
+
+        try:
+
+            api_key = self.env[
+                'ir.config_parameter'
+            ].sudo().get_param(
+                'openai.api.key'
+            )
+
+            if not api_key:
+
+                _logger.warning(
+                    "[URL AI] NO API KEY"
+                )
+
+                return {}
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            # =========================================
+            # FLATTEN BLOCKS
+            # =========================================
+
+            all_blocks = [
+
+                b
+
+                for p in pages
+
+                for b in p.get(
+                    "blocks",
+                    []
+                )
+            ]
+
+            if not all_blocks:
+
+                return {}
+
+            cleaned_blocks = (
+                self._clean_scraped_blocks(
+                    all_blocks
+                )
+            )
+
+            if not cleaned_blocks:
+
+                return {}
+
+            combined_text = "\n\n---\n\n".join([
+
+                f"""
+                TEXT:
+                {b.get('text','')}
+
+                PRICE:
+                {b.get('price','')}
+
+                STOCK:
+                {b.get('stock','')}
+
+                IMAGE_URL:
+                {b.get('image','')}
+                """
+
+                for b in cleaned_blocks
+            ])
+
+            if not combined_text.strip():
+
+                return {}
+
+            if len(combined_text) > 15000:
+
+                combined_text = (
+                    combined_text[:15000]
+                )
+
+            # =========================================
+            # SIMPLE PRODUCT EXTRACTION
+            # =========================================
+
+            prompt = f"""
+            Extract the main product.
+
+            Return ONLY valid JSON.
+
+            Format:
+
+            {{
+                "name": "",
+                "description": "",
+                "category": ""
+            }}
+
+            TEXT:
+
+            {combined_text}
+            """
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt,
+
+                temperature=0,
+
+                timeout=60
+            )
+
+            result = (
+                response.output_text
+                .strip()
+            )
+
+            result = re.sub(
+
+                r"^```(?:json)?|```$",
+
+                "",
+
+                result
+
+            ).strip()
+
+            data = json.loads(
+                result
+            )
+
+            if not isinstance(
+                data,
+                dict
+            ):
+
+                return {}
+
+            _logger.warning(
+
+                f"[URL AI SUCCESS] "
+
+                f"{data.get('name')}"
+            )
+
+            return {
+
+                "name":
+                    data.get("name"),
+
+                "description":
+                    data.get(
+                        "description"
+                    ),
+
+                "category":
+                    data.get(
+                        "category"
+                    ),
+
+                "images": []
+            }
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL AI FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return {}
 
     #====Excel variant mapping==================================
     def _detect_basic_image_color(self, image_data):
