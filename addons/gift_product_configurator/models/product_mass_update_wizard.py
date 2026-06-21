@@ -251,6 +251,11 @@ class ProductMassUpdateWizard( models.TransientModel):
 
             if self.update_category:
 
+                _logger.warning(
+                    "CATEGORY UPDATE: %s",
+                    self.public_category_ids.ids
+                )
+
                 product.public_categ_ids = [
                     (
                         6,

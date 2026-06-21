@@ -3872,6 +3872,135 @@ class VendorImportJob(models.Model):
 
             return product_data
 
+    #==========build_product_family========================
+    def _build_product_family(
+        self,
+        product_data,
+        asset_pool,
+        page_data
+    ):
+
+        try:
+
+            family = {
+
+                "group_id": (
+                    product_data.get(
+                        "name",
+                        "unknown"
+                    )
+                ),
+
+                "product_data": product_data,
+
+                "asset_pool": asset_pool,
+
+                "page_data": page_data,
+
+                "family_status": "pending",
+
+                "recovery_required": False,
+
+                "recovery_reason": None
+            }
+
+            _logger.warning(
+                f"[PRODUCT FAMILY] "
+                f"group={family['group_id']} "
+                f"assets={len(asset_pool)}"
+            )
+
+            return family
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[PRODUCT FAMILY FAILED] "
+                f"{str(e)}"
+            )
+
+            return {
+
+                "group_id": "unknown",
+
+                "product_data": product_data,
+
+                "asset_pool": asset_pool,
+
+                "page_data": page_data,
+
+                "family_status": "failed",
+
+                "recovery_required": False
+            }
+
+    #==========queue_product_family=======================
+    def _queue_product_family(
+        self,
+        family
+    ):
+
+        try:
+
+            family["family_status"] = (
+                "queued"
+            )
+
+            _logger.warning(
+                f"[FAMILY QUEUED] "
+                f"{family.get('group_id')}"
+            )
+
+            return family
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[FAMILY QUEUE FAILED] "
+                f"{str(e)}"
+            )
+
+            return family
+
+    #==========prepare_product_family=====================
+    def _prepare_product_family(
+        self,
+        product_data,
+        asset_pool,
+        page_data
+    ):
+
+        try:
+
+            family = (
+                self._build_product_family(
+                    product_data,
+                    asset_pool,
+                    page_data
+                )
+            )
+
+            family = (
+                self._queue_product_family(
+                    family
+                )
+            )
+
+            _logger.warning(
+                f"[FAMILY READY] "
+                f"{family.get('group_id')}"
+            )
+
+            return family
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[FAMILY PREP FAILED] "
+                f"{str(e)}"
+            )
+
+            return None
 
     #==========detect_products_inside_banner===============
     def _detect_products_inside_banner(
@@ -6523,6 +6652,12 @@ class VendorImportJob(models.Model):
 
             "page_height": page_height
         }
+
+        # family = self._prepare_product_family(
+        #     product_data,
+        #     asset_pool,
+        #     page_data
+        # )
 
         validation = self._validate_extraction_quality(
             page_data
@@ -15160,6 +15295,7 @@ class VendorImportJob(models.Model):
 
                     continue
 
+               
                 # ====================================
                 # EXTRACT URL DATA
                 # ====================================
@@ -15184,6 +15320,42 @@ class VendorImportJob(models.Model):
                     continue
 
                 # ====================================
+                # DEBUG URL DATA
+                # ====================================
+
+                _logger.warning(
+
+                    f"[URL DATA KEYS] "
+
+                    f"{list(url_data.keys())}"
+                )
+
+                _logger.warning(
+
+                    "[URL DATA RAW]\n%s"
+
+                    % json.dumps(
+                        url_data,
+                        indent=4,
+                        default=str
+                    )
+                )
+
+                _logger.warning(
+
+                    f"[URL DATA NAME] "
+
+                    f"{url_data.get('name')}"
+                )
+
+                _logger.warning(
+
+                    f"[URL DATA DESCRIPTION] "
+
+                    f"{bool(url_data.get('description'))}"
+                )
+
+                # ====================================
                 # FIND EXISTING PRODUCT
                 # ====================================
 
@@ -15191,23 +15363,75 @@ class VendorImportJob(models.Model):
                     row.get("group_id") or ""
                 ).strip()
 
+                _logger.warning(
+
+                    f"[URL LOOKUP] "
+
+                    f"group_id={group_id} | "
+
+                    f"vendor_id={vendor_id}"
+                )
+
+
+                all_products = self.env[
+                    'product.template'
+                ].search([
+
+                        ('vendor_import_job_id', '=', self.id)
+
+                ])
+
+                _logger.warning(
+
+                    f"[URL DEBUG] "
+
+                    f"vendor_products={len(all_products)}"
+                )
+
+                for p in all_products[:20]:
+
+                    _logger.warning(
+
+                        f"[URL DEBUG PRODUCT] "
+
+                        f"id={p.id} | "
+
+                        f"default_code={p.default_code} | "
+
+                        f"name={p.name}"
+                    )
+
                 product = self.env[
                     'product.template'
                 ].search([
 
-                    (
-                        'default_code',
-                        '=',
-                        group_id
-                    ),
+                    ('default_code', '=', group_id),
 
-                    (
-                        'vendor_id',
-                        '=',
-                        vendor_id
-                    )
+                    ('vendor_import_job_id', '=', self.id)
 
                 ], limit=1)
+
+
+                _logger.warning(
+
+                    f"[URL LOOKUP PRODUCTS] "
+
+                    f"count={len(product)}"
+                )
+
+                for p in product[:20]:
+
+                    _logger.warning(
+
+                        f"[URL PRODUCT] "
+
+                        f"id={p.id} | "
+
+                        f"default_code={p.default_code} | "
+
+                        f"name={p.name}"
+                    )
+
 
                 if not product:
 
@@ -15489,6 +15713,7 @@ class VendorImportJob(models.Model):
         url_cache=None
     ):
 
+
         if url_cache is None:
 
             url_cache = {}
@@ -15564,6 +15789,7 @@ class VendorImportJob(models.Model):
             url_data = self._extract_url_product_data(
                 group_url
             ) or {}
+
 
             # =====================================
             # EMPTY RESPONSE
