@@ -6075,6 +6075,13 @@ class VendorImportJob(models.Model):
                 raise Exception(f"Apify run failed: {response.text}")
 
             run_data = response.json()
+ 
+            _logger.warning(
+                f"[APIFY RUN CREATED] "
+                f"url={url} | "
+                f"run_id={run_data['data']['id']} | "
+                f"dataset={run_data['data']['defaultDatasetId']}"
+            )
 
             # ✅ SAVE FOR NEXT CRON
             self.apify_run_id = run_data["data"]["id"]
@@ -6122,6 +6129,13 @@ class VendorImportJob(models.Model):
 
 
         data = dataset_res.json()
+        
+        _logger.warning(
+            f"[APIFY DATASET FETCH] "
+            f"url={url} | "
+            f"run_id={self.apify_run_id} | "
+            f"dataset={self.apify_dataset_id}"
+        )
 
         _logger.warning(
 
@@ -15777,15 +15791,6 @@ class VendorImportJob(models.Model):
                 product_url
             )
 
-            _logger.warning(
-                "[APIFY RAW DATA]\n%s"
-                % json.dumps(
-                    raw_data[:3],
-                    indent=4,
-                    default=str
-                )
-            )
-
             # =========================================
             # APIFY STILL RUNNING
             # =========================================
@@ -15800,6 +15805,16 @@ class VendorImportJob(models.Model):
                 )
 
                 return {}
+            
+            _logger.warning(
+                "[APIFY RAW DATA]\n%s"
+                % json.dumps(
+                    raw_data[:3],
+                    indent=4,
+                    default=str
+                )
+            )
+
 
             if not raw_data:
 
