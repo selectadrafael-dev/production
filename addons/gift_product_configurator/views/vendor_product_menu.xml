@@ -11,11 +11,6 @@
 
         <field name="view_mode">kanban,tree,form</field>
 
-        <!-- Optional safer domain -->
-        <field name="domain">
-            [('vendor_id', '=', user.partner_id.id)]
-        </field>
-
     </record>
 
     <!-- Vendor Products Menu -->
