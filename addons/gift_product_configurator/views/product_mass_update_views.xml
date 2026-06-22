@@ -69,63 +69,107 @@
 
                     </group>
 
+                    <group string="Inventory">
 
-                        <group string="Inventory">
+                        <group>
 
-                            <group>
+                            <field name="update_inventory"/>
 
-                                <field name="update_inventory"/>
+                            <field
+                                name="update_track_inventory"
+                                invisible="not update_inventory"
+                            />
 
-                                <field
-                                    name="warehouse_id"
-                                    invisible="not update_inventory"
-                                />
+                            <field
+                                name="track_inventory_value"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not update_track_inventory
+                                "
+                            />
 
-                                <field
-                                    name="set_quantity"
-                                    invisible="not update_inventory"
-                                />
+                            <field
+                                name="detailed_type"
+                                invisible="not update_inventory"
+                            />
 
-                                <field
-                                    name="quantity"
-                                    invisible="
-                                        not update_inventory
-                                        or
-                                        not set_quantity
-                                    "
-                                />
+                            <field
+                                name="warehouse_id"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not track_inventory_value
+                                    or
+                                    not set_quantity
+                                "
+                            />
 
-                            </group>
+                            <field
+                                name="set_quantity"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not track_inventory_value
+                                "
+                            />
 
-                            <group
-                                invisible="not update_inventory">
-
-                                <field name="detailed_type"/>
-
-                                <field name="update_sale_ok"/>
-
-                                <field
-                                    name="sale_ok"
-                                    invisible="not update_sale_ok"
-                                />
-
-                                <field name="update_purchase_ok"/>
-
-                                <field
-                                    name="purchase_ok"
-                                    invisible="not update_purchase_ok"
-                                />
-
-                                <field name="tracking"/>
-
-                                <field
-                                    name="route_ids"
-                                    widget="many2many_tags"
-                                />
-
-                            </group>
+                            <field
+                                name="quantity"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not track_inventory_value
+                                    or
+                                    not set_quantity
+                                "
+                            />
 
                         </group>
+
+                        <group
+                            invisible="not update_inventory">
+
+                            <field name="show_available_qty"/>
+
+                            <field name="continue_selling"/>
+
+                            <field name="update_sale_ok"/>
+
+                            <field
+                                name="sale_ok"
+                                invisible="not update_sale_ok"
+                            />
+
+                            <field name="update_purchase_ok"/>
+
+                            <field
+                                name="purchase_ok"
+                                invisible="not update_purchase_ok"
+                            />
+
+                            <field
+                                name="tracking"
+                                invisible="
+                                    not track_inventory_value
+                                    or
+                                    detailed_type != 'goods'
+                                "
+                            />
+
+                            <field
+                                name="route_ids"
+                                widget="many2many_tags"
+                                invisible="
+                                    not track_inventory_value
+                                    or
+                                    detailed_type != 'goods'
+                                "
+                            />
+
+                        </group>
+
+                    </group>
 
                 </sheet>
 

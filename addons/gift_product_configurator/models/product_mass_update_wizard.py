@@ -93,7 +93,16 @@ class ProductMassUpdateWizard( models.TransientModel):
     # =========================
 
     update_inventory = fields.Boolean(
-        string="Update Inventory Settings"
+    string="Update Inventory Settings"
+    )
+
+    update_track_inventory = fields.Boolean(
+        string="Update Inventory Tracking"
+    )
+
+    track_inventory_value = fields.Boolean(
+        string="Track Inventory",
+        default=True
     )
 
     warehouse_id = fields.Many2one(
@@ -125,9 +134,14 @@ class ProductMassUpdateWizard( models.TransientModel):
             (
                 "service",
                 "Service"
+            ),
+            (
+                "combo",
+                "Combo"
             )
         ],
-        string="Product Type"
+        string="Product Type",
+        default="goods"
     )
 
     update_sale_ok = fields.Boolean(
@@ -164,10 +178,19 @@ class ProductMassUpdateWizard( models.TransientModel):
         string="Tracking"
     )
 
+    show_available_qty = fields.Boolean(
+        string="Show Available Quantity"
+    )
+
+    continue_selling = fields.Boolean(
+        string="Continue Selling When Out Of Stock"
+    )
+
     route_ids = fields.Many2many(
         "stock.route",
         string="Routes"
     )
+
 
     # =========================
     # ACTION
@@ -274,7 +297,17 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                 inventory_updated_count += 1
 
-                if self.detailed_type:
+                if self.update_track_inventory:
+
+                    if self.track_inventory_value:
+
+                        product.detailed_type = "goods"
+
+                    else:
+
+                        product.detailed_type = "service"
+
+                elif self.detailed_type:
 
                     product.detailed_type = (
                         self.detailed_type
@@ -308,17 +341,25 @@ class ProductMassUpdateWizard( models.TransientModel):
                         )
                     ]
 
+              
+
+                    product.show_availability = (
+                        self.show_available_qty
+                    )
+
+
+                    product.allow_out_of_stock_order = (
+                        self.continue_selling
+                    )
+
                 if self.set_quantity:
 
-                    warehouse = (
-                        self.warehouse_id
-                    )
+                    warehouse = self.warehouse_id
 
                     if not warehouse:
 
                         raise UserError(
-                            "Please select "
-                            "a warehouse."
+                            "Please select a warehouse."
                         )
 
                     location = (

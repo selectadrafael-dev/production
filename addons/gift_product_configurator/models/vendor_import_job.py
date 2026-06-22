@@ -17305,6 +17305,13 @@ class VendorImportJob(models.Model):
                         'vendor_id':
                             vendor_id,
 
+                        'vendor_stock_qty': int(
+                            main_product.get(
+                                "stock",
+                                0
+                            ) or 0
+                        ),
+
                         'list_price':
                             self._safe_float(
                                 main_product.get("price")
@@ -17331,6 +17338,49 @@ class VendorImportJob(models.Model):
                     product = product_obj.create(
                         vals
                     )
+
+                    stock_qty = int(
+
+                        main_product.get(
+                            "stock",
+                            0
+                        ) or 0
+                    )
+
+                    if stock_qty > 0:
+
+                        warehouse = self.env[
+                            "stock.warehouse"
+                        ].search(
+                            [],
+                            limit=1
+                        )
+
+                        if warehouse:
+
+                            location = (
+                                warehouse.lot_stock_id
+                            )
+
+                            self.env[
+                                "stock.quant"
+                            ]._update_available_quantity(
+
+                                product.product_variant_id,
+
+                                location,
+
+                                stock_qty
+                            )
+
+                            _logger.warning(
+
+                                f"[EXCEL STOCK CREATED] "
+
+                                f"{product.name} "
+
+                                f"qty={stock_qty}"
+                            )
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)

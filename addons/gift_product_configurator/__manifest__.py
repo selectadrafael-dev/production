@@ -30,7 +30,7 @@
     'security/ir.model.access.csv',
     'views/product_template_views.xml',
     'views/product_mass_update_views.xml',
-  
+    'views/vendor_product_menu.xml',
 ],
 "assets": {
     "web.assets_frontend": [
