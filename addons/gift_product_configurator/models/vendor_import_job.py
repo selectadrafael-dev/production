@@ -14568,7 +14568,7 @@ class VendorImportJob(models.Model):
         # BATCH
         # =====================================================
 
-        BATCH_SIZE = 1
+        BATCH_SIZE = 5
 
         start = (
             self.excel_ai_index or 0
