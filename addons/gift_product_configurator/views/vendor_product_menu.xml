@@ -39,17 +39,6 @@
                         name="website_published"
                         optional="show"
                     />
-
-                    <field
-                        name="show_availability"
-                        optional="show"
-                    />
-
-                        <field
-                            name="allow_out_of_stock_order"
-                            optional="show"
-                        />
-
                 </list>
 
             </field>
