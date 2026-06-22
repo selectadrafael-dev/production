@@ -15732,6 +15732,15 @@ class VendorImportJob(models.Model):
                 product_url
             )
 
+            _logger.warning(
+                "[APIFY RAW DATA]\n%s"
+                % json.dumps(
+                    raw_data[:3],
+                    indent=4,
+                    default=str
+                )
+            )
+
             # =========================================
             # APIFY STILL RUNNING
             # =========================================
