@@ -17768,6 +17768,15 @@ class VendorImportJob(models.Model):
 
                     else:
 
+                        _logger.warning(
+                            f"[EXCEL STOCK DEBUG] "
+                            f"product={product.name} "
+                            f"template_type={product.type} "
+                            f"variant_id={variant.id if variant else False} "
+                            f"variant_type={variant.type if variant else False} "
+                            f"location={location.id if location else False} "
+                            f"stock_qty={stock_qty}"
+                        )
                         quant = stock_quant_obj.create(
                             {
                                 'product_id': variant.id,
