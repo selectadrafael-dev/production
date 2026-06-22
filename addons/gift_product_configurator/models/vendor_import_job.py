@@ -6090,6 +6090,12 @@ class VendorImportJob(models.Model):
             _logger.warning(f"APIFY STARTED → RUN ID {self.apify_run_id}")
 
             # 🔥 IMPORTANT: STOP HERE (NON-BLOCKING)
+
+            _logger.warning(
+                f"[APIFY WAITING] "
+                f"url={url} "
+                f"| run_id={self.apify_run_id}"
+            )
             return None
 
         # =====================================================
@@ -14562,7 +14568,7 @@ class VendorImportJob(models.Model):
         # BATCH
         # =====================================================
 
-        BATCH_SIZE = 5
+        BATCH_SIZE = 1
 
         start = (
             self.excel_ai_index or 0
@@ -15458,16 +15464,16 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
 
-                        f"[URL ENRICHMENT FAILED] "
+                        f"[URL WAITING FOR APIFY] "
 
                         f"{product_url}"
                     )
 
-                    self.excel_url_index = idx + 1
+                    self.state = "excel_url_enrichment"
 
                     self._safe_commit_progress()
 
-                    continue
+                    return
 
                 # ====================================
                 # DEBUG URL DATA
@@ -15828,7 +15834,7 @@ class VendorImportJob(models.Model):
                 return {}
 
             first = raw_data[0] if raw_data else {}
-            
+
             _logger.warning(
                 "[FIRST APIFY RECORD]\n%s"
                 % json.dumps(
