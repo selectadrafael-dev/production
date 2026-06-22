@@ -4369,7 +4369,6 @@ class VendorImportJob(models.Model):
 
             return []
 
-
     #==========find_banner_product_regions=================
     def _find_banner_product_regions(
         self,
@@ -12010,14 +12009,27 @@ class VendorImportJob(models.Model):
         ]
 
 
-        stock_location = self.env[
-            'stock.location'
-        ].search([
+        warehouse = self.env[
+            'stock.warehouse'
+        ].search(
+            [],
+            limit=1
+        )
 
-            ('usage', '=', 'internal'),
-            ('active', '=', True)
+        stock_location = (
+            warehouse.lot_stock_id
+            if warehouse
+            else False
+        )
 
-        ], order='id asc', limit=1)
+        if warehouse:
+
+            _logger.warning(
+                f"[WAREHOUSE SELECTED] "
+                f"id={warehouse.id} "
+                f"name={warehouse.name} "
+                f"location={warehouse.lot_stock_id.complete_name}"
+            )
 
         CATEGORY_MAPPING = {
 
@@ -12368,112 +12380,6 @@ class VendorImportJob(models.Model):
 
                         skipped_count += 1
 
-
-                    # =====================================
-                    # APPLY REAL INVENTORY STOCK
-                    # FOR BOTH NEW + EXISTING PRODUCTS
-                    # =====================================
-
-                    try:
-
-                        stock_qty = int(
-
-                            product_data.get(
-                                "stock_qty",
-                                0
-                            ) or 0
-                        )
-
-                        _logger.warning(
-
-                            f"[PDF STOCK DEBUG] "
-
-                            f"{product.name} "
-
-                            f"| stock_qty={stock_qty}"
-                        )
-
-                        if stock_qty > 0:
-
-                            quant = stock_quant_obj.search([
-
-                                (
-                                    'product_id',
-                                    '=',
-                                    product.product_variant_id.id
-                                ),
-
-                                (
-                                    'location_id',
-                                    '=',
-                                    stock_location.id
-                                )
-
-                            ], limit=1)
-
-                            if quant:
-
-                                quant.inventory_quantity = (
-                                    stock_qty
-                                )
-
-                                quant.action_apply_inventory()
-
-                                _logger.warning(
-
-                                    f"[STOCK UPDATED] "
-
-                                    f"{product.name} "
-
-                                    f"| qty={stock_qty}"
-                                )
-
-                            else:
-
-                                quant = stock_quant_obj.create({
-
-                                    'product_id':
-                                        product.product_variant_id.id,
-
-                                    'location_id':
-                                        stock_location.id,
-
-                                    'inventory_quantity':
-                                        stock_qty
-                                })
-
-                                quant.action_apply_inventory()
-
-                                _logger.warning(
-
-                                    f"[STOCK CREATED] "
-
-                                    f"{product.name} "
-
-                                    f"| qty={stock_qty}"
-                                )
-
-                        else:
-
-                            _logger.warning(
-
-                                f"[STOCK SKIPPED ZERO] "
-
-                                f"{product.name}"
-                            )
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"[STOCK APPLY FAILED] "
-
-                            f"{product.name} "
-
-                            f"| {str(e)}"
-                        )
-
-
                     if not variants:
 
                         variants = [{
@@ -12573,6 +12479,101 @@ class VendorImportJob(models.Model):
                     # =======================================
 
                     product._create_variant_ids()
+
+                     # =====================================
+                    # APPLY REAL INVENTORY STOCK
+                    # FOR BOTH NEW + EXISTING PRODUCTS
+                    # =====================================
+
+                    try:
+
+                        stock_qty = int(
+
+                            product_data.get(
+                                "stock_qty",
+                                0
+                            ) or 0
+                        )
+
+                        _logger.warning(
+
+                            f"[PDF STOCK DEBUG] "
+
+                            f"{product.name} "
+
+                            f"| stock_qty={stock_qty}"
+                        )
+
+                        if not stock_location:
+
+                            _logger.warning(
+                                "[STOCK SKIPPED] No warehouse stock location found"
+                            )
+
+                            continue
+
+
+                        variant = product.product_variant_id
+
+                        _logger.warning(
+                            f"[STOCK START] "
+                            f"product={product.name} "
+                            f"variant_id={variant.id} "
+                            f"location={stock_location.complete_name} "
+                            f"target_qty={stock_qty}"
+                        )
+
+                        current_qty = stock_quant_obj._get_available_quantity(
+                            variant,
+                            stock_location
+                        )
+
+                        difference = (
+                            stock_qty
+                            -
+                            current_qty
+                        )
+
+                        _logger.warning(
+                            f"[STOCK CALC] "
+                            f"current_qty={current_qty} "
+                            f"difference={difference}"
+                        )
+
+                        stock_quant_obj._update_available_quantity(
+                            variant,
+                            stock_location,
+                            difference
+                        )
+
+                        new_qty = stock_quant_obj._get_available_quantity(
+                            variant,
+                            stock_location
+                        )
+
+                        _logger.warning(
+                            f"[STOCK RESULT] "
+                            f"product={product.name} "
+                            f"new_qty={new_qty}"
+                        )
+
+                        _logger.warning(
+                            f"[STOCK UPDATED] "
+                            f"product={product.name} "
+                            f"qty={stock_qty}"
+                        )
+
+                    except Exception as e:
+
+                        _logger.warning(
+
+                            f"[STOCK APPLY FAILED] "
+
+                            f"{product.name} "
+
+                            f"| {str(e)}"
+                        )
+
 
                     used_asset_indexes = set()
 
@@ -14931,87 +14932,9 @@ class VendorImportJob(models.Model):
 
                 - Extract numeric price carefully
                 - Extract stock carefully
-                - Take note of coloumn heading, Stock, STOCK, STOK, QTY, Quantity, these are common stock column
-                - After you created price, any column having 1-4 digit number e.g (1, 2, 10, 50, 100, 1000, 50000) as stock where heading not clearly stated 
-                - Ignore ranges like for stock:
+                - Ignore ranges like:
                     - 2-66
                     - 11-00
-
-                =====================================
-                COLUMN DETECTION RULES
-                =====================================
-
-                Excel files may:
-
-                - Have English headers
-                - Have foreign language headers
-                - Have no headers
-                - Have mixed headers
-
-                You must infer:
-
-                stock
-                price
-                discounted price
-                sku
-                product code
-                color
-                size
-                variant
-
-                Common examples:
-
-                STOCK:
-                - Stock
-                - Qty
-                - Quantity
-                - Inventory
-                - Available
-                - STOK
-
-                PRICE:
-                - Price
-                - Cost
-                - SATIŞ
-                - Sale Price
-                - Unit Price
-
-                DISCOUNT PRICE:
-                - Discount
-                - Discounted Price
-                - ENDİRİMLİ
-
-                PRODUCT CODE:
-                - SKU
-                - Article
-                - Item Number
-                - Product Code
-                - KOD
-
-                COLOR:
-                - Color
-                - Colour
-                - RƏNG
-
-                If headers are missing:
-
-                Infer based on patterns.
-
-                Examples:
-
-                94646 → likely product code
-
-                510 → likely stock quantity
-
-                5.5 → likely price
-
-                Black → likely color
-
-                Red → likely color
-
-                750ml → likely capacity
-
-                Do not ignore numeric columns.
 
                 =====================================
                 LINKS
@@ -15070,7 +14993,6 @@ class VendorImportJob(models.Model):
                 DETECTED STOCK:
                 {row_stock}
                 """
-
 
                 response = client.responses.create(
 
