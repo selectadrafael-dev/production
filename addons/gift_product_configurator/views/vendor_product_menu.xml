@@ -5,7 +5,7 @@
     <!-- VENDOR PRODUCT LIST VIEW -->
     <!-- ========================================= -->
 
-    <record id="vendor_product_tree_view"
+        <record id="vendor_product_tree_view"
             model="ir.ui.view">
 
         <field name="name">vendor.product.tree</field>
@@ -13,51 +13,49 @@
         <field name="model">product.template</field>
 
         <field name="arch"
-               type="xml">
+            type="xml">
 
-            <list>
+                <list>
 
-                <field name="name"/>
+                    <field name="name"/>
 
-                <field name="default_code"/>
+                    <field name="default_code"/>
 
-                <field
-                    name="public_categ_ids"
-                    widget="many2many_tags"
-                    optional="show"
-                />
+                    <field
+                        name="public_categ_ids"
+                        widget="many2many_tags"
+                        optional="show"
+                    />
 
-                <field name="list_price"/>
+                    <field name="list_price"/>
 
-                <field name="vendor_stock_qty"/>
+                    <field
+                        name="qty_available"
+                        string="On Hand"
+                        optional="show"
+                    />
 
-                <field
-                    name="website_published"
-                    optional="show"
-                />
+                    <field
+                        name="website_published"
+                        optional="show"
+                    />
 
-                <field
-                    name="show_available_qty"
-                    optional="show"
-                />
+                    <field
+                        name="show_availability"
+                        optional="show"
+                    />
 
-                <field
-                    name="allow_out_of_stock_order"
-                    optional="show"
-                />
+                        <field
+                            name="allow_out_of_stock_order"
+                            optional="show"
+                        />
 
-            </list>
+                </list>
 
-        </field>
+            </field>
+        </record>
 
-    </record>
-
-
-    <!-- ========================================= -->
-    <!-- VENDOR PRODUCTS ACTION -->
-    <!-- ========================================= -->
-
-    <record id="action_vendor_products"
+        <record id="action_vendor_products"
             model="ir.actions.act_window">
 
         <field name="name">Vendor Products</field>
@@ -67,7 +65,7 @@
         <field name="view_mode">list,form</field>
 
         <field name="view_id"
-               ref="vendor_product_tree_view"/>
+            ref="vendor_product_tree_view"/>
 
         <field name="domain">
             []
