@@ -130,7 +130,7 @@
                         <group
                             invisible="not update_inventory">
 
-                            <field name="show_available_qty"/>
+                            <field name="show_available_qty" optional="show"/>
 
                             <field name="continue_selling"/>
 
