@@ -131,19 +131,10 @@
 
                               <!-- MY PRODUCTS -->
                               <a class="dropdown-item"
-                                href="/web#action=stock.product_template_action_product&amp;model=product.template&amp;view_type=list">
-
-                                  <t t-translate="on">
-                                      My Products
-                                  </t>
-
-                              </a>
-
-                              <a class="dropdown-item"
                                 href="/web#action=gift_product_configurator.action_vendor_products">
 
                                   <t t-translate="on">
-                                      E-Commerce Products
+                                       My Products
                                   </t>
 
                               </a>
