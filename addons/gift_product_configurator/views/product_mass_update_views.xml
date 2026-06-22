@@ -1,0 +1,232 @@
+<odoo>
+    <record
+        id="view_product_mass_update_wizard"
+        model="ir.ui.view">
+
+        <field name="name">product.mass.update.wizard.form</field>
+
+        <field name="model">product.mass.update.wizard</field>
+
+        <field name="arch"
+               type="xml">
+
+            <form string="Mass Update Products">
+
+                <sheet>
+
+                    <group string="Publishing">
+
+                        <group>
+
+                            <field name="publish_products"/>
+
+                        </group>
+
+                        <group>
+
+                            <field name="unpublish_products"/>
+
+                        </group>
+
+                    </group>
+
+                    <group string="Pricing">
+
+                        <group>
+
+                            <field name="update_price"/>
+
+                        </group>
+
+                        <group invisible="not update_price">
+
+                            <field name="update_method"/>
+
+                            <field name="operation"/>
+
+                            <field name="value"/>
+
+                        </group>
+
+                    </group>
+
+                    <group string="Website Categories">
+
+                        <group>
+
+                            <field name="update_category"/>
+
+                        </group>
+
+                        <group invisible="not update_category">
+
+                            <field
+                                name="public_category_ids"
+                                widget="many2many_tags"
+                            />
+
+                        </group>
+
+                    </group>
+
+                    <group string="Inventory">
+
+                        <group>
+
+                            <field name="update_inventory"/>
+
+                            <field
+                                name="update_track_inventory"
+                                invisible="not update_inventory"
+                            />
+
+                            <field
+                                name="track_inventory_value"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not update_track_inventory
+                                "
+                            />
+
+                            <field
+                                name="detailed_type"
+                                invisible="not update_inventory"
+                            />
+
+                            <field
+                                name="warehouse_id"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not track_inventory_value
+                                    or
+                                    not set_quantity
+                                "
+                            />
+
+                            <field
+                                name="set_quantity"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not track_inventory_value
+                                "
+                            />
+
+                            <field
+                                name="quantity"
+                                invisible="
+                                    not update_inventory
+                                    or
+                                    not track_inventory_value
+                                    or
+                                    not set_quantity
+                                "
+                            />
+
+                        </group>
+
+                        <group
+                            invisible="not update_inventory">
+
+                            <field name="show_available_qty"/>
+
+                            <field name="continue_selling"/>
+
+                            <field name="update_sale_ok"/>
+
+                            <field
+                                name="sale_ok"
+                                invisible="not update_sale_ok"
+                            />
+
+                            <field name="update_purchase_ok"/>
+
+                            <field
+                                name="purchase_ok"
+                                invisible="not update_purchase_ok"
+                            />
+
+                            <field
+                                name="tracking"
+                                invisible="
+                                    not track_inventory_value
+                                    or
+                                    detailed_type != 'goods'
+                                "
+                            />
+
+                            <field
+                                name="route_ids"
+                                widget="many2many_tags"
+                                invisible="
+                                    not track_inventory_value
+                                    or
+                                    detailed_type != 'goods'
+                                "
+                            />
+
+                        </group>
+
+                    </group>
+
+                </sheet>
+
+                <footer>
+
+                    <button
+                        name="action_apply"
+                        type="object"
+                        string="Apply Changes"
+                        class="btn btn-primary"
+                    />
+
+                    <button
+                        string="Cancel"
+                        special="cancel"
+                        class="btn btn-secondary"
+                    />
+
+                </footer>
+
+            </form>
+
+        </field>
+
+    </record>
+
+    <record
+        id="action_product_mass_update"
+        model="ir.actions.server">
+
+        <field name="name">Mass Update</field>
+
+        <field name="model_id"
+            ref="product.model_product_template"/>
+
+        <field name="binding_model_id"
+            ref="product.model_product_template"/>
+
+        <field name="binding_type">action</field>
+
+        <field name="state">code</field>
+
+        <field name="code">
+
+ 
+        action = {
+            'type': 'ir.actions.act_window',
+            'name': 'Mass Update Products',
+            'res_model': 'product.mass.update.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'active_ids': records.ids,
+            }
+        }
+
+        </field>
+
+    </record>
+</odoo>

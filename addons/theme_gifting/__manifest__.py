@@ -13,7 +13,6 @@
     ],
     "data": [
         'views/layout.xml',
-        #'views/theme.xml',
         "views/header.xml",
         "views/home.xml",
         'views/product_card.xml',
@@ -31,7 +30,6 @@
         "views/section_company_logos.xml",
         'views/category_card.xml',
         'data/product_categories.xml',
-        #"views/promo_category_page.xml",
         "views/section_promotional_products.xml",
         "views/footer_custom.xml",
         "views/components/vendor_modal_global.xml",
@@ -48,7 +46,6 @@
             'theme_gifting/static/src/css/gifting_sections.scss',
             'theme_gifting/static/src/css/company_logos.scss',
             'theme_gifting/static/src/css/footer.scss',
-            #'theme_gifting/static/src/css/promo_categories.scss',
             "theme_gifting/static/src/js/cart_count.js",
             "theme_gifting/static/src/js/header.js",
             "theme_gifting/static/src/js/gifting.js",

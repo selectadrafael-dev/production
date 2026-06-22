@@ -1,24 +1,85 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Vendor Products Action -->
-    <record id="action_vendor_products"
+    <!-- ========================================= -->
+    <!-- VENDOR PRODUCT LIST VIEW -->
+    <!-- ========================================= -->
+
+        <record id="vendor_product_tree_view"
+            model="ir.ui.view">
+
+        <field name="name">vendor.product.tree</field>
+
+        <field name="model">product.template</field>
+
+        <field name="arch"
+            type="xml">
+
+                <list>
+
+                    <field name="name"/>
+
+                    <field name="default_code"/>
+
+                    <field
+                        name="public_categ_ids"
+                        widget="many2many_tags"
+                        optional="show"
+                    />
+
+                    <field name="list_price"/>
+
+                    <field
+                        name="qty_available"
+                        string="On Hand"
+                        optional="show"
+                    />
+
+                    <field
+                        name="website_published"
+                        optional="show"
+                    />
+                </list>
+
+            </field>
+        </record>
+
+        <record id="action_vendor_products"
             model="ir.actions.act_window">
 
-        <field name="name">Vendor Products</field>
+            <field name="name">Vendor Products</field>
 
-        <field name="res_model">product.template</field>
+            <field name="res_model">product.template</field>
 
-        <field name="view_mode">kanban,tree,form</field>
+            <field name="view_mode">kanban,list,form</field>
 
-        <!-- Optional safer domain -->
-        <field name="domain">
-            [('vendor_id', '=', user.partner_id.id)]
-        </field>
+            <field name="view_id"
+                ref="vendor_product_tree_view"/>
 
-    </record>
+            <field name="domain">
+                []
+            </field>
 
-    <!-- Vendor Products Menu -->
+            <field name="context">
+                {}
+            </field>
+
+            <field name="view_ids"
+            eval="[
+                    (5, 0, 0),
+                    (0, 0, {
+                        'view_mode': 'list',
+                        'view_id': ref('vendor_product_tree_view')
+                    })
+            ]"/>
+
+        </record>
+
+
+    <!--=========================================-->
+    <!-- VENDOR MENU -->
+    <!--=========================================-->
+
     <menuitem
         id="menu_vendor_products"
         name="Products"

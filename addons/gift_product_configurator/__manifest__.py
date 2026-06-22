@@ -6,14 +6,15 @@
 "author": "SelectAd",
 'license': 'LGPL-3',
 "depends": [
+   'product',
    'website',
    'website_sale',
-   'sale_management'
+   'sale_management',
+    "stock"
 ],
 "data": [
     "views/product_page.xml",
     'views/bestsellers_page.xml',
-    'views/shop_category_hero.xml',
     'views/shop_category_hero.xml',
     'views/product_public_category_form.xml',
     'data/sequence.xml',
@@ -28,11 +29,8 @@
     'security/product_vendor_rule.xml',
     'security/ir.model.access.csv',
     'views/product_template_views.xml',
-
-    #'views/product_purge_action.xml',
-    #'views/vendor_menu_security.xml',
-    #'views/vendor_product_menu.xml',
-    #'views/vendor_body_class.xml',
+    'views/product_mass_update_views.xml',
+    'views/vendor_product_menu.xml',
 ],
 "assets": {
     "web.assets_frontend": [

@@ -1,3 +1,4 @@
+
 from odoo import models, fields, api
 import base64
 import logging
@@ -236,6 +237,7 @@ class VendorImportJob(models.Model):
 
     failure_reason = fields.Text()
     ai_retry_count = fields.Integer(default=0)
+    excel_url_queue = fields.Text()
    
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -257,6 +259,8 @@ class VendorImportJob(models.Model):
         ('excel_parsing', 'Excel Parsing'),
         ('excel_ai', 'Excel AI'),
         ('excel_creating', 'Excel Creating'),
+
+        ('excel_url_enrichment', 'Excel URL Enrichment'),
 
     ], default='draft')
 
@@ -1334,7 +1338,7 @@ class VendorImportJob(models.Model):
             #-----------EXCEL ROW PROCESSOR-------------
         
             if self.state == 'excel_creating':
-
+                
                 try:
 
                     self.create_products_excel()
@@ -1364,19 +1368,52 @@ class VendorImportJob(models.Model):
                     f"{self.state}"
                 )
 
+
                 self.flush_recordset()
                 self.env.cr.commit()
 
+                return
 
+
+            if self.state == 'excel_url_enrichment':
+
+                try:
+
+                    self.process_excel_url_queue()
+
+                except Exception as e:
+
+                    _logger.exception(
+                        f"EXCEL URL ENRICHMENT FAILED → {str(e)}"
+                    )
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'excel_url_enrichment'
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
+
+                return
+
+              
             # =============================================
             # RETURN
             # =============================================
 
-            if self.state == 'excel_creating' \
-                    or self.excel_url_processing:
+            if (
+                self.state == 'excel_creating'
+                or
+                self.state == 'excel_url_enrichment'
+                or
+                self.excel_url_processing
+            ):
 
                 return
-        
+
         # =================================================
         # PDF FLOW
         # =================================================
@@ -1652,6 +1689,7 @@ class VendorImportJob(models.Model):
 
      #=========Variant swatch 1======================================
    
+
     #=========Variant color swatch logic===========================================
 
     COLOR_HEX_MAP = {
@@ -2203,1503 +2241,6 @@ class VendorImportJob(models.Model):
         return attribute, value
 
 
-    #------------parse url-----------------------------------
-
-    def parse_url(self):
-
-        import json
-
-        _logger.warning(f"APIFY SCRAPE → {self.data_url}")
-
-        raw_data = self._run_apify_actor(self.data_url)
-
-        # =====================================================
-        # APIFY STILL RUNNING
-        # =====================================================
-
-        if raw_data is None:
-
-            _logger.warning(
-                "APIFY NOT READY → WAIT NEXT CRON"
-            )
-
-            self.state = "url_scraping"
-
-            return True
-
-        # =====================================================
-        # EMPTY RAW RESPONSE
-        # =====================================================
-
-        if not raw_data:
-
-            _logger.error(
-                "APIFY FAILED → EMPTY DATASET"
-            )
-
-            self.state = "failed"
-
-            return
-
-        # =====================================================
-        # SAFE DEBUG LOG
-        # =====================================================
-
-        try:
-
-            _logger.warning(
-                f"RAW APIFY ITEMS → {len(raw_data)}"
-            )
-
-        except Exception:
-            pass
-
-        # =====================================================
-        # HANDLE STRUCTURED RESPONSES
-        # =====================================================
-
-        first = raw_data[0] if raw_data else {}
-
-        response_type = first.get("type")
-
-        # =====================================================
-        # BLOCKED
-        # =====================================================
-
-        if response_type == "BLOCKED":
-
-            reason = first.get(
-                "reason",
-                "Unknown block detected"
-            )
-
-            status_code = first.get(
-                "status_code"
-            )
-
-            _logger.error(
-                f"URL BLOCKED → {reason}"
-            )
-
-            if status_code:
-                _logger.error(
-                    f"BLOCK STATUS CODE → {status_code}"
-                )
-
-            self.state = "failed"
-
-            return
-
-        # =====================================================
-        # EMPTY
-        # =====================================================
-
-        if response_type == "EMPTY":
-
-            reason = first.get(
-                "reason",
-                "No products extracted"
-            )
-
-            debug = first.get("debug", {})
-
-            _logger.error(
-                f"URL EXTRACTION EMPTY → {reason}"
-            )
-
-            if debug:
-
-                _logger.error(
-                    f"PAGE TITLE → {debug.get('title')}"
-                )
-
-                _logger.error(
-                    f"IMAGES FOUND → {debug.get('images_found')}"
-                )
-
-                _logger.error(
-                    f"LINKS FOUND → {debug.get('links_found')}"
-                )
-
-                _logger.error(
-                    f"POSSIBLE PRODUCT BLOCKS → "
-                    f"{debug.get('possible_product_blocks')}"
-                )
-
-                _logger.error(
-                    f"COOKIE DETECTED → "
-                    f"{debug.get('cookie_detected')}"
-                )
-
-                preview = debug.get(
-                    'body_preview',
-                    ''
-                )
-
-                _logger.error(
-                    f"BODY PREVIEW → {preview[:300]}"
-                )
-
-            self.state = "failed"
-
-            return
-
-        # ===================================================
-        # PRODUCTS
-        # ===================================================
-
-        structured_data = []
-
-        for block in raw_data:
-
-            # ==============================================
-            # FORMAT 1 → ORIGINAL EB FORMAT
-            # ==============================================
-
-            if block.get("text"):
-
-                structured_data.append({
-                    "text": block.get("text"),
-                    "image": block.get("image")
-                })
-
-                continue
-
-            # ==============================================
-            # FORMAT 2 → STRUCTURED FORMAT
-            # ==============================================
-
-            if block.get("type") == "PRODUCTS":
-
-                items = block.get("items", [])
-
-                if not items:
-                    continue
-
-                structured_data.extend(items)
-
-        # =====================================================
-        # NO PRODUCTS AFTER PARSE
-        # =====================================================
-
-        if not structured_data:
-
-            _logger.error(
-                "NO VALID PRODUCTS FOUND AFTER PARSING"
-            )
-
-            self.state = "failed"
-
-            return
-
-
-        # ============================================
-        # URL BATCHING
-        # ============================================
-
-        BATCH_SIZE = 40
-
-        start = (
-            self.url_parse_index or 0
-        )
-
-        end = min(
-
-            start + BATCH_SIZE,
-
-            len(structured_data)
-        )
-
-        total_structured = len(structured_data)
-
-        structured_data = structured_data[
-            start:end
-        ]
-
-
-        _logger.warning(
-
-            f"[URL PARSE BATCH] "
-
-            f"{start} -> {end} "
-
-            f"| total={len(normalized if 'normalized' in locals() else structured_data)}"
-        )
-
-
-        # =====================================================
-        # NORMALIZE
-        # =====================================================
-
-        normalized = self._normalize_url_data(
-            structured_data
-        )
-
-        # ============================================
-        # SAVE URL PARSE PROGRESS
-        # ============================================
-
-        self.url_parse_index = end
-
-
-        _logger.warning(
-
-            f"[URL PARSE SAVE] "
-
-            f"{self.url_parse_index}"
-        )
-
-
-        if not normalized:
-
-            _logger.error(
-                "NORMALIZATION FAILED → EMPTY DATA"
-            )
-
-            self.state = "failed"
-
-            return
-
-        # =====================================================
-        # STORE SAFELY
-        # =====================================================
-
-        #payload = json.dumps(normalized)
-
-        # 🔥 LIMIT STORAGE SIZE
-        #self.extracted_text = payload[:50000]
-
-        payload = json.dumps(normalized)
-
-        # ============================================
-        # PERSIST URL BLOCKS
-        # ============================================
-
-        self.url_blocks_json = payload
-
-        # compatibility
-        self.extracted_text = payload[:50000]
-
-
-        _logger.warning(
-
-            f"[URL STORE] "
-
-            f"saved_blocks={len(normalized)}"
-        )
-
-
-        _logger.warning(
-            f"APIFY DONE → {len(normalized)} ITEMS"
-        )
-
-        # =====================================================
-        # MOVE TO NEXT STEP
-        # =====================================================
-
-        if self.url_parse_index >= total_structured:
-            _logger.warning(
-                "[URL PARSE] FINAL BATCH READY"
-            )
-
-        else:
-
-            _logger.warning(
-                "[URL PARSE] MORE BATCHES REMAIN"
-            )
-
-
-        self.state = "url_ai"
-
-    # ======================================================
-    # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
-    # ======================================================
-
-    def _extract_url_product_data(
-
-        self,
-
-        product_url
-     ):
-
-        try:
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT START] "
-
-                f"{product_url}"
-            )
-
-            raw_data = self._run_apify_actor(
-                product_url
-            )
-
-            # =========================================
-            # APIFY STILL RUNNING
-            # =========================================
-
-            if raw_data is None:
-
-                _logger.warning(
-
-                    "[EXCEL URL ENRICHMENT] "
-
-                    "APIFY NOT READY"
-                )
-
-                return {}
-
-            if not raw_data:
-
-                _logger.warning(
-
-                    "[EXCEL URL ENRICHMENT] "
-
-                    "EMPTY RESPONSE"
-                )
-
-                return {}
-
-            first = raw_data[0] if raw_data else {}
-
-            # =========================================
-            # BLOCKED / EMPTY
-            # =========================================
-
-            if first.get("type") in [
-
-                "BLOCKED",
-
-                "EMPTY"
-            ]:
-
-                _logger.warning(
-
-                    f"[EXCEL URL ENRICHMENT] "
-
-                    f"INVALID TYPE "
-
-                    f"{first.get('type')}"
-                )
-
-                return {}
-
-            # =========================================
-            # NORMALIZE
-            # =========================================
-
-            structured_data = []
-
-            for block in raw_data:
-
-                if block.get("text"):
-
-                    structured_data.append({
-
-                        "text": block.get("text"),
-
-                        "image": block.get("image")
-                    })
-
-                    continue
-
-                if block.get("type") == "PRODUCTS":
-
-                    structured_data.extend(
-
-                        block.get("items", [])
-                    )
-
-            normalized = self._normalize_url_data(
-                structured_data
-            )
-
-            if not normalized:
-
-                return {}
-
-            first_product = normalized[0]
-
-            _logger.warning(
-
-                f"[EXCEL URL ENRICHMENT SUCCESS] "
-
-                f"{product_url}"
-            )
-
-            return {
-
-                "name":
-                    first_product.get("name"),
-
-                "description":
-                    first_product.get(
-                        "description"
-                    ),
-
-                "category":
-                    first_product.get(
-                        "category"
-                    ),
-
-                "images":
-                    first_product.get(
-                        "images",
-                        []
-                    )
-            }
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[EXCEL URL ENRICHMENT FAILED] "
-
-                f"{str(e)}"
-            )
-
-            return {}
-
-
-    #------excel parsing method---------------
-    
-    def parse_excel(self):
-
-        _logger.warning(
-            "EXCEL → START PARSING (BATCH MODE)"
-        )
-
-        excel_bytes = base64.b64decode(
-            self.excel_file
-        )
-
-        wb = load_workbook(
-            filename=BytesIO(excel_bytes)
-        )
-
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-
-        pages = []
-
-        # =====================================
-        # SAFE BATCH CONTROL
-        # =====================================
-
-        BATCH_SIZE = 8
-        MAX_BUFFER = 150
-
-
-        start_index = (
-            self.excel_parse_index or 0
-        )
-
-
-        current_count = 0
-
-        global_index = 0
-
-        _logger.warning(
-            f"EXCEL RESUME FROM INDEX "
-            f"→ {start_index}"
-        )
-
-
-        # =====================================
-        # TOTAL ROWS
-        # =====================================
-
-        total_rows = 0
-
-        for sheet in wb.worksheets:
-
-            for idx, row in enumerate(
-
-                sheet.iter_rows()
-
-            ):
-
-                if idx == 0:
-                    continue
-
-                row_text_parts = [
-
-                    str(cell.value or "").strip()
-
-                    for cell in row
-
-                    if str(
-                        cell.value or ""
-                    ).strip()
-                ]
-
-                if not row_text_parts:
-                    continue
-
-                total_rows += 1
-
-
-        _logger.warning(
-            f"[DEBUG] REAL TOTAL ROWS "
-            f"→ {total_rows}"
-        )
-
-
-        # =====================================
-        # MAIN LOOP
-        # =====================================
-
-        for sheet in wb.worksheets:
-
-            _logger.warning(
-                f"PROCESSING SHEET → "
-                f"{sheet.title}"
-            )
-
-            image_loader = SheetImageLoader(
-                sheet
-            )
-
-
-            for idx, row in enumerate(
-
-                sheet.iter_rows()
-
-            ):
-
-                if idx == 0:
-                    continue
-
-
-                row_text_parts = [
-
-                    str(cell.value or "").strip()
-
-                    for cell in row
-
-                    if str(
-                        cell.value or ""
-                    ).strip()
-                ]
-
-
-                if not row_text_parts:
-                    continue
-
-                # =================================
-                # GLOBAL INDEX TRACKING
-                # =================================
-
-                global_index += 1
-
-
-                # =================================
-                # SKIP OLD ROWS
-                # =================================
-
-                if global_index <= start_index:
-                    continue
-
-
-                # =================================
-                # BATCH LIMIT
-                # =================================
-
-                if current_count >= BATCH_SIZE:
-
-                    _logger.warning(
-                        "BATCH LIMIT REACHED "
-                        "→ NEXT CRON"
-                    )
-
-                    break
-
-
-                # =================================
-                # PRICE/STOCK DETECTION
-                # =================================
-
-                price = ""
-                stock = ""
-
-                numeric_candidates = []
-
-
-                for col_idx, cell in enumerate(row):
-
-                    raw_val = str(
-                        cell.value or ""
-                    ).strip()
-
-                    if not raw_val:
-                        continue
-
-
-                    # skip ranges
-                    if (
-                        "-" in raw_val
-                        and not raw_val.startswith("-")
-                    ):
-                        continue
-
-
-                    try:
-
-                        clean = raw_val.replace(
-                            ",",
-                            "."
-                        )
-
-                        clean = re.sub(
-
-                            r"[^\d.]",
-
-                            "",
-
-                            clean
-                        )
-
-
-                        if not clean:
-                            continue
-
-
-                        num = float(clean)
-
-                        is_real_decimal = False
-
-
-                        if "." in clean:
-
-                            decimal_part = (
-                                clean.split(".")[-1]
-                            )
-
-                            if decimal_part not in [
-
-                                "0",
-
-                                "00"
-                            ]:
-
-                                is_real_decimal = True
-
-
-                        numeric_candidates.append({
-
-                            "col": col_idx,
-
-                            "num": num,
-
-                            "raw": raw_val,
-
-                            "is_decimal":
-                                is_real_decimal
-                        })
-
-                    except:
-                        continue
-
-
-                # =================================
-                # PRICE
-                # =================================
-
-                price_candidates = [
-
-                    x for x in numeric_candidates
-
-                    if (
-
-                        x["is_decimal"]
-
-                        and
-
-                        0 < x["num"] < 1000
-                    )
-                ]
-
-
-                best_price = None
-
-
-                if price_candidates:
-
-                    best_price = sorted(
-
-                        price_candidates,
-
-                        key=lambda x: x["col"]
-
-                    )[-1]
-
-                    price = str(
-                        best_price["num"]
-                    )
-
-
-                # =================================
-                # STOCK
-                # =================================
-
-                if best_price:
-
-                    price_col = (
-                        best_price["col"]
-                    )
-
-                    stock_candidates = []
-
-
-                    for item in numeric_candidates:
-
-                        if item["is_decimal"]:
-                            continue
-
-
-                        val = item["num"]
-
-
-                        if val > 9999:
-                            continue
-
-
-                        if item["col"] >= price_col:
-                            continue
-
-
-                        stock_candidates.append(
-                            item
-                        )
-
-
-                    if stock_candidates:
-
-                        best_stock = max(
-
-                            stock_candidates,
-
-                            key=lambda x: x["num"]
-                        )
-
-                        stock = str(
-
-                            int(
-                                best_stock["num"]
-                            )
-                        )
-
-
-                _logger.warning(
-                    f'''
-                    EXCEL RAW ROW →
-
-                    TEXT=
-                    {" | ".join(row_text_parts)}
-
-                    PRICE={price}
-
-                    STOCK={stock}
-                    '''
-                )
-
-
-                # =================================
-                # ROW TEXT
-                # =================================
-
-                row_text = f"""
-                ROW_DATA:
-                {" | ".join(row_text_parts)}
-
-                RULE:
-                - THIS IS EXACTLY ONE PRODUCT
-                - DO NOT SPLIT THIS ROW
-                - THIS ROW MAY BE A VARIANT
-                - USE SIMILAR ID/SKU
-                """
-
-                row_images = []
-
-
-                # ==================================
-                # EMBEDDED IMAGE
-                # ==================================
-
-                for cell in row:
-
-                    try:
-
-                        if image_loader.image_in(
-                            cell.coordinate
-                        ):
-
-                            pil_img = (
-                                image_loader.get(
-                                    cell.coordinate
-                                )
-                            )
-
-                            buffer = BytesIO()
-
-                            pil_img.save(
-                                buffer,
-                                format="JPEG"
-                            )
-
-                            img_base64 = (
-                                base64.b64encode(
-
-                                    buffer.getvalue()
-
-                                ).decode("utf-8")
-                            )
-
-                            row_images.append(
-                                img_base64
-                            )
-
-                            break
-
-                    except:
-                        continue
-
-
-                # =================================
-                # URL IMAGE
-                # =================================
-
-                if not row_images:
-
-                    for cell in row:
-
-                        val = str(
-                            cell.value or ""
-                        ).strip()
-
-                        if val.startswith("http"):
-
-                            try:
-
-                                response = requests.get(
-
-                                    val,
-
-                                    headers=headers,
-
-                                    timeout=5
-                                )
-
-                                if (
-
-                                    response.status_code
-                                    == 200
-
-                                    and
-
-                                    "image"
-
-                                    in response.headers.get(
-                                        "Content-Type",
-                                        ""
-                                    )
-                                ):
-
-                                    img_base64 = (
-                                        base64.b64encode(
-
-                                            response.content
-
-                                        ).decode("utf-8")
-                                    )
-
-                                    row_images.append(
-                                        img_base64
-                                    )
-
-                                    break
-
-                            except:
-                                continue
-
-
-                # =================================
-                # STORE
-                # =================================
-
-                pages.append({
-
-                    "page": global_index,
-
-                    "text": row_text,
-
-                    "images": row_images,
-
-                    "row_index": global_index,
-
-                    "price": price,
-
-                    "stock": stock,
-                })
-
-
-                current_count += 1
-
-
-                # =================================
-                # MEMORY SAFETY
-                # =================================
-
-                if len(pages) >= MAX_BUFFER:
-
-                    _logger.warning(
-                        f"EXCEL SAFETY BREAK "
-                        f"→ {len(pages)} rows"
-                    )
-
-                    break
-
-
-            if (
-                current_count >= BATCH_SIZE
-                or
-                len(pages) >= MAX_BUFFER
-            ):
-                break
-
-
-        # =====================================
-        # STORE
-        # =====================================
-
-        existing = []
-
-        if self.extracted_text:
-
-            try:
-
-                existing = json.loads(
-                    self.extracted_text
-                )
-
-            except:
-                existing = []
-
-
-        # combined = existing + pages
-        
-        existing_map = {
-
-            item.get("row_index"): item
-
-            for item in existing
-        }
-
-
-        for item in pages:
-
-            existing_map[
-                item.get("row_index")
-            ] = item
-
-
-        combined = sorted(
-
-            existing_map.values(),
-
-            key=lambda x: x.get(
-                "row_index",
-                0
-            )
-        )
-    
-
-        self.extracted_text = json.dumps(
-            combined
-        )
-
-
-        # =====================================
-        # SAVE PROGRESS
-        # =====================================
-
-        new_index = (
-            start_index
-            +
-            current_count
-        )
-
-        self.excel_parse_index = (
-            new_index
-        )
-
-        _logger.warning(
-
-            f"[EXCEL PARSE INDEX SAVE] "
-
-            f"{self.excel_parse_index}"
-        )
-
-
-        # =====================================
-        # DEBUG
-        # =====================================
-
-        remaining = max(
-            total_rows - new_index,
-            0
-        )
-
-        progress = round(
-
-            (new_index / total_rows) * 100,
-
-            2
-
-        ) if total_rows else 0
-
-
-        _logger.warning(
-            f"[DEBUG] CURRENT INDEX "
-            f"→ {new_index}"
-        )
-
-        _logger.warning(
-            f"[DEBUG] REMAINING ROWS "
-            f"→ {remaining}"
-        )
-
-        _logger.warning(
-            f"[DEBUG] PROGRESS "
-            f"→ {progress}%"
-        )
-
-        _logger.warning(
-            f"EXCEL NEW INDEX "
-            f"→ {new_index}"
-        )
-
-        _logger.warning(
-            f"EXCEL BATCH STORED "
-            f"→ {len(pages)} rows"
-        )
-
-
-        # =====================================
-        # COMPLETION FLAG ONLY
-        # =====================================
-
-        if new_index >= total_rows:
-
-            _logger.warning(
-                "EXCEL → PARSING COMPLETED ✅"
-            )
-
-            self.is_excel_parsed = True
-
-        else:
-
-            _logger.warning(
-                "EXCEL → MORE DATA REMAIN "
-                "→ NEXT CRON"
-            )
-
-       
-        wb.close()
-
-     # ---------------- Extract PDF ----------------
- 
-    # =====================================================
-    #======================================================
-    # UNIVERSAL CATALOGUE V2 (ISOLATED PIPELINE)
-    # =====================================================
-    #======================================================
-
-    #-----------discover_page_regions-----------------------
-    def _discover_page_regions(
-        self,
-        page_images
-    ):
-
-        regions = []
-
-        for idx, image_data in enumerate(
-            page_images
-        ):
-
-           
-            regions.append({
-
-                "region_id": idx,
-
-                "x": image_data.get("x"),
-
-                "y": image_data.get("y"),
-
-                "width": image_data.get("width"),
-
-                "height": image_data.get("height"),
-
-                "area": (
-                    image_data.get("width", 0)
-                    *
-                    image_data.get("height", 0)
-                ),
-
-                "is_lifestyle": image_data.get(
-                    "is_lifestyle"
-                )
-
-            })
-
-            _logger.warning(
-
-                f"[V2 REGION] "
-
-                f"id={idx} "
-
-                f"x={image_data.get('x')} "
-
-                f"y={image_data.get('y')} "
-
-                f"w={image_data.get('width')} "
-
-                f"h={image_data.get('height')} "
-
-                f"lifestyle={image_data.get('is_lifestyle')}"
-            )
-
-        _logger.warning(
-
-            f"[V2 REGION COUNT] "
-
-            f"{len(regions)}"
-
-        )
-
-        return regions
-
-    #--------collage filter--------------------------------
-    def _detect_collage_regions(
-        self,
-        page_images
-    ):
-        
-        _logger.warning(
-            f"[V2 COLLAGE CHECK] "
-            f"index={idx} "
-            f"width={width} "
-            f"height={height}"
-        )
-
-    #----------------build_product_candidates---------------
-    def _build_product_candidates(
-
-        self,
-
-        regions
-
-    ):
-
-        """
-        V2 PRODUCT GROUPING
-
-        Currently logs only.
-        """
-
-        candidates = []
-
-        try:
-
-            for idx, region in enumerate(
-                regions
-            ):
-
-                candidate = {
-
-                    "candidate_id":
-                        idx + 1,
-
-                    "regions":
-                        [region]
-
-                }
-
-                candidates.append(
-                    candidate
-                )
-
-                _logger.warning(
-
-                    f"[V2 PRODUCT CANDIDATE] "
-
-                    f"id={idx+1} "
-
-                    f"regions=1"
-
-                    f"area={region.get('area')}"
-
-                )
-
-            _logger.warning(
-
-                f"[V2 CANDIDATE COUNT] "
-
-                f"{len(candidates)}"
-
-            )
-
-            return candidates
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[V2 CANDIDATE FAILED] "
-
-                f"{str(e)}"
-
-            )
-
-            return []
-    
-    
-    #---------run_catalogue_v2-------------------------------
-    def _run_catalogue_v2(
-        self,
-        page_images
-    ):
-
-        
-        """
-        V2 ENTRYPOINT
-
-        Logging only.
-        """
-
-        _logger.warning(
-
-                    f"[V2 PIPELINE START] "
-
-                    f"images={len(page_images)}"
-
-        )
-        
-
-        regions = (
-
-            self._discover_page_regions(
-
-                page_images
-            )
-        )
-
-        candidates = (
-
-            self._build_product_candidates(
-
-                regions
-            )
-        )
-
-        _logger.warning(
-
-            f"[V2 PIPELINE COMPLETE] "
-
-            f"regions={len(regions)} "
-
-            f"candidates={len(candidates)}"
-
-        )
-
-        asset_pool = (
-
-            self._build_universal_asset_pool(
-
-                page_images
-            )
-        )
-
-        _logger.warning(
-
-            f"[V2 ASSET COUNT] "
-
-            f"{len(asset_pool)}"
-
-        )
-
-        return {
-
-            "regions":
-                regions,
-
-            "candidates":
-                candidates
-
-        }
-   
-
-    # =====================================================
-    # UNIVERSAL ASSET INTELLIGENCE V2
-    # =====================================================
-
-    def _analyze_page_structure(
-
-        self,
-
-        page_images
-
-    ):
-
-        total_images = len(
-            page_images
-        )
-
-        lifestyle_count = sum(
-
-            1
-
-            for img in page_images
-
-            if img.get(
-                "is_lifestyle"
-            )
-
-        )
-
-        total_area = 0
-
-        largest_area = 0
-
-        for img in page_images:
-
-            area = (
-
-                img.get(
-                    "width",
-                    0
-                )
-
-                *
-
-                img.get(
-                    "height",
-                    0
-                )
-
-            )
-
-            total_area += area
-
-            largest_area = max(
-
-                largest_area,
-
-                area
-
-            )
-
-        structure = "unknown"
-
-        if total_images == 1:
-
-            structure = "single_region"
-
-        elif lifestyle_count >= 1:
-
-            structure = "mixed_marketing"
-
-        elif total_images >= 6:
-
-            structure = "variant_grid"
-
-        result = {
-
-            "structure":
-                structure,
-
-            "image_count":
-                total_images,
-
-            "lifestyle_count":
-                lifestyle_count,
-
-            "largest_area":
-                largest_area,
-
-            "total_area":
-                total_area
-
-        }
-
-        _logger.warning(
-
-            f"[V2 STRUCTURE] "
-
-            f"{result}"
-
-        )
-
-        return result
-
-    #------------future entry point-------------------------
-    def _build_universal_asset_pool(
-
-        self,
-
-        page_images
-
-    ):
-
-        analysis = (
-
-            self._analyze_page_structure(
-
-                page_images
-            )
-        )
-
-        assets = []
-
-        structure = analysis.get(
-            "structure"
-        )
-
-        _logger.warning(
-
-            f"[V2 ASSET MODE] "
-
-            f"{structure}"
-        )
-
-        #
-        # Strategy 1
-        #
-
-        if structure == "variant_grid":
-
-            assets = page_images
-
-        #
-        # Strategy 2
-        #
-
-        elif structure == "mixed_marketing":
-
-            assets = page_images
-
-        #
-        # Strategy 3
-        #
-
-        elif structure == "single_region":
-
-            assets = page_images
-
-        return assets
-
     #===============etxract pdf=============================
     def extract_pdf(self):
 
@@ -3959,7 +2500,7 @@ class VendorImportJob(models.Model):
 
                             continue
 
-
+                       
                         page_data = response.json()
 
 
@@ -3984,6 +2525,36 @@ class VendorImportJob(models.Model):
                         else:
 
                             pages = []
+
+                        
+                        # =========================
+                        # PAGE IMAGE DEBUG
+                        # =========================
+
+                        if pages:
+
+                            page = pages[0]
+                            _logger.warning(
+                                f"[PAGE IMAGE PREVIEW] "
+                                f"page={page.get('page')} "
+                                f"images={len(page.get('images', []))}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE EXISTS] "
+                                f"{bool(page.get('page_image'))}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE SIZE] "
+                                f"{page.get('page_image_size')}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE DIMENSIONS] "
+                                f"{page.get('page_width')}x"
+                                f"{page.get('page_height')}"
+                            )
 
 
                         if not pages:
@@ -4014,6 +2585,21 @@ class VendorImportJob(models.Model):
                             images = p.get(
                                 "images",
                                 []
+                            )
+
+                            page_image = p.get(
+                                "page_image",
+                                ""
+                            )
+
+                            page_width = p.get(
+                                "page_width",
+                                0
+                            )
+
+                            page_height = p.get(
+                                "page_height",
+                                0
                             )
 
                             if images and isinstance(images[0], dict):
@@ -4100,7 +2686,13 @@ class VendorImportJob(models.Model):
 
                                 "stock": stock,
 
-                                "images": images
+                                "images": images,
+
+                                "page_image": page_image,
+
+                                "page_width": page_width,
+
+                                "page_height": page_height
                             })
 
 
@@ -4152,25 +2744,6 @@ class VendorImportJob(models.Model):
                                 f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
                                 f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
                                 f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
-                            )
-
-                        # =====================================
-                        # V2 DEBUG ONLY
-                        # =====================================
-
-                        try:
-
-                            if all_page_images:
-
-                                self._run_catalogue_v2(
-                                    all_page_images
-                                )
-
-                        except Exception as e:
-
-                            _logger.warning(
-                                f"[V2 TEST FAILED] "
-                                f"{str(e)}"
                             )
 
                         self.env[
@@ -4300,7 +2873,2067 @@ class VendorImportJob(models.Model):
                 "[PDF GC] COMPLETE"
             )
 
+    #=========pdf validate_extraction_quality============== 
 
+    def _validate_extraction_quality(self, page_data):
+
+        score = 100
+        reasons = []
+
+        images = page_data.get("images", [])
+        products = page_data.get("products", [])
+
+        page_width = page_data.get("page_width", 0)
+        page_height = page_data.get("page_height", 0)
+
+        if not images:
+
+            reasons.append("no_images")
+            score -= 100
+
+        image_count = len(images)
+        product_count = len(products)
+
+        # --------------------------------
+        # Largest Coverage Detection
+        # --------------------------------
+
+        largest_coverage = 0
+
+        for img in images:
+
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+
+            if (
+                not w
+                or
+                not h
+                or
+                not page_width
+                or
+                not page_height
+            ):
+                continue
+
+            coverage = (
+                (w * h)
+                /
+                float(page_width * page_height)
+            )
+
+            largest_coverage = max(
+                largest_coverage,
+                coverage
+            )
+
+        # --------------------------------
+        # Dominant Banner Page
+        # --------------------------------
+
+        if (
+            image_count <= 4
+            and
+            largest_coverage > 0.60
+        ):
+
+            reasons.append(
+                "dominant_banner_page"
+            )
+
+            score -= 50
+
+        # --------------------------------
+        # Banner Dominance
+        # --------------------------------
+
+        for img in images:
+
+            coverage = img.get(
+                "coverage_ratio",
+                0
+            )
+
+            if (
+                img.get("is_lifestyle")
+                and
+                coverage > 0.60
+            ):
+
+                reasons.append(
+                    "banner_dominance"
+                )
+
+                score -= 40
+
+                break
+
+        # --------------------------------
+        # Banner + Fragments
+        # --------------------------------
+
+        small_assets = 0
+
+        for img in images:
+
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+
+            if (
+                not w
+                or
+                not h
+                or
+                not page_width
+                or
+                not page_height
+            ):
+                continue
+
+            coverage = (
+                (w * h)
+                /
+                float(page_width * page_height)
+            )
+
+            if coverage < 0.05:
+                small_assets += 1
+
+        if (
+            largest_coverage > 0.60
+            and
+            small_assets >= 2
+        ):
+
+            reasons.append(
+                "banner_plus_fragments"
+            )
+
+            score -= 30
+
+        # --------------------------------
+        # Asset Shortage
+        # --------------------------------
+
+        if (
+            product_count >= 3
+            and
+            image_count <= 2
+        ):
+
+            reasons.append(
+                "asset_shortage"
+            )
+
+            score -= 30
+
+        # --------------------------------
+        # Suspicious Crop Shapes
+        # --------------------------------
+
+        suspicious = 0
+
+        for img in images:
+
+            w = img.get("width", 0)
+            h = img.get("height", 0)
+
+            if not w or not h:
+                continue
+
+            ratio = w / float(h)
+
+            if (
+                ratio > 3.0
+                or
+                ratio < 0.25
+            ):
+                suspicious += 1
+
+        if suspicious:
+
+            reasons.append(
+                "suspicious_crop_ratio"
+            )
+
+            score -= min(
+                suspicious * 5,
+                20
+            )
+
+        _logger.warning(
+            f"[VALIDATION DEBUG] "
+            f"images={image_count} "
+            f"products={product_count} "
+            f"largest_coverage={largest_coverage:.2f} "
+            f"small_assets={small_assets}"
+        )
+
+        return {
+            "passed": score >= 60,
+            "score": score,
+            "reasons": reasons
+        }
+
+    #======recovery logic===================================
+    def _ai_catalogue_recovery(self, page_data):
+
+        try:
+
+            validation = page_data.get(
+                "validation",
+                {}
+            )
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            _logger.warning(
+                f"[RECOVERY START] "
+                f"images={len(images)} "
+                f"reasons={validation.get('reasons')}"
+            )
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            _logger.warning(
+                f"[RECOVERY PAGE] "
+                f"exists={bool(page_image)} "
+                f"width={page_data.get('page_width')} "
+                f"height={page_data.get('page_height')}"
+            )
+
+            for idx, img in enumerate(images):
+
+                _logger.warning(
+                    f"[RECOVERY ASSET] "
+                    f"index={idx} "
+                    f"lifestyle={img.get('is_lifestyle')} "
+                    f"width={img.get('width')} "
+                    f"height={img.get('height')} "
+                    f"x={img.get('x')} "
+                    f"y={img.get('y')}"
+                )
+
+            recovered_images = self._recover_banner_products(
+                page_data
+            )
+
+            if recovered_images:
+
+                return {
+                    "images": recovered_images,
+                    "recovered": True
+                }
+
+            return {
+                "images": page_data.get(
+                    "images",
+                    []
+                ),
+                "recovered": False
+            }
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[RECOVERY FAILED] "
+                f"{str(e)}"
+            )
+
+            return None
+
+    #===failed segement re-cropping=========================
+    def _recover_banner_products(self, page_data):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            dominant_banner = None
+
+            page_width = page_data.get(
+                "page_width",
+                0
+            )
+
+            page_height = page_data.get(
+                "page_height",
+                0
+            )
+
+            for img in images:
+
+                w = img.get(
+                    "width",
+                    0
+                )
+
+                h = img.get(
+                    "height",
+                    0
+                )
+
+                if (
+                    not w
+                    or
+                    not h
+                    or
+                    not page_width
+                    or
+                    not page_height
+                ):
+                    continue
+
+                coverage = (
+                    (w * h)
+                    /
+                    float(
+                        page_width * page_height
+                    )
+                )
+
+               
+                dominant_banner = None
+                largest_coverage = 0
+
+                for img in images:
+
+                    w = img.get("width", 0)
+                    h = img.get("height", 0)
+
+                    if (
+                        not w
+                        or not h
+                        or not page_width
+                        or not page_height
+                    ):
+                        continue
+
+                    coverage = (
+                        (w * h)
+                        /
+                        float(page_width * page_height)
+                    )
+
+                    if coverage > largest_coverage:
+
+                        largest_coverage = coverage
+                        dominant_banner = img
+
+            if not dominant_banner:
+
+                _logger.warning(
+                    "[RECOVERY] NO DOMINANT BANNER"
+                )
+
+                return None
+
+            _logger.warning(
+                f"[RECOVERY BANNER FOUND] "
+                f"width={dominant_banner.get('width')} "
+                f"height={dominant_banner.get('height')} "
+                f"x={dominant_banner.get('x')} "
+                f"y={dominant_banner.get('y')}"
+            )
+
+            banner_x = dominant_banner.get(
+                "x",
+                0
+            )
+
+            banner_y = dominant_banner.get(
+                "y",
+                0
+            )
+
+            banner_w = dominant_banner.get(
+                "width",
+                0
+            )
+
+            banner_h = dominant_banner.get(
+                "height",
+                0
+            )
+
+            coverage = (
+                (banner_w * banner_h)
+                /
+                float(
+                    page_width * page_height
+                )
+            )
+
+            _logger.warning(
+                f"[RECOVERY BANNER COVERAGE] "
+                f"{coverage:.2f}"
+            )
+
+            import base64
+            from io import BytesIO
+            from PIL import Image
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            if not page_image:
+
+                _logger.warning(
+                    "[RECOVERY] NO PAGE IMAGE"
+                )
+
+                return None
+
+            try:
+
+                image_bytes = base64.b64decode(
+                    page_image
+                )
+
+                page_img = Image.open(
+                    BytesIO(image_bytes)
+                )
+
+                _logger.warning(
+                    f"[RECOVERY SOURCE] "
+                    f"page={page_img.width}x{page_img.height} "
+                    f"banner={banner_w}x{banner_h}"
+                )
+
+                crop = page_img.crop(
+                    (
+                        banner_x,
+                        banner_y,
+                        banner_x + banner_w,
+                        banner_y + banner_h
+                    )
+                )
+
+                _logger.warning(
+                    f"[RECOVERY CROP SUCCESS] "
+                    f"size={crop.size}"
+                )
+
+                buffer = BytesIO()
+
+                # detected_assets = self._recover_products_from_page_image(
+                #     page_data
+                # )
+
+                detected_assets = self._detect_products_inside_banner(
+                    page_data
+                )
+
+                if detected_assets:
+
+                    _logger.warning(
+                        f"[RECOVERY DETECTED PRODUCTS] "
+                        f"{len(detected_assets)}"
+                    )
+
+                    return detected_assets
+
+                crop.save(
+                    buffer,
+                    format="PNG"
+                )
+
+                cropped_b64 = base64.b64encode(
+                    buffer.getvalue()
+                ).decode()
+
+                recovered_asset = {
+
+                    "image": cropped_b64,
+
+                    "width": crop.width,
+
+                    "height": crop.height,
+
+                    "x": banner_x,
+
+                    "y": banner_y,
+
+                    "is_lifestyle": False,
+
+                    "recovered": True
+                }
+
+                _logger.warning(
+                    f"[RECOVERY ASSET CREATED] "
+                    f"width={crop.width} "
+                    f"height={crop.height}"
+                )
+
+                return [
+                    recovered_asset
+                ]
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[RECOVERY CROP FAILED] "
+                    f"{str(e)}"
+                )
+
+            return []
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[RECOVERY BANNER FAILED] "
+                f"{str(e)}"
+            )
+
+            return []
+    
+    #===============recover_products_from_page_image========
+    def _recover_products_from_page_image(
+        self,
+        page_data
+    ):
+
+        try:
+
+            validation = page_data.get(
+                "validation",
+                {}
+            )
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR START] "
+                f"images={len(images)} "
+                f"reasons={validation.get('reasons', [])}"
+            )
+
+            if not page_image:
+
+                return []
+
+            import base64
+            from io import BytesIO
+            from PIL import Image
+
+            page_img = Image.open(
+                BytesIO(
+                    base64.b64decode(page_image)
+                )
+            )
+
+            page_width = page_img.width
+            page_height = page_img.height
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR PAGE] "
+                f"{page_width}x{page_height}"
+            )
+
+            validation_reasons = validation.get(
+                "reasons",
+                []
+            )
+
+            if (
+                "dominant_banner_page" in validation_reasons
+                or
+                "banner_plus_fragments" in validation_reasons
+            ):
+
+                _logger.warning(
+                    "[PRODUCT DETECTOR] "
+                    "BANNER DISCOVERY MODE"
+                )
+
+                return self._detect_products_inside_banner(
+                    page_data
+                )
+
+            candidates = []
+
+            for idx, img in enumerate(images):
+
+                x = img.get("x", 0)
+                y = img.get("y", 0)
+
+                w = img.get("width", 0)
+                h = img.get("height", 0)
+
+                if not w or not h:
+                    continue
+
+                coverage = (
+                    (w * h)
+                    /
+                    float(page_width * page_height)
+                )
+
+                candidates.append({
+
+                "index": idx,
+
+                "asset": img,
+
+                "x": x,
+                "y": y,
+
+                "width": w,
+                "height": h,
+
+                "coverage": coverage,
+
+                "is_lifestyle": img.get(
+                    "is_lifestyle",
+                    False
+                )
+            })
+
+            candidates = sorted(
+
+                candidates,
+
+                key=lambda c:
+                    c["coverage"],
+
+                reverse=True
+            )
+
+            for c in candidates:
+
+                _logger.warning(
+                    f"[PRODUCT REGION] "
+                    f"idx={c['index']} "
+                    f"coverage={c['coverage']:.2f} "
+                    f"w={c['width']} "
+                    f"h={c['height']} "
+                    f"lifestyle={c['is_lifestyle']}"
+                )
+
+            recovered_assets = []
+
+            classified_assets = []
+
+            for asset in recovered_assets:
+
+                asset["asset_type"] = (
+                    self._classify_recovered_asset(
+                        asset
+                    )
+                )
+
+                classified_assets.append(
+                    asset
+                )
+
+            recovered_assets = classified_assets
+
+            for c in candidates:
+
+                if c["is_lifestyle"]:
+                    continue
+
+                if c["coverage"] < 0.01:
+                    continue
+
+
+                recovered_assets.append(
+                    c["asset"]
+                )
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR RETURN] "
+                f"{len(recovered_assets)} assets"
+            )
+
+            for asset in recovered_assets:
+
+                _logger.warning(
+                    f"[RECOVERY KEEP] "
+                    f"width={asset.get('width')} "
+                    f"height={asset.get('height')} "
+                    f"x={asset.get('x')} "
+                    f"y={asset.get('y')} "
+                    f"lifestyle={asset.get('is_lifestyle')}"
+                )
+
+            return recovered_assets
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[PRODUCT DETECTOR FAILED] "
+                f"{str(e)}"
+            )
+
+            return []
+
+    #==========classify_asset=================
+    def _classify_asset(
+        self,
+        asset
+    ):
+
+        try:
+
+            width = asset.get(
+                "width",
+                0
+            )
+
+            height = asset.get(
+                "height",
+                0
+            )
+
+            lifestyle = asset.get(
+                "is_lifestyle",
+                False
+            )
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER] "
+                f"w={width} "
+                f"h={height} "
+                f"lifestyle={lifestyle}"
+            )
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER FAILED] "
+                f"{str(e)}"
+            )
+
+            return "unknown"
+    
+    #==========extract_clean_products_from_image===========
+    def _extract_clean_products_from_image(
+        self,
+        crop,
+        source_type="unknown"
+    ):
+
+        try:
+
+            _logger.warning(
+                f"[OBJECT EXTRACTOR START] "
+                f"source={source_type} "
+                f"size={crop.width}x{crop.height}"
+            )
+
+            gray = crop.convert(
+                "L"
+            )
+
+            width = gray.width
+            height = gray.height
+
+            background_samples = []
+
+            for y in range(height):
+
+                background_samples.append(
+                    gray.getpixel(
+                        (0, y)
+                    )
+                )
+
+                background_samples.append(
+                    gray.getpixel(
+                        (width - 1, y)
+                    )
+                )
+
+            if not background_samples:
+
+                _logger.warning(
+                    "[OBJECT EXTRACTOR] "
+                    "NO BACKGROUND SAMPLES"
+                )
+
+                return crop
+
+            background_level = (
+                sum(background_samples)
+                /
+                len(background_samples)
+            )
+
+            _logger.warning(
+                f"[BACKGROUND LEVEL] "
+                f"{background_level:.2f}"
+            )
+
+            background_threshold = 12
+
+            active_columns = []
+
+            for x in range(width):
+
+                object_pixels = 0
+
+                for y in range(height):
+
+                    pixel = gray.getpixel(
+                        (x, y)
+                    )
+
+                    if abs(
+                        pixel
+                        -
+                        background_level
+                    ) > background_threshold:
+
+                        object_pixels += 1
+
+                if object_pixels > (
+                    height * 0.05
+                ):
+
+                    active_columns.append(
+                        x
+                    )
+
+            _logger.warning(
+                f"[ACTIVE COLUMNS] "
+                f"count={len(active_columns)}"
+            )
+
+            if not active_columns:
+
+                _logger.warning(
+                    "[OBJECT EXTRACTOR] "
+                    "NO ACTIVE COLUMNS"
+                )
+
+                return crop
+
+            min_x = min(
+                active_columns
+            )
+
+            max_x = max(
+                active_columns
+            )
+
+            padding = 20
+
+            min_x = max(
+                0,
+                min_x - padding
+            )
+
+            max_x = min(
+                width,
+                max_x + padding
+            )
+
+            clean_crop = crop.crop(
+                (
+                    min_x,
+                    0,
+                    max_x,
+                    height
+                )
+            )
+
+            _logger.warning(
+                f"[OBJECT BOX] "
+                f"x1={min_x} "
+                f"x2={max_x}"
+            )
+
+            _logger.warning(
+                f"[OBJECT SIZE] "
+                f"{clean_crop.width}x{clean_crop.height}"
+            )
+
+            return clean_crop
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[OBJECT EXTRACTOR FAILED] "
+                f"{str(e)}"
+            )
+
+            return crop
+
+    #===========correct_variant_image_indexes================
+    def _correct_variant_image_indexes(
+        self,
+        product_data,
+        asset_pool
+    ):
+
+        try:
+
+            _logger.warning(
+                f"[VARIANT CORRECTION START] "
+                f"product={product_data.get('name')}"
+            )
+
+            color_lookup = {}
+
+            for idx, asset in enumerate(asset_pool):
+
+                _logger.warning(
+                    f"[CORRECTION ASSET] "
+                    f"idx={idx} "
+                    f"color={asset.get('dominant_color')}"
+                )
+
+                color = str(
+                    asset.get(
+                        "dominant_color"
+                    )
+                        or ""
+                ).strip().lower()
+
+                if color:
+
+                    color_lookup[color] = idx
+
+            _logger.warning(
+                f"[COLOR LOOKUP] "
+                f"{color_lookup}"
+            )
+
+            for variant in product_data.get(
+                "variants",
+                []
+            ):
+
+                _logger.warning(
+                    f"[CORRECTION VARIANT] "
+                    f"color={variant.get('attributes', {}).get('Color')} "
+                    f"image_index={variant.get('image_index')}"
+                )
+
+
+                variant_color = str(
+                    variant.get(
+                        "attributes",
+                        {}
+                    ).get(
+                        "Color"
+                    )
+                    or ""
+                ).strip().lower()
+
+                if variant_color in color_lookup:
+
+                    old_index = variant.get(
+                        "image_index"
+                    )
+
+                    new_index = color_lookup[
+                        variant_color
+                    ]
+
+                    variant["image_index"] = (
+                        new_index
+                    )
+
+                    _logger.warning(
+                        f"[CORRECTION APPLIED] "
+                        f"color={variant_color} "
+                        f"old={old_index} "
+                        f"new={new_index}"
+                    )
+
+            return product_data
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[VARIANT CORRECTION FAILED] "
+                f"{str(e)}"
+            )
+
+            return product_data
+
+    #==========build_product_family========================
+    def _build_product_family(
+        self,
+        product_data,
+        asset_pool,
+        page_data
+    ):
+
+        try:
+
+            family = {
+
+                "group_id": (
+                    product_data.get(
+                        "name",
+                        "unknown"
+                    )
+                ),
+
+                "product_data": product_data,
+
+                "asset_pool": asset_pool,
+
+                "page_data": page_data,
+
+                "family_status": "pending",
+
+                "recovery_required": False,
+
+                "recovery_reason": None
+            }
+
+            _logger.warning(
+                f"[PRODUCT FAMILY] "
+                f"group={family['group_id']} "
+                f"assets={len(asset_pool)}"
+            )
+
+            return family
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[PRODUCT FAMILY FAILED] "
+                f"{str(e)}"
+            )
+
+            return {
+
+                "group_id": "unknown",
+
+                "product_data": product_data,
+
+                "asset_pool": asset_pool,
+
+                "page_data": page_data,
+
+                "family_status": "failed",
+
+                "recovery_required": False
+            }
+
+    #==========queue_product_family=======================
+    def _queue_product_family(
+        self,
+        family
+    ):
+
+        try:
+
+            family["family_status"] = (
+                "queued"
+            )
+
+            _logger.warning(
+                f"[FAMILY QUEUED] "
+                f"{family.get('group_id')}"
+            )
+
+            return family
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[FAMILY QUEUE FAILED] "
+                f"{str(e)}"
+            )
+
+            return family
+
+    #==========prepare_product_family=====================
+    def _prepare_product_family(
+        self,
+        product_data,
+        asset_pool,
+        page_data
+    ):
+
+        try:
+
+            family = (
+                self._build_product_family(
+                    product_data,
+                    asset_pool,
+                    page_data
+                )
+            )
+
+            family = (
+                self._queue_product_family(
+                    family
+                )
+            )
+
+            _logger.warning(
+                f"[FAMILY READY] "
+                f"{family.get('group_id')}"
+            )
+
+            return family
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[FAMILY PREP FAILED] "
+                f"{str(e)}"
+            )
+
+            return None
+
+    #==========detect_products_inside_banner===============
+    def _detect_products_inside_banner(
+        self,
+        page_data
+    ):
+
+        try:
+
+            _logger.warning(
+                "[BANNER DISCOVERY START]"
+            )
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            page_width = page_data.get(
+                "page_width",
+                0
+            )
+
+            page_height = page_data.get(
+                "page_height",
+                0
+            )
+
+            dominant_banner = None
+
+            for img in images:
+
+                w = img.get(
+                    "width",
+                    0
+                )
+
+                h = img.get(
+                    "height",
+                    0
+                )
+
+                if (
+                    not w
+                    or
+                    not h
+                    or
+                    not page_width
+                    or
+                    not page_height
+                ):
+                    continue
+
+                coverage = (
+                    (w * h)
+                    /
+                    float(
+                        page_width * page_height
+                    )
+                )
+
+                if coverage > 0.60:
+
+                    dominant_banner = img
+                    break
+
+            if not dominant_banner:
+
+                _logger.warning(
+                    "[BANNER DISCOVERY] NO BANNER"
+                )
+
+                return []
+
+            banner_x = dominant_banner.get(
+                "x",
+                0
+            )
+
+            banner_y = dominant_banner.get(
+                "y",
+                0
+            )
+
+            banner_w = dominant_banner.get(
+                "width",
+                0
+            )
+
+            banner_h = dominant_banner.get(
+                "height",
+                0
+            )
+
+            _logger.warning(
+                f"[BANNER DISCOVERY] "
+                f"w={banner_w} "
+                f"h={banner_h} "
+                f"x={banner_x} "
+                f"y={banner_y}"
+            )
+
+            import base64
+            from io import BytesIO
+            from PIL import Image
+
+            page_image = page_data.get(
+                "page_image"
+            )
+
+            if not page_image:
+
+                _logger.warning(
+                    "[BANNER DISCOVERY] NO PAGE IMAGE"
+                )
+
+                return []
+
+            page_img = Image.open(
+                BytesIO(
+                    base64.b64decode(
+                        page_image
+                    )
+                )
+            )
+
+            crop = page_img.crop(
+                (
+                    banner_x,
+                    banner_y,
+                    banner_x + banner_w,
+                    banner_y + banner_h
+                )
+            )
+
+            _logger.warning(
+                f"[BANNER CROP] "
+                f"size={crop.size}"
+            )
+
+            regions = self._find_banner_product_regions(
+                crop
+            )
+
+            _logger.warning(
+                f"[BANNER REGION COUNT] "
+                f"{len(regions)}"
+            )
+            
+            if regions:
+
+                recovered_assets = []
+
+                for idx, region in enumerate(regions):
+
+                    start_x = region["start"]
+                    end_x = region["end"]
+
+                    region_width = end_x - start_x
+
+                    _logger.warning(
+                        f"[CLUSTER CANDIDATE] "
+                        f"start={start_x} "
+                        f"end={end_x} "
+                        f"width={region_width}"
+                    )
+
+                    if region_width < 30:
+                        continue
+
+                    cluster_width = (
+                        end_x - start_x
+                    )
+
+                    padding = int(
+                        cluster_width * 0.50
+                    )
+
+                    expanded_start = max(
+                        0,
+                        start_x - padding
+                    )
+
+                    expanded_end = min(
+                        crop.width,
+                        end_x + padding
+                    )
+
+                    _logger.warning(
+                        f"[CLUSTER EXPANSION] "
+                        f"start={start_x} "
+                        f"end={end_x} "
+                        f"expanded_start={expanded_start} "
+                        f"expanded_end={expanded_end}"
+                    )
+
+                    seg = crop.crop(
+                        (
+                            expanded_start,
+                            0,
+                            expanded_end,
+                            crop.height
+                        )
+                    )
+
+                    seg = self._extract_clean_products_from_image(
+                        seg,
+                        source_type="banner"
+                    )
+
+                    buffer = BytesIO()
+
+                    seg.save(
+                        buffer,
+                        format="PNG"
+                    )
+
+                    recovered_assets.append({
+
+                        "image": base64.b64encode(
+                            buffer.getvalue()
+                        ).decode(),
+
+                        "width": seg.width,
+
+                        "height": seg.height,
+
+                        "x": start_x,
+
+                        "y": 0,
+
+                        "is_lifestyle": False,
+
+                        "recovered": True
+                    })
+
+                    _logger.warning(
+                        f"[CLUSTER ASSET CREATED] "
+                        f"idx={idx} "
+                        f"start={start_x} "
+                        f"end={end_x} "
+                        f"width={seg.width}"
+                    )
+
+                if recovered_assets:
+
+                    _logger.warning(
+                        f"[CLUSTER RETURN] "
+                        f"assets={len(recovered_assets)}"
+                    )
+
+                    return recovered_assets
+
+            crop_width = crop.width
+
+            crop_height = crop.height
+
+            aspect_ratio = (
+                crop_width
+                /
+                float(crop_height)
+            )
+
+            _logger.warning(
+                f"[BANNER ANALYSIS] "
+                f"ratio={aspect_ratio:.2f}"
+            )
+
+            estimated_products = max(
+                2,
+                round(aspect_ratio * 1.5)
+            )
+
+            _logger.warning(
+                f"[BANNER ESTIMATE] "
+                f"products={estimated_products}"
+            )
+
+            regions = []
+
+            segment_width = int(
+                crop.width / estimated_products
+            )
+
+            for idx in range(
+                estimated_products
+            ):
+
+                regions.append({
+
+                    "index": idx,
+
+                    "x": idx * segment_width,
+
+                    "y": 0,
+
+                    "width": segment_width,
+
+                    "height": crop.height
+                })
+
+                _logger.warning(
+                    f"[BANNER REGION] "
+                    f"idx={idx} "
+                    f"w={segment_width} "
+                    f"h={crop.height}"
+                )
+            recovered_assets = []
+
+            for region in regions:
+
+                seg = crop.crop(
+                    (
+                        region["x"],
+                        region["y"],
+                        region["x"] + region["width"],
+                        region["height"]
+                    )
+                )
+
+                buffer = BytesIO()
+
+                seg.save(
+                    buffer,
+                    format="PNG"
+                )
+
+                recovered_assets.append({
+
+                    "image": base64.b64encode(
+                        buffer.getvalue()
+                    ).decode(),
+
+                    "width": seg.width,
+
+                    "height": seg.height,
+
+                    "x": region["x"],
+
+                    "y": region["y"],
+
+                    "is_lifestyle": False,
+
+                    "recovered": True
+                })
+
+                _logger.warning(
+                    f"[BANNER ASSET CREATED] "
+                    f"w={seg.width} "
+                    f"h={seg.height}"
+                )
+
+            _logger.warning(
+                f"[BANNER RETURN] "
+                f"assets={len(recovered_assets)}"
+            )
+
+            return recovered_assets
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[BANNER DISCOVERY FAILED] "
+                f"{str(e)}"
+            )
+
+            return []
+
+    #==========find_banner_product_regions=================
+    def _find_banner_product_regions(
+        self,
+        crop
+    ):
+
+        try:
+
+            _logger.warning(
+                "[BANNER REGION DETECTOR START]"
+            )
+
+            width = crop.width
+            height = crop.height
+
+
+            column_density = []
+
+            for x in range(width):
+
+                count = 0
+
+                for y in range(height):
+
+                    pixel = crop.getpixel(
+                        (x, y)
+                    )
+
+                    if isinstance(
+                        pixel,
+                        int
+                    ):
+                        brightness = pixel
+
+                    else:
+                        brightness = (
+                            sum(pixel[:3]) / 3
+                        )
+
+                    if brightness < 240:
+                        count += 1
+
+                column_density.append(
+                    count
+                )
+
+            max_density = max(
+                column_density
+            ) if column_density else 0
+
+            _logger.warning(
+                f"[BANNER DENSITY] "
+                f"columns={len(column_density)} "
+                f"max={max_density}"
+            )
+
+            threshold = (
+                max_density * 0.25
+            )
+
+            peak_columns = []
+
+            for idx, value in enumerate(
+                column_density
+            ):
+
+                if value >= threshold:
+
+                    peak_columns.append(
+                        idx
+                    )
+
+            _logger.warning(
+                f"[BANNER PEAKS] "
+                f"count={len(peak_columns)}"
+            )
+
+            regions = []
+
+            if not peak_columns:
+
+                return []
+
+            start = peak_columns[0]
+            previous = peak_columns[0]
+
+            for col in peak_columns[1:]:
+
+                if col - previous > 20:
+
+                    regions.append({
+                        "start": start,
+                        "end": previous
+                    })
+
+                    start = col
+
+                previous = col
+
+            regions.append({
+                "start": start,
+                "end": previous
+            })
+
+            _logger.warning(
+                f"[BANNER CLUSTERS] "
+                f"count={len(regions)}"
+            )
+
+            cluster_widths = [
+
+                r["end"] - r["start"]
+
+                for r in regions
+            ]
+
+            if cluster_widths:
+
+                sorted_widths = sorted(
+                    cluster_widths
+                )
+
+                median_width = sorted_widths[
+                    len(sorted_widths) // 2
+                ]
+
+            else:
+
+                median_width = 0
+
+            _logger.warning(
+                f"[CLUSTER MEDIAN] "
+                f"{median_width}"
+            )
+
+            filtered_regions = []
+
+            for r in regions:
+
+                width = (
+                    r["end"]
+                    -
+                    r["start"]
+                )
+
+                if (
+                    median_width
+                    and
+                    width < (median_width * 0.40)
+                ):
+
+                    _logger.warning(
+                        f"[CLUSTER REJECTED] "
+                        f"width={width}"
+                    )
+
+                    continue
+
+                filtered_regions.append(
+                    r
+                )
+
+            regions = filtered_regions
+
+            for r in regions:
+
+                _logger.warning(
+                    f"[BANNER CLUSTER] "
+                    f"start={r['start']} "
+                    f"end={r['end']}"
+                )       
+
+    
+            return regions
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[BANNER REGION DETECTOR FAILED] "
+                f"{str(e)}"
+            )
+
+            return []
+
+    #==========classify_recovered_asset=================
+    def _classify_recovered_asset(
+        self,
+        asset
+    ):
+
+        try:
+
+            width = asset.get(
+                "width",
+                0
+            )
+
+            height = asset.get(
+                "height",
+                0
+            )
+
+            lifestyle = asset.get(
+                "is_lifestyle",
+                False
+            )
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER] "
+                f"w={width} "
+                f"h={height} "
+                f"lifestyle={lifestyle}"
+            )
+
+            return "unknown"
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[ASSET CLASSIFIER FAILED] "
+                f"{str(e)}"
+            )
+
+            return "unknown"
+
+    #==========rank_product_assets=================
+    def _rank_product_assets(
+        self,
+        assets
+        ):
+
+        try:
+
+            _logger.warning(
+                f"[ASSET RANKING] "
+                f"count={len(assets)}"
+            )
+
+            return assets
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[ASSET RANKING FAILED] "
+                f"{str(e)}"
+            )
+
+            return assets
+
+    #========================================================
+    #URL WORKFLOW
+    #========================================================
+    #------------parse url-----------------------------------
+
+    def parse_url(self):
+
+        import json
+
+        _logger.warning(f"APIFY SCRAPE → {self.data_url}")
+
+        raw_data = self._run_apify_actor(self.data_url)
+
+        # =====================================================
+        # APIFY STILL RUNNING
+        # =====================================================
+
+        if raw_data is None:
+
+            _logger.warning(
+                "APIFY NOT READY → WAIT NEXT CRON"
+            )
+
+            self.state = "url_scraping"
+
+            return True
+
+        # =====================================================
+        # EMPTY RAW RESPONSE
+        # =====================================================
+
+        if not raw_data:
+
+            _logger.error(
+                "APIFY FAILED → EMPTY DATASET"
+            )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # SAFE DEBUG LOG
+        # =====================================================
+
+        try:
+
+            _logger.warning(
+                f"RAW APIFY ITEMS → {len(raw_data)}"
+            )
+
+        except Exception:
+            pass
+
+        # =====================================================
+        # HANDLE STRUCTURED RESPONSES
+        # =====================================================
+
+        first = raw_data[0] if raw_data else {}
+
+        response_type = first.get("type")
+
+        # =====================================================
+        # BLOCKED
+        # =====================================================
+
+        if response_type == "BLOCKED":
+
+            reason = first.get(
+                "reason",
+                "Unknown block detected"
+            )
+
+            status_code = first.get(
+                "status_code"
+            )
+
+            _logger.error(
+                f"URL BLOCKED → {reason}"
+            )
+
+            if status_code:
+                _logger.error(
+                    f"BLOCK STATUS CODE → {status_code}"
+                )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # EMPTY
+        # =====================================================
+
+        if response_type == "EMPTY":
+
+            reason = first.get(
+                "reason",
+                "No products extracted"
+            )
+
+            debug = first.get("debug", {})
+
+            _logger.error(
+                f"URL EXTRACTION EMPTY → {reason}"
+            )
+
+            if debug:
+
+                _logger.error(
+                    f"PAGE TITLE → {debug.get('title')}"
+                )
+
+                _logger.error(
+                    f"IMAGES FOUND → {debug.get('images_found')}"
+                )
+
+                _logger.error(
+                    f"LINKS FOUND → {debug.get('links_found')}"
+                )
+
+                _logger.error(
+                    f"POSSIBLE PRODUCT BLOCKS → "
+                    f"{debug.get('possible_product_blocks')}"
+                )
+
+                _logger.error(
+                    f"COOKIE DETECTED → "
+                    f"{debug.get('cookie_detected')}"
+                )
+
+                preview = debug.get(
+                    'body_preview',
+                    ''
+                )
+
+                _logger.error(
+                    f"BODY PREVIEW → {preview[:300]}"
+                )
+
+            self.state = "failed"
+
+            return
+
+        # ===================================================
+        # PRODUCTS
+        # ===================================================
+
+        structured_data = []
+
+        for block in raw_data:
+
+            # ==============================================
+            # FORMAT 1 → ORIGINAL EB FORMAT
+            # ==============================================
+
+            if block.get("text"):
+
+                structured_data.append({
+                    "text": block.get("text"),
+                    "image": block.get("image")
+                })
+
+                continue
+
+            # ==============================================
+            # FORMAT 2 → STRUCTURED FORMAT
+            # ==============================================
+
+            if block.get("type") == "PRODUCTS":
+
+                items = block.get("items", [])
+
+                if not items:
+                    continue
+
+                structured_data.extend(items)
+
+        # =====================================================
+        # NO PRODUCTS AFTER PARSE
+        # =====================================================
+
+        if not structured_data:
+
+            _logger.error(
+                "NO VALID PRODUCTS FOUND AFTER PARSING"
+            )
+
+            self.state = "failed"
+
+            return
+
+
+        # ============================================
+        # URL BATCHING
+        # ============================================
+
+        BATCH_SIZE = 40
+
+        start = (
+            self.url_parse_index or 0
+        )
+
+        end = min(
+
+            start + BATCH_SIZE,
+
+            len(structured_data)
+        )
+
+        total_structured = len(structured_data)
+
+        structured_data = structured_data[
+            start:end
+        ]
+
+
+        _logger.warning(
+
+            f"[URL PARSE BATCH] "
+
+            f"{start} -> {end} "
+
+            f"| total={len(normalized if 'normalized' in locals() else structured_data)}"
+        )
+
+
+        # =====================================================
+        # NORMALIZE
+        # =====================================================
+
+        normalized = self._normalize_url_data(
+            structured_data
+        )
+
+        # ============================================
+        # SAVE URL PARSE PROGRESS
+        # ============================================
+
+        self.url_parse_index = end
+
+
+        _logger.warning(
+
+            f"[URL PARSE SAVE] "
+
+            f"{self.url_parse_index}"
+        )
+
+        _logger.warning(
+            f"[URL NORMALIZED COUNT] {len(normalized)}"
+        )
+
+
+        if not normalized:
+
+            _logger.error(
+                "NORMALIZATION FAILED → EMPTY DATA"
+            )
+
+            self.state = "failed"
+
+            return
+
+        # =====================================================
+        # STORE SAFELY
+        # =====================================================
+
+        #payload = json.dumps(normalized)
+
+        # 🔥 LIMIT STORAGE SIZE
+        #self.extracted_text = payload[:50000]
+
+        payload = json.dumps(normalized)
+
+        # ============================================
+        # PERSIST URL BLOCKS
+        # ============================================
+
+        self.url_blocks_json = payload
+
+        # compatibility
+        self.extracted_text = payload[:50000]
+
+
+        _logger.warning(
+
+            f"[URL STORE] "
+
+            f"saved_blocks={len(normalized)}"
+        )
+
+
+        _logger.warning(
+            f"APIFY DONE → {len(normalized)} ITEMS"
+        )
+
+        # =====================================================
+        # MOVE TO NEXT STEP
+        # =====================================================
+
+        if self.url_parse_index >= total_structured:
+            _logger.warning(
+                "[URL PARSE] FINAL BATCH READY"
+            )
+
+        else:
+
+            _logger.warning(
+                "[URL PARSE] MORE BATCHES REMAIN"
+            )
+
+
+        self.state = "url_ai"
+
+   
     # ===========Send to OPENAI URL =========================
     def send_to_openai_url(self):
 
@@ -4764,6 +5397,796 @@ class VendorImportJob(models.Model):
 
         return
 
+    
+    # ================= PRODUCT CREATION URL ================
+
+    def create_products_url(self):
+
+        import requests
+        import base64
+        import json
+
+        if not self.ai_response:
+            _logger.warning("NO AI RESPONSE")
+            return
+
+        product_obj = self.env['product.template']
+        category_obj = self.env['product.category']
+
+        try:
+            products = json.loads(self.ai_response)
+
+            if isinstance(products, dict):
+                products = [products]
+
+        except Exception as e:
+            _logger.error(f"INVALID AI JSON → {str(e)}")
+            return
+
+        TOTAL_PRODUCTS = len(products)
+        start_index = self.last_processed_product_index or 0
+
+        _logger.warning(f"TOTAL AI PRODUCTS → {TOTAL_PRODUCTS}")
+        _logger.warning(f"START INDEX → {start_index}")
+
+        created_count = 0
+        skipped_count = 0
+
+        MAX_PRODUCTS_PER_RUN = 5
+
+        CATEGORY_MAPPING = {
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+            "bag": "Bags",
+            "backpack": "Bags",
+            "cap": "Headwear",
+            "hat": "Headwear",
+            "bottle": "Drinkware",
+            "cup": "Drinkware",
+            "drinkware": "Drinkware",
+            "pen": "Stationery",
+            "notebook": "Stationery",
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
+            "football": "Football Fever",
+            "Wristband": "Football Fever",
+            "sports t-shirt": "Football Fever",
+            "sports towel": "Football Fever",
+            "Sports Bottles": "Football Fever"
+        }
+
+        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
+        #vendor_id = self.partner_id.id if self.partner_id else False
+        vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
+
+        if not parent_category:
+            parent_category = category_obj.create({'name': "All Products"})
+
+        end_index = min(start_index + MAX_PRODUCTS_PER_RUN, TOTAL_PRODUCTS)
+
+        _logger.warning(f"PROCESSING RANGE → {start_index} to {end_index}")
+
+        for idx in range(start_index, end_index):
+
+            product_data = products[idx]
+
+            name = product_data.get("name")
+            if not name:
+                skipped_count += 1
+                continue
+
+            description = product_data.get("description", "")
+            raw_category = (product_data.get("category") or "").lower()
+
+            # ================= CATEGORY =================
+            mapped_category = "General"
+            for key, val in CATEGORY_MAPPING.items():
+                if key in raw_category:
+                    mapped_category = val
+                    break
+
+            category = category_obj.search([
+                ('name', '=ilike', mapped_category),
+                ('parent_id', '=', parent_category.id)
+            ], limit=1)
+
+            if not category:
+                category = category_obj.create({
+                    'name': mapped_category,
+                    'parent_id': parent_category.id
+                })
+
+            # ================= FINGERPRINT=================
+
+            variant_group = (
+
+                product_data.get("variant_group")
+
+                or
+
+                name
+            )
+
+            variant_group = str(
+                variant_group
+            ).strip().upper()
+
+
+            vendor_fingerprint = (
+                f"{vendor_id}_{variant_group}"
+            )
+
+
+            # ================= DUPLICATE CHECK =================
+
+            existing = product_obj.search([
+
+                (
+                    'vendor_fingerprint',
+                    '=',
+                    vendor_fingerprint
+                )
+
+            ], limit=1)
+
+
+            if existing:
+
+                _logger.warning(
+
+                    f"[URL DUPLICATE SKIP] "
+
+                    f"{vendor_fingerprint}"
+                )
+
+                skipped_count += 1
+
+                continue
+
+            vals = {
+                'name': name.strip(),
+                'description_sale': description,
+                'type': 'consu',
+                'categ_id': category.id,
+                'sale_ok': True,
+                'website_published': False,
+                'vendor_id': vendor_id,
+                'vendor_fingerprint': vendor_fingerprint,
+                'vendor_import_job_id': self.id,
+            }
+
+            # ================= IMAGE =================
+            image_url = product_data.get("image")
+
+            if image_url and isinstance(image_url, str) and image_url.startswith("http"):
+
+                try:
+                    _logger.warning(f"FETCHING IMAGE → {image_url}")
+
+                    res = requests.get(image_url, timeout=5, stream=True)
+
+                    if res.status_code != 200:
+                        _logger.warning(f"IMAGE HTTP ERROR → {res.status_code}")
+                        continue
+
+                    content_type = res.headers.get("Content-Type", "")
+                    if "image" not in content_type:
+                        _logger.warning(f"NOT AN IMAGE → {content_type}")
+                        continue
+
+                    content = res.raw.read(500000, decode_content=True)
+
+                    if not content:
+                        _logger.warning("EMPTY IMAGE CONTENT")
+                        continue
+
+                    vals['image_1920'] = base64.b64encode(content).decode("utf-8")
+
+                    _logger.warning("IMAGE STORED SUCCESSFULLY")
+
+                except Exception as e:
+                    _logger.warning(f"IMAGE FAILED → {str(e)}")
+
+            else:
+                _logger.warning(f"NO VALID IMAGE URL → {image_url}")
+
+            # ================= CREATE =================
+            try:
+                _logger.warning(
+                    f"[URL CREATE PRODUCT] → "
+                    f"NAME={name} | "
+                    f"VENDOR_ID={vendor_id}"
+                )
+
+                # product_obj.create(vals)
+                product = product_obj.with_context(
+                    mail_create_nolog=True,
+                    mail_notify_force_send=False,
+                    tracking_disable=True
+                ).create(vals)
+
+                self._apply_product_translation(product)
+
+                # =========================================
+                # URL VARIANTS
+                # =========================================
+
+                variants = product_data.get(
+                    "variants",
+                    []
+                )
+
+
+                # =========================================
+                # FALLBACK VARIANT
+                # =========================================
+
+                if not variants:
+
+                    variants = [{
+
+                        "attributes": {
+
+                            "Variant": name
+                        }
+
+                    }]
+
+
+                # =========================================
+                # PROCESS VARIANTS
+                # =========================================
+
+                for variant in variants:
+
+                    attributes = variant.get(
+                        "attributes",
+                        {}
+                    )
+
+
+                    for attr_name, attr_value in attributes.items():
+
+
+                        if not attr_value:
+                            continue
+
+
+                        attr_value = str(attr_value).strip()
+
+
+                        # =====================================
+                        # NORMALIZE BAD VARIANTS
+                        # =====================================
+
+                        bad_variants = [
+
+                            'variant 1',
+
+                            'variant 2',
+
+                            'variant 3',
+
+                            'default',
+
+                            'option a',
+
+                            'option b'
+                        ]
+
+
+                        if attr_value.lower() in bad_variants:
+
+                            attr_name = "Design"
+
+                            attr_value = name
+
+
+                        # =====================================
+                        # ATTRIBUTE
+                        # =====================================
+
+                        attribute = self.env[
+                            'product.attribute'
+                        ].search([
+
+                            ('name', '=', attr_name)
+
+                        ], limit=1)
+
+                        # =====================================
+                        # TRANSLATE ATTRIBUTE NAME
+                        # =====================================
+
+                        try:
+
+                            for lang_code in [
+
+                                'ru_RU',
+
+                                'az_AZ'
+                            ]:
+
+                                translated_attr = self._force_translate(
+
+                                    str(attr_name),
+
+                                    lang_code
+                                )
+
+
+                                if translated_attr:
+
+                                    attribute.with_context(
+                                        lang=lang_code
+                                    ).write({
+
+                                        'name': translated_attr
+                                    })
+
+
+                                    _logger.warning(
+
+                                        f"[URL ATTRIBUTE TRANSLATED] "
+
+                                        f"{attr_name} "
+
+                                        f"-> "
+
+                                        f"{translated_attr} "
+
+                                        f"({lang_code})"
+                                    )
+
+                        except Exception as e:
+
+                            _logger.warning(
+
+                                f"[URL ATTRIBUTE TRANSLATION ERROR] "
+
+                                f"{str(e)}"
+                            )
+
+
+                        if not attribute:
+
+                            attribute = self.env[
+                                'product.attribute'
+                            ].create({
+
+                                'name': attr_name
+                            })
+
+
+                        # =====================================
+                        # ATTRIBUTE VALUE
+                        # =====================================
+
+                        value = self.env[
+                            'product.attribute.value'
+                        ].search([
+
+                            ('name', '=', attr_value),
+
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
+
+                        ], limit=1)
+
+
+                        if not value:
+
+                            value = self.env[
+                                'product.attribute.value'
+                            ].create({
+
+                                'name': attr_value,
+
+                                'attribute_id':
+                                    attribute.id
+                            })
+
+
+                            # =================================
+                            # TRANSLATE VARIANT VALUE
+                            # =================================
+
+                            try:
+
+                                for lang_code in [
+
+                                    'ru_RU',
+
+                                    'az_AZ'
+                                ]:
+
+                                    translated_variant = (
+
+                                        self._force_translate(
+
+                                            str(attr_value),
+
+                                            lang_code
+                                        )
+                                    )
+
+
+                                    if translated_variant:
+
+                                        value.with_context(
+                                            lang=lang_code
+                                        ).write({
+
+                                            'name':
+                                                translated_variant
+                                        })
+
+
+                                        _logger.warning(
+
+                                            f"[URL VARIANT TRANSLATED] "
+
+                                            f"{attr_value} "
+
+                                            f"-> "
+
+                                            f"{translated_variant} "
+
+                                            f"({lang_code})"
+                                        )
+
+                            except Exception as e:
+
+                                _logger.warning(
+
+                                    f"[URL VARIANT TRANSLATION ERROR] "
+
+                                    f"{str(e)}"
+                                )
+
+
+                        # =====================================
+                        # ATTRIBUTE LINE
+                        # =====================================
+
+                        line = self.env[
+                            'product.template.attribute.line'
+                        ].search([
+
+                            (
+                                'product_tmpl_id',
+                                '=',
+                                product.id
+                            ),
+
+                            (
+                                'attribute_id',
+                                '=',
+                                attribute.id
+                            )
+
+                        ], limit=1)
+
+
+                        if not line:
+
+                            self.env[
+                                'product.template.attribute.line'
+                            ].create({
+
+                                'product_tmpl_id':
+                                    product.id,
+
+                                'attribute_id':
+                                    attribute.id,
+
+                                'value_ids': [(6, 0, [
+
+                                    value.id
+
+                                ])]
+                            })
+
+                        else:
+
+                            if (
+
+                                value.id
+
+                                not in
+
+                                line.value_ids.ids
+
+                            ):
+
+                                line.value_ids = [
+
+                                    (4, value.id)
+
+                                ]
+               
+                created_count += 1
+
+            except Exception as e:
+                _logger.error(f"CREATE FAILED → {name} | {str(e)}")
+                skipped_count += 1
+                continue
+
+            if created_count % 10 == 0:
+                self._safe_commit_progress()
+
+        # ================= SAVE PROGRESS =================
+        self.last_processed_product_index = end_index
+
+        _logger.warning(f"CREATED THIS RUN → {created_count}")
+        _logger.warning(f"SKIPPED THIS RUN → {skipped_count}")
+        _logger.warning(f"NEXT START INDEX → {self.last_processed_product_index}")
+
+        if self.last_processed_product_index >= TOTAL_PRODUCTS:
+            _logger.warning("ALL PRODUCTS CREATED ✅")
+            self.state = "done"
+        else:
+            _logger.warning("MORE PRODUCTS REMAIN → CONTINUE CREATION")
+            self.state = "url_creating"
+
+        self._safe_commit_progress()
+
+    #-----URL API FLOW-------------------------------------------
+
+    def scrape_with_playwright(self):
+
+        from playwright.sync_api import sync_playwright
+        import subprocess
+        import os
+
+        _logger.warning(f"PLAYWRIGHT SCRAPE → {self.data_url}")
+
+        #✅ CHECK IF BROWSER EXISTS FIRST
+        browser_path = os.path.expanduser("~/.cache/ms-playwright")
+
+        if not os.path.exists(browser_path):
+            _logger.warning("PLAYWRIGHT → INSTALLING BROWSER (FIRST RUN)")
+
+            try:
+                subprocess.run(
+                    ["python", "-m", "playwright", "install", "chromium"],
+                    check=True
+                )
+                _logger.warning("PLAYWRIGHT BROWSER INSTALLED")
+            except Exception as e:
+                _logger.error(f"PLAYWRIGHT INSTALL FAILED → {str(e)}")
+                return
+
+        products = []
+
+        with sync_playwright() as p:
+
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+
+            page.goto(self.data_url, timeout=60000)
+            page.wait_for_timeout(5000)
+
+            # ✅ Cookie handling
+            try:
+                page.locator("button:has-text('Accept')").click(timeout=3000)
+            except:
+                pass
+
+            items = page.query_selector_all("a, div")
+
+            _logger.warning(f"PLAYWRIGHT ELEMENTS FOUND → {len(items)}")
+
+            for item in items[:200]:
+
+                try:
+                    text = item.inner_text().strip()
+
+                    if not text or len(text) < 5:
+                        continue
+
+                    img_el = item.query_selector("img")
+                    img_url = img_el.get_attribute("src") if img_el else None
+
+                    if img_url and img_url.startswith("//"):
+                        img_url = "https:" + img_url
+
+                    img_base64 = None
+
+                    if img_url:
+                        try:
+                            res = requests.get(img_url, timeout=10)
+                            if res.status_code == 200:
+                                img_base64 = base64.b64encode(res.content).decode("utf-8")
+                        except:
+                            pass
+
+                    products.append({
+                        "name": text[:120],
+                        "image": img_base64
+                    })
+
+                except:
+                    continue
+
+            browser.close()
+
+        _logger.warning(f"PLAYWRIGHT PRODUCTS → {len(products)}")
+
+        if not products:
+            _logger.error("PLAYWRIGHT FAILED → NO PRODUCTS")
+            return
+
+        pages = [{
+            "page": 1,
+            "text": "\n".join([p["name"] for p in products]),
+            "images": [p["image"] for p in products if p["image"]]
+        }]
+
+        self.extracted_text = json.dumps(pages)
+
+        _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
+
+    
+    #======apify url fetch/scrapp products=====================
+    
+    def _run_apify_actor(self, url):
+
+        token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
+
+        _logger.warning(
+            f"[APIFY DEBUG] "
+            f"url={url} | "
+            f"run_id={self.apify_run_id} | "
+            f"dataset_id={self.apify_dataset_id}"
+        )
+
+        if not token:
+            raise Exception("Apify API token not configured")
+
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
+
+        # =====================================================
+        # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
+        # =====================================================
+
+        if not getattr(self, "apify_run_id", False):
+
+            run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
+
+            payload = {
+                "startUrls": [{"url": url}]
+            }
+
+            _logger.warning(
+                f"[APIFY START PAYLOAD] {payload}"
+            )
+
+            headers = {
+                "Content-Type": "application/json"
+            }
+
+            response = requests.post(run_url, json=payload, headers=headers, timeout=30)
+
+            if response.status_code != 201:
+                raise Exception(f"Apify run failed: {response.text}")
+
+            run_data = response.json()
+ 
+            _logger.warning(
+                f"[APIFY RUN CREATED] "
+                f"url={url} | "
+                f"run_id={run_data['data']['id']} | "
+                f"dataset={run_data['data']['defaultDatasetId']}"
+            )
+
+            # ✅ SAVE FOR NEXT CRON
+            self.apify_run_id = run_data["data"]["id"]
+            self.apify_dataset_id = run_data["data"]["defaultDatasetId"]
+
+            _logger.warning(f"APIFY STARTED → RUN ID {self.apify_run_id}")
+
+            # 🔥 IMPORTANT: STOP HERE (NON-BLOCKING)
+
+            _logger.warning(
+                f"[APIFY WAITING] "
+                f"url={url} "
+                f"| run_id={self.apify_run_id}"
+            )
+            return None
+
+        # =====================================================
+        # 🔥 STEP 2: CHECK STATUS
+        # =====================================================
+
+        status_url = f"https://api.apify.com/v2/actor-runs/{self.apify_run_id}?token={token}"
+
+        status_res = requests.get(status_url, timeout=20).json()
+        status = status_res["data"]["status"]
+
+        _logger.warning(f"APIFY STATUS → {status}")
+
+        if status in ["RUNNING", "READY"]:
+            _logger.warning("APIFY STILL RUNNING → WAIT NEXT CRON")
+            return None
+
+        if status in ["FAILED", "ABORTED", "TIMED-OUT"]:
+            raise Exception(f"Apify run failed with status: {status}")
+
+        # =====================================================
+        # 🔥 STEP 3: FETCH DATA (ONLY WHEN DONE)
+        # =====================================================
+
+        dataset_url = f"https://api.apify.com/v2/datasets/{self.apify_dataset_id}/items"
+
+        params = {
+            "token": token,
+            "limit": 1000,
+            "clean": "true"
+        }
+
+        dataset_res = requests.get(dataset_url, params=params, timeout=30)
+
+        if dataset_res.status_code != 200:
+            raise Exception(f"Failed to fetch dataset: {dataset_res.text}")
+
+
+        data = dataset_res.json()
+        
+        _logger.warning(
+            f"[APIFY DATASET FETCH] "
+            f"url={url} | "
+            f"run_id={self.apify_run_id} | "
+            f"dataset={self.apify_dataset_id}"
+        )
+
+        _logger.warning(
+
+            f"[APIFY DATASET RETURN] "
+
+            f"url={url} | "
+
+            f"dataset_id={self.apify_dataset_id} | "
+
+            f"items={len(data)}"
+        )
+
+        if data:
+
+            _logger.warning(
+
+                "[APIFY FIRST RECORD]\n%s"
+
+                % json.dumps(
+                    data[0],
+                    indent=4,
+                    default=str
+                )
+            )
+
+        _logger.warning(
+            f"APIFY ITEMS FETCHED → {len(data)}"
+        )
+
+        if not data:
+            _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
+
+            self.state = 'done'   # 🔥 STOP LOOP COMPLETELY
+            self._safe_commit_progress()
+            return
+
+        # 🔥 CLEAN UP (IMPORTANT)
+        self.apify_run_id = False
+        self.apify_dataset_id = False
+
+        return data
+
 
     # =========== PDF OPENAI BACKUP ================================
     
@@ -4782,7 +6205,6 @@ class VendorImportJob(models.Model):
             raise Exception(
                 "OpenAI API key not configured"
             )
-
 
         client = OpenAI(
             api_key=api_key
@@ -4964,6 +6386,38 @@ class VendorImportJob(models.Model):
                 or
                 "[]"
             )
+
+            page_image = ""
+            page_width = 0
+            page_height = 0
+
+            for block in page_blocks:
+
+                if block.get("page_image"):
+
+                    page_image = block.get(
+                        "page_image"
+                    )
+
+                    page_width = block.get(
+                        "page_width",
+                        0
+                    )
+
+                    page_height = block.get(
+                        "page_height",
+                        0
+                    )
+
+                    _logger.warning(
+                        f"[AI PAGE IMAGE] "
+                        f"exists={bool(page_image)} "
+                        f"size={len(page_image) if page_image else 0} "
+                        f"width={page_width} "
+                        f"height={page_height}"
+                    )
+
+                    break
 
             for block in page_blocks:
 
@@ -5194,10 +6648,10 @@ class VendorImportJob(models.Model):
                 ] = p
 
 
+
             existing_map[
                 next_record.page_number
             ] = {
-
                 "page": next_record.page_number,
 
                 "products": [],
@@ -5206,7 +6660,13 @@ class VendorImportJob(models.Model):
 
                 "failed": True,
 
-                "reason": "no_valid_images"
+                "reason": "no_valid_images",
+
+                "page_image": page_image,
+
+                "page_width": page_width,
+
+                "page_height": page_height
             }
 
             combined_pages = sorted(
@@ -5234,6 +6694,79 @@ class VendorImportJob(models.Model):
             self.env.cr.commit()
 
             return
+
+        # =====================================================
+        # PRE-AI VALIDATION / RECOVERY
+        # =====================================================
+
+        page_data = {
+
+            "page": next_record.page_number,
+
+            "products": [],
+
+            "images": page_images,
+
+            "page_image": page_image,
+
+            "page_width": page_width,
+
+            "page_height": page_height
+        }
+
+        # family = self._prepare_product_family(
+        #     product_data,
+        #     asset_pool,
+        #     page_data
+        # )
+
+        validation = self._validate_extraction_quality(
+            page_data
+        )
+
+        page_data["validation"] = validation
+
+        page_data["recovery_required"] = (
+            not validation["passed"]
+        )
+
+        _logger.warning(
+            f"[VALIDATION] "
+            f"passed={validation['passed']} "
+            f"score={validation['score']} "
+            f"reasons={validation['reasons']}"
+        )
+
+        if page_data["recovery_required"]:
+
+            _logger.warning(
+                "[RECOVERY REQUIRED]"
+            )
+
+            recovery = self._ai_catalogue_recovery(
+                page_data
+            )
+
+            if recovery:
+
+                old_count = len(page_images)
+
+                page_images = recovery.get(
+                    "images",
+                    page_images
+                )
+
+                for idx, asset in enumerate(page_images):
+
+                    if isinstance(asset, dict):
+
+                        asset["clean_index"] = idx
+
+                _logger.warning(
+                    f"[RECOVERY APPLIED] "
+                    f"old_images={old_count} "
+                    f"new_images={len(page_images)}"
+                )
 
         page_price = ""
 
@@ -6072,6 +7605,7 @@ class VendorImportJob(models.Model):
                         p.get("page")
                     ] = p
 
+
                 existing_map[
                     next_record.page_number
                 ] = {
@@ -6082,8 +7616,15 @@ class VendorImportJob(models.Model):
 
                     "images": [],
 
-                    "failed": True
+                    "failed": True,
+
+                    "page_image": page_image,
+
+                    "page_width": page_width,
+
+                    "page_height": page_height
                 }
+
 
                 combined_pages = sorted(
 
@@ -6134,6 +7675,7 @@ class VendorImportJob(models.Model):
                         p.get("page")
                     ] = p
 
+
                 existing_map[
                     next_record.page_number
                 ] = {
@@ -6144,9 +7686,16 @@ class VendorImportJob(models.Model):
 
                     "images": [],
 
-                    "failed": True
+                    "failed": True,
+
+                    "page_image": page_image,
+
+                    "page_width": page_width,
+
+                    "page_height": page_height
                 }
 
+            
                 combined_pages = sorted(
 
                     list(existing_map.values()),
@@ -6311,9 +7860,14 @@ class VendorImportJob(models.Model):
 
             "products": parsed,
 
-            "images": page_images
-        }
+            "images": page_images,
 
+            "page_image": page_image,
+
+            "page_width": page_width,
+
+            "page_height": page_height
+        }
 
         combined_pages = sorted(
 
@@ -6324,8 +7878,7 @@ class VendorImportJob(models.Model):
                 0
             )
         )
-
-
+        
         # =====================================================
         # SAVE
         # =====================================================
@@ -6390,688 +7943,7 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-
-
    
-    #===========Excel Open AI================================
-    
-    def send_to_openai_excel(self):
-
-        import json
-
-        api_key = self.env[
-            'ir.config_parameter'
-        ].sudo().get_param(
-            'openai.api.key'
-        )
-
-        if not api_key:
-
-            raise Exception(
-                "OpenAI API key not configured"
-            )
-
-
-        client = OpenAI(
-            api_key=api_key
-        )
-
-
-        _logger.warning(
-            "[EXCEL AI] START"
-        )
-
-
-        # =====================================================
-        # LOAD EXTRACTED DATA
-        # =====================================================
-
-        try:
-
-            pages = json.loads(
-                self.extracted_text or "[]"
-            )
-
-        except Exception as e:
-
-            _logger.error(
-
-                f"[EXCEL AI] "
-
-                f"INVALID extracted_text JSON "
-
-                f"| {str(e)}"
-            )
-
-            return
-
-
-        if not pages:
-
-            _logger.error(
-                "[EXCEL AI] NO ROWS TO PROCESS"
-            )
-
-            return
-
-
-        _logger.warning(
-
-            f"[EXCEL AI] "
-
-            f"TOTAL ROWS={len(pages)}"
-        )
-
-
-        # =====================================================
-        # BATCH
-        # =====================================================
-
-        BATCH_SIZE = 5
-
-        start = (
-            self.excel_ai_index or 0
-        )
-
-        end = min(
-
-            start + BATCH_SIZE,
-
-            len(pages)
-        )
-
-
-        batch = pages[start:end]
-
-
-        _logger.warning(
-
-            f"[EXCEL AI BATCH] "
-
-            f"{start} → {end}"
-        )
-
-
-        # =====================================================
-        # LOAD EXISTING PRODUCTS
-        # =====================================================
-
-        existing_products = []
-
-
-        if self.ai_response:
-
-            try:
-
-                existing_ai = json.loads(
-                    self.ai_response
-                )
-
-                if (
-                    isinstance(existing_ai, list)
-                    and existing_ai
-                ):
-
-                    existing_products = (
-                        existing_ai[0].get(
-                            "products",
-                            []
-                        )
-                    )
-
-
-                _logger.warning(
-
-                    f"[EXCEL AI] "
-
-                    f"EXISTING PRODUCTS="
-
-                    f"{len(existing_products)}"
-                )
-
-            except Exception as e:
-
-                _logger.warning(
-
-                    f"[EXCEL AI] "
-
-                    f"FAILED LOAD EXISTING "
-
-                    f"| {str(e)}"
-                )
-
-                existing_products = []
-
-
-        new_products = []
-
-
-        # =====================================================
-        # PROCESS ROWS
-        # =====================================================
-
-        for idx, row in enumerate(
-
-            batch,
-
-            start=start
-
-        ):
-
-            try:
-
-                row_text = row.get(
-                    "text",
-                    ""
-                )
-
-                row_price = row.get(
-                    "price",
-                    ""
-                )
-
-                row_stock = row.get(
-                    "stock",
-                    ""
-                )
-
-                images = row.get(
-                    "images",
-                    []
-                )
-
-
-                _logger.warning(
-
-                    f"[EXCEL AI ROW] "
-
-                    f"idx={idx} "
-
-                    f"| images={len(images)}"
-                )
-
-                prompt = f"""
-                You are a structured Excel product parser.
-
-                Each input represents EXACTLY ONE ROW = ONE PRODUCT.
-
-                =====================================
-                COLUMN UNDERSTANDING (CRITICAL)
-                =====================================
-
-                The row could contain mixed values like:
-
-                - ID (e.g. 94601, 12345)
-                - Range (e.g. 2-66, 11-00)
-                - Stock numbers
-                - Prices
-                - Links (http...)
-                - Image references
-
-                YOU MUST:
-
-                1. IDENTIFY PRODUCT ID
-                - Usually numeric (e.g. 94601)
-                - Column name may vary:
-                    - KOD
-                    - SKU
-                    - ID
-                    - CODE
-
-                2. IDENTIFY PRODUCT NAME
-                - MUST NOT be:
-                    - pure numbers
-                    - ranges
-                    - links
-                    - dates
-                    - headers
-
-                - Product names should describe the ACTUAL product type.
-
-               GOOD:
-                - Sports Bottle
-                - Metal Pen
-                - Travel Mug
-                - Drawstring Bag
-
-                If the Excel already contains a valid product name:
-                - preserve and use it
-
-                If the Excel does NOT contain a real product name:
-                - intelligently generate one using:
-                    - Product <ID>
-                    - category clues
-                    - image appearance
-                    - surrounding row data
-
-                Fallback naming is allowed when necessary.
-
-                GOOD fallback examples:
-                - Product 94601
-                - Bottle 94646
-                - Pen 92070
-
-                However:
-
-                If rows belong to the SAME variant_group,
-                you MUST still detect and extract the REAL variant difference.
-
-                Example:
-
-                Parent:
-                Product 94646
-
-                Variants:
-                - White
-                - Orange
-                - Black
-
-                DO NOT return:
-                - Variant 1
-                - Variant 2
-
-                when a real difference can be visually or textually identified.
-                
-                =====================================
-                VARIANT GROUPING (VERY IMPORTANT)
-                =====================================
-
-                - SAME ID = SAME variant_group
-                - DIFFERENT ID = DIFFERENT PRODUCT
-                - NEVER leave variant_group empty
-
-                Rows sharing the same:
-                - ID
-                - grouped code
-                - SKU group
-
-                should be treated as variants of ONE parent product.
-
-                 =====================================
-                VARIANT DETECTION
-                =====================================
-
-                If rows share same PRODUCT ID:
-
-                → they belong to the SAME product family.
-
-                IMPORTANT:
-
-                Use PRODUCT IMAGES as the PRIMARY
-                source for identifying variants.
-
-                Look for visual differences such as:
-
-                - color
-                - material
-                - finish
-                - lid type
-                - texture
-                - shape
-                - capacity
-                - packaging
-
-                THEN use nearby codes/numbers
-                as supporting evidence.
-
-                Example:
-
-                Rows may contain:
-
-                106
-                103
-                128
-
-                These MAY represent:
-                - color codes
-                - material codes
-                - size codes
-
-                DO NOT assume globally.
-
-                Infer meaning from:
-                - image differences
-                - repeated patterns
-                - product appearance
-
-                If uncertain:
-
-                Use safe fallback:
-
-                "attributes": {{
-                    "Vendor Code": "106"
-                }}
-
-                NEVER return:
-                - Variant 1
-                - Variant 2
-                - Variant 3
-
-                ALWAYS return meaningful attributes.
-
-                =====================================
-                VISUAL DIFFERENCE DETECTION
-                =====================================
-
-                If product images exist:
-
-                You MUST visually inspect the images
-                to identify the distinguishing feature.
-
-                Example:
-
-                If grouped products show:
-                - white bottle
-                - orange bottle
-                - black bottle
-
-                Return:
-
-                {{
-                    "name": "Sports Bottle",
-                    "color": "White"
-                }}
-
-                {{
-                    "name": "Sports Bottle",
-                    "color": "Orange"
-                }}
-
-                DO NOT return:
-                - Variant 1
-                - Variant 2
-                - Product 94601
-
-                =====================================
-                PARENT PRODUCT CONSISTENCY
-                =====================================
-
-                When multiple rows belong to the same
-                variant_group:
-
-                - The parent product name MUST remain consistent.
-                - ONLY the variant fields should change.
-
-                GOOD:
-
-                Sports Bottle
-                → White
-                → Orange
-                → Black
-
-                BAD:
-
-                White Bottle
-                Orange Bottle
-                Black Bottle
-
-                =====================================
-                ATTRIBUTE EXTRACTION
-                =====================================
-
-                Put distinguishing values into:
-
-                - color
-                - material
-                - size
-                - capacity
-                - style
-
-                Only use generic "Variant"
-                if absolutely no real difference can be detected.
-
-                =====================================
-                PRICE & STOCK
-                =====================================
-
-                - Extract numeric price carefully
-                - Extract stock carefully
-                - Ignore ranges like:
-                    - 2-66
-                    - 11-00
-
-                =====================================
-                LINKS
-                =====================================
-
-                If a row contains a product URL:
-                - preserve it
-                - never use URL as product name
-
-                =====================================
-                OUTPUT FORMAT
-                =====================================
-
-                [
-                    {{
-                        "name": "",
-                        "description": "",
-                        "category": "",
-                        "price": "",
-                        "stock": "",
-                        "variant_group": "",
-                        "color": "",
-                        "material": "",
-                        "size": "",
-                        "capacity": "",
-                        "style": "",
-                        "url": "",
-                        "variants": [
-                            {{
-                                "attributes": {{
-                                    "Variant": ""
-                                }},
-                                "image_index": 0,
-                                "stock": null
-                            }}
-                        ]
-                    }}
-                ]
-
-                =====================================
-                IMPORTANT RULES
-                =====================================
-
-                - Return ONLY valid JSON
-                - No markdown
-                - No explanations
-                - No comments
-                - No trailing commas
-
-                ROW TEXT:
-                {row_text}
-
-                DETECTED PRICE:
-                {row_price}
-
-                DETECTED STOCK:
-                {row_stock}
-                """
-
-
-                response = client.responses.create(
-
-                    model="gpt-4.1-mini",
-
-                    input=prompt,
-
-                    timeout=60
-                )
-
-
-                result = (
-                    response.output_text or ""
-                ).strip()
-
-
-                result = result.replace(
-                    "```json",
-                    ""
-                )
-
-                result = result.replace(
-                    "```",
-                    ""
-                ).strip()
-
-
-                if not result:
-
-                    raise Exception(
-                        "EMPTY AI RESPONSE"
-                    )
-
-
-                parsed = json.loads(
-                    result
-                )
-
-
-                if (
-
-                    isinstance(parsed, list)
-
-                    and parsed
-
-                ):
-
-                    parsed = parsed[0]
-
-
-                if not isinstance(
-                    parsed,
-                    dict
-                ):
-
-                    _logger.warning(
-
-                        f"[EXCEL AI] "
-
-                        f"INVALID STRUCTURE "
-
-                        f"| idx={idx}"
-                    )
-
-                    continue
-
-
-                # =================================================
-                # IMAGE
-                # =================================================
-
-                if images:
-
-                    parsed["image"] = (
-                        images[0]
-                    )
-
-
-                # =================================================
-                # DEBUG
-                # =================================================
-
-                _logger.warning(
-
-                    f"[EXCEL AI PRODUCT] "
-
-                    f"name={parsed.get('name')} "
-
-                    f"| group={parsed.get('variant_group')}"
-                )
-
-
-                new_products.append(
-                    parsed
-                )
-
-
-            except Exception as e:
-
-                _logger.exception(
-
-                    f"[EXCEL AI ERROR] "
-
-                    f"idx={idx} "
-
-                    f"| {str(e)}"
-                )
-
-
-        # =====================================================
-        # MERGE PRODUCTS SAFELY
-        # =====================================================
-
-        combined_products = (
-            existing_products
-            +
-            new_products
-        )
-
-
-        _logger.warning(
-
-            f"[EXCEL AI MERGE] "
-
-            f"existing={len(existing_products)} "
-
-            f"| new={len(new_products)} "
-
-            f"| total={len(combined_products)}"
-        )
-
-
-        # =====================================================
-        # SAVE
-        # =====================================================
-
-        self.ai_response = json.dumps([{
-
-            "page": 1,
-
-            "products": combined_products
-
-        }])
-
-
-        self.excel_ai_index = end
-
-
-        _logger.warning(
-
-            f"[EXCEL AI SAVE] "
-
-            f"{self.excel_ai_index}/"
-
-            f"{len(pages)}"
-        )
-
-
-        # =====================================================
-        # NEXT STATE
-        # =====================================================
-
-        if end < len(pages):
-
-            self.state = "excel_ai"
-
-        else:
-
-            _logger.warning(
-                "[EXCEL AI COMPLETE]"
-            )
-
-            self.state = (
-                "excel_creating"
-            )
-
-
-        self.flush_recordset()
-
-        self.env.cr.commit()
-
-        return
-    
-
     # =====================================================
     # REMOVE TEXT AREAS
     # =====================================================
@@ -7888,12 +8760,35 @@ class VendorImportJob(models.Model):
 
                 ratio = width / float(max(height, 1))
 
+                recovered = (
+
+                    asset.get(
+                        "recovered",
+                        False
+                    )
+
+                    if isinstance(asset, dict)
+
+                    else False
+                )
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
 
                 # tall portrait images
-                if ratio < 0.72 and height > width * 1.20:
+                if (
+
+                    not recovered
+
+                    and
+
+                    ratio < 0.72
+
+                    and
+
+                    height > width * 1.20
+
+                ):
 
                     _logger.warning(
 
@@ -11058,546 +11953,6 @@ class VendorImportJob(models.Model):
         except:
             return self._force_translate(text, lang)
 
-
-    # ================= PRODUCT CREATION URL ================
-
-    def create_products_url(self):
-
-        import requests
-        import base64
-        import json
-
-        if not self.ai_response:
-            _logger.warning("NO AI RESPONSE")
-            return
-
-        product_obj = self.env['product.template']
-        category_obj = self.env['product.category']
-
-        try:
-            products = json.loads(self.ai_response)
-
-            if isinstance(products, dict):
-                products = [products]
-
-        except Exception as e:
-            _logger.error(f"INVALID AI JSON → {str(e)}")
-            return
-
-        TOTAL_PRODUCTS = len(products)
-        start_index = self.last_processed_product_index or 0
-
-        _logger.warning(f"TOTAL AI PRODUCTS → {TOTAL_PRODUCTS}")
-        _logger.warning(f"START INDEX → {start_index}")
-
-        created_count = 0
-        skipped_count = 0
-
-        MAX_PRODUCTS_PER_RUN = 5
-
-        CATEGORY_MAPPING = {
-            "t-shirt": "Apparel",
-            "shirt": "Apparel",
-            "polo": "Apparel",
-            "bag": "Bags",
-            "backpack": "Bags",
-            "cap": "Headwear",
-            "hat": "Headwear",
-            "bottle": "Drinkware",
-            "cup": "Drinkware",
-            "drinkware": "Drinkware",
-            "pen": "Stationery",
-            "notebook": "Stationery",
-            "powerbank": "Electronics",
-            "charger": "Electronics",
-            "laptop": "Electronics",
-            "football": "Football Fever",
-            "Wristband": "Football Fever",
-            "sports t-shirt": "Football Fever",
-            "sports towel": "Football Fever",
-            "Sports Bottles": "Football Fever"
-        }
-
-        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
-        #vendor_id = self.partner_id.id if self.partner_id else False
-        vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
-
-        if not parent_category:
-            parent_category = category_obj.create({'name': "All Products"})
-
-        end_index = min(start_index + MAX_PRODUCTS_PER_RUN, TOTAL_PRODUCTS)
-
-        _logger.warning(f"PROCESSING RANGE → {start_index} to {end_index}")
-
-        for idx in range(start_index, end_index):
-
-            product_data = products[idx]
-
-            name = product_data.get("name")
-            if not name:
-                skipped_count += 1
-                continue
-
-            description = product_data.get("description", "")
-            raw_category = (product_data.get("category") or "").lower()
-
-            # ================= CATEGORY =================
-            mapped_category = "General"
-            for key, val in CATEGORY_MAPPING.items():
-                if key in raw_category:
-                    mapped_category = val
-                    break
-
-            category = category_obj.search([
-                ('name', '=ilike', mapped_category),
-                ('parent_id', '=', parent_category.id)
-            ], limit=1)
-
-            if not category:
-                category = category_obj.create({
-                    'name': mapped_category,
-                    'parent_id': parent_category.id
-                })
-
-            # ================= FINGERPRINT=================
-
-            variant_group = (
-
-                product_data.get("variant_group")
-
-                or
-
-                name
-            )
-
-            variant_group = str(
-                variant_group
-            ).strip().upper()
-
-
-            vendor_fingerprint = (
-                f"{vendor_id}_{variant_group}"
-            )
-
-
-            # ================= DUPLICATE CHECK =================
-
-            existing = product_obj.search([
-
-                (
-                    'vendor_fingerprint',
-                    '=',
-                    vendor_fingerprint
-                )
-
-            ], limit=1)
-
-
-            if existing:
-
-                _logger.warning(
-
-                    f"[URL DUPLICATE SKIP] "
-
-                    f"{vendor_fingerprint}"
-                )
-
-                skipped_count += 1
-
-                continue
-
-            vals = {
-                'name': name.strip(),
-                'description_sale': description,
-                'type': 'consu',
-                'categ_id': category.id,
-                'sale_ok': True,
-                'website_published': False,
-                'vendor_id': vendor_id,
-                'vendor_fingerprint': vendor_fingerprint,
-                'vendor_import_job_id': self.id,
-            }
-
-            # ================= IMAGE =================
-            image_url = product_data.get("image")
-
-            if image_url and isinstance(image_url, str) and image_url.startswith("http"):
-
-                try:
-                    _logger.warning(f"FETCHING IMAGE → {image_url}")
-
-                    res = requests.get(image_url, timeout=5, stream=True)
-
-                    if res.status_code != 200:
-                        _logger.warning(f"IMAGE HTTP ERROR → {res.status_code}")
-                        continue
-
-                    content_type = res.headers.get("Content-Type", "")
-                    if "image" not in content_type:
-                        _logger.warning(f"NOT AN IMAGE → {content_type}")
-                        continue
-
-                    content = res.raw.read(500000, decode_content=True)
-
-                    if not content:
-                        _logger.warning("EMPTY IMAGE CONTENT")
-                        continue
-
-                    vals['image_1920'] = base64.b64encode(content).decode("utf-8")
-
-                    _logger.warning("IMAGE STORED SUCCESSFULLY")
-
-                except Exception as e:
-                    _logger.warning(f"IMAGE FAILED → {str(e)}")
-
-            else:
-                _logger.warning(f"NO VALID IMAGE URL → {image_url}")
-
-            # ================= CREATE =================
-            try:
-                _logger.warning(
-                    f"[URL CREATE PRODUCT] → "
-                    f"NAME={name} | "
-                    f"VENDOR_ID={vendor_id}"
-                )
-
-                # product_obj.create(vals)
-                product = product_obj.with_context(
-                    mail_create_nolog=True,
-                    mail_notify_force_send=False,
-                    tracking_disable=True
-                ).create(vals)
-
-                self._apply_product_translation(product)
-
-                # =========================================
-                # URL VARIANTS
-                # =========================================
-
-                variants = product_data.get(
-                    "variants",
-                    []
-                )
-
-
-                # =========================================
-                # FALLBACK VARIANT
-                # =========================================
-
-                if not variants:
-
-                    variants = [{
-
-                        "attributes": {
-
-                            "Variant": name
-                        }
-
-                    }]
-
-
-                # =========================================
-                # PROCESS VARIANTS
-                # =========================================
-
-                for variant in variants:
-
-                    attributes = variant.get(
-                        "attributes",
-                        {}
-                    )
-
-
-                    for attr_name, attr_value in attributes.items():
-
-
-                        if not attr_value:
-                            continue
-
-
-                        attr_value = str(attr_value).strip()
-
-
-                        # =====================================
-                        # NORMALIZE BAD VARIANTS
-                        # =====================================
-
-                        bad_variants = [
-
-                            'variant 1',
-
-                            'variant 2',
-
-                            'variant 3',
-
-                            'default',
-
-                            'option a',
-
-                            'option b'
-                        ]
-
-
-                        if attr_value.lower() in bad_variants:
-
-                            attr_name = "Design"
-
-                            attr_value = name
-
-
-                        # =====================================
-                        # ATTRIBUTE
-                        # =====================================
-
-                        attribute = self.env[
-                            'product.attribute'
-                        ].search([
-
-                            ('name', '=', attr_name)
-
-                        ], limit=1)
-
-                        # =====================================
-                        # TRANSLATE ATTRIBUTE NAME
-                        # =====================================
-
-                        try:
-
-                            for lang_code in [
-
-                                'ru_RU',
-
-                                'az_AZ'
-                            ]:
-
-                                translated_attr = self._force_translate(
-
-                                    str(attr_name),
-
-                                    lang_code
-                                )
-
-
-                                if translated_attr:
-
-                                    attribute.with_context(
-                                        lang=lang_code
-                                    ).write({
-
-                                        'name': translated_attr
-                                    })
-
-
-                                    _logger.warning(
-
-                                        f"[URL ATTRIBUTE TRANSLATED] "
-
-                                        f"{attr_name} "
-
-                                        f"-> "
-
-                                        f"{translated_attr} "
-
-                                        f"({lang_code})"
-                                    )
-
-                        except Exception as e:
-
-                            _logger.warning(
-
-                                f"[URL ATTRIBUTE TRANSLATION ERROR] "
-
-                                f"{str(e)}"
-                            )
-
-
-                        if not attribute:
-
-                            attribute = self.env[
-                                'product.attribute'
-                            ].create({
-
-                                'name': attr_name
-                            })
-
-
-                        # =====================================
-                        # ATTRIBUTE VALUE
-                        # =====================================
-
-                        value = self.env[
-                            'product.attribute.value'
-                        ].search([
-
-                            ('name', '=', attr_value),
-
-                            (
-                                'attribute_id',
-                                '=',
-                                attribute.id
-                            )
-
-                        ], limit=1)
-
-
-                        if not value:
-
-                            value = self.env[
-                                'product.attribute.value'
-                            ].create({
-
-                                'name': attr_value,
-
-                                'attribute_id':
-                                    attribute.id
-                            })
-
-
-                            # =================================
-                            # TRANSLATE VARIANT VALUE
-                            # =================================
-
-                            try:
-
-                                for lang_code in [
-
-                                    'ru_RU',
-
-                                    'az_AZ'
-                                ]:
-
-                                    translated_variant = (
-
-                                        self._force_translate(
-
-                                            str(attr_value),
-
-                                            lang_code
-                                        )
-                                    )
-
-
-                                    if translated_variant:
-
-                                        value.with_context(
-                                            lang=lang_code
-                                        ).write({
-
-                                            'name':
-                                                translated_variant
-                                        })
-
-
-                                        _logger.warning(
-
-                                            f"[URL VARIANT TRANSLATED] "
-
-                                            f"{attr_value} "
-
-                                            f"-> "
-
-                                            f"{translated_variant} "
-
-                                            f"({lang_code})"
-                                        )
-
-                            except Exception as e:
-
-                                _logger.warning(
-
-                                    f"[URL VARIANT TRANSLATION ERROR] "
-
-                                    f"{str(e)}"
-                                )
-
-
-                        # =====================================
-                        # ATTRIBUTE LINE
-                        # =====================================
-
-                        line = self.env[
-                            'product.template.attribute.line'
-                        ].search([
-
-                            (
-                                'product_tmpl_id',
-                                '=',
-                                product.id
-                            ),
-
-                            (
-                                'attribute_id',
-                                '=',
-                                attribute.id
-                            )
-
-                        ], limit=1)
-
-
-                        if not line:
-
-                            self.env[
-                                'product.template.attribute.line'
-                            ].create({
-
-                                'product_tmpl_id':
-                                    product.id,
-
-                                'attribute_id':
-                                    attribute.id,
-
-                                'value_ids': [(6, 0, [
-
-                                    value.id
-
-                                ])]
-                            })
-
-                        else:
-
-                            if (
-
-                                value.id
-
-                                not in
-
-                                line.value_ids.ids
-
-                            ):
-
-                                line.value_ids = [
-
-                                    (4, value.id)
-
-                                ]
-               
-                created_count += 1
-
-            except Exception as e:
-                _logger.error(f"CREATE FAILED → {name} | {str(e)}")
-                skipped_count += 1
-                continue
-
-            if created_count % 10 == 0:
-                self._safe_commit_progress()
-
-        # ================= SAVE PROGRESS =================
-        self.last_processed_product_index = end_index
-
-        _logger.warning(f"CREATED THIS RUN → {created_count}")
-        _logger.warning(f"SKIPPED THIS RUN → {skipped_count}")
-        _logger.warning(f"NEXT START INDEX → {self.last_processed_product_index}")
-
-        if self.last_processed_product_index >= TOTAL_PRODUCTS:
-            _logger.warning("ALL PRODUCTS CREATED ✅")
-            self.state = "done"
-        else:
-            _logger.warning("MORE PRODUCTS REMAIN → CONTINUE CREATION")
-            self.state = "url_creating"
-
-        self._safe_commit_progress()
-
-
     #==========create pdf product==========================================
 
     def create_products_pdf(self):
@@ -11654,14 +12009,27 @@ class VendorImportJob(models.Model):
         ]
 
 
-        stock_location = self.env[
-            'stock.location'
-        ].search([
+        warehouse = self.env[
+            'stock.warehouse'
+        ].search(
+            [],
+            limit=1
+        )
 
-            ('usage', '=', 'internal'),
-            ('active', '=', True)
+        stock_location = (
+            warehouse.lot_stock_id
+            if warehouse
+            else False
+        )
 
-        ], order='id asc', limit=1)
+        if warehouse:
+
+            _logger.warning(
+                f"[WAREHOUSE SELECTED] "
+                f"id={warehouse.id} "
+                f"name={warehouse.name} "
+                f"location={warehouse.lot_stock_id.complete_name}"
+            )
 
         CATEGORY_MAPPING = {
 
@@ -11965,6 +12333,11 @@ class VendorImportJob(models.Model):
                         f"{vendor_id}_{variant_group}"
                     )
 
+                    product_data = self._correct_variant_image_indexes(
+                        product_data,
+                        asset_pool
+                    )
+
                     product, created = (
 
                         self._get_or_create_pdf_product(
@@ -12006,112 +12379,6 @@ class VendorImportJob(models.Model):
                     else:
 
                         skipped_count += 1
-
-
-                    # =====================================
-                    # APPLY REAL INVENTORY STOCK
-                    # FOR BOTH NEW + EXISTING PRODUCTS
-                    # =====================================
-
-                    try:
-
-                        stock_qty = int(
-
-                            product_data.get(
-                                "stock_qty",
-                                0
-                            ) or 0
-                        )
-
-                        _logger.warning(
-
-                            f"[PDF STOCK DEBUG] "
-
-                            f"{product.name} "
-
-                            f"| stock_qty={stock_qty}"
-                        )
-
-                        if stock_qty > 0:
-
-                            quant = stock_quant_obj.search([
-
-                                (
-                                    'product_id',
-                                    '=',
-                                    product.product_variant_id.id
-                                ),
-
-                                (
-                                    'location_id',
-                                    '=',
-                                    stock_location.id
-                                )
-
-                            ], limit=1)
-
-                            if quant:
-
-                                quant.inventory_quantity = (
-                                    stock_qty
-                                )
-
-                                quant.action_apply_inventory()
-
-                                _logger.warning(
-
-                                    f"[STOCK UPDATED] "
-
-                                    f"{product.name} "
-
-                                    f"| qty={stock_qty}"
-                                )
-
-                            else:
-
-                                quant = stock_quant_obj.create({
-
-                                    'product_id':
-                                        product.product_variant_id.id,
-
-                                    'location_id':
-                                        stock_location.id,
-
-                                    'inventory_quantity':
-                                        stock_qty
-                                })
-
-                                quant.action_apply_inventory()
-
-                                _logger.warning(
-
-                                    f"[STOCK CREATED] "
-
-                                    f"{product.name} "
-
-                                    f"| qty={stock_qty}"
-                                )
-
-                        else:
-
-                            _logger.warning(
-
-                                f"[STOCK SKIPPED ZERO] "
-
-                                f"{product.name}"
-                            )
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"[STOCK APPLY FAILED] "
-
-                            f"{product.name} "
-
-                            f"| {str(e)}"
-                        )
-
 
                     if not variants:
 
@@ -12212,6 +12479,101 @@ class VendorImportJob(models.Model):
                     # =======================================
 
                     product._create_variant_ids()
+
+                     # =====================================
+                    # APPLY REAL INVENTORY STOCK
+                    # FOR BOTH NEW + EXISTING PRODUCTS
+                    # =====================================
+
+                    try:
+
+                        stock_qty = int(
+
+                            product_data.get(
+                                "stock_qty",
+                                0
+                            ) or 0
+                        )
+
+                        _logger.warning(
+
+                            f"[PDF STOCK DEBUG] "
+
+                            f"{product.name} "
+
+                            f"| stock_qty={stock_qty}"
+                        )
+
+                        if not stock_location:
+
+                            _logger.warning(
+                                "[STOCK SKIPPED] No warehouse stock location found"
+                            )
+
+                            continue
+
+
+                        variant = product.product_variant_id
+
+                        _logger.warning(
+                            f"[STOCK START] "
+                            f"product={product.name} "
+                            f"variant_id={variant.id} "
+                            f"location={stock_location.complete_name} "
+                            f"target_qty={stock_qty}"
+                        )
+
+                        current_qty = stock_quant_obj._get_available_quantity(
+                            variant,
+                            stock_location
+                        )
+
+                        difference = (
+                            stock_qty
+                            -
+                            current_qty
+                        )
+
+                        _logger.warning(
+                            f"[STOCK CALC] "
+                            f"current_qty={current_qty} "
+                            f"difference={difference}"
+                        )
+
+                        stock_quant_obj._update_available_quantity(
+                            variant,
+                            stock_location,
+                            difference
+                        )
+
+                        new_qty = stock_quant_obj._get_available_quantity(
+                            variant,
+                            stock_location
+                        )
+
+                        _logger.warning(
+                            f"[STOCK RESULT] "
+                            f"product={product.name} "
+                            f"new_qty={new_qty}"
+                        )
+
+                        _logger.warning(
+                            f"[STOCK UPDATED] "
+                            f"product={product.name} "
+                            f"qty={stock_qty}"
+                        )
+
+                    except Exception as e:
+
+                        _logger.warning(
+
+                            f"[STOCK APPLY FAILED] "
+
+                            f"{product.name} "
+
+                            f"| {str(e)}"
+                        )
+
 
                     used_asset_indexes = set()
 
@@ -12522,7 +12884,6 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-
     #==========pdf product PRODUCT CREATE/GET====================================
     
     def _get_or_create_pdf_product(
@@ -12826,7 +13187,6 @@ class VendorImportJob(models.Model):
         ).create(vals)
 
         return product, True
-
 
     #==========create pdf CATEGORY RESOLVER====================================
     
@@ -13152,26 +13512,6 @@ class VendorImportJob(models.Model):
             return
 
         try:
-           
-            template = variant_record.product_tmpl_id
-
-            template.write({
-
-                'type': 'product',
-
-                'allow_out_of_stock_order': True,
-
-                'show_availability': True,
-
-                'available_threshold': 1000,
-            })
-
-            _logger.warning(
-
-                f"[INVENTORY WEBSITE ENABLED] "
-
-                f"{template.name}"
-            )
 
             quant = stock_quant_obj.search([
 
@@ -13505,6 +13845,1339 @@ class VendorImportJob(models.Model):
             base.encode("utf-8")
         ).hexdigest()
 
+    #============================================================
+    #EXCEL WORKFLOW
+    #============================================================
+    #------excel parsing method----------------------------------
+    
+    def parse_excel(self):
+
+        _logger.warning(
+            "EXCEL → START PARSING (BATCH MODE)"
+        )
+
+        excel_bytes = base64.b64decode(
+            self.excel_file
+        )
+
+        wb = load_workbook(
+            filename=BytesIO(excel_bytes)
+        )
+
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+
+        pages = []
+
+        # =====================================
+        # SAFE BATCH CONTROL
+        # =====================================
+
+        BATCH_SIZE = 8
+        MAX_BUFFER = 150
+
+
+        start_index = (
+            self.excel_parse_index or 0
+        )
+
+
+        current_count = 0
+
+        global_index = 0
+
+        _logger.warning(
+            f"EXCEL RESUME FROM INDEX "
+            f"→ {start_index}"
+        )
+
+
+        # =====================================
+        # TOTAL ROWS
+        # =====================================
+
+        total_rows = 0
+
+        for sheet in wb.worksheets:
+
+            for idx, row in enumerate(
+
+                sheet.iter_rows()
+
+            ):
+
+                if idx == 0:
+                    continue
+
+                row_text_parts = [
+
+                    str(cell.value or "").strip()
+
+                    for cell in row
+
+                    if str(
+                        cell.value or ""
+                    ).strip()
+                ]
+
+                if not row_text_parts:
+                    continue
+
+                total_rows += 1
+
+
+        _logger.warning(
+            f"[DEBUG] REAL TOTAL ROWS "
+            f"→ {total_rows}"
+        )
+
+
+        # =====================================
+        # MAIN LOOP
+        # =====================================
+
+        for sheet in wb.worksheets:
+
+            _logger.warning(
+                f"PROCESSING SHEET → "
+                f"{sheet.title}"
+            )
+
+            image_loader = SheetImageLoader(
+                sheet
+            )
+
+
+            for idx, row in enumerate(
+
+                sheet.iter_rows()
+
+            ):
+
+                if idx == 0:
+                    continue
+
+
+                row_text_parts = [
+
+                    str(cell.value or "").strip()
+
+                    for cell in row
+
+                    if str(
+                        cell.value or ""
+                    ).strip()
+                ]
+
+
+                if not row_text_parts:
+                    continue
+
+                # =================================
+                # GLOBAL INDEX TRACKING
+                # =================================
+
+                global_index += 1
+
+
+                # =================================
+                # SKIP OLD ROWS
+                # =================================
+
+                if global_index <= start_index:
+                    continue
+
+
+                # =================================
+                # BATCH LIMIT
+                # =================================
+
+                if current_count >= BATCH_SIZE:
+
+                    _logger.warning(
+                        "BATCH LIMIT REACHED "
+                        "→ NEXT CRON"
+                    )
+
+                    break
+
+
+                # =================================
+                # PRICE/STOCK DETECTION
+                # =================================
+
+                price = ""
+                stock = ""
+
+                numeric_candidates = []
+
+
+                for col_idx, cell in enumerate(row):
+
+                    raw_val = str(
+                        cell.value or ""
+                    ).strip()
+
+                    if not raw_val:
+                        continue
+
+
+                    # skip ranges
+                    if (
+                        "-" in raw_val
+                        and not raw_val.startswith("-")
+                    ):
+                        continue
+
+
+                    try:
+
+                        clean = raw_val.replace(
+                            ",",
+                            "."
+                        )
+
+                        clean = re.sub(
+
+                            r"[^\d.]",
+
+                            "",
+
+                            clean
+                        )
+
+
+                        if not clean:
+                            continue
+
+
+                        num = float(clean)
+
+                        is_real_decimal = False
+
+
+                        if "." in clean:
+
+                            decimal_part = (
+                                clean.split(".")[-1]
+                            )
+
+                            if decimal_part not in [
+
+                                "0",
+
+                                "00"
+                            ]:
+
+                                is_real_decimal = True
+
+
+                        numeric_candidates.append({
+
+                            "col": col_idx,
+
+                            "num": num,
+
+                            "raw": raw_val,
+
+                            "is_decimal":
+                                is_real_decimal
+                        })
+
+                    except:
+                        continue
+
+
+                # =================================
+                # PRICE
+                # =================================
+
+                price_candidates = [
+
+                    x for x in numeric_candidates
+
+                    if (
+
+                        x["is_decimal"]
+
+                        and
+
+                        0 < x["num"] < 1000
+                    )
+                ]
+
+
+                best_price = None
+
+
+                if price_candidates:
+
+                    best_price = sorted(
+
+                        price_candidates,
+
+                        key=lambda x: x["col"]
+
+                    )[-1]
+
+                    price = str(
+                        best_price["num"]
+                    )
+
+
+                # =================================
+                # STOCK
+                # =================================
+
+                if best_price:
+
+                    price_col = (
+                        best_price["col"]
+                    )
+
+                    stock_candidates = []
+
+
+                    for item in numeric_candidates:
+
+                        if item["is_decimal"]:
+                            continue
+
+
+                        val = item["num"]
+
+
+                        if val > 9999:
+                            continue
+
+
+                        if item["col"] >= price_col:
+                            continue
+
+
+                        stock_candidates.append(
+                            item
+                        )
+
+
+                    if stock_candidates:
+
+                        best_stock = max(
+
+                            stock_candidates,
+
+                            key=lambda x: x["num"]
+                        )
+
+                        stock = str(
+
+                            int(
+                                best_stock["num"]
+                            )
+                        )
+
+
+                _logger.warning(
+                    f'''
+                    EXCEL RAW ROW →
+
+                    TEXT=
+                    {" | ".join(row_text_parts)}
+
+                    PRICE={price}
+
+                    STOCK={stock}
+                    '''
+                )
+
+
+                # =================================
+                # ROW TEXT
+                # =================================
+
+                row_text = f"""
+                ROW_DATA:
+                {" | ".join(row_text_parts)}
+
+                RULE:
+                - THIS IS EXACTLY ONE PRODUCT
+                - DO NOT SPLIT THIS ROW
+                - THIS ROW MAY BE A VARIANT
+                - USE SIMILAR ID/SKU
+                """
+
+                row_images = []
+
+
+                # ==================================
+                # EMBEDDED IMAGE
+                # ==================================
+
+                for cell in row:
+
+                    try:
+
+                        if image_loader.image_in(
+                            cell.coordinate
+                        ):
+
+                            pil_img = (
+                                image_loader.get(
+                                    cell.coordinate
+                                )
+                            )
+
+                            buffer = BytesIO()
+
+                            pil_img.save(
+                                buffer,
+                                format="JPEG"
+                            )
+
+                            img_base64 = (
+                                base64.b64encode(
+
+                                    buffer.getvalue()
+
+                                ).decode("utf-8")
+                            )
+
+                            row_images.append(
+                                img_base64
+                            )
+
+                            break
+
+                    except:
+                        continue
+
+
+                # =================================
+                # URL IMAGE
+                # =================================
+
+                if not row_images:
+
+                    for cell in row:
+
+                        val = str(
+                            cell.value or ""
+                        ).strip()
+
+                        if val.startswith("http"):
+
+                            try:
+
+                                response = requests.get(
+
+                                    val,
+
+                                    headers=headers,
+
+                                    timeout=5
+                                )
+
+                                if (
+
+                                    response.status_code
+                                    == 200
+
+                                    and
+
+                                    "image"
+
+                                    in response.headers.get(
+                                        "Content-Type",
+                                        ""
+                                    )
+                                ):
+
+                                    img_base64 = (
+                                        base64.b64encode(
+
+                                            response.content
+
+                                        ).decode("utf-8")
+                                    )
+
+                                    row_images.append(
+                                        img_base64
+                                    )
+
+                                    break
+
+                            except:
+                                continue
+
+
+                # =================================
+                # STORE
+                # =================================
+
+                pages.append({
+
+                    "page": global_index,
+
+                    "text": row_text,
+
+                    "images": row_images,
+
+                    "row_index": global_index,
+
+                    "price": price,
+
+                    "stock": stock,
+                })
+
+
+                current_count += 1
+
+
+                # =================================
+                # MEMORY SAFETY
+                # =================================
+
+                if len(pages) >= MAX_BUFFER:
+
+                    _logger.warning(
+                        f"EXCEL SAFETY BREAK "
+                        f"→ {len(pages)} rows"
+                    )
+
+                    break
+
+
+            if (
+                current_count >= BATCH_SIZE
+                or
+                len(pages) >= MAX_BUFFER
+            ):
+                break
+
+
+        # =====================================
+        # STORE
+        # =====================================
+
+        existing = []
+
+        if self.extracted_text:
+
+            try:
+
+                existing = json.loads(
+                    self.extracted_text
+                )
+
+            except:
+                existing = []
+
+
+        # combined = existing + pages
+        
+        existing_map = {
+
+            item.get("row_index"): item
+
+            for item in existing
+        }
+
+
+        for item in pages:
+
+            existing_map[
+                item.get("row_index")
+            ] = item
+
+
+        combined = sorted(
+
+            existing_map.values(),
+
+            key=lambda x: x.get(
+                "row_index",
+                0
+            )
+        )
+    
+
+        self.extracted_text = json.dumps(
+            combined
+        )
+
+
+        # =====================================
+        # SAVE PROGRESS
+        # =====================================
+
+        new_index = (
+            start_index
+            +
+            current_count
+        )
+
+        self.excel_parse_index = (
+            new_index
+        )
+
+        _logger.warning(
+
+            f"[EXCEL PARSE INDEX SAVE] "
+
+            f"{self.excel_parse_index}"
+        )
+
+
+        # =====================================
+        # DEBUG
+        # =====================================
+
+        remaining = max(
+            total_rows - new_index,
+            0
+        )
+
+        progress = round(
+
+            (new_index / total_rows) * 100,
+
+            2
+
+        ) if total_rows else 0
+
+
+        _logger.warning(
+            f"[DEBUG] CURRENT INDEX "
+            f"→ {new_index}"
+        )
+
+        _logger.warning(
+            f"[DEBUG] REMAINING ROWS "
+            f"→ {remaining}"
+        )
+
+        _logger.warning(
+            f"[DEBUG] PROGRESS "
+            f"→ {progress}%"
+        )
+
+        _logger.warning(
+            f"EXCEL NEW INDEX "
+            f"→ {new_index}"
+        )
+
+        _logger.warning(
+            f"EXCEL BATCH STORED "
+            f"→ {len(pages)} rows"
+        )
+
+
+        # =====================================
+        # COMPLETION FLAG ONLY
+        # =====================================
+
+        if new_index >= total_rows:
+
+            _logger.warning(
+                "EXCEL → PARSING COMPLETED ✅"
+            )
+
+            self.is_excel_parsed = True
+
+        else:
+
+            _logger.warning(
+                "EXCEL → MORE DATA REMAIN "
+                "→ NEXT CRON"
+            )
+
+       
+        wb.close()
+
+     # ---------------- Extract PDF ----------------
+ 
+      #===========Excel Open AI================================
+    
+
+    #======send to Open AI excel flow============================
+    def send_to_openai_excel(self):
+
+        import json
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+
+            raise Exception(
+                "OpenAI API key not configured"
+            )
+
+
+        client = OpenAI(
+            api_key=api_key
+        )
+
+
+        _logger.warning(
+            "[EXCEL AI] START"
+        )
+
+
+        # =====================================================
+        # LOAD EXTRACTED DATA
+        # =====================================================
+
+        try:
+
+            pages = json.loads(
+                self.extracted_text or "[]"
+            )
+
+        except Exception as e:
+
+            _logger.error(
+
+                f"[EXCEL AI] "
+
+                f"INVALID extracted_text JSON "
+
+                f"| {str(e)}"
+            )
+
+            return
+
+
+        if not pages:
+
+            _logger.error(
+                "[EXCEL AI] NO ROWS TO PROCESS"
+            )
+
+            return
+
+
+        _logger.warning(
+
+            f"[EXCEL AI] "
+
+            f"TOTAL ROWS={len(pages)}"
+        )
+
+
+        # =====================================================
+        # BATCH
+        # =====================================================
+
+        BATCH_SIZE = 5
+
+        start = (
+            self.excel_ai_index or 0
+        )
+
+        end = min(
+
+            start + BATCH_SIZE,
+
+            len(pages)
+        )
+
+
+        batch = pages[start:end]
+
+
+        _logger.warning(
+
+            f"[EXCEL AI BATCH] "
+
+            f"{start} → {end}"
+        )
+
+
+        # =====================================================
+        # LOAD EXISTING PRODUCTS
+        # =====================================================
+
+        existing_products = []
+
+
+        if self.ai_response:
+
+            try:
+
+                existing_ai = json.loads(
+                    self.ai_response
+                )
+
+                if (
+                    isinstance(existing_ai, list)
+                    and existing_ai
+                ):
+
+                    existing_products = (
+                        existing_ai[0].get(
+                            "products",
+                            []
+                        )
+                    )
+
+
+                _logger.warning(
+
+                    f"[EXCEL AI] "
+
+                    f"EXISTING PRODUCTS="
+
+                    f"{len(existing_products)}"
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[EXCEL AI] "
+
+                    f"FAILED LOAD EXISTING "
+
+                    f"| {str(e)}"
+                )
+
+                existing_products = []
+
+
+        new_products = []
+
+
+        # =====================================================
+        # PROCESS ROWS
+        # =====================================================
+
+        for idx, row in enumerate(
+
+            batch,
+
+            start=start
+
+        ):
+
+            try:
+
+                row_text = row.get(
+                    "text",
+                    ""
+                )
+
+                row_price = row.get(
+                    "price",
+                    ""
+                )
+
+                row_stock = row.get(
+                    "stock",
+                    ""
+                )
+
+                images = row.get(
+                    "images",
+                    []
+                )
+
+
+                _logger.warning(
+
+                    f"[EXCEL AI ROW] "
+
+                    f"idx={idx} "
+
+                    f"| images={len(images)}"
+                )
+
+
+                prompt = f"""
+                You are a structured Excel product parser.
+
+                Each input represents EXACTLY ONE ROW = ONE PRODUCT.
+
+                =====================================
+                COLUMN UNDERSTANDING (CRITICAL)
+                =====================================
+
+                The row could contain mixed values like:
+
+                - ID (e.g. 94601, 12345)
+                - Range (e.g. 2-66, 11-00)
+                - Stock numbers
+                - Prices
+                - Links (http...)
+                - Image references
+
+                YOU MUST:
+
+                1. IDENTIFY PRODUCT ID
+                - Usually numeric (e.g. 94601)
+                - Column name may vary:
+                    - KOD
+                    - SKU
+                    - ID
+                    - CODE
+
+                2. IDENTIFY PRODUCT NAME
+                - MUST NOT be:
+                    - pure numbers
+                    - ranges
+                    - links
+                    - dates
+                    - headers
+
+                - Product names should describe the ACTUAL product type.
+
+               GOOD:
+                - Sports Bottle
+                - Metal Pen
+                - Travel Mug
+                - Drawstring Bag
+
+                If the Excel already contains a valid product name:
+                - preserve and use it
+
+                If the Excel does NOT contain a real product name:
+                - intelligently generate one using:
+                    - Product <ID>
+                    - category clues
+                    - image appearance
+                    - surrounding row data
+
+                Fallback naming is allowed when necessary.
+
+                GOOD fallback examples:
+                - Product 94601
+                - Bottle 94646
+                - Pen 92070
+
+                However:
+
+                If rows belong to the SAME variant_group,
+                you MUST still detect and extract the REAL variant difference.
+
+                Example:
+
+                Parent:
+                Product 94646
+
+                Variants:
+                - White
+                - Orange
+                - Black
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+
+                when a real difference can be visually or textually identified.
+                
+                =====================================
+                VARIANT GROUPING (VERY IMPORTANT)
+                =====================================
+
+                - SAME ID = SAME variant_group
+                - DIFFERENT ID = DIFFERENT PRODUCT
+                - NEVER leave variant_group empty
+
+                Rows sharing the same:
+                - ID
+                - grouped code
+                - SKU group
+
+                should be treated as variants of ONE parent product.
+
+                 =====================================
+                VARIANT DETECTION
+                =====================================
+
+                If rows share same PRODUCT ID:
+
+                → they belong to the SAME product family.
+
+                IMPORTANT:
+
+                Use PRODUCT IMAGES as the PRIMARY
+                source for identifying variants.
+
+                Look for visual differences such as:
+
+                - color
+                - material
+                - finish
+                - lid type
+                - texture
+                - shape
+                - capacity
+                - packaging
+
+                THEN use nearby codes/numbers
+                as supporting evidence.
+
+                Example:
+
+                Rows may contain:
+
+                106
+                103
+                128
+
+                These MAY represent:
+                - color codes
+                - material codes
+                - size codes
+
+                DO NOT assume globally.
+
+                Infer meaning from:
+                - image differences
+                - repeated patterns
+                - product appearance
+
+                If uncertain:
+
+                Use safe fallback:
+
+                "attributes": {{
+                    "Vendor Code": "106"
+                }}
+
+                NEVER return:
+                - Variant 1
+                - Variant 2
+                - Variant 3
+
+                ALWAYS return meaningful attributes.
+
+                =====================================
+                VISUAL DIFFERENCE DETECTION
+                =====================================
+
+                If product images exist:
+
+                You MUST visually inspect the images
+                to identify the distinguishing feature.
+
+                Example:
+
+                If grouped products show:
+                - white bottle
+                - orange bottle
+                - black bottle
+
+                Return:
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "White"
+                }}
+
+                {{
+                    "name": "Sports Bottle",
+                    "color": "Orange"
+                }}
+
+                DO NOT return:
+                - Variant 1
+                - Variant 2
+                - Product 94601
+
+                =====================================
+                PARENT PRODUCT CONSISTENCY
+                =====================================
+
+                When multiple rows belong to the same
+                variant_group:
+
+                - The parent product name MUST remain consistent.
+                - ONLY the variant fields should change.
+
+                GOOD:
+
+                Sports Bottle
+                → White
+                → Orange
+                → Black
+
+                BAD:
+
+                White Bottle
+                Orange Bottle
+                Black Bottle
+
+                =====================================
+                ATTRIBUTE EXTRACTION
+                =====================================
+
+                Put distinguishing values into:
+
+                - color
+                - material
+                - size
+                - capacity
+                - style
+
+                Only use generic "Variant"
+                if absolutely no real difference can be detected.
+
+                =====================================
+                PRICE & STOCK
+                =====================================
+
+                - Extract numeric price carefully
+                - Extract stock carefully
+                - Ignore ranges like:
+                    - 2-66
+                    - 11-00
+
+                =====================================
+                LINKS
+                =====================================
+
+                If a row contains a product URL:
+                - preserve it
+                - never use URL as product name
+
+                =====================================
+                OUTPUT FORMAT
+                =====================================
+
+                [
+                    {{
+                        "name": "",
+                        "description": "",
+                        "category": "",
+                        "price": "",
+                        "stock": "",
+                        "variant_group": "",
+                        "color": "",
+                        "material": "",
+                        "size": "",
+                        "capacity": "",
+                        "style": "",
+                        "url": "",
+                        "variants": [
+                            {{
+                                "attributes": {{
+                                    "Variant": ""
+                                }},
+                                "image_index": 0,
+                                "stock": null
+                            }}
+                        ]
+                    }}
+                ]
+
+                =====================================
+                IMPORTANT RULES
+                =====================================
+
+                - Return ONLY valid JSON
+                - No markdown
+                - No explanations
+                - No comments
+                - No trailing commas
+
+                ROW TEXT:
+                {row_text}
+
+                DETECTED PRICE:
+                {row_price}
+
+                DETECTED STOCK:
+                {row_stock}
+                """
+
+                response = client.responses.create(
+
+                    model="gpt-4.1-mini",
+
+                    input=prompt,
+
+                    timeout=60
+                )
+
+
+                result = (
+                    response.output_text or ""
+                ).strip()
+
+
+                result = result.replace(
+                    "```json",
+                    ""
+                )
+
+                result = result.replace(
+                    "```",
+                    ""
+                ).strip()
+
+
+                if not result:
+
+                    raise Exception(
+                        "EMPTY AI RESPONSE"
+                    )
+
+
+                parsed = json.loads(
+                    result
+                )
+
+
+                if (
+
+                    isinstance(parsed, list)
+
+                    and parsed
+
+                ):
+
+                    parsed = parsed[0]
+
+
+                if not isinstance(
+                    parsed,
+                    dict
+                ):
+
+                    _logger.warning(
+
+                        f"[EXCEL AI] "
+
+                        f"INVALID STRUCTURE "
+
+                        f"| idx={idx}"
+                    )
+
+                    continue
+
+
+                # =================================================
+                # IMAGE
+                # =================================================
+
+                if images:
+
+                    parsed["image"] = (
+                        images[0]
+                    )
+
+
+                # =================================================
+                # DEBUG
+                # =================================================
+
+                _logger.warning(
+
+                    f"[EXCEL AI PRODUCT] "
+
+                    f"name={parsed.get('name')} "
+
+                    f"| group={parsed.get('variant_group')}"
+                )
+
+
+                new_products.append(
+                    parsed
+                )
+
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[EXCEL AI ERROR] "
+
+                    f"idx={idx} "
+
+                    f"| {str(e)}"
+                )
+
+
+        # =====================================================
+        # MERGE PRODUCTS SAFELY
+        # =====================================================
+
+        combined_products = (
+            existing_products
+            +
+            new_products
+        )
+
+
+        _logger.warning(
+
+            f"[EXCEL AI MERGE] "
+
+            f"existing={len(existing_products)} "
+
+            f"| new={len(new_products)} "
+
+            f"| total={len(combined_products)}"
+        )
+
+
+        # =====================================================
+        # SAVE
+        # =====================================================
+
+        self.ai_response = json.dumps([{
+
+            "page": 1,
+
+            "products": combined_products
+
+        }])
+
+
+        self.excel_ai_index = end
+
+
+        _logger.warning(
+
+            f"[EXCEL AI SAVE] "
+
+            f"{self.excel_ai_index}/"
+
+            f"{len(pages)}"
+        )
+
+
+        # =====================================================
+        # NEXT STATE
+        # =====================================================
+
+        if end < len(pages):
+
+            self.state = "excel_ai"
+
+        else:
+
+            _logger.warning(
+                "[EXCEL AI COMPLETE]"
+            )
+
+            self.state = (
+                "excel_creating"
+            )
+
+
+        self.flush_recordset()
+
+        self.env.cr.commit()
+
+        return
+    
+
     #==========Excel url detect workflo=======================
     def _extract_product_url(self, row):
 
@@ -13560,9 +15233,7 @@ class VendorImportJob(models.Model):
             "url": url_products,
         }
 
-    
     #==========Excel URl queue logic========================
-    
     def _queue_excel_urls(self, url_products):
 
         import json
@@ -13597,7 +15268,6 @@ class VendorImportJob(models.Model):
 
         self.excel_url_index = 0
 
-    
     #============Excel URL processor==========================
     def process_excel_url_queue(self):
 
@@ -13609,13 +15279,13 @@ class VendorImportJob(models.Model):
                 "[URL QUEUE] EMPTY"
             )
 
-            return
+            self.state = "done"
 
+            return
 
         rows = json.loads(
             self.excel_url_queue
         )
-
 
         start = self.excel_url_index or 0
 
@@ -13625,7 +15295,6 @@ class VendorImportJob(models.Model):
             start + BATCH_SIZE,
             len(rows)
         )
-
 
         _logger.warning(
 
@@ -13637,8 +15306,11 @@ class VendorImportJob(models.Model):
         )
 
         vendor_id = (
-             self.partner_id.id
+
+            self.partner_id.id
+
             if self.partner_id
+
             else self.env.user.partner_id.id
         )
 
@@ -13648,43 +15320,226 @@ class VendorImportJob(models.Model):
 
                 row = rows[idx]
 
-                product_url = row.get(
-                    "detected_url"
+                _logger.warning(
+                    f"[QUEUE ITEM] "
+                    f"idx={idx} | "
+                    f"group_id={row.get('group_id')} | "
+                    f"url={row.get('url')}"
                 )
 
+                group_id = row.get(
+                    "group_id"
+                )
+
+                product_url = row.get(
+                    "url"
+                )
 
                 if not product_url:
 
                     _logger.warning(
+
                         f"[URL QUEUE SKIP] "
+
                         f"NO URL AT INDEX {idx}"
                     )
 
+                    self.excel_url_index = idx + 1
+
+                    self._safe_commit_progress()
+
                     continue
 
-                existing_job = self.env[
-                    'vendor.import.job'
-                ].search([
-
-                    ('data_url', '=', product_url),
-
-                    ('state', '!=', 'failed')
-
-                ], limit=1)
-
-
-                if existing_job:
+                if not group_id:
 
                     _logger.warning(
 
-                        f"[URL JOB EXISTS] "
+                        f"[URL QUEUE SKIP] "
+
+                        f"NO GROUP ID AT INDEX {idx}"
+                    )
+
+                    self.excel_url_index = idx + 1
+
+                    self._safe_commit_progress()
+
+                    continue
+
+               
+                # ====================================
+                # EXTRACT URL DATA
+                # ====================================
+
+                url_data = self._extract_url_product_data(
+                    product_url,
+                    group_id
+                )
+
+                _logger.warning(
+
+                    f"[TARGET PRODUCT CODE] "
+
+                    f"{group_id}"
+                )
+
+
+                # ====================================
+                # APIFY STILL RUNNING
+                # ====================================
+
+                if not url_data:
+
+                    _logger.warning(
+
+                        f"[URL WAITING FOR APIFY] "
 
                         f"{product_url}"
                     )
 
-                    # ====================================
-                    # ADVANCE QUEUE INDEX
-                    # ====================================
+                    self.state = "excel_url_enrichment"
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # ====================================
+                # DEBUG URL DATA
+                # ====================================
+
+                _logger.warning(
+
+                    f"[URL DATA KEYS] "
+
+                    f"{list(url_data.keys())}"
+                )
+
+                _logger.warning(
+
+                    "[URL DATA RAW]\n%s"
+
+                    % json.dumps(
+                        url_data,
+                        indent=4,
+                        default=str
+                    )
+                )
+
+                # _logger.warning(
+
+                #     f"[URL DATA NAME] "
+
+                #     f"{url_data.get('name')}"
+                # )
+
+                _logger.warning(
+
+                    f"[URL DATA TITLE] "
+
+                    f"{url_data.get('title')}"
+                )
+
+                _logger.warning(
+
+                    f"[URL DATA SUBTITLE] "
+
+                    f"{url_data.get('subtitle')}"
+                )
+
+                _logger.warning(
+
+                    f"[URL DATA DESCRIPTION] "
+
+                    f"{bool(url_data.get('description'))}"
+                )
+
+                # ====================================
+                # FIND EXISTING PRODUCT
+                # ====================================
+
+                group_id = str(
+                    row.get("group_id") or ""
+                ).strip()
+
+                _logger.warning(
+
+                    f"[URL LOOKUP] "
+
+                    f"group_id={group_id} | "
+
+                    f"vendor_id={vendor_id}"
+                )
+
+
+                all_products = self.env[
+                    'product.template'
+                ].search([
+
+                        ('vendor_import_job_id', '=', self.id)
+
+                ])
+
+                _logger.warning(
+
+                    f"[URL DEBUG] "
+
+                    f"vendor_products={len(all_products)}"
+                )
+
+                for p in all_products[:20]:
+
+                    _logger.warning(
+
+                        f"[URL DEBUG PRODUCT] "
+
+                        f"id={p.id} | "
+
+                        f"default_code={p.default_code} | "
+
+                        f"name={p.name}"
+                    )
+
+                product = self.env[
+                    'product.template'
+                ].search([
+
+                    ('default_code', '=', group_id),
+
+                    ('vendor_import_job_id', '=', self.id)
+
+                ], limit=1)
+
+
+                _logger.warning(
+
+                    f"[URL LOOKUP PRODUCTS] "
+
+                    f"count={len(product)}"
+                )
+
+                for p in product[:20]:
+
+                    _logger.warning(
+
+                        f"[URL PRODUCT] "
+
+                        f"id={p.id} | "
+
+                        f"default_code={p.default_code} | "
+
+                        f"name={p.name}"
+                    )
+
+
+                if not product:
+
+                    _logger.warning(
+
+                        f"[URL ENRICHMENT] "
+
+                        f"PRODUCT NOT FOUND "
+
+                        f"{group_id}"
+                    )
 
                     self.excel_url_index = idx + 1
 
@@ -13693,39 +15548,115 @@ class VendorImportJob(models.Model):
                     continue
 
                 # ====================================
-                # CREATE ISOLATED URL JOB
+                # BUILD UPDATE VALUES
                 # ====================================
 
-                new_job = self.env[
-                    'vendor.import.job'
-                ].create({
+                vals = {}
 
-                    'name':
-                        f"URL Import - {idx}",
+                description_parts = []
 
-                    'partner_id':
-                        vendor_id,
+                # ====================================
+                # ALWAYS KEEP SUBTITLE IF PRESENT
+                # ====================================
 
-                    'source_type':
-                        'url',
-
-                    'data_url':
-                        product_url,
-
-                    'state':
-                        'url_scraping',
-                })
-
-
-                _logger.warning(
-
-                    f"[URL JOB CREATED] "
-
-                    f"job={new_job.id} | "
-
-                    f"url={product_url}"
+                subtitle = url_data.get(
+                    "subtitle"
                 )
 
+                if subtitle:
+
+                    description_parts.append(
+                        str(subtitle)
+                    )
+
+                # ====================================
+                # EXTRA DETAILS
+                # ====================================
+
+                for field in [
+
+                    "description",
+
+                    "material",
+
+                    "capacity",
+
+                    "dimensions",
+
+                    "specifications"
+
+                ]:
+
+                    value = url_data.get(
+                        field
+                    )
+
+                    if value:
+
+                        description_parts.append(
+                            str(value)
+                        )
+
+                if description_parts:
+
+        
+                    description = []
+
+                    if url_data.get("subtitle"):
+                        description.append(url_data["subtitle"])
+
+                    if url_data.get("description"):
+                        description.append(url_data["description"])
+
+                    if url_data.get("capacity"):
+                        description.append(
+                            f"Capacity: {url_data['capacity']}"
+                        )
+
+                    if url_data.get("dimensions"):
+                        description.append(
+                            f"Dimensions: {url_data['dimensions']}"
+                        )
+
+                    vals["description_sale"] = "<br/><br/>".join(
+                        description
+                    )      
+                # ====================================
+                # UPDATE PRODUCT
+                # ====================================
+
+                if vals:
+
+                    _logger.warning(
+
+                        "[URL DESCRIPTION]\n%s"
+
+                        % vals.get(
+                            "description_sale",
+                            ""
+                        )[:3000]
+                    )
+                    product.write(vals)
+
+                    _logger.warning(
+
+                        f"[URL ENRICHED] "
+
+                        f"{group_id} "
+
+                        f"-> "
+
+                        f"{url_data.get('subtitle')}"
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        f"[URL ENRICHMENT EMPTY] "
+
+                        f"{group_id}"
+                    )
 
                 # ====================================
                 # SAVE PROGRESS
@@ -13735,39 +15666,993 @@ class VendorImportJob(models.Model):
 
                 self._safe_commit_progress()
 
-
             except Exception as e:
 
                 _logger.exception(
-                    f"[EXCEL URL ERROR] {str(e)}"
+
+                    f"[EXCEL URL ERROR] "
+
+                    f"{str(e)}"
                 )
 
                 self.env.cr.rollback()
 
- 
         # =========================================
         # COMPLETE
         # =========================================
 
-        if self.excel_url_index >= len(rows):
+        if (
+            self.excel_url_index >= len(rows)
+            and
+            rows
+        ):
 
             _logger.warning(
                 "[URL QUEUE COMPLETE]"
             )
 
-            self.excel_url_queue = False
+    
+            if not self.completion_email_sent:
+
+                self.send_completion_email()
+                
+            self.excel_url_queue = "[]"
 
             self.excel_url_processing = False
 
             self.excel_url_index = 0
 
+            self.state = "done"
+
             self._safe_commit_progress()
 
             self.env.invalidate_all()
 
+        else:
+
+            self.state = "excel_url_enrichment"
+
+            self._safe_commit_progress()
+
+    # ======================================================
+    # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
+    # ======================================================
+
+    def _extract_url_product_data(
+
+        self,
+
+        product_url,
+
+        group_id=""
+     ):
+
+        try:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT START] "
+
+                f"{product_url}"
+            )
+
+            raw_data = self._run_apify_actor(
+                product_url
+            )
+
+            # =========================================
+            # APIFY STILL RUNNING
+            # =========================================
+
+            if raw_data is None:
+
+                _logger.warning(
+
+                    "[EXCEL URL ENRICHMENT] "
+
+                    "APIFY NOT READY"
+                )
+
+                return {}
+            
+            _logger.warning(
+                "[APIFY RAW DATA]\n%s"
+                % json.dumps(
+                    raw_data[:3],
+                    indent=4,
+                    default=str
+                )
+            )
+
+
+            if not raw_data:
+
+                _logger.warning(
+
+                    "[EXCEL URL ENRICHMENT] "
+
+                    "EMPTY RESPONSE"
+                )
+
+                return {}
+
+            first = raw_data[0] if raw_data else {}
+
+            _logger.warning(
+                "[FIRST APIFY RECORD]\n%s"
+                % json.dumps(
+                    first,
+                    indent=4,
+                    default=str
+                )
+            )
+
+            # =========================================
+            # BLOCKED / EMPTY
+            # =========================================
+
+            if first.get("type") in [
+
+                "BLOCKED",
+
+                "EMPTY"
+            ]:
+
+                _logger.warning(
+
+                    f"[EXCEL URL ENRICHMENT] "
+
+                    f"INVALID TYPE "
+
+                    f"{first.get('type')}"
+                )
+
+                return {}
+
+            # =========================================
+            # NORMALIZE
+            # =========================================
+
+            structured_data = []
+
+            for block in raw_data:
+
+                if block.get("text"):
+
+                    structured_data.append({
+
+                        "text": block.get("text"),
+
+                        "image": block.get("image")
+                    })
+
+                    continue
+
+                if block.get("type") == "PRODUCTS":
+
+                    structured_data.extend(
+
+                        block.get("items", [])
+                    )
+
+            _logger.warning(
+                "[STRUCTURED DATA SAMPLE]\n%s"
+                % json.dumps(
+                    structured_data[:5],
+                    indent=4,
+                    default=str
+                )
+            )
+
+            enriched = (
+                self._extract_enrichment_data_from_url(
+                    structured_data,
+                    group_id
+                )
+            )
+
+            _logger.warning(
+
+                "[URL ENRICHED DATA]\n%s"
+
+                % json.dumps(
+                    enriched,
+                    indent=4,
+                    default=str
+                )
+            )
+
+            if not enriched:
+
+                return {}
+            
+            _logger.warning(
+
+                f"[URL ENRICHMENT SUCCESS] "
+
+                f"{product_url}"
+            )
+
+            return {
+
+                "title":
+                    enriched.get(
+                        "title"
+                    ),
+
+                "subtitle":
+                    enriched.get(
+                        "subtitle"
+                    ),
+
+                "description":
+                    enriched.get(
+                        "description"
+                    ),
+
+                "material":
+                    enriched.get(
+                        "material"
+                    ),
+
+                "capacity":
+                    enriched.get(
+                        "capacity"
+                    ),
+
+                "dimensions":
+                    enriched.get(
+                        "dimensions"
+                    ),
+
+                "specifications":
+                    enriched.get(
+                        "specifications"
+                    )
+            }
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[EXCEL URL ENRICHMENT FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return {}
+
+
+    #=====excel group url update====================================
+
+    def _enrich_group_with_url_data(
+
+        self,
+
+        group_items,
+
+        url_cache=None
+    ):
+
+
+        if url_cache is None:
+
+            url_cache = {}
+
+        group_url = ""
+
+        # =====================================
+        # FIND FIRST VALID GROUP URL
+        # =====================================
+
+        for item in group_items:
+
+            possible_url = (
+                item.get("url")
+                or
+                item.get("product_url")
+                or
+                ""
+            ).strip()
+
+            if possible_url:
+
+                group_url = possible_url
+
+                break
+
+        # =====================================
+        # NO URL FOUND
+        # =====================================
+
+        if not group_url:
+
+            _logger.warning(
+
+                "[URL ENRICHMENT SKIPPED] "
+
+                "NO URL FOUND"
+            )
+
+            return {}
+
+        _logger.warning(
+
+            f"[URL GROUP FOUND] "
+
+            f"{group_url}"
+        )
+
+        # =====================================
+        # CACHE HIT
+        # =====================================
+
+        if group_url in url_cache:
+
+            _logger.warning(
+
+                f"[URL CACHE HIT] "
+
+                f"{group_url}"
+            )
+
+            return url_cache[group_url]
+
+        try:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT START] "
+
+                f"{group_url}"
+            )
+
+            url_data = self._extract_url_product_data(
+                group_url
+            ) or {}
+
+
+            # =====================================
+            # EMPTY RESPONSE
+            # =====================================
+
+            if not url_data:
+
+                _logger.warning(
+
+                    f"[URL ENRICHMENT EMPTY] "
+
+                    f"{group_url}"
+                )
+
+                url_cache[group_url] = {}
+
+                return {}
+
+            url_cache[group_url] = url_data
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT SUCCESS] "
+
+                f"{group_url} "
+
+                f"| keys={list(url_data.keys())}"
+            )
+
+            return url_data
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT FAILED] "
+
+                f"{group_url} "
+
+                f"| {str(e)}"
+            )
+
+            return {}
+
+    #===============EXCEL URL LAST CREATED============================
+   
+    def _build_excel_url_queue(
+        self,
+        grouped_products
+    ):
+
+        import json
+
+        queue = []
+
+        seen_urls = set()
+
+        for group_id, items in grouped_products.items():
+
+            for item in items:
+
+                url = (
+                    item.get("url")
+                    or ""
+                ).strip()
+
+                if not url:
+                    continue
+
+                if url in seen_urls:
+                    break
+
+                seen_urls.add(url)
+
+                queue.append({
+
+                    "group_id": str(group_id),
+
+                    "url": url
+                })
+
+                break
+
+        self.excel_url_queue = json.dumps(
+            queue
+        )
+
+        _logger.warning(
+
+            f"[EXCEL URL QUEUE] "
+
+            f"{len(queue)} queued"
+        )
     
+    # ======================================================
+    # URL AI PRODUCT EXTRACTOR
+    # ======================================================
+
+    def _extract_url_product_data_ai(
+        self,
+        pages
+    ):
+
+        import json
+        import re
+
+        try:
+
+            api_key = self.env[
+                'ir.config_parameter'
+            ].sudo().get_param(
+                'openai.api.key'
+            )
+
+            if not api_key:
+
+                _logger.warning(
+                    "[URL AI] NO API KEY"
+                )
+
+                return {}
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            # =========================================
+            # FLATTEN BLOCKS
+            # =========================================
+
+            all_blocks = [
+
+                b
+
+                for p in pages
+
+                for b in p.get(
+                    "blocks",
+                    []
+                )
+            ]
+
+            if not all_blocks:
+
+                return {}
+
+            cleaned_blocks = (
+                self._clean_scraped_blocks(
+                    all_blocks
+                )
+            )
+
+            if not cleaned_blocks:
+
+                return {}
+
+            combined_text = "\n\n---\n\n".join([
+
+                f"""
+                TEXT:
+                {b.get('text','')}
+
+                PRICE:
+                {b.get('price','')}
+
+                STOCK:
+                {b.get('stock','')}
+
+                IMAGE_URL:
+                {b.get('image','')}
+                """
+
+                for b in cleaned_blocks
+            ])
+
+            if not combined_text.strip():
+
+                return {}
+
+            if len(combined_text) > 15000:
+
+                combined_text = (
+                    combined_text[:15000]
+                )
+
+            # =========================================
+            # SIMPLE PRODUCT EXTRACTION
+            # =========================================
+
+            prompt = f"""
+            Extract the main product.
+
+            Return ONLY valid JSON.
+
+            Format:
+
+            {{
+                "name": "",
+                "description": "",
+                "category": ""
+            }}
+
+            TEXT:
+
+            {combined_text}
+            """
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt,
+
+                temperature=0,
+
+                timeout=60
+            )
+
+            result = (
+                response.output_text
+                .strip()
+            )
+
+            result = re.sub(
+
+                r"^```(?:json)?|```$",
+
+                "",
+
+                result
+
+            ).strip()
+
+            data = json.loads(
+                result
+            )
+
+            if not isinstance(
+                data,
+                dict
+            ):
+
+                return {}
+
+            _logger.warning(
+
+                f"[URL AI SUCCESS] "
+
+                f"{data.get('name')}"
+            )
+
+            return {
+
+                "name":
+                    data.get("name"),
+
+                "description":
+                    data.get(
+                        "description"
+                    ),
+
+                "category":
+                    data.get(
+                        "category"
+                    ),
+
+                "images": []
+            }
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL AI FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return {}
+
+    #====Excel variant mapping==================================
+    def _detect_basic_image_color(self, image_data):
+
+        try:
+
+            import base64
+            from io import BytesIO
+
+            from PIL import Image
+
+            img = Image.open(
+                BytesIO(
+                    base64.b64decode(image_data)
+                )
+            ).convert("RGB")
+
+            img = img.resize((50, 50))
+
+            colors = img.getcolors(
+                50 * 50
+            )
+
+            if not colors:
+                return False
+
+
+            # =====================================
+            # REMOVE BACKGROUND COLORS
+            # =====================================
+
+            filtered_colors = []
+
+            for count, rgb in colors:
+
+                r, g, b = rgb
+
+                # skip near-white backgrounds
+                if r > 220 and g > 220 and b > 220:
+                    continue
+
+                # skip light grey/silver reflections
+                if abs(r - g) < 15 and abs(g - b) < 15 and r > 170:
+                    continue
+
+                filtered_colors.append(
+                    (count, rgb)
+                )
+
+
+            # fallback if everything removed
+            if filtered_colors:
+                dominant = max(
+                    filtered_colors,
+                    key=lambda x: x[0]
+                )[1]
+            else:
+                dominant = max(
+                    colors,
+                    key=lambda x: x[0]
+                )[1]
+
+
+            r, g, b = dominant
+
+
+            _logger.warning(
+                f"[COLOR RGB] r={r} g={g} b={b}"
+            )
+
+
+            # =====================================
+            # BASIC COLOR MAPPING
+            # =====================================
+
+            if r > 200 and g > 200 and b > 200:
+                return "White"
+
+            if r < 60 and g < 60 and b < 60:
+                return "Black"
+
+            if r > 180 and g < 120 and b < 80:
+                return "Orange"
+
+            if r > 180 and g < 80 and b < 80:
+                return "Red"
+
+            # =====================================
+            # BLUE FAMILY
+            # =====================================
+
+            if b > r and b > g:
+
+                # NAVY / DARK BLUE
+                if b < 120:
+                    return "Navy"
+
+                # LIGHT BLUE / CYAN
+                if g > 140:
+                    return "Light Blue"
+
+                # ROYAL / NORMAL BLUE
+                return "Blue"
+
+            if g > 140 and r < 120:
+                return "Green"
+
+            if r > 150 and g > 150 and b < 120:
+                return "Yellow"
+
+            # =====================================
+            # BLUE FAMILY FALLBACK
+            # =====================================
+
+            if b > r and b > g:
+
+                # deep navy
+                if b < 120:
+                    return "Navy"
+
+                # light blue / cyan
+                if g > 120:
+                    return "Light Blue"
+
+                return "Blue"
+
+
+            # =====================================
+            # GREEN FAMILY FALLBACK
+            # =====================================
+
+            if g > r and g > b:
+
+                if g > 160 and r > 120:
+                    return "Lime Green"
+
+                return "Green"
+
+
+            # =====================================
+            # RED / ORANGE
+            # =====================================
+
+            if r > g and r > b:
+
+                if g > 100:
+                    return "Orange"
+
+                return "Red"
+
+
+            # =====================================
+            # DARK COLORS
+            # =====================================
+
+            if r < 90 and g < 90 and b < 120:
+                return "Black"
+
+
+            # =====================================
+            # FINAL FALLBACK
+            # =====================================
+
+            return "Grey"
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[COLOR DETECTION FAILED] "
+
+                f"{str(e)}"
+            )
+
+            return False
+
+    #====extract_enrichment_data_from_url==================================
+    def _extract_enrichment_data_from_url(
+        self,
+        structured_data,
+        group_id
+    ):
+
+        import json
+        import re
+
+        api_key = self.env[
+            'ir.config_parameter'
+        ].sudo().get_param(
+            'openai.api.key'
+        )
+
+        if not api_key:
+            return {}
+
+        client = OpenAI(
+            api_key=api_key
+        )
+
+        combined_text = "\n\n".join([
+
+            str(
+                item.get(
+                    "text",
+                    ""
+                )
+            )
+
+            for item in structured_data
+
+        ])
+
+        if not combined_text.strip():
+            return {}
+
+        prompt = f"""
+        You are a product detail extraction engine.
+
+        PRODUCT CODE:
+        {group_id}
+
+        IMPORTANT:
+
+        You are given a PRODUCT CODE.
+
+        Find ONLY the product whose code exactly matches PRODUCT CODE.
+
+        Ignore every other product.
+
+        If the code exists:
+
+        - title = product code
+        - subtitle = full product title immediately after the code
+        - description = all text belonging to that product
+
+        Do NOT summarize.
+        Do NOT shorten.
+        Do NOT rewrite.
+        Do NOT invent information.
+        Extract information exactly as written.
+
+        Rules:
+        - title = product code (numeric identifier)
+        - subtitle = full product name line immediately after the code
+        - description = all descriptive text available for that product
+        - If material/capacity/dimensions/specifications are not present, leave them empty
+        - Never invent information
+        - Never summarize
+
+        Return ONLY JSON:
+
+        {{
+            "title": "",
+            "subtitle": "",
+            "description": "",
+            "material": "",
+            "capacity": "",
+            "dimensions": "",
+            "specifications": ""
+        }}
+
+        TEXT:
+
+        {combined_text}
+        """
+
+        _logger.warning(
+
+            "[URL ENRICHMENT INPUT]\n%s"
+
+            % combined_text[:5000]
+        )
+
+        _logger.warning(
+
+            f"[AI TARGET PRODUCT] "
+
+            f"{group_id}"
+        )
+
+        try:
+
+            response = client.responses.create(
+
+                model="gpt-4.1-mini",
+
+                input=prompt,
+
+                temperature=0,
+
+                timeout=60
+            )
+
+            # =========================================
+            # GET AI RESPONSE TEXT
+            # =========================================
+
+            result = (
+
+                response.output_text
+
+                or ""
+
+            ).strip()
+
+            _logger.warning(
+
+                "[URL ENRICHMENT RAW RESPONSE]\n%s"
+
+                % result[:5000]
+            )
+
+            # =========================================
+            # CLEAN JSON WRAPPERS
+            # =========================================
+
+            result = re.sub(
+
+                r"^```(?:json)?|```$",
+
+                "",
+
+                result
+
+            ).strip()
+
+            # =========================================
+            # PARSE JSON
+            # =========================================
+
+            parsed = json.loads(
+                result
+            )
+
+            _logger.warning(
+
+                "[URL ENRICHMENT OUTPUT]\n%s"
+
+                % json.dumps(
+                    parsed,
+                    indent=4,
+                    default=str
+                )
+            )
+
+            _logger.warning(
+                "[URL ENRICHMENT RETURNING DATA]"
+            )
+
+            return parsed
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[URL ENRICHMENT AI ERROR] "
+
+                f"{str(e)}"
+            )
+
+            return {}
+
     #==========create excel product=================================
-    
     def create_products_excel(self):
 
         import json
@@ -13785,11 +16670,40 @@ class VendorImportJob(models.Model):
         if not self.ai_response:
 
             _logger.warning(
-                "[EXCEL CREATE] NO AI RESPONSE"
+
+                "[EXCEL CREATE] "
+
+                "NO AI RESPONSE"
             )
 
-            return
+            # ====================================
+            # RECOVERY PATH
+            # ====================================
 
+            if self.is_excel_parsed:
+
+                _logger.warning(
+
+                    "[EXCEL CREATE] "
+
+                    "PARSED COMPLETE "
+
+                    "→ MOVE TO REVIEW"
+                )
+
+                self.last_error = (
+                    "Excel AI response missing"
+                )
+
+                self.last_known_state = (
+                    "excel_creating"
+                )
+
+                self.state = "review"
+
+                self._safe_commit_progress()
+
+            return
 
         try:
 
@@ -14041,7 +16955,6 @@ class VendorImportJob(models.Model):
 
             f"TOTAL={len(grouped_keys)}"
         )
-
 
         # =====================================================
         # BATCH GROUPS
@@ -14316,17 +17229,7 @@ class VendorImportJob(models.Model):
                 # =====================================================
 
                 if not product and vendor_id:
-                    # _logger.warning(
 
-                    #     f"[FINGERPRINT] "
-
-                    #     f"title={product_data.get('title')} "
-
-                    #     f"group={variant_group} "
-
-                    #     f"fingerprint={vendor_fingerprint}"
-                    # )
-                    
                     product = product_obj.search([
 
                         (
@@ -14403,6 +17306,13 @@ class VendorImportJob(models.Model):
                         'vendor_id':
                             vendor_id,
 
+                        'vendor_stock_qty': int(
+                            main_product.get(
+                                "stock",
+                                0
+                            ) or 0
+                        ),
+
                         'list_price':
                             self._safe_float(
                                 main_product.get("price")
@@ -14429,41 +17339,6 @@ class VendorImportJob(models.Model):
                     product = product_obj.create(
                         vals
                     )
-
-                    # =====================================
-                    # ENABLE WEBSITE STOCK DISPLAY
-                    # =====================================
-
-                    try:
-
-                        product.write({
-
-                            'allow_out_of_stock_order': True,
-
-                            'show_availability': True,
-
-                            'available_threshold': 1000,
-                        })
-
-                        _logger.warning(
-
-                            f"[WEBSITE STOCK ENABLED] "
-
-                            f"{product.name}"
-                        )
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"[WEBSITE STOCK FAILED] "
-
-                            f"{str(e)}"
-                        )
-
-                    # =====================================
-                    # TRANSLATION
-                    # =====================================
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
@@ -14500,7 +17375,6 @@ class VendorImportJob(models.Model):
                         f"| product_id={product.id}"
                     )
               
-
                 # ==================================================
                 # VARIANTS
                 # ==================================================
@@ -14837,6 +17711,81 @@ class VendorImportJob(models.Model):
                                 f"| {attr_value}"
                             )
 
+                stock_qty = int(
+                    main_product.get(
+                        "stock",
+                            0
+                    ) or 0
+                )
+
+                warehouse = self.env[
+                    "stock.warehouse"
+                ].search(
+                    [],
+                    limit=1
+                )
+
+                location = (
+                    warehouse.lot_stock_id
+                    if warehouse
+                    else False
+                )
+
+                variant = product.product_variant_id
+
+                stock_quant_obj = self.env[
+                    "stock.quant"
+                ]
+
+
+                if (
+                    stock_qty >= 0
+                    and variant
+                    and location
+                ):
+
+                    quant = stock_quant_obj.search(
+                        [
+                            (
+                                'product_id',
+                                '=',
+                                variant.id
+                            ),
+                            (
+                                'location_id',
+                                '=',
+                                location.id
+                            )
+                        ],
+                        limit=1
+                    )
+
+                    if quant:
+
+                        quant.inventory_quantity = stock_qty
+
+                        quant.action_apply_inventory()
+
+                    else:
+
+                        _logger.warning(
+                            f"[EXCEL STOCK DEBUG] "
+                            f"product={product.name} "
+                            f"template_type={product.type} "
+                            f"variant_id={variant.id if variant else False} "
+                            f"variant_type={variant.type if variant else False} "
+                            f"location={location.id if location else False} "
+                            f"stock_qty={stock_qty}"
+                        )
+                        quant = stock_quant_obj.create(
+                            {
+                                'product_id': variant.id,
+                                'location_id': location.id,
+                                'inventory_quantity': stock_qty,
+                            }
+                        )
+
+                        quant.action_apply_inventory()
 
                 # =================================================
                 # SAVE PROGRESS
@@ -14901,11 +17850,18 @@ class VendorImportJob(models.Model):
                 "GROUP BATCH COMPLETE"
             )
 
-            # =========================================
+
+            # ============================================
             # FULL IMPORT COMPLETED
-            # =========================================
+            # ============================================
 
             if self.is_excel_parsed:
+                _logger.warning(
+
+                    f"[EXCEL PARSED CHECK] "
+
+                    f"is_excel_parsed={self.is_excel_parsed}"
+                )
 
                 _logger.warning(
                     "[EXCEL IMPORT COMPLETE] ✅"
@@ -14919,20 +17875,80 @@ class VendorImportJob(models.Model):
 
                 self.excel_ai_index = 0
 
-                self.ai_response = False
+                # =========================================
+                # BUILD URL QUEUE FROM FINAL PRODUCT SET
+                # =========================================
 
-                self.state = 'done'
+                self._build_excel_url_queue(
+                    grouped_products
+                )
 
-                # cleanup URL queue
+                queue = json.loads(
+                    self.excel_url_queue or "[]"
+                )
 
-                if hasattr(self, 'excel_url_processing'):
+                _logger.warning(
+
+                    f"[URL QUEUE FINAL CHECK] "
+
+                    f"queue_count={len(queue)} | "
+
+                    f"queue={queue}"
+                )
+
+                # ==========================================
+                # URL ENRICHMENT REQUIRED
+                # ==========================================
+
+                if queue:
+
+                    _logger.warning(
+
+                        "[EXCEL FLOW] "
+
+                        "START URL ENRICHMENT"
+                    )
+
+                    self.excel_url_processing = True
+
+                    self.excel_url_index = 0
+
+                    self.last_known_state = (
+                        "excel_url_enrichment"
+                    )
+
+                    self.state = (
+                        "excel_url_enrichment"
+                    )
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # =========================================
+                # NO URLS FOUND
+                # =========================================
+
+                else:
+
+                    _logger.warning(
+
+                        "[EXCEL FLOW] "
+
+                        "NO URL ENRICHMENT REQUIRED"
+                    )
+
+                    self.ai_response = False
 
                     self.excel_url_processing = False
 
-
-                if hasattr(self, 'excel_url_index'):
-
                     self.excel_url_index = 0
+
+                    if not self.completion_email_sent:
+
+                        self.send_completion_email()
+
+                    self.state = "done"
 
             # =========================================
             # MORE PARSE ROWS REMAIN
@@ -14947,10 +17963,6 @@ class VendorImportJob(models.Model):
                     "RETURN TO excel_parsing"
                 )
 
-                # IMPORTANT:
-                # KEEP CURRENT AI STATE
-                # for next parse batch
-
                 self.state = 'excel_parsing'
 
                 _logger.warning(
@@ -14962,415 +17974,6 @@ class VendorImportJob(models.Model):
                     f"{self.excel_parse_index}"
                 )
 
-        else:
-
-            self.state = 'excel_creating'
-
-
-        self._safe_commit_progress()
-
-
-    #=====excel group url update====================================
-
-    def _enrich_group_with_url_data(
-
-        self,
-
-        group_items,
-
-        url_cache=None
-    ):
-
-        if url_cache is None:
-
-            url_cache = {}
-
-        group_url = ""
-
-        # =====================================
-        # FIND FIRST VALID GROUP URL
-        # =====================================
-
-        for item in group_items:
-
-            possible_url = (
-                item.get("url")
-                or
-                item.get("product_url")
-                or
-                ""
-            ).strip()
-
-            if possible_url:
-
-                group_url = possible_url
-
-                break
-
-        # =====================================
-        # NO URL FOUND
-        # =====================================
-
-        if not group_url:
-
-            _logger.warning(
-
-                "[URL ENRICHMENT SKIPPED] "
-
-                "NO URL FOUND"
-            )
-
-            return {}
-
-        _logger.warning(
-
-            f"[URL GROUP FOUND] "
-
-            f"{group_url}"
-        )
-
-        # =====================================
-        # CACHE HIT
-        # =====================================
-
-        if group_url in url_cache:
-
-            _logger.warning(
-
-                f"[URL CACHE HIT] "
-
-                f"{group_url}"
-            )
-
-            return url_cache[group_url]
-
-        try:
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT START] "
-
-                f"{group_url}"
-            )
-
-            url_data = self._extract_url_product_data(
-                group_url
-            ) or {}
-
-            # =====================================
-            # EMPTY RESPONSE
-            # =====================================
-
-            if not url_data:
-
-                _logger.warning(
-
-                    f"[URL ENRICHMENT EMPTY] "
-
-                    f"{group_url}"
-                )
-
-                url_cache[group_url] = {}
-
-                return {}
-
-            url_cache[group_url] = url_data
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT SUCCESS] "
-
-                f"{group_url} "
-
-                f"| keys={list(url_data.keys())}"
-            )
-
-            return url_data
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[URL ENRICHMENT FAILED] "
-
-                f"{group_url} "
-
-                f"| {str(e)}"
-            )
-
-            return {}
-
-    #====Excel variant mapping==================================
-    def _detect_basic_image_color(self, image_data):
-
-        try:
-
-            import base64
-            from io import BytesIO
-
-            from PIL import Image
-
-            img = Image.open(
-                BytesIO(
-                    base64.b64decode(image_data)
-                )
-            ).convert("RGB")
-
-            img = img.resize((50, 50))
-
-            colors = img.getcolors(
-                50 * 50
-            )
-
-            if not colors:
-                return False
-
-
-            # =====================================
-            # REMOVE BACKGROUND COLORS
-            # =====================================
-
-            filtered_colors = []
-
-            for count, rgb in colors:
-
-                r, g, b = rgb
-
-                # skip near-white backgrounds
-                if r > 220 and g > 220 and b > 220:
-                    continue
-
-                # skip light grey/silver reflections
-                if abs(r - g) < 15 and abs(g - b) < 15 and r > 170:
-                    continue
-
-                filtered_colors.append(
-                    (count, rgb)
-                )
-
-
-            # fallback if everything removed
-            if filtered_colors:
-                dominant = max(
-                    filtered_colors,
-                    key=lambda x: x[0]
-                )[1]
-            else:
-                dominant = max(
-                    colors,
-                    key=lambda x: x[0]
-                )[1]
-
-
-            r, g, b = dominant
-
-
-            _logger.warning(
-                f"[COLOR RGB] r={r} g={g} b={b}"
-            )
-
-
-            # =====================================
-            # BASIC COLOR MAPPING
-            # =====================================
-
-            if r > 200 and g > 200 and b > 200:
-                return "White"
-
-            if r < 60 and g < 60 and b < 60:
-                return "Black"
-
-            if r > 180 and g < 120 and b < 80:
-                return "Orange"
-
-            if r > 180 and g < 80 and b < 80:
-                return "Red"
-
-            # =====================================
-            # BLUE FAMILY
-            # =====================================
-
-            if b > r and b > g:
-
-                # NAVY / DARK BLUE
-                if b < 120:
-                    return "Navy"
-
-                # LIGHT BLUE / CYAN
-                if g > 140:
-                    return "Light Blue"
-
-                # ROYAL / NORMAL BLUE
-                return "Blue"
-
-            if g > 140 and r < 120:
-                return "Green"
-
-            if r > 150 and g > 150 and b < 120:
-                return "Yellow"
-
-            # =====================================
-            # BLUE FAMILY FALLBACK
-            # =====================================
-
-            if b > r and b > g:
-
-                # deep navy
-                if b < 120:
-                    return "Navy"
-
-                # light blue / cyan
-                if g > 120:
-                    return "Light Blue"
-
-                return "Blue"
-
-
-            # =====================================
-            # GREEN FAMILY FALLBACK
-            # =====================================
-
-            if g > r and g > b:
-
-                if g > 160 and r > 120:
-                    return "Lime Green"
-
-                return "Green"
-
-
-            # =====================================
-            # RED / ORANGE
-            # =====================================
-
-            if r > g and r > b:
-
-                if g > 100:
-                    return "Orange"
-
-                return "Red"
-
-
-            # =====================================
-            # DARK COLORS
-            # =====================================
-
-            if r < 90 and g < 90 and b < 120:
-                return "Black"
-
-
-            # =====================================
-            # FINAL FALLBACK
-            # =====================================
-
-            return "Grey"
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[COLOR DETECTION FAILED] "
-
-                f"{str(e)}"
-            )
-
-            return False
-
-
-    #-----URL API FLOW-------------------------------------------
-
-    def scrape_with_playwright(self):
-
-        from playwright.sync_api import sync_playwright
-        import subprocess
-        import os
-
-        _logger.warning(f"PLAYWRIGHT SCRAPE → {self.data_url}")
-
-        #✅ CHECK IF BROWSER EXISTS FIRST
-        browser_path = os.path.expanduser("~/.cache/ms-playwright")
-
-        if not os.path.exists(browser_path):
-            _logger.warning("PLAYWRIGHT → INSTALLING BROWSER (FIRST RUN)")
-
-            try:
-                subprocess.run(
-                    ["python", "-m", "playwright", "install", "chromium"],
-                    check=True
-                )
-                _logger.warning("PLAYWRIGHT BROWSER INSTALLED")
-            except Exception as e:
-                _logger.error(f"PLAYWRIGHT INSTALL FAILED → {str(e)}")
-                return
-
-        products = []
-
-        with sync_playwright() as p:
-
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-
-            page.goto(self.data_url, timeout=60000)
-            page.wait_for_timeout(5000)
-
-            # ✅ Cookie handling
-            try:
-                page.locator("button:has-text('Accept')").click(timeout=3000)
-            except:
-                pass
-
-            items = page.query_selector_all("a, div")
-
-            _logger.warning(f"PLAYWRIGHT ELEMENTS FOUND → {len(items)}")
-
-            for item in items[:200]:
-
-                try:
-                    text = item.inner_text().strip()
-
-                    if not text or len(text) < 5:
-                        continue
-
-                    img_el = item.query_selector("img")
-                    img_url = img_el.get_attribute("src") if img_el else None
-
-                    if img_url and img_url.startswith("//"):
-                        img_url = "https:" + img_url
-
-                    img_base64 = None
-
-                    if img_url:
-                        try:
-                            res = requests.get(img_url, timeout=10)
-                            if res.status_code == 200:
-                                img_base64 = base64.b64encode(res.content).decode("utf-8")
-                        except:
-                            pass
-
-                    products.append({
-                        "name": text[:120],
-                        "image": img_base64
-                    })
-
-                except:
-                    continue
-
-            browser.close()
-
-        _logger.warning(f"PLAYWRIGHT PRODUCTS → {len(products)}")
-
-        if not products:
-            _logger.error("PLAYWRIGHT FAILED → NO PRODUCTS")
-            return
-
-        pages = [{
-            "page": 1,
-            "text": "\n".join([p["name"] for p in products]),
-            "images": [p["image"] for p in products if p["image"]]
-        }]
-
-        self.extracted_text = json.dumps(pages)
-
-        _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     # =====================================================
     # CRON PROCESSOR
@@ -15400,7 +18003,7 @@ class VendorImportJob(models.Model):
             'url_scraping',
             'url_ai',
             'url_creating',
-
+            'excel_url_enrichment'
         ]
 
 
@@ -15705,6 +18308,9 @@ class VendorImportJob(models.Model):
                         job.excel_created_index or 0
                     )
 
+                    previous_excel_url = (
+                        job.excel_url_index or 0
+                    )
                 
                     previous_url_batch = (
                         job.url_batch_index or 0
@@ -16076,7 +18682,31 @@ class VendorImportJob(models.Model):
                             f"{job.excel_created_index}"
                         )
 
-                
+                    # Excel URL enrichment progress
+
+                    if (
+
+                        (job.excel_url_index or 0)
+
+                        >
+
+                        previous_excel_url
+
+                    ):
+
+                        progress_detected = True
+
+                        _logger.warning(
+
+                            f"[PROGRESS] EXCEL URL "
+
+                            f"{previous_excel_url}"
+
+                            f" -> "
+
+                            f"{job.excel_url_index}"
+                        )
+
                     # =========================================
                     # URL AI progress
                     # =========================================
@@ -16478,104 +19108,6 @@ class VendorImportJob(models.Model):
 
         return pages
     
-
-    #======apify url fetch/scrapp products=====================
-    
-    def _run_apify_actor(self, url):
-
-        token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
-
-        if not token:
-            raise Exception("Apify API token not configured")
-
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
-
-        # =====================================================
-        # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
-        # =====================================================
-
-        if not getattr(self, "apify_run_id", False):
-
-            run_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?token={token}"
-
-            payload = {
-                "startUrls": [{"url": url}]
-            }
-
-            headers = {
-                "Content-Type": "application/json"
-            }
-
-            response = requests.post(run_url, json=payload, headers=headers, timeout=30)
-
-            if response.status_code != 201:
-                raise Exception(f"Apify run failed: {response.text}")
-
-            run_data = response.json()
-
-            # ✅ SAVE FOR NEXT CRON
-            self.apify_run_id = run_data["data"]["id"]
-            self.apify_dataset_id = run_data["data"]["defaultDatasetId"]
-
-            _logger.warning(f"APIFY STARTED → RUN ID {self.apify_run_id}")
-
-            # 🔥 IMPORTANT: STOP HERE (NON-BLOCKING)
-            return None
-
-        # =====================================================
-        # 🔥 STEP 2: CHECK STATUS
-        # =====================================================
-
-        status_url = f"https://api.apify.com/v2/actor-runs/{self.apify_run_id}?token={token}"
-
-        status_res = requests.get(status_url, timeout=20).json()
-        status = status_res["data"]["status"]
-
-        _logger.warning(f"APIFY STATUS → {status}")
-
-        if status in ["RUNNING", "READY"]:
-            _logger.warning("APIFY STILL RUNNING → WAIT NEXT CRON")
-            return None
-
-        if status in ["FAILED", "ABORTED", "TIMED-OUT"]:
-            raise Exception(f"Apify run failed with status: {status}")
-
-        # =====================================================
-        # 🔥 STEP 3: FETCH DATA (ONLY WHEN DONE)
-        # =====================================================
-
-        dataset_url = f"https://api.apify.com/v2/datasets/{self.apify_dataset_id}/items"
-
-        params = {
-            "token": token,
-            "limit": 1000,
-            "clean": "true"
-        }
-
-        dataset_res = requests.get(dataset_url, params=params, timeout=30)
-
-        if dataset_res.status_code != 200:
-            raise Exception(f"Failed to fetch dataset: {dataset_res.text}")
-
-        data = dataset_res.json()
-
-        _logger.warning(f"APIFY ITEMS FETCHED → {len(data)}")
-
-        if not data:
-            _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
-
-            self.state = 'done'   # 🔥 STOP LOOP COMPLETELY
-            self._safe_commit_progress()
-            return
-
-        # 🔥 CLEAN UP (IMPORTANT)
-        self.apify_run_id = False
-        self.apify_dataset_id = False
-
-        return data
-
-
     #=======validation===================
     def validate_ai_output(products):
         for p in products:
@@ -16690,3 +19222,94 @@ class VendorImportJob(models.Model):
 
             return 1.0
 
+    #=====publish mass product==========================
+    def action_publish_products(self):
+        active_ids = self.env.context.get(
+            'active_ids',
+            []
+        )
+
+        products = self.env[
+            'product.template'
+        ].browse(
+            active_ids
+        )
+
+        products.write({
+            'is_published': True
+        })
+
+    #=====Unpublished mass product==========================
+    def action_unpublish_products(self):
+        active_ids = self.env.context.get(
+            'active_ids',
+            []
+        )
+
+        products = self.env[
+            'product.template'
+        ].browse(
+            active_ids
+        )
+
+        products.write({
+            'is_published': False
+        })
+
+    #========bukl price update==================
+    def action_apply(self):
+
+        products = self.env[
+            'product.template'
+        ].browse(
+            self.env.context.get(
+                'active_ids',
+                []
+            )
+        )
+
+        for product in products:
+
+            current_price = product.list_price
+
+            if self.update_type == 'fixed':
+
+                if self.operation == 'set':
+                    new_price = self.value
+
+                elif self.operation == 'increase':
+                    new_price = (
+                        current_price +
+                        self.value
+                    )
+
+                else:
+                    new_price = (
+                        current_price -
+                        self.value
+                    )
+
+            else:
+
+                if self.operation == 'increase':
+                    new_price = (
+                        current_price *
+                        (
+                            1 +
+                            self.value / 100
+                        )
+                    )
+
+                else:
+                    new_price = (
+                        current_price *
+                        (
+                            1 -
+                            self.value / 100
+                        )
+                    )
+
+            product.list_price = max(
+                0,
+                new_price
+            )
