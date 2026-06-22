@@ -9,7 +9,7 @@
 
         <field name="res_model">product.template</field>
 
-        <field name="view_mode">kanban,tree,form</field>
+        <field name="view_mode">kanban,list,form</field>
 
     </record>
 
