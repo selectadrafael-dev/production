@@ -6036,6 +6036,13 @@ class VendorImportJob(models.Model):
 
         token = self.env['ir.config_parameter'].sudo().get_param('apify.api_token')
 
+        _logger.warning(
+            f"[APIFY DEBUG] "
+            f"url={url} | "
+            f"run_id={self.apify_run_id} | "
+            f"dataset_id={self.apify_dataset_id}"
+        )
+
         if not token:
             raise Exception("Apify API token not configured")
 
@@ -6053,6 +6060,10 @@ class VendorImportJob(models.Model):
             payload = {
                 "startUrls": [{"url": url}]
             }
+
+            _logger.warning(
+                f"[APIFY START PAYLOAD] {payload}"
+            )
 
             headers = {
                 "Content-Type": "application/json"
@@ -6109,9 +6120,36 @@ class VendorImportJob(models.Model):
         if dataset_res.status_code != 200:
             raise Exception(f"Failed to fetch dataset: {dataset_res.text}")
 
+
         data = dataset_res.json()
 
-        _logger.warning(f"APIFY ITEMS FETCHED → {len(data)}")
+        _logger.warning(
+
+            f"[APIFY DATASET RETURN] "
+
+            f"url={url} | "
+
+            f"dataset_id={self.apify_dataset_id} | "
+
+            f"items={len(data)}"
+        )
+
+        if data:
+
+            _logger.warning(
+
+                "[APIFY FIRST RECORD]\n%s"
+
+                % json.dumps(
+                    data[0],
+                    indent=4,
+                    default=str
+                )
+            )
+
+        _logger.warning(
+            f"APIFY ITEMS FETCHED → {len(data)}"
+        )
 
         if not data:
             _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
@@ -15334,6 +15372,13 @@ class VendorImportJob(models.Model):
             try:
 
                 row = rows[idx]
+
+                _logger.warning(
+                    f"[QUEUE ITEM] "
+                    f"idx={idx} | "
+                    f"group_id={row.get('group_id')} | "
+                    f"url={row.get('url')}"
+                )
 
                 group_id = row.get(
                     "group_id"
