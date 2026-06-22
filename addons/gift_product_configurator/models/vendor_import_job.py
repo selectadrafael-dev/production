@@ -4868,6 +4868,10 @@ class VendorImportJob(models.Model):
             f"{self.url_parse_index}"
         )
 
+        _logger.warning(
+            f"[URL NORMALIZED COUNT] {len(normalized)}"
+        )
+
 
         if not normalized:
 
@@ -15672,12 +15676,28 @@ class VendorImportJob(models.Model):
 
                 if description_parts:
 
-                    vals["description_sale"] = (
+        
+                    description = []
 
-                        "\n\n".join(
-                            description_parts
+                    if url_data.get("subtitle"):
+                        description.append(url_data["subtitle"])
+
+                    if url_data.get("description"):
+                        description.append(url_data["description"])
+
+                    if url_data.get("capacity"):
+                        description.append(
+                            f"Capacity: {url_data['capacity']}"
                         )
-                    )       
+
+                    if url_data.get("dimensions"):
+                        description.append(
+                            f"Dimensions: {url_data['dimensions']}"
+                        )
+
+                    vals["description_sale"] = "<br/><br/>".join(
+                        description
+                    )      
                 # ====================================
                 # UPDATE PRODUCT
                 # ====================================
