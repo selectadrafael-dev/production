@@ -37,6 +37,7 @@
         "views/components/vendor_modal_global.xml",
         'views/product_card_popular_category.xml',
         'views/section_popular_categories_carousel.xml',
+        'views/vendor_product_menu.xml',
     ],
     "assets": {
         "web.assets_frontend": [
