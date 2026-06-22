@@ -128,7 +128,7 @@ class ProductMassUpdateWizard( models.TransientModel):
     detailed_type = fields.Selection(
         [
             (
-                "goods",
+                "consu",
                 "Goods"
             ),
             (
@@ -141,7 +141,7 @@ class ProductMassUpdateWizard( models.TransientModel):
             )
         ],
         string="Product Type",
-        default="goods"
+        default="consu"
     )
 
     update_sale_ok = fields.Boolean(
@@ -297,21 +297,19 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                 inventory_updated_count += 1
 
+                # =====================
+                # PRODUCT TYPE
+                # =====================
+
                 if self.update_track_inventory:
 
-                    if self.track_inventory_value:
-
-                        product.detailed_type = "goods"
-
-                    else:
-
-                        product.detailed_type = "service"
-
-                elif self.detailed_type:
-
-                    product.detailed_type = (
+                    product.type = (
                         self.detailed_type
                     )
+
+                # =====================
+                # SALES
+                # =====================
 
                 if self.update_sale_ok:
 
@@ -319,17 +317,29 @@ class ProductMassUpdateWizard( models.TransientModel):
                         self.sale_ok
                     )
 
+                # =====================
+                # PURCHASE
+                # =====================
+
                 if self.update_purchase_ok:
 
                     product.purchase_ok = (
                         self.purchase_ok
                     )
 
+                # =====================
+                # LOT / SERIAL TRACKING
+                # =====================
+
                 if self.tracking:
 
                     product.tracking = (
                         self.tracking
                     )
+
+                # =====================
+                # ROUTES
+                # =====================
 
                 if self.route_ids:
 
@@ -341,16 +351,21 @@ class ProductMassUpdateWizard( models.TransientModel):
                         )
                     ]
 
-              
+                # =====================
+                # WEBSITE STOCK DISPLAY
+                # =====================
 
-                    product.show_availability = (
-                        self.show_available_qty
-                    )
+                product.show_availability = (
+                    self.show_available_qty
+                )
 
+                product.allow_out_of_stock_order = (
+                    self.continue_selling
+                )
 
-                    product.allow_out_of_stock_order = (
-                        self.continue_selling
-                    )
+                # =====================
+                # STOCK QUANTITY
+                # =====================
 
                 if self.set_quantity:
 
