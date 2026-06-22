@@ -15828,6 +15828,15 @@ class VendorImportJob(models.Model):
                 return {}
 
             first = raw_data[0] if raw_data else {}
+            
+            _logger.warning(
+                "[FIRST APIFY RECORD]\n%s"
+                % json.dumps(
+                    first,
+                    indent=4,
+                    default=str
+                )
+            )
 
             # =========================================
             # BLOCKED / EMPTY
@@ -15877,6 +15886,14 @@ class VendorImportJob(models.Model):
                         block.get("items", [])
                     )
 
+            _logger.warning(
+                "[STRUCTURED DATA SAMPLE]\n%s"
+                % json.dumps(
+                    structured_data[:5],
+                    indent=4,
+                    default=str
+                )
+            )
 
             enriched = (
                 self._extract_enrichment_data_from_url(
