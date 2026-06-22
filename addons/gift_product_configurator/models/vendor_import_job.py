@@ -14696,6 +14696,7 @@ class VendorImportJob(models.Model):
                     f"| images={len(images)}"
                 )
 
+
                 prompt = f"""
                 You are a structured Excel product parser.
 
@@ -17339,49 +17340,6 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
-                    stock_qty = int(
-
-                        main_product.get(
-                            "stock",
-                            0
-                        ) or 0
-                    )
-
-                    if stock_qty > 0:
-
-                        warehouse = self.env[
-                            "stock.warehouse"
-                        ].search(
-                            [],
-                            limit=1
-                        )
-
-                        if warehouse:
-
-                            location = (
-                                warehouse.lot_stock_id
-                            )
-
-                            self.env[
-                                "stock.quant"
-                            ]._update_available_quantity(
-
-                                product.product_variant_id,
-
-                                location,
-
-                                stock_qty
-                            )
-
-                            _logger.warning(
-
-                                f"[EXCEL STOCK CREATED] "
-
-                                f"{product.name} "
-
-                                f"qty={stock_qty}"
-                            )
-
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
                     created_count += 1
@@ -17417,7 +17375,6 @@ class VendorImportJob(models.Model):
                         f"| product_id={product.id}"
                     )
               
-
                 # ==================================================
                 # VARIANTS
                 # ==================================================
@@ -17754,6 +17711,72 @@ class VendorImportJob(models.Model):
                                 f"| {attr_value}"
                             )
 
+                stock_qty = int(
+                    main_product.get(
+                        "stock",
+                            0
+                    ) or 0
+                )
+
+                warehouse = self.env[
+                    "stock.warehouse"
+                ].search(
+                    [],
+                    limit=1
+                )
+
+                location = (
+                    warehouse.lot_stock_id
+                    if warehouse
+                    else False
+                )
+
+                variant = product.product_variant_id
+
+                stock_quant_obj = self.env[
+                    "stock.quant"
+                ]
+
+
+                if (
+                    stock_qty >= 0
+                    and variant
+                    and location
+                ):
+
+                    quant = stock_quant_obj.search(
+                        [
+                            (
+                                'product_id',
+                                '=',
+                                variant.id
+                            ),
+                            (
+                                'location_id',
+                                '=',
+                                location.id
+                            )
+                        ],
+                        limit=1
+                    )
+
+                    if quant:
+
+                        quant.inventory_quantity = stock_qty
+
+                        quant.action_apply_inventory()
+
+                    else:
+
+                        quant = stock_quant_obj.create(
+                            {
+                                'product_id': variant.id,
+                                'location_id': location.id,
+                                'inventory_quantity': stock_qty,
+                            }
+                        )
+
+                        quant.action_apply_inventory()
 
                 # =================================================
                 # SAVE PROGRESS
