@@ -14,14 +14,6 @@
         <field name="groups"
                eval="[(4, ref('gift_product_configurator.group_product_vendor'))]"/>
 
-        <!--field name="domain_force">
-
-            [
-                ('vendor_id', '=', user.partner_id.id)
-            ]
-
-        </field-->
-
         <field name="domain_force">
             [(1, '=', 1)]
         </field>
