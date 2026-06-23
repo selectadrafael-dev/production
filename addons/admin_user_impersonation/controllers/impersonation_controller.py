@@ -37,20 +37,52 @@ class ImpersonationController(http.Controller):
         # Redirect
         return redirect('/my')
 
+    # @http.route(
+    #     '/impersonate/stop',
+    #     type='http',
+    #     auth='user',
+    #     website=True
+    # )
+    # def impersonate_stop(self, **kwargs):
+
+    #     impersonator_id = request.session.get('impersonator_id')
+
+    #     if impersonator_id:
+
+    #         request.session.uid = impersonator_id
+
+    #         request.session.pop('impersonator_id')
+
+    #     return redirect('/web')
+
     @http.route(
         '/impersonate/stop',
         type='http',
         auth='user',
         website=True
     )
-    def impersonate_stop(self, **kwargs):
+    def impersonate_stop(
+        self,
+        **kwargs
+    ):
 
-        impersonator_id = request.session.get('impersonator_id')
+        impersonation_data = (
+            request.session.get(
+                'impersonation_data'
+            )
+        )
 
-        if impersonator_id:
+        if impersonation_data:
 
-            request.session.uid = impersonator_id
+            request.session.uid = (
+                impersonation_data[
+                    'admin_id'
+                ]
+            )
 
-            request.session.pop('impersonator_id')
+            request.session.pop(
+                'impersonation_data',
+                None
+            )
 
         return redirect('/web')

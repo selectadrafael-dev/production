@@ -12,3 +12,5 @@ class ResUsers(models.Model):
             'url': f'/impersonate/start/{self.id}',
             'target': 'self',
         }
+
+        
