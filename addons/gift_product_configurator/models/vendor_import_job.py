@@ -12480,7 +12480,7 @@ class VendorImportJob(models.Model):
 
                     product._create_variant_ids()
 
-                     # =====================================
+                    # =====================================
                     # APPLY REAL INVENTORY STOCK
                     # FOR BOTH NEW + EXISTING PRODUCTS
                     # =====================================
@@ -12610,64 +12610,6 @@ class VendorImportJob(models.Model):
                                 for v in attributes.values()
 
                             ]).lower()
-
-                        # for pv in product_variants:
-
-                        #     combo = " ".join([
-
-                        #         v.name.lower()
-
-                        #         for v in (
-                        #             pv.product_template_variant_value_ids
-                        #         )
-
-                        #     ])
-
-                        #     if combo:
-
-                        #         combo_words = combo.split()
-
-                        #         variant_words = (
-                        #             variant_name.split()
-                        #         )
-
-                        #         match_count = 0
-
-                        #         for word in variant_words:
-
-                        #             if word in combo_words:
-
-                        #                 match_count += 1
-
-
-                        #         required_matches = max(
-
-                        #             1,
-
-                        #             min(
-                        #                 len(variant_words),
-                        #                 2
-                        #             )
-                        #         )
-
-                        #         if (
-
-                        #             variant_words
-
-                        #             and
-
-                        #             match_count >= required_matches
-                        #         ):
-
-                        #             variant_record = pv
-
-                        #             _logger.warning(
-                        #                 f"[VARIANT RECORD MATCHED] "
-                        #                 f"variant={variant_name} "
-                        #                 f"odoo_variant={pv.display_name}"
-                        #             )
-
-                        #             break
 
                         for pv in product_variants:
 
@@ -13188,6 +13130,108 @@ class VendorImportJob(models.Model):
 
         return product, True
 
+     #===============Dead code and unsed=====================
+    
+    
+    #=========pdf product STOCK APPLY=======================
+    def _apply_pdf_stock(
+
+        self,
+
+        variant_record,
+
+        stock_qty,
+
+        stock_quant_obj,
+
+        stock_location
+    ):
+        
+
+        _logger.warning(
+            f"[PDF STOCK HELPER] "
+            f"variant={variant_record.id if variant_record else False} "
+            f"qty={stock_qty}"
+        )
+
+
+        if (
+
+            not stock_qty
+
+            or
+
+            not variant_record
+
+            or
+
+            not stock_location
+        ):
+
+            return
+
+        try:
+
+            quant = stock_quant_obj.search([
+
+                (
+                    'product_id',
+                    '=',
+                    variant_record.id
+                ),
+
+                (
+                    'location_id',
+                    '=',
+                    stock_location.id
+                )
+
+            ], limit=1)
+
+            if quant:
+
+                quant.inventory_quantity = (
+                    stock_qty
+                )
+
+                quant.action_apply_inventory()
+
+            else:
+
+                quant = stock_quant_obj.create({
+
+                    'product_id':
+                        variant_record.id,
+
+                    'location_id':
+                        stock_location.id,
+
+                    'inventory_quantity':
+                            stock_qty
+                })
+
+                quant.action_apply_inventory()
+
+            _logger.warning(
+
+                f"[PDF STOCK SET] "
+
+                f"{variant_record.display_name} "
+
+                f"-> {stock_qty}"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+
+                f"[PDF STOCK FAILED] "
+
+                f"{str(e)}"
+            )
+
+
+
     #==========create pdf CATEGORY RESOLVER====================================
     
     def _get_or_create_pdf_category(
@@ -13481,95 +13525,6 @@ class VendorImportJob(models.Model):
 
                     f"| {str(e)}"
                 )
-    
-    #=========pdf product STOCK APPLY=======================
-    def _apply_pdf_stock(
-
-        self,
-
-        variant_record,
-
-        stock_qty,
-
-        stock_quant_obj,
-
-        stock_location
-    ):
-
-        if (
-
-            not stock_qty
-
-            or
-
-            not variant_record
-
-            or
-
-            not stock_location
-        ):
-
-            return
-
-        try:
-
-            quant = stock_quant_obj.search([
-
-                (
-                    'product_id',
-                    '=',
-                    variant_record.id
-                ),
-
-                (
-                    'location_id',
-                    '=',
-                    stock_location.id
-                )
-
-            ], limit=1)
-
-            if quant:
-
-                quant.inventory_quantity = (
-                    stock_qty
-                )
-
-                quant.action_apply_inventory()
-
-            else:
-
-                quant = stock_quant_obj.create({
-
-                    'product_id':
-                        variant_record.id,
-
-                    'location_id':
-                        stock_location.id,
-
-                    'inventory_quantity':
-                            stock_qty
-                })
-
-                quant.action_apply_inventory()
-
-            _logger.warning(
-
-                f"[PDF STOCK SET] "
-
-                f"{variant_record.display_name} "
-
-                f"-> {stock_qty}"
-            )
-
-        except Exception as e:
-
-            _logger.warning(
-
-                f"[PDF STOCK FAILED] "
-
-                f"{str(e)}"
-            )
 
     #==========PDF TITLE NORMALIZATION====================================
     def _normalize_pdf_product_title(
@@ -14498,7 +14453,6 @@ class VendorImportJob(models.Model):
      # ---------------- Extract PDF ----------------
  
       #===========Excel Open AI================================
-    
 
     #======send to Open AI excel flow============================
     def send_to_openai_excel(self):
@@ -15009,6 +14963,12 @@ class VendorImportJob(models.Model):
                     response.output_text or ""
                 ).strip()
 
+                _logger.warning(
+                    f"[EXCEL AI RAW] "
+                    f"row={idx} "
+                    f"| result={result[:3000]}"
+                )
+
 
                 result = result.replace(
                     "```json",
@@ -15031,6 +14991,29 @@ class VendorImportJob(models.Model):
                 parsed = json.loads(
                     result
                 )
+
+                for product_idx, p in enumerate(parsed):
+
+                    _logger.warning(
+                        f"[EXCEL AI PRODUCT] "
+                        f"idx={product_idx} "
+                        f"| name={p.get('name')} "
+                        f"| stock={p.get('stock')} "
+                        f"| price={p.get('price')} "
+                        f"| variant_group={p.get('variant_group')}"
+                    )
+
+                    for v_idx, variant in enumerate(
+                        p.get("variants", [])
+                    ):
+
+                        _logger.warning(
+                            f"[EXCEL AI VARIANT] "
+                            f"product={p.get('name')} "
+                            f"| variant_idx={v_idx} "
+                            f"| stock={variant.get('stock')} "
+                            f"| attrs={variant.get('attributes')}"
+                        )
 
 
                 if (
@@ -16779,6 +16762,22 @@ class VendorImportJob(models.Model):
             'product.template.attribute.line'
         ]
 
+        stock_quant_obj = self.env[
+            'stock.quant'
+        ]
+
+        warehouse = self.env[
+            'stock.warehouse'
+        ].search(
+            [],
+            limit=1
+        )
+
+        stock_location = (
+            warehouse.lot_stock_id
+            if warehouse
+            else False
+        )
 
         # =====================================================
         # ROOT CATEGORY
@@ -17313,6 +17312,7 @@ class VendorImportJob(models.Model):
                             ) or 0
                         ),
 
+
                         'list_price':
                             self._safe_float(
                                 main_product.get("price")
@@ -17336,6 +17336,12 @@ class VendorImportJob(models.Model):
                         ] = image
 
 
+                    _logger.warning(
+                        f"[TYPE FIELD VALUES] "
+                        f"{product_obj._fields['type'].selection}"
+                    )
+
+                    #===============peoduct creation====================
                     product = product_obj.create(
                         vals
                     )
@@ -17711,10 +17717,41 @@ class VendorImportJob(models.Model):
                                 f"| {attr_value}"
                             )
 
+                # =====================================
+                # FORCE VARIANT GENERATION
+                # SAME AS PDF FLOW
+                # =====================================
+
+                product._create_variant_ids()
+
+                product.flush_recordset()
+
+                product.invalidate_recordset()
+
+                for v in product.product_variant_ids:
+
+                    _logger.warning(
+                        f"[GENERATED VARIANT] "
+                        f"id={v.id} "
+                        f"type={v.type}"
+                    )
+
+                _logger.warning(
+                    f"[EXCEL VARIANTS GENERATED] "
+                    f"product={product.name} "
+                    f"variant_count={len(product.product_variant_ids)} "
+                    f"variant_ids={product.product_variant_ids.ids}"
+                )
+
+                
+                #========================================
+                # APPLY STOCK (SAME AS PDF FLOW)
+                # ========================================
+
                 stock_qty = int(
                     main_product.get(
                         "stock",
-                            0
+                        0
                     ) or 0
                 )
 
@@ -17725,68 +17762,59 @@ class VendorImportJob(models.Model):
                     limit=1
                 )
 
-                location = (
+                stock_location = (
                     warehouse.lot_stock_id
                     if warehouse
                     else False
                 )
 
+                product.invalidate_recordset()
+
                 variant = product.product_variant_id
 
-                stock_quant_obj = self.env[
-                    "stock.quant"
-                ]
-
+                _logger.warning(
+                    f"[EXCEL STOCK VARIANT] "
+                    f"product={product.name} "
+                    f"variant_id={variant.id if variant else False} "
+                    f"variant_count={len(product.product_variant_ids)}"
+                )
 
                 if (
-                    stock_qty >= 0
-                    and variant
-                    and location
+                    variant
+                    and
+                    stock_location
                 ):
 
-                    quant = stock_quant_obj.search(
-                        [
-                            (
-                                'product_id',
-                                '=',
-                                variant.id
-                            ),
-                            (
-                                'location_id',
-                                '=',
-                                location.id
-                            )
-                        ],
-                        limit=1
+                    _logger.warning(
+                        f"[EXCEL PRODUCT STATE] "
+                        f"id={product.id} "
+                        f"type={product.type} "
+                        f"variants={len(product.product_variant_ids)}"
                     )
 
-                    if quant:
+                    _logger.warning(
+                        f"[VARIANT STATE BEFORE STOCK] "
+                        f"variant_id={variant.id} "
+                        f"variant_type={variant.type} "
+                        f"template_type={product.type}"
+                    )
 
-                        quant.inventory_quantity = stock_qty
+                    _logger.warning(
+                        f"[EXCEL PDF STOCK CALL] "
+                        f"product={product.name} "
+                        f"variant={variant.id} "
+                        f"qty={stock_qty}"
+                    )
 
-                        quant.action_apply_inventory()
+                    self._apply_pdf_stock(
+                        variant,
+                        stock_qty,
+                        stock_quant_obj,
+                        stock_location
+                    )
 
-                    else:
-
-                        _logger.warning(
-                            f"[EXCEL STOCK DEBUG] "
-                            f"product={product.name} "
-                            f"template_type={product.type} "
-                            f"variant_id={variant.id if variant else False} "
-                            f"variant_type={variant.type if variant else False} "
-                            f"location={location.id if location else False} "
-                            f"stock_qty={stock_qty}"
-                        )
-                        quant = stock_quant_obj.create(
-                            {
-                                'product_id': variant.id,
-                                'location_id': location.id,
-                                'inventory_quantity': stock_qty,
-                            }
-                        )
-
-                        quant.action_apply_inventory()
-
+                   
+               
                 # =================================================
                 # SAVE PROGRESS
                 # =================================================

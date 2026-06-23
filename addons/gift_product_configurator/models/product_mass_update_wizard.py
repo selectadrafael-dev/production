@@ -191,6 +191,13 @@ class ProductMassUpdateWizard( models.TransientModel):
         string="Routes"
     )
 
+    currency_id = fields.Many2one(
+        'res.currency',
+        string='Currency'
+    )
+
+    update_currency = fields.Boolean()
+
 
     # =========================
     # ACTION
@@ -208,6 +215,15 @@ class ProductMassUpdateWizard( models.TransientModel):
             raise UserError(
                 "No products were selected."
             )
+        
+        # if (
+        #     self.update_currency
+        #     and
+        #     self.currency_id
+        # ):
+        #     product.currency_id = (
+        #         self.currency_id.id
+        #     )
 
         if (
             self.publish_products

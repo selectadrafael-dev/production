@@ -22818,7 +22818,7 @@ class VendorImportJob(models.Model):
             return self._force_translate(text, lang)
 
 
-    # ================= PRODUCT CREATION URL ================
+    # ================= PRODUCT CREATION URL ==================
 
     def create_products_url(self):
 
