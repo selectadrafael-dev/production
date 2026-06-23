@@ -17848,6 +17848,32 @@ class VendorImportJob(models.Model):
                     )
 
                     _logger.warning(
+                        f"[LOCATION DEBUG] "
+                        f"location_id={stock_location.id} "
+                        f"usage={stock_location.usage}"
+                    )
+
+                    try:
+                        stock_quant_obj._update_available_quantity(
+                            variant,
+                            stock_location,
+                            difference
+                        )
+                    except Exception as e:
+
+                        _logger.exception(
+                            f"[STOCK UPDATE FAILED] "
+                            f"{str(e)}"
+                        )
+
+                    _logger.warning(
+                        f"[VARIANT FULL DEBUG] "
+                        f"id={variant.id} "
+                        f"type={variant.type} "
+                        f"tracking={variant.tracking}"
+                    )
+
+                    _logger.warning(
                         f"[EXCEL STOCK VALUES] "
                         f"product={product.name} "
                         f"stock_qty={stock_qty} "
