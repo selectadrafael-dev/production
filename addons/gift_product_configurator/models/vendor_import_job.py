@@ -17719,6 +17719,14 @@ class VendorImportJob(models.Model):
 
                 product.invalidate_recordset()
 
+                for v in product.product_variant_ids:
+
+                    _logger.warning(
+                        f"[GENERATED VARIANT] "
+                        f"id={v.id} "
+                        f"type={v.type}"
+                    )
+
                 _logger.warning(
                     f"[EXCEL VARIANTS GENERATED] "
                     f"product={product.name} "
@@ -17781,6 +17789,53 @@ class VendorImportJob(models.Model):
                         f"variant={variant.id if variant else False}"
                     )
 
+                    # current_qty = stock_quant_obj._get_available_quantity(
+                    #     variant,
+                    #     stock_location
+                    # )
+
+                    # difference = (
+                    #     stock_qty
+                    #     -
+                    #     current_qty
+                    # )
+
+
+                    # _logger.warning(
+                    #     f"[VARIANT STATE] "
+                    #     f"variant_id={variant.id} "
+                    #     f"type={variant.type} "
+                    #     f"template_type={product.type}"
+                    # )
+
+                    # stock_quant_obj._update_available_quantity(
+                    #     variant,
+                    #     stock_location,
+                    #     difference
+                    # )
+
+                    # quantity_updated_count += 1
+
+                    # _logger.warning(
+                    #     f"[EXCEL STOCK SET] "
+                    #     f"{variant.display_name} "
+                    #     f"current={current_qty} "
+                    #     f"target={stock_qty} "
+                    #     f"diff={difference}"
+                    # )
+
+                    _logger.warning(
+                        f"[VARIANT STATE BEFORE STOCK] "
+                        f"variant_id={variant.id} "
+                        f"variant_type={variant.type} "
+                        f"template_type={product.type}"
+                    )
+
+                    _logger.warning(
+                        f"[VARIANT RAW] "
+                        f"{variant.read(['id','type'])}"
+                    )
+
                     current_qty = stock_quant_obj._get_available_quantity(
                         variant,
                         stock_location
@@ -17790,22 +17845,6 @@ class VendorImportJob(models.Model):
                         stock_qty
                         -
                         current_qty
-                    )
-
-                    stock_quant_obj._update_available_quantity(
-                        variant,
-                        stock_location,
-                        difference
-                    )
-
-                    quantity_updated_count += 1
-
-                    _logger.warning(
-                        f"[EXCEL STOCK SET] "
-                        f"{variant.display_name} "
-                        f"current={current_qty} "
-                        f"target={stock_qty} "
-                        f"diff={difference}"
                     )
 
                
