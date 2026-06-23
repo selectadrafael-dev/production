@@ -9410,9 +9410,9 @@ class VendorImportJob(models.Model):
 
                 continue
 
-            # =========================================
+            # ==========================================
             # FORMAT DESCRIPTION
-            # =========================================
+            # ==========================================
 
             formatted_description = description or ""
 
