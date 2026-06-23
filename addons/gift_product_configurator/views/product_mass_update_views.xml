@@ -38,6 +38,7 @@
 
                         </group>
 
+
                         <group invisible="not update_price">
 
                             <field name="update_method"/>
@@ -49,6 +50,17 @@
                         </group>
 
                     </group>
+
+                     <!--group>
+                        <group>
+                            <field name="update_currency"/>
+                        </group>
+
+                        <group>
+                          <field name="currency_id"
+                                invisible="not update_currency"/>
+                        </group>
+                    </group-->
 
                     <group string="Website Categories">
 

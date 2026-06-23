@@ -14952,6 +14952,12 @@ class VendorImportJob(models.Model):
                     response.output_text or ""
                 ).strip()
 
+                _logger.warning(
+                    f"[EXCEL AI RAW] "
+                    f"row={idx} "
+                    f"| result={result[:3000]}"
+                )
+
 
                 result = result.replace(
                     "```json",
@@ -14974,6 +14980,29 @@ class VendorImportJob(models.Model):
                 parsed = json.loads(
                     result
                 )
+
+                for product_idx, p in enumerate(parsed):
+
+                    _logger.warning(
+                        f"[EXCEL AI PRODUCT] "
+                        f"idx={product_idx} "
+                        f"| name={p.get('name')} "
+                        f"| stock={p.get('stock')} "
+                        f"| price={p.get('price')} "
+                        f"| variant_group={p.get('variant_group')}"
+                    )
+
+                    for v_idx, variant in enumerate(
+                        p.get("variants", [])
+                    ):
+
+                        _logger.warning(
+                            f"[EXCEL AI VARIANT] "
+                            f"product={p.get('name')} "
+                            f"| variant_idx={v_idx} "
+                            f"| stock={variant.get('stock')} "
+                            f"| attrs={variant.get('attributes')}"
+                        )
 
 
                 if (
@@ -17271,6 +17300,7 @@ class VendorImportJob(models.Model):
                                 0
                             ) or 0
                         ),
+
 
                         'list_price':
                             self._safe_float(
