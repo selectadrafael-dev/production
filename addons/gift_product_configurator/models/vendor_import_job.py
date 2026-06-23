@@ -17847,6 +17847,14 @@ class VendorImportJob(models.Model):
                         current_qty
                     )
 
+                    _logger.warning(
+                        f"[EXCEL STOCK VALUES] "
+                        f"product={product.name} "
+                        f"stock_qty={stock_qty} "
+                        f"current_qty={current_qty} "
+                        f"difference={difference}"
+                    )
+
                
                 # =================================================
                 # SAVE PROGRESS
