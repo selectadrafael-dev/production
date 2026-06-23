@@ -17726,9 +17726,9 @@ class VendorImportJob(models.Model):
                     f"variant_ids={product.product_variant_ids.ids}"
                 )
 
-                # =====================================
+                # ========================================
                 # APPLY STOCK (SAME AS PDF FLOW)
-                # =====================================
+                # ========================================
 
                 stock_qty = int(
                     main_product.get(
