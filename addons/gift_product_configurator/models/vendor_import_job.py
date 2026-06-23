@@ -17277,7 +17277,7 @@ class VendorImportJob(models.Model):
                         'description_sale':
                             description,
 
-                       'type': 'consu',
+                       'type': 'product',
 
                         'categ_id':
                             category.id,
