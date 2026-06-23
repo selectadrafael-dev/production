@@ -12480,7 +12480,7 @@ class VendorImportJob(models.Model):
 
                     product._create_variant_ids()
 
-                     # =====================================
+                    # =====================================
                     # APPLY REAL INVENTORY STOCK
                     # FOR BOTH NEW + EXISTING PRODUCTS
                     # =====================================
@@ -17333,6 +17333,7 @@ class VendorImportJob(models.Model):
                         f"{product_obj._fields['type'].selection}"
                     )
 
+                    #===============peoduct creation====================
                     product = product_obj.create(
                         vals
                     )
@@ -17789,41 +17790,7 @@ class VendorImportJob(models.Model):
                         f"variant={variant.id if variant else False}"
                     )
 
-                    # current_qty = stock_quant_obj._get_available_quantity(
-                    #     variant,
-                    #     stock_location
-                    # )
-
-                    # difference = (
-                    #     stock_qty
-                    #     -
-                    #     current_qty
-                    # )
-
-
-                    # _logger.warning(
-                    #     f"[VARIANT STATE] "
-                    #     f"variant_id={variant.id} "
-                    #     f"type={variant.type} "
-                    #     f"template_type={product.type}"
-                    # )
-
-                    # stock_quant_obj._update_available_quantity(
-                    #     variant,
-                    #     stock_location,
-                    #     difference
-                    # )
-
-                    # quantity_updated_count += 1
-
-                    # _logger.warning(
-                    #     f"[EXCEL STOCK SET] "
-                    #     f"{variant.display_name} "
-                    #     f"current={current_qty} "
-                    #     f"target={stock_qty} "
-                    #     f"diff={difference}"
-                    # )
-
+                
                     _logger.warning(
                         f"[VARIANT STATE BEFORE STOCK] "
                         f"variant_id={variant.id} "
@@ -17848,39 +17815,34 @@ class VendorImportJob(models.Model):
                     )
 
                     _logger.warning(
-                        f"[LOCATION DEBUG] "
-                        f"location_id={stock_location.id} "
-                        f"usage={stock_location.usage}"
-                    )
-
-                    try:
-                        stock_quant_obj._update_available_quantity(
-                            variant,
-                            stock_location,
-                            difference
-                        )
-                    except Exception as e:
-
-                        _logger.exception(
-                            f"[STOCK UPDATE FAILED] "
-                            f"{str(e)}"
-                        )
-
-                    _logger.warning(
-                        f"[VARIANT FULL DEBUG] "
-                        f"id={variant.id} "
-                        f"type={variant.type} "
-                        f"tracking={variant.tracking}"
-                    )
-
-                    _logger.warning(
-                        f"[EXCEL STOCK VALUES] "
+                        f"[EXCEL STOCK CHECK] "
                         f"product={product.name} "
                         f"stock_qty={stock_qty} "
                         f"current_qty={current_qty} "
                         f"difference={difference}"
                     )
 
+                    if abs(difference) > 0.0001:
+
+                        stock_quant_obj._update_available_quantity(
+                            variant,
+                            stock_location,
+                            difference
+                        )
+
+                        _logger.warning(
+                            f"[EXCEL STOCK UPDATED] "
+                            f"{variant.display_name} "
+                            f"diff={difference}"
+                        )
+
+                    else:
+
+                        _logger.warning(
+                            f"[EXCEL STOCK SKIPPED] "
+                            f"{variant.display_name} "
+                            f"already correct"
+                        )
                
                 # =================================================
                 # SAVE PROGRESS
