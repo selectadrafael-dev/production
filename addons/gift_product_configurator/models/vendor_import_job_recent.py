@@ -9410,9 +9410,39 @@ class VendorImportJob(models.Model):
 
                 continue
 
+            # ==========================================
+            # FORMAT DESCRIPTION
+            # ==========================================
+
+            formatted_description = description or ""
+
+            formatted_description = formatted_description.replace(
+                "STOCK NEXT ARRIVAL IN PRODUCTION",
+                "</p><h4>Stock Information</h4><p>"
+            )
+
+            formatted_description = formatted_description.replace(
+                "PRODUCT CUSTOMISATION",
+                "</p><h4>Customisation Options</h4><p>"
+            )
+
+            formatted_description = formatted_description.replace(
+                "POSSIBILITIES FOR PRODUCT CUSTOMISATION",
+                "</p><h4>Customisation Options</h4><p>"
+            )
+
+            formatted_description = formatted_description.replace(
+                "Dimensions:",
+                "</p><h4>Dimensions</h4><p>Dimensions:"
+            )
+
+            formatted_description = (
+                f"<p>{formatted_description}</p>"
+            )
+
             vals = {
                 'name': name.strip(),
-                'description_sale': description,
+                'description_sale': formatted_description,
                 'type': 'consu',
                 'categ_id': category.id,
                 'sale_ok': True,
