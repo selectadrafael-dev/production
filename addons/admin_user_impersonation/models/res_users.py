@@ -7,7 +7,7 @@ class ResUsers(models.Model):
 
         self.ensure_one()
 
-        #=======admin impersontion======
+        #=======admin impersontion==========
         return {
             'type': 'ir.actions.act_url',
             'url': f'/impersonate/start/{self.id}',
