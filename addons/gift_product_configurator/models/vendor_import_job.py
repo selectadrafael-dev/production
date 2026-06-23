@@ -13146,6 +13146,14 @@ class VendorImportJob(models.Model):
 
         stock_location
     ):
+        
+        
+        _logger.warning(
+            f"[PDF STOCK HELPER] "
+            f"variant={variant_record.id if variant_record else False} "
+            f"qty={stock_qty}"
+        )
+
 
         if (
 
@@ -17735,7 +17743,8 @@ class VendorImportJob(models.Model):
                     f"variant_ids={product.product_variant_ids.ids}"
                 )
 
-                # ========================================
+                
+                #========================================
                 # APPLY STOCK (SAME AS PDF FLOW)
                 # ========================================
 
@@ -17784,14 +17793,6 @@ class VendorImportJob(models.Model):
                     )
 
                     _logger.warning(
-                        f"[EXCEL STOCK DEBUG] "
-                        f"product={product.name} "
-                        f"type={product.type} "
-                        f"variant={variant.id if variant else False}"
-                    )
-
-                
-                    _logger.warning(
                         f"[VARIANT STATE BEFORE STOCK] "
                         f"variant_id={variant.id} "
                         f"variant_type={variant.type} "
@@ -17799,50 +17800,20 @@ class VendorImportJob(models.Model):
                     )
 
                     _logger.warning(
-                        f"[VARIANT RAW] "
-                        f"{variant.read(['id','type'])}"
+                        f"[EXCEL PDF STOCK CALL] "
+                        f"product={product.name} "
+                        f"variant={variant.id} "
+                        f"qty={stock_qty}"
                     )
 
-                    current_qty = stock_quant_obj._get_available_quantity(
+                    self._apply_pdf_stock(
                         variant,
+                        stock_qty,
+                        stock_quant_obj,
                         stock_location
                     )
 
-                    difference = (
-                        stock_qty
-                        -
-                        current_qty
-                    )
-
-                    _logger.warning(
-                        f"[EXCEL STOCK CHECK] "
-                        f"product={product.name} "
-                        f"stock_qty={stock_qty} "
-                        f"current_qty={current_qty} "
-                        f"difference={difference}"
-                    )
-
-                    if abs(difference) > 0.0001:
-
-                        stock_quant_obj._update_available_quantity(
-                            variant,
-                            stock_location,
-                            difference
-                        )
-
-                        _logger.warning(
-                            f"[EXCEL STOCK UPDATED] "
-                            f"{variant.display_name} "
-                            f"diff={difference}"
-                        )
-
-                    else:
-
-                        _logger.warning(
-                            f"[EXCEL STOCK SKIPPED] "
-                            f"{variant.display_name} "
-                            f"already correct"
-                        )
+                   
                
                 # =================================================
                 # SAVE PROGRESS
