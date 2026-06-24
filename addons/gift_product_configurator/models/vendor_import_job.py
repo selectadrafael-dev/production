@@ -13295,7 +13295,7 @@ class VendorImportJob(models.Model):
 
         return category
 
-    #=========pdf product GALLERY CREATOR=======================
+    #=========pdf product GALLERY CREATOR==============================
     def _create_pdf_gallery(
 
         self,
