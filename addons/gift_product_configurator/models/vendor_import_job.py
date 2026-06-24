@@ -555,7 +555,7 @@ class VendorImportJob(models.Model):
         self,
 
         error_message=None
-    ):
+     ):
 
         self.ensure_one()
 
@@ -1785,7 +1785,6 @@ class VendorImportJob(models.Model):
         "multi-color": "#CCCCCC",
         "multicolor": "#CCCCCC",
     }
-
 
     # =========================================
     # REUSABLE ATTRIBUTE ENGINE
@@ -3400,7 +3399,7 @@ class VendorImportJob(models.Model):
     def _recover_products_from_page_image(
         self,
         page_data
-    ):
+     ):
 
         try:
 
@@ -6049,12 +6048,12 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
-        # =====================================================
+        # ======================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
-        # =====================================================
+        # ======================================================
 
         if not getattr(self, "apify_run_id", False):
 
@@ -9534,6 +9533,16 @@ class VendorImportJob(models.Model):
                     # LIFESTYLE DETECTION
                     # =====================================
 
+                    _logger.warning(
+                        f"[LIFESTYLE INPUT] "
+                        f"skin={skin_ratio:.3f} "
+                        f"coverage={coverage_ratio:.3f} "
+                        f"bg={background_ratio:.3f} "
+                        f"hero={hero_score} "
+                        f"gallery={gallery_score} "
+                        f"size={crop_width}x{crop_height}"
+                    )
+
                     is_lifestyle = False
 
                     if skin_ratio > 0.12:
@@ -11428,7 +11437,6 @@ class VendorImportJob(models.Model):
 
             return False
 
-
     #=================Centralized Rusable Image resolver==============
 
     def _resolve_asset_image(
@@ -12485,95 +12493,22 @@ class VendorImportJob(models.Model):
                     # FOR BOTH NEW + EXISTING PRODUCTS
                     # =====================================
 
-                    try:
+                    #try:
 
-                        stock_qty = int(
+                    stock_qty = int(
 
-                            product_data.get(
-                                "stock_qty",
-                                0
-                            ) or 0
-                        )
+                        product_data.get(
+                           "stock_qty",
+                             0
+                        ) or 0
+                    )
 
-                        _logger.warning(
-
-                            f"[PDF STOCK DEBUG] "
-
-                            f"{product.name} "
-
-                            f"| stock_qty={stock_qty}"
-                        )
-
-                        if not stock_location:
-
-                            _logger.warning(
-                                "[STOCK SKIPPED] No warehouse stock location found"
-                            )
-
-                            continue
-
-
-                        variant = product.product_variant_id
-
-                        _logger.warning(
-                            f"[STOCK START] "
-                            f"product={product.name} "
-                            f"variant_id={variant.id} "
-                            f"location={stock_location.complete_name} "
-                            f"target_qty={stock_qty}"
-                        )
-
-                        current_qty = stock_quant_obj._get_available_quantity(
-                            variant,
-                            stock_location
-                        )
-
-                        difference = (
-                            stock_qty
-                            -
-                            current_qty
-                        )
-
-                        _logger.warning(
-                            f"[STOCK CALC] "
-                            f"current_qty={current_qty} "
-                            f"difference={difference}"
-                        )
-
-                        stock_quant_obj._update_available_quantity(
-                            variant,
-                            stock_location,
-                            difference
-                        )
-
-                        new_qty = stock_quant_obj._get_available_quantity(
-                            variant,
-                            stock_location
-                        )
-
-                        _logger.warning(
-                            f"[STOCK RESULT] "
-                            f"product={product.name} "
-                            f"new_qty={new_qty}"
-                        )
-
-                        _logger.warning(
-                            f"[STOCK UPDATED] "
-                            f"product={product.name} "
-                            f"qty={stock_qty}"
-                        )
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"[STOCK APPLY FAILED] "
-
-                            f"{product.name} "
-
-                            f"| {str(e)}"
-                        )
-
+                    self._apply_catalog_stock(
+                        product,
+                        stock_qty,
+                        stock_quant_obj,
+                        stock_location
+                    )
 
                     used_asset_indexes = set()
 
@@ -12826,7 +12761,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-    #==========pdf product PRODUCT CREATE/GET====================================
+    #==========pdf product CREATE/GET====================================
     
     def _get_or_create_pdf_product(
 
@@ -13130,10 +13065,84 @@ class VendorImportJob(models.Model):
 
         return product, True
 
-     #===============Dead code and unsed=====================
-    
-    
-    #=========pdf product STOCK APPLY=======================
+    #==========pdf and excel stock helper(working helper)================
+    def _apply_catalog_stock(
+        self,
+        product,
+        stock_qty,
+        stock_quant_obj,
+        stock_location
+    ):
+
+        try:
+
+            _logger.warning(
+                f"[CATALOG STOCK DEBUG] "
+                f"{product.name} "
+                f"| stock_qty={stock_qty}"
+            )
+
+            if not stock_location:
+
+                _logger.warning(
+                    "[STOCK SKIPPED] No warehouse stock location found"
+                )
+
+                return
+
+            variant = product.product_variant_id
+
+            _logger.warning(
+                f"[STOCK START] "
+                f"product={product.name} "
+                f"variant_id={variant.id} "
+                f"location={stock_location.complete_name} "
+                f"target_qty={stock_qty}"
+            )
+
+            current_qty = stock_quant_obj._get_available_quantity(
+                variant,
+                stock_location
+            )
+
+            difference = (
+                stock_qty
+                -
+                current_qty
+            )
+
+            _logger.warning(
+                f"[STOCK CALC] "
+                f"current_qty={current_qty} "
+                f"difference={difference}"
+            )
+
+            stock_quant_obj._update_available_quantity(
+                variant,
+                stock_location,
+                difference
+            )
+
+            new_qty = stock_quant_obj._get_available_quantity(
+                variant,
+                stock_location
+            )
+
+            _logger.warning(
+                f"[STOCK RESULT] "
+                f"product={product.name} "
+                f"new_qty={new_qty}"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[STOCK APPLY FAILED] "
+                f"{product.name} "
+                f"| {str(e)}"
+            )
+
+    #========= dead product STOCK APPLY===================================
     def _apply_pdf_stock(
 
         self,
@@ -13149,9 +13158,23 @@ class VendorImportJob(models.Model):
         
 
         _logger.warning(
+            f"[PDF HELPER EXISTS] "
+            f"id={variant_record.id} "
+            f"exists={bool(variant_record.exists())}"
+        )
+
+        _logger.warning(
             f"[PDF STOCK HELPER] "
             f"variant={variant_record.id if variant_record else False} "
             f"qty={stock_qty}"
+        )
+
+        _logger.warning(
+            f"[PDF STOCK INPUT] "
+            f"variant_id={variant_record.id if variant_record else False} "
+            f"product={variant_record.display_name if variant_record else False} "
+            f"stock_qty={stock_qty} "
+            f"location={stock_location.id if stock_location else False}"
         )
 
 
@@ -13230,8 +13253,6 @@ class VendorImportJob(models.Model):
                 f"{str(e)}"
             )
 
-
-
     #==========create pdf CATEGORY RESOLVER====================================
     
     def _get_or_create_pdf_category(
@@ -13284,7 +13305,7 @@ class VendorImportJob(models.Model):
 
         return category
 
-    #=========pdf product GALLERY CREATOR=======================
+    #=========pdf product GALLERY CREATOR==============================
     def _create_pdf_gallery(
 
         self,
@@ -17755,66 +17776,13 @@ class VendorImportJob(models.Model):
                     ) or 0
                 )
 
-                warehouse = self.env[
-                    "stock.warehouse"
-                ].search(
-                    [],
-                    limit=1
-                )
-
-                stock_location = (
-                    warehouse.lot_stock_id
-                    if warehouse
-                    else False
-                )
-
-                product.invalidate_recordset()
-
-                variant = product.product_variant_id
-
-                _logger.warning(
-                    f"[EXCEL STOCK VARIANT] "
-                    f"product={product.name} "
-                    f"variant_id={variant.id if variant else False} "
-                    f"variant_count={len(product.product_variant_ids)}"
-                )
-
-                if (
-                    variant
-                    and
+                self._apply_catalog_stock(
+                    product,
+                    stock_qty,
+                    stock_quant_obj,
                     stock_location
-                ):
+                )
 
-                    _logger.warning(
-                        f"[EXCEL PRODUCT STATE] "
-                        f"id={product.id} "
-                        f"type={product.type} "
-                        f"variants={len(product.product_variant_ids)}"
-                    )
-
-                    _logger.warning(
-                        f"[VARIANT STATE BEFORE STOCK] "
-                        f"variant_id={variant.id} "
-                        f"variant_type={variant.type} "
-                        f"template_type={product.type}"
-                    )
-
-                    _logger.warning(
-                        f"[EXCEL PDF STOCK CALL] "
-                        f"product={product.name} "
-                        f"variant={variant.id} "
-                        f"qty={stock_qty}"
-                    )
-
-                    self._apply_pdf_stock(
-                        variant,
-                        stock_qty,
-                        stock_quant_obj,
-                        stock_location
-                    )
-
-                   
-               
                 # =================================================
                 # SAVE PROGRESS
                 # =================================================

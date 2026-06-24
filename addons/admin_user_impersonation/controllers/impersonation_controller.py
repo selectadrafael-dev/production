@@ -11,49 +11,60 @@ class ImpersonationController(http.Controller):
         auth='user',
         website=True
     )
-    def impersonate_start(self, user_id, **kwargs):
+    def impersonate_start(
+        self,
+        user_id,
+        **kwargs
+    ):
 
         current_user = request.env.user
 
-        # Allow only administrators
-        if not current_user.has_group('base.group_system'):
+        # Only System Admins
+        if not current_user.has_group(
+            'base.group_system'
+        ):
             return request.not_found()
 
-        target_user = request.env['res.users'].sudo().browse(user_id)
+        # Prevent nested impersonation
+        if request.session.get(
+            'impersonation_data'
+        ):
+            return redirect('/web')
+
+        target_user = (
+            request.env['res.users']
+            .sudo()
+            .browse(user_id)
+        )
 
         if not target_user.exists():
             return request.not_found()
 
-        # Prevent impersonating super admin
-        if target_user.has_group('base.group_system'):
+        # Prevent self-switch
+        if target_user.id == current_user.id:
+            return redirect('/web')
+
+        # Prevent admin -> admin switch
+        if target_user.has_group(
+            'base.group_system'
+        ):
             return request.not_found()
 
-        # Save original admin
-        request.session['impersonator_id'] = current_user.id
+        # Store original admin
+        request.session[
+            'impersonation_data'
+        ] = {
+            'admin_id': current_user.id,
+            'admin_name': current_user.name,
+            'target_user_id': target_user.id,
+            'target_user_name': target_user.name,
+        }
 
-        # Activate impersonation
+        # Become vendor/user
         request.session.uid = target_user.id
+        request.session.modified = True
 
-        # Redirect
-        return redirect('/my')
-
-    # @http.route(
-    #     '/impersonate/stop',
-    #     type='http',
-    #     auth='user',
-    #     website=True
-    # )
-    # def impersonate_stop(self, **kwargs):
-
-    #     impersonator_id = request.session.get('impersonator_id')
-
-    #     if impersonator_id:
-
-    #         request.session.uid = impersonator_id
-
-    #         request.session.pop('impersonator_id')
-
-    #     return redirect('/web')
+        return redirect('/web')
 
     @http.route(
         '/impersonate/stop',
@@ -72,17 +83,28 @@ class ImpersonationController(http.Controller):
             )
         )
 
-        if impersonation_data:
+        # Real vendor typed URL manually
+        if not impersonation_data:
+            return redirect('/web')
 
-            request.session.uid = (
-                impersonation_data[
-                    'admin_id'
-                ]
-            )
+        admin_id = impersonation_data.get(
+            'admin_id'
+        )
 
+        if not admin_id:
             request.session.pop(
                 'impersonation_data',
                 None
             )
+            return redirect('/web')
+
+        request.session.uid = admin_id
+
+        request.session.pop(
+            'impersonation_data',
+            None
+        )
+
+        request.session.modified = True
 
         return redirect('/web')

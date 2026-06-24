@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<odoo>
+
+    <template
+        id="backend_impersonation_banner"
+        inherit_id="web.layout"
+        name="Backend Impersonation Banner">
+
+        <xpath expr="//body" position="inside">
+
+            <t t-set="impersonation_data"
+               t-value="request.session.get('impersonation_data')"/>
+
+            <t t-if="impersonation_data">
+
+                <div class="impersonation-banner">
+
+                    <span>
+
+                        Viewing As:
+
+                        <strong>
+                            <t t-esc="request.env.user.name"/>
+                        </strong>
+
+                        |
+
+                        Original Admin:
+
+                        <strong>
+                            <t t-esc="impersonation_data.get('admin_name')"/>
+                        </strong>
+
+                    </span>
+
+                    <a href="/impersonate/stop">
+                        Login As Admin
+                    </a>
+
+                </div>
+
+            </t>
+
+            <t t-else="">
+
+                <div class="vendor-banner">
+
+                    Welcome,
+                    <strong>
+                        <t t-esc="request.env.user.name"/>
+                    </strong>
+
+                </div>
+
+            </t>
+
+        </xpath>
+
+    </template>
+
+</odoo>

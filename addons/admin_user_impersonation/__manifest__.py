@@ -15,9 +15,14 @@
         'security/ir.model.access.csv',
         'views/res_users_view.xml',
         'views/impersonation_templates.xml',
+        'views/res_users_view.xml',
+        'views/backend_impersonation_banner.xml',
     ],
     'assets': {
-        'web.assets_frontend': [
+        # 'web.assets_frontend': [
+        #     'admin_user_impersonation/static/src/css/impersonation.css',
+        # ],
+        'web.assets_backend': [
             'admin_user_impersonation/static/src/css/impersonation.css',
         ],
     },

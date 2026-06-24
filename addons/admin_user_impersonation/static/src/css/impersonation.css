@@ -16,3 +16,50 @@
     margin-left: 15px;
     text-decoration: underline;
 }
+
+/*internal user login view*/
+/* .impersonation-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: #dc3545;
+    color: #fff;
+    z-index: 99999;
+    padding: 10px 20px;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+} */
+
+.impersonation-banner {
+    background: #dc3545;
+    color: white;
+
+    padding: 4px 12px;
+
+    font-size: 13px;
+
+    text-align: center;
+
+    z-index: 1000;
+}
+
+.impersonation-banner a {
+    color: #fff;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.vendor-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background: #002366;
+    color: white;
+    z-index: 99998;
+    padding: 10px 20px;
+    text-align: center;
+}
