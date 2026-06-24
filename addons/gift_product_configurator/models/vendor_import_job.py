@@ -2570,9 +2570,9 @@ class VendorImportJob(models.Model):
                         normalized_blocks = []
 
 
-                        # =========================
+                        # =================================
                         # NORMALIZE
-                        # =========================
+                        # ================================
 
                         for p in pages:
 
