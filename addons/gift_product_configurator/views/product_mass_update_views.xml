@@ -27,41 +27,27 @@
                             <field name="unpublish_products"/>
 
                         </group>
+                    </group>
+
+
+                    <group invisible="not update_price">
+
+                        <field name="update_method"/>
+
+                        <field name="operation"/>
+
+                        <field name="value"/>
+
+                        <field name="update_currency"/>
+
+                        <field
+                            name="currency_id"
+                            invisible="not update_currency"
+                        />
 
                     </group>
 
-                    <group string="Pricing">
-
-                        <group>
-
-                            <field name="update_price"/>
-
-                        </group>
-
-
-                        <group invisible="not update_price">
-
-                            <field name="update_method"/>
-
-                            <field name="operation"/>
-
-                            <field name="value"/>
-
-                        </group>
-
-                    </group>
-
-                     <!--group>
-                        <group>
-                            <field name="update_currency"/>
-                        </group>
-
-                        <group>
-                          <field name="currency_id"
-                                invisible="not update_currency"/>
-                        </group>
-                    </group-->
-
+                   
                     <group string="Website Categories">
 
                         <group>
@@ -160,12 +146,13 @@
                                 invisible="not update_purchase_ok"
                             />
 
+
                             <field
                                 name="tracking"
                                 invisible="
                                     not track_inventory_value
                                     or
-                                    detailed_type != 'goods'
+                                    detailed_type != 'consu'
                                 "
                             />
 
@@ -175,7 +162,7 @@
                                 invisible="
                                     not track_inventory_value
                                     or
-                                    detailed_type != 'goods'
+                                    detailed_type != 'consu'
                                 "
                             />
 

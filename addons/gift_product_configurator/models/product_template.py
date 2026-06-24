@@ -35,6 +35,12 @@ class ProductTemplate(models.Model):
         default=False
     )
 
+    vendor_currency_id = fields.Many2one(
+        'res.currency',
+        string="Vendor Currency",
+        default=lambda self: self.env.company.currency_id.id
+    )
+
     # =====================================
     # AUTO ASSIGN VENDOR
     # =====================================

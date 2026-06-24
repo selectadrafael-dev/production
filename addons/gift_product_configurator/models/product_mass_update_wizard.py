@@ -191,18 +191,27 @@ class ProductMassUpdateWizard( models.TransientModel):
         string="Routes"
     )
 
-    currency_id = fields.Many2one(
-        'res.currency',
-        string='Currency'
-    )
-
     update_currency = fields.Boolean()
 
+    currency_id = fields.Many2one(
+        'res.currency',
+        string='Currency',
+        domain=[
+            (
+                'name',
+                'in',
+                [
+                    'USD',
+                    'AZN',
+                    'RUB'
+                ]
+            )
+        ]
+    )
 
     # =========================
     # ACTION
     # =========================
-
     def action_apply(self):
 
         active_ids = self.env.context.get(
@@ -216,15 +225,6 @@ class ProductMassUpdateWizard( models.TransientModel):
                 "No products were selected."
             )
         
-        # if (
-        #     self.update_currency
-        #     and
-        #     self.currency_id
-        # ):
-        #     product.currency_id = (
-        #         self.currency_id.id
-        #     )
-
         if (
             self.publish_products
             and
@@ -521,6 +521,26 @@ class ProductMassUpdateWizard( models.TransientModel):
                 )
 
                 price_updated_count += 1
+
+                # =====================
+                # CURRENCY
+                # =====================
+
+                if (
+                    self.update_currency
+                    and
+                    self.currency_id
+                ):
+
+                    product.vendor_currency_id = (
+                        self.currency_id.id
+                    )
+
+                    _logger.warning(
+                        f"[MASS UPDATE CURRENCY] "
+                        f"product={product.name} "
+                        f"currency={self.currency_id.name}"
+                    )
 
         return {
 
