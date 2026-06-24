@@ -2607,6 +2607,18 @@ class VendorImportJob(models.Model):
                                     "[RENDER METADATA MODE]"
                                 )
 
+                                if images:
+
+                                    sample = images[0]
+
+                                    _logger.warning(
+                                        f"[METADATA LIFESTYLE CHECK] "
+                                        f"lifestyle={sample.get('is_lifestyle')} "
+                                        f"coverage={sample.get('coverage_ratio')} "
+                                        f"bg={sample.get('background_ratio')} "
+                                        f"skin={sample.get('skin_ratio')}"
+                                    )
+
                                 _logger.warning(
                                     f"[METADATA SAMPLE] "
                                     f"keys={list(images[0].keys())}"
