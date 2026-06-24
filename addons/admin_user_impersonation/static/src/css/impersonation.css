@@ -18,7 +18,7 @@
 }
 
 /*internal user login view*/
-.impersonation-banner {
+/* .impersonation-banner {
     position: fixed;
     top: 0;
     left: 0;
@@ -31,6 +31,19 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+} */
+
+.impersonation-banner {
+    background: #dc3545;
+    color: white;
+
+    padding: 4px 12px;
+
+    font-size: 13px;
+
+    text-align: center;
+
+    z-index: 1000;
 }
 
 .impersonation-banner a {
