@@ -2614,9 +2614,12 @@ class VendorImportJob(models.Model):
                                     _logger.warning(
                                         f"[METADATA LIFESTYLE CHECK] "
                                         f"lifestyle={sample.get('is_lifestyle')} "
-                                        f"coverage={sample.get('coverage_ratio')} "
-                                        f"bg={sample.get('background_ratio')} "
-                                        f"skin={sample.get('skin_ratio')}"
+                                        f"score={sample.get('lifestyle_score')} "
+                                        f"large_image={sample.get('large_image')} "
+                                        f"portrait={sample.get('portrait')} "
+                                        f"large_area={sample.get('large_area')} "
+                                        f"width={sample.get('width')} "
+                                        f"height={sample.get('height')}"
                                     )
 
                                 _logger.warning(
