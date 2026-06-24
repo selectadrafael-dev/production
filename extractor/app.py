@@ -906,7 +906,42 @@ def extract():
             if (w * h) > 120000:
                 lifestyle_score += 1
 
-            is_lifestyle = lifestyle_score >= 2
+            _logger.warning(
+                f"[LIFESTYLE RAW] "
+                f"w={w} "
+                f"h={h} "
+                f"area={w*h} "
+                f"large_image={w > 300 and h > 300} "
+                f"portrait={h > w} "
+                f"large_area={(w*h) > 120000}"
+            )
+
+            # =====================================
+            # LIFESTYLE DETECTION V2
+            # =====================================
+
+            portrait = (
+                h > w
+            )
+
+            large_area = (
+                (w * h) > 120000
+            )
+
+            is_lifestyle = (
+                portrait
+                and
+                large_area
+            )
+
+            _logger.warning(
+                f"[LIFESTYLE FINAL] "
+                f"w={w} "
+                f"h={h} "
+                f"portrait={portrait} "
+                f"large_area={large_area} "
+                f"lifestyle={is_lifestyle}"
+            )
 
 
 
@@ -993,22 +1028,15 @@ def extract():
                 f"lifestyle={is_lifestyle}"
             )
 
-            # candidate_images.append({
+            _logger.warning(
+                f"[CROP QUALITY] "
+                f"x={x} "
+                f"y={y} "
+                f"w={w} "
+                f"h={h} "
+                f"area={w*h}"
+            )
 
-            #     "crop": crop,
-
-            #     "score": score,
-
-            #     "x": x,
-            #     "y": y,
-
-            #     "width": w,
-            #     "height": h,
-
-            #     "aspect_ratio": aspect_ratio,
-
-            #     "is_lifestyle": is_lifestyle
-            # })
 
             candidate_images.append({
 
@@ -1026,9 +1054,11 @@ def extract():
 
                 "is_lifestyle": is_lifestyle,
 
-                # =========================
-                # DEBUG
-                # =========================
+                # ==========================
+                # DEBUG TO ODOO
+                # ==========================
+
+                "crop_area": w * h,
 
                 "lifestyle_score": lifestyle_score,
 
@@ -1113,25 +1143,6 @@ def extract():
 
                 ).decode("utf-8")
 
-
-                # image_list.append({
-
-                #     "image": image_base64,
-
-                #     "score": item.get("score", 0),
-
-                #     "x": item.get("x", 0),
-                #     "y": item.get("y", 0),
-
-                #     "width": item.get("width", 0),
-                #     "height": item.get("height", 0),
-
-                #     "is_lifestyle": item.get(
-                #         "is_lifestyle",
-                #         False
-                #     )
-                # })
-
                 image_list.append({
 
                     "image": image_base64,
@@ -1171,7 +1182,11 @@ def extract():
                     "large_area": item.get(
                         "large_area",
                         False
-                    )
+                    ),
+                    "crop_area": item.get(
+                        "crop_area",
+                        0
+                    ),
                 })
 
                 if item.get("is_lifestyle"):
