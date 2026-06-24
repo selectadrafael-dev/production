@@ -9533,6 +9533,16 @@ class VendorImportJob(models.Model):
                     # LIFESTYLE DETECTION
                     # =====================================
 
+                    _logger.warning(
+                        f"[LIFESTYLE INPUT] "
+                        f"skin={skin_ratio:.3f} "
+                        f"coverage={coverage_ratio:.3f} "
+                        f"bg={background_ratio:.3f} "
+                        f"hero={hero_score} "
+                        f"gallery={gallery_score} "
+                        f"size={crop_width}x{crop_height}"
+                    )
+
                     is_lifestyle = False
 
                     if skin_ratio > 0.12:
