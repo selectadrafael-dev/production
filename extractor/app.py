@@ -969,6 +969,7 @@ def extract():
                 f"lifestyle={is_lifestyle}"
             )
 
+
             _logger.warning(
 
                 f"[RENDER CLASSIFY] "
@@ -977,12 +978,37 @@ def extract():
 
                 f"h={h} "
 
+                f"area={w*h} "
+
                 f"ratio={aspect_ratio:.2f} "
+
+                f"large_image={w > 300 and h > 300} "
+
+                f"portrait={h > w} "
+
+                f"large_area={(w*h) > 120000} "
 
                 f"score={lifestyle_score} "
 
                 f"lifestyle={is_lifestyle}"
             )
+
+            # candidate_images.append({
+
+            #     "crop": crop,
+
+            #     "score": score,
+
+            #     "x": x,
+            #     "y": y,
+
+            #     "width": w,
+            #     "height": h,
+
+            #     "aspect_ratio": aspect_ratio,
+
+            #     "is_lifestyle": is_lifestyle
+            # })
 
             candidate_images.append({
 
@@ -998,7 +1024,27 @@ def extract():
 
                 "aspect_ratio": aspect_ratio,
 
-                "is_lifestyle": is_lifestyle
+                "is_lifestyle": is_lifestyle,
+
+                # =========================
+                # DEBUG
+                # =========================
+
+                "lifestyle_score": lifestyle_score,
+
+                "large_image": (
+                    w > 300
+                    and
+                    h > 300
+                ),
+
+                "portrait": (
+                    h > w
+                ),
+
+                "large_area": (
+                    (w * h) > 120000
+                )
             })
 
 
@@ -1068,6 +1114,24 @@ def extract():
                 ).decode("utf-8")
 
 
+                # image_list.append({
+
+                #     "image": image_base64,
+
+                #     "score": item.get("score", 0),
+
+                #     "x": item.get("x", 0),
+                #     "y": item.get("y", 0),
+
+                #     "width": item.get("width", 0),
+                #     "height": item.get("height", 0),
+
+                #     "is_lifestyle": item.get(
+                #         "is_lifestyle",
+                #         False
+                #     )
+                # })
+
                 image_list.append({
 
                     "image": image_base64,
@@ -1082,6 +1146,30 @@ def extract():
 
                     "is_lifestyle": item.get(
                         "is_lifestyle",
+                        False
+                    ),
+
+                    # =========================
+                    # DEBUG
+                    # =========================
+
+                    "lifestyle_score": item.get(
+                        "lifestyle_score",
+                        0
+                    ),
+
+                    "large_image": item.get(
+                        "large_image",
+                        False
+                    ),
+
+                    "portrait": item.get(
+                        "portrait",
+                        False
+                    ),
+
+                    "large_area": item.get(
+                        "large_area",
                         False
                     )
                 })
