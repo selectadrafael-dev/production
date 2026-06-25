@@ -426,9 +426,9 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                     quantity_updated_count += 1
 
-            # =====================
+            # =================================
             # PRICE
-            # =====================
+            # =================================
 
             if self.update_price:
 
