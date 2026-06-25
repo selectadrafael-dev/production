@@ -7297,7 +7297,9 @@ class VendorImportJob(models.Model):
 
                 key=lambda x:(
 
-                    x.get("priority",0),
+                    x.get("priority", 0),
+
+                    x.get("confidence", 0),
 
                     ai_visibility_score(x)
 
@@ -12083,13 +12085,11 @@ class VendorImportJob(models.Model):
 
             real_images = []
 
+            product_demo_images = []
+
             lifestyle_images = []
 
             marketing_images = []
-
-            _logger.warning(
-                "[RENDER ASSET PREP START]"
-            )
 
             for asset in images:
 
@@ -12121,12 +12121,68 @@ class VendorImportJob(models.Model):
                     ) or 0
                 )
 
+                # =====================================
+                # CLEAN PRODUCT BONUS
+                # =====================================
+
+                if (
+
+                    not asset.get("is_lifestyle")
+
+                    and
+
+                    not asset.get("portrait")
+
+                    and
+
+                    not asset.get("is_collage")
+
+                ):
+
+                    confidence += 10
+
                 group = "real"
 
                 priority = 1000
 
                 # =====================================
-                # COLLAGE
+                # PRODUCT DEMONSTRATION SCORE
+                # =====================================
+
+                demo_score = 0
+
+                if asset.get("is_lifestyle"):
+                    demo_score += 5
+
+                if asset.get("portrait"):
+                    demo_score += 2
+
+                if asset.get("large_image"):
+                    demo_score += 2
+
+                if asset.get("large_area"):
+                    demo_score += 2
+
+                lifestyle_score = float(
+
+                    asset.get(
+                        "lifestyle_score",
+                        0
+                    ) or 0
+                )
+
+                if lifestyle_score > 0.70:
+                    demo_score += 5
+
+                elif lifestyle_score > 0.40:
+                    demo_score += 3
+
+                elif lifestyle_score > 0.20:
+                    demo_score += 1
+
+                
+                # =====================================
+                # CLASSIFICATION
                 # =====================================
 
                 if asset.get("is_collage"):
@@ -12137,17 +12193,27 @@ class VendorImportJob(models.Model):
 
                     confidence -= 40
 
-                # =====================================
-                # LIFESTYLE
-                # =====================================
-
-                elif asset.get("is_lifestyle"):
+                elif demo_score >= 9:
 
                     group = "lifestyle"
 
                     priority = 100
 
                     confidence -= 30
+
+                elif demo_score >= 4:
+
+                    group = "product_demo"
+
+                    priority = 300
+
+                    confidence -= 15
+
+                else:
+
+                    group = "real"
+
+                    priority = 1000
 
                 # =====================================
                 # VERY SMALL IMAGE
@@ -12183,13 +12249,20 @@ class VendorImportJob(models.Model):
 
                 asset["asset_group"] = group
 
+                asset["demo_score"] = demo_score
+
                 asset["priority"] = priority
 
                 asset["confidence"] = confidence
 
+
                 if group == "real":
 
                     real_images.append(asset)
+
+                elif group == "product_demo":
+
+                    product_demo_images.append(asset)
 
                 elif group == "lifestyle":
 
@@ -12209,18 +12282,19 @@ class VendorImportJob(models.Model):
 
                     f"priority={priority} "
 
+                    f"demo_score={demo_score} "
+
                     f"confidence={confidence:.1f} "
 
                     f"lifestyle={asset.get('is_lifestyle')} "
 
-                    f"collage={asset.get('is_collage')} "
+                    f"portrait={asset.get('portrait')} "
 
-                    f"score={asset.get('score')} "
+                    f"large={asset.get('large_image')} "
 
-                    f"hero={asset.get('hero_score')} "
+                    f"large_area={asset.get('large_area')} "
 
-                    f"gallery={asset.get('gallery_score')}"
-
+                    f"lifestyle_score={asset.get('lifestyle_score')}"
                 )
 
             # =====================================
@@ -12268,9 +12342,18 @@ class VendorImportJob(models.Model):
                 reverse=True
             )
 
+            product_demo_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
             merged = (
 
                 real_images
+
+                +
+
+                product_demo_images
 
                 +
 
@@ -12281,16 +12364,18 @@ class VendorImportJob(models.Model):
                 marketing_images
             )
 
+
             _logger.warning(
 
                 f"[RENDER ASSET READY] "
 
                 f"real={len(real_images)} "
 
+                f"product_demo={len(product_demo_images)} "
+
                 f"lifestyle={len(lifestyle_images)} "
 
                 f"marketing={len(marketing_images)}"
-
             )
 
             return merged
