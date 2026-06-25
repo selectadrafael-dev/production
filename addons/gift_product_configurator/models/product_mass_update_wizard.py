@@ -433,7 +433,9 @@ class ProductMassUpdateWizard( models.TransientModel):
             if self.update_price:
 
                 current = (
-                    product.list_price
+                    product.vendor_price
+                    if product.vendor_price
+                    else product.list_price
                 )
 
                 if (
@@ -515,38 +517,37 @@ class ProductMassUpdateWizard( models.TransientModel):
                             self.value
                         )
 
-                product.vendor_price = new_price
 
-                if self.update_currency:
-
-                    product.vendor_currency_id = (
-                        self.currency_id.id
-                    )
-
-                product._update_converted_price()
-
-                price_updated_count += 1
-
-                # =====================
-                # CURRENCY
-                # =====================
+                product.vendor_price = max(
+                    0,
+                    new_price
+                )
 
                 if (
                     self.update_currency
                     and
                     self.currency_id
                 ):
+                    product.vendor_currency_id = self.currency_id
 
-                    product.vendor_currency_id = (
-                        self.currency_id.id
-                    )
+                product._update_converted_price()
 
-                    _logger.warning(
-                        f"[MASS UPDATE CURRENCY] "
-                        f"product={product.name} "
-                        f"currency={self.currency_id.name}"
-                    )
+                _logger.warning(
 
+                    f"[MASS PRICE UPDATE] "
+
+                    f"product={product.name} "
+
+                    f"vendor_price={product.vendor_price} "
+
+                    f"currency={product.vendor_currency_id.name} "
+
+                    f"list_price={product.list_price}"
+                )
+
+                price_updated_count += 1
+
+   
         return {
 
             "type":
