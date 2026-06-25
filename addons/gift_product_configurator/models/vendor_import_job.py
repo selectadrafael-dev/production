@@ -2617,6 +2617,21 @@ class VendorImportJob(models.Model):
                                     sample = images[0]
 
                                     _logger.warning(
+
+                                        f"[PREPARED IMAGE SAMPLE] "
+
+                                        f"group={sample.get('asset_group')} "
+
+                                        f"priority={sample.get('priority')} "
+
+                                        f"hero={sample.get('hero_score')} "
+
+                                        f"gallery={sample.get('gallery_score')} "
+
+                                        f"lifestyle={sample.get('is_lifestyle')}"
+                                    )
+
+                                    _logger.warning(
                                         f"[METADATA LIFESTYLE CHECK] "
                                         f"lifestyle={sample.get('is_lifestyle')} "
                                         f"score={sample.get('lifestyle_score')} "
@@ -2632,9 +2647,18 @@ class VendorImportJob(models.Model):
                                     f"keys={list(images[0].keys())}"
                                 )
 
+
                                 _logger.warning(
                                     "[SKIP RESEGMENTATION]"
                                 )
+
+                                # =====================================
+                                # PREPARE RENDER ASSETS
+                                # =====================================
+
+                                # images = self._prepare_ai_images(
+                                #     images
+                                # )
 
                             else:
 
@@ -2646,6 +2670,13 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
+                                images = self._prepare_render_assets(
+                                    images
+                                )
+
+                                # images = self._prepare_ai_images(
+                                #     images
+                                # )
 
                             if (
                                 not text
@@ -6613,6 +6644,13 @@ class VendorImportJob(models.Model):
 
 
         page_images = normalized_page_images
+        # =====================================
+        # CLASSIFY IMAGES BEFORE AI
+        # =====================================
+
+        page_images = self._prepare_ai_images(
+            page_images
+        )
 
         _logger.warning(
 
@@ -7239,14 +7277,31 @@ class VendorImportJob(models.Model):
 
                     base *= 0.7
 
-                return base
+                if asset.get("asset_group") == "real":
 
+                    base *= 3
+
+                elif asset.get("asset_group") == "lifestyle":
+
+                    base *= 0.5
+
+                elif asset.get("asset_group") == "marketing":
+
+                    base *= 0.2
+
+                return base
 
             sorted_page_images = sorted(
 
                 page_images,
 
-                key=ai_visibility_score,
+                key=lambda x:(
+
+                    x.get("priority",0),
+
+                    ai_visibility_score(x)
+
+                ),
 
                 reverse=True
             )
@@ -8543,12 +8598,155 @@ class VendorImportJob(models.Model):
             )
 
             return False
-        
+
+
+   # #==========prepare ai images=====================
+    def _prepare_ai_images(
+
+        self,
+
+        page_images
+    ):
+
+        try:
+
+            real_images = []
+
+            lifestyle_images = []
+
+            marketing_images = []
+
+            _logger.warning(
+                "[AI IMAGE PREP START]"
+            )
+
+            for asset in page_images:
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                # =====================================
+                # FORCE CLASSIFICATION
+                # =====================================
+
+                if asset.get("is_lifestyle"):
+
+                    asset["asset_group"] = "lifestyle"
+
+                    asset["priority"] = 100
+
+                    lifestyle_images.append(asset)
+
+                elif asset.get("is_collage"):
+
+                    asset["asset_group"] = "marketing"
+
+                    asset["priority"] = 0
+
+                    marketing_images.append(asset)
+
+                else:
+
+                    asset["asset_group"] = "real"
+
+                    asset["priority"] = 1000
+
+                    real_images.append(asset)
+
+                _logger.warning(
+
+                    f"[AI IMAGE CLASSIFY] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"priority={asset.get('priority')} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')}"
+                )
+
+            # =====================================
+            # SORT INSIDE EACH GROUP
+            # =====================================
+
+            def sorter(a):
+
+                return (
+
+                    a.get("hero_score", 0),
+
+                    a.get("gallery_score", 0),
+
+                    a.get("score", 0)
+
+                )
+
+            real_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            lifestyle_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            marketing_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            merged = (
+
+                real_images
+
+                +
+
+                lifestyle_images
+
+                +
+
+                marketing_images
+            )
+
+            _logger.warning(
+
+                f"[AI IMAGE PREP READY] "
+
+                f"real={len(real_images)} "
+
+                f"lifestyle={len(lifestyle_images)} "
+
+                f"marketing={len(marketing_images)}"
+
+            )
+
+            return merged
+
+        except Exception:
+
+            _logger.exception(
+
+                "[AI IMAGE PREP ERROR]"
+            )
+
+            return page_images     
    
     #-----------scoring image before picking best/quality image (image logic)-------------
     def pick_best_image(self, images):
 
         asset_pool = self._prepare_asset_pool(images)
+
+        # asset_pool = self._prepare_asset_intelligence(
+
+        #     asset_pool
+        # )
 
         if not asset_pool:
             return None
@@ -8576,6 +8774,380 @@ class VendorImportJob(models.Model):
 
         return sorted_assets[0].get("image")
 
+    #==========asset intelligence====================
+    def _prepare_asset_intelligence(
+
+        self,
+
+        asset_pool
+    ):
+
+        try:
+
+            improved_assets = []
+
+            _logger.warning(
+                "[ASSET INTELLIGENCE START]"
+            )
+
+            for asset in asset_pool:
+
+                base_score = float(
+
+                    asset.get(
+                        "score",
+                        0
+                    )
+
+                    or 0
+                )
+
+                confidence = base_score
+
+                # =====================================
+                # HUMAN PENALTY
+                # =====================================
+
+                human_penalty = 0
+
+                if asset.get(
+                    "is_lifestyle"
+                ):
+
+                    human_penalty = 30
+
+                confidence -= human_penalty
+
+                # =====================================
+                # TEXT PENALTY
+                # (placeholder)
+                # =====================================
+
+                text_penalty = 0
+
+                confidence -= text_penalty
+
+                # =====================================
+                # SIZE PENALTY
+                # =====================================
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    )
+
+                    or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    )
+
+                    or 0
+                )
+
+                crop_penalty = 0
+
+                if (
+                    width < 120
+                    or
+                    height < 120
+                ):
+
+                    crop_penalty = 25
+
+                confidence -= crop_penalty
+
+                # =====================================
+                # ASPECT RATIO PENALTY
+                # =====================================
+
+                ratio_penalty = 0
+
+                if width and height:
+
+                    ratio = width / height
+
+                    if ratio > 4:
+
+                        ratio_penalty = 20
+
+                    elif ratio < 0.25:
+
+                        ratio_penalty = 20
+
+                confidence -= ratio_penalty
+
+                # =====================================
+                # SAVE
+                # =====================================
+
+                asset[
+                    "asset_confidence"
+                ] = confidence
+
+                improved_assets.append(
+                    asset
+                )
+
+                _logger.warning(
+
+                    f"[ASSET INTELLIGENCE] "
+
+                    f"index={asset.get('clean_index')} "
+
+                    f"score={base_score} "
+
+                    f"confidence={confidence} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"width={width} "
+
+                    f"height={height}"
+                )
+
+            improved_assets = sorted(
+
+                improved_assets,
+
+                key=lambda x: (
+
+                    x.get(
+                        "asset_confidence",
+                        0
+                    ),
+
+                    x.get(
+                        "score",
+                        0
+                    )
+
+                ),
+
+                reverse=True
+            )
+
+            _logger.warning(
+
+                f"[ASSET INTELLIGENCE READY] "
+
+                f"assets={len(improved_assets)}"
+            )
+
+            return improved_assets
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ASSET INTELLIGENCE ERROR]"
+            )
+
+            return asset_pool
+
+    #==========classify asset pool=====================
+    def _classify_segmented_images(
+
+        self,
+
+        asset_pool
+    ):
+
+        try:
+
+            real_assets = []
+
+            lifestyle_assets = []
+
+            marketing_assets = []
+
+            _logger.warning(
+                "[ASSET CLASSIFIER START]"
+            )
+
+            for asset in asset_pool:
+
+                score = float(
+
+                    asset.get(
+                        "score",
+                        0
+                    )
+
+                    or 0
+                )
+
+                lifestyle = bool(
+
+                    asset.get(
+                        "is_lifestyle",
+                        False
+                    )
+                )
+
+                collage = bool(
+
+                    asset.get(
+                        "is_collage",
+                        False
+                    )
+                )
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    )
+
+                    or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    )
+
+                    or 0
+                )
+
+                # =====================================
+                # CLASSIFICATION
+                # =====================================
+
+                if (
+
+                    not lifestyle
+
+                    and
+
+                    not collage
+
+                ):
+
+                    asset["asset_group"] = "real"
+
+                    real_assets.append(asset)
+
+                elif lifestyle:
+
+                    asset["asset_group"] = "lifestyle"
+
+                    lifestyle_assets.append(asset)
+
+                else:
+
+                    asset["asset_group"] = "marketing"
+
+                    marketing_assets.append(asset)
+
+                _logger.warning(
+
+                    f"[ASSET CLASSIFIED] "
+
+                    f"index={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"score={score} "
+
+                    f"lifestyle={lifestyle} "
+
+                    f"collage={collage} "
+
+                    f"size={width}x{height}"
+
+                )
+
+            # =====================================
+            # SORT EACH GROUP
+            # =====================================
+
+            def sorter(a):
+
+                return (
+
+                    a.get(
+                        "hero_score",
+                        0
+                    ),
+
+                    a.get(
+                        "gallery_score",
+                        0
+                    ),
+
+                    a.get(
+                        "score",
+                        0
+                    )
+
+                )
+
+            real_assets.sort(
+
+                key=sorter,
+
+                reverse=True
+            )
+
+            lifestyle_assets.sort(
+
+                key=sorter,
+
+                reverse=True
+            )
+
+            marketing_assets.sort(
+
+                key=sorter,
+
+                reverse=True
+            )
+
+            merged_assets = (
+
+                real_assets
+
+                +
+
+                lifestyle_assets
+
+                +
+
+                marketing_assets
+            )
+
+            _logger.warning(
+
+                f"[ASSET CLASSIFIER READY] "
+
+                f"real={len(real_assets)} "
+
+                f"lifestyle={len(lifestyle_assets)} "
+
+                f"marketing={len(marketing_assets)}"
+
+            )
+
+            return merged_assets
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ASSET CLASSIFIER ERROR]"
+            )
+
+            return asset_pool
 
     #=================Centralized Rusable Image=======================
     def _prepare_asset_pool(self, images):
@@ -11495,6 +12067,242 @@ class VendorImportJob(models.Model):
 
             return False
 
+    #==========prepare render assets====================
+    def _prepare_render_assets(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            real_images = []
+
+            lifestyle_images = []
+
+            marketing_images = []
+
+            _logger.warning(
+                "[RENDER ASSET PREP START]"
+            )
+
+            for asset in images:
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    ) or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    ) or 0
+                )
+
+                confidence = float(
+
+                    asset.get(
+                        "score",
+                        0
+                    ) or 0
+                )
+
+                group = "real"
+
+                priority = 1000
+
+                # =====================================
+                # COLLAGE
+                # =====================================
+
+                if asset.get("is_collage"):
+
+                    group = "marketing"
+
+                    priority = 0
+
+                    confidence -= 40
+
+                # =====================================
+                # LIFESTYLE
+                # =====================================
+
+                elif asset.get("is_lifestyle"):
+
+                    group = "lifestyle"
+
+                    priority = 100
+
+                    confidence -= 30
+
+                # =====================================
+                # VERY SMALL IMAGE
+                # =====================================
+
+                if (
+
+                    width < 120
+
+                    or
+
+                    height < 120
+
+                ):
+
+                    confidence -= 20
+
+                # =====================================
+                # VERY LONG IMAGE
+                # =====================================
+
+                if width and height:
+
+                    ratio = width / height
+
+                    if ratio > 4:
+
+                        confidence -= 15
+
+                    elif ratio < 0.25:
+
+                        confidence -= 15
+
+                asset["asset_group"] = group
+
+                asset["priority"] = priority
+
+                asset["confidence"] = confidence
+
+                if group == "real":
+
+                    real_images.append(asset)
+
+                elif group == "lifestyle":
+
+                    lifestyle_images.append(asset)
+
+                else:
+
+                    marketing_images.append(asset)
+
+                _logger.warning(
+
+                    f"[RENDER ASSET] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={group} "
+
+                    f"priority={priority} "
+
+                    f"confidence={confidence:.1f} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"collage={asset.get('is_collage')} "
+
+                    f"score={asset.get('score')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')}"
+
+                )
+
+            # =====================================
+            # SORT EACH GROUP
+            # =====================================
+
+            def sorter(a):
+
+                return (
+
+                    a.get(
+                        "hero_score",
+                        0
+                    ),
+
+                    a.get(
+                        "gallery_score",
+                        0
+                    ),
+
+                    a.get(
+                        "confidence",
+                        0
+                    ),
+
+                    a.get(
+                        "score",
+                        0
+                    )
+
+                )
+
+            real_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            lifestyle_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            marketing_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            merged = (
+
+                real_images
+
+                +
+
+                lifestyle_images
+
+                +
+
+                marketing_images
+            )
+
+            _logger.warning(
+
+                f"[RENDER ASSET READY] "
+
+                f"real={len(real_images)} "
+
+                f"lifestyle={len(lifestyle_images)} "
+
+                f"marketing={len(marketing_images)}"
+
+            )
+
+            return merged
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RENDER ASSET ERROR]"
+            )
+
+            return images
 
     #============marchin AI===================================================
     # LEGACY IMAGE PAYLOAD MATCHER
