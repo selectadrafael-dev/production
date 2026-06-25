@@ -29,24 +29,32 @@
                         </group>
                     </group>
 
+                    <group string="Pricing">
 
-                    <group invisible="not update_price">
+                        <group>
 
-                        <field name="update_method"/>
+                            <field name="update_price"/>
 
-                        <field name="operation"/>
+                        </group>
 
-                        <field name="value"/>
+                        <group invisible="not update_price">
 
-                        <field name="update_currency"/>
+                            <field name="update_method"/>
 
-                        <field
-                            name="currency_id"
-                            invisible="not update_currency"
-                        />
+                            <field name="operation"/>
+
+                            <field name="value"/>
+
+                            <field name="update_currency"/>
+
+                            <field
+                                name="currency_id"
+                                invisible="not update_currency"
+                            />
+
+                        </group>
 
                     </group>
-
                    
                     <group string="Website Categories">
 
