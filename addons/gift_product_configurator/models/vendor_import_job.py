@@ -238,6 +238,11 @@ class VendorImportJob(models.Model):
     failure_reason = fields.Text()
     ai_retry_count = fields.Integer(default=0)
     excel_url_queue = fields.Text()
+
+    currency_id = fields.Many2one(
+        "res.currency",
+        string="Default Currency"
+    )
    
     state = fields.Selection([
         ('draft', 'Draft'),
@@ -12381,6 +12386,8 @@ class VendorImportJob(models.Model):
                         )
                     )
 
+                    #====currency conversion===========
+                    product._update_converted_price()
 
                     if created:
 
@@ -12962,9 +12969,11 @@ class VendorImportJob(models.Model):
                 ) or 0
             ),
 
-            'list_price': self._safe_parse_price(
+            'vendor_price': self._safe_parse_price(
                 product_data.get("price")
             ),
+
+           'vendor_currency_id': self.env.company.currency_id.id,
         }
 
         hero_index = product_data.get(
@@ -17348,11 +17357,11 @@ class VendorImportJob(models.Model):
                             ) or 0
                         ),
 
+                        'vendor_price': self._safe_float(
+                            main_product.get("price")
+                        ),
 
-                        'list_price':
-                            self._safe_float(
-                                main_product.get("price")
-                            ),
+                        'vendor_currency_id': self.env.company.currency_id.id,
 
                         'vendor_fingerprint': fingerprint,
 
@@ -17381,6 +17390,9 @@ class VendorImportJob(models.Model):
                     product = product_obj.create(
                         vals
                     )
+
+                    #===========currency conversion=====
+                    product._update_converted_price()
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
@@ -19157,7 +19169,7 @@ class VendorImportJob(models.Model):
         except:
             return 0.0
 
-    #======product translate ==========================
+   #======product translate ==========================
     
     def translate_global_views(self, target_lang):
 

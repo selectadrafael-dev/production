@@ -515,10 +515,15 @@ class ProductMassUpdateWizard( models.TransientModel):
                             self.value
                         )
 
-                product.list_price = max(
-                    0,
-                    new_price
-                )
+                product.vendor_price = new_price
+
+                if self.update_currency:
+
+                    product.vendor_currency_id = (
+                        self.currency_id.id
+                    )
+
+                product._update_converted_price()
 
                 price_updated_count += 1
 
