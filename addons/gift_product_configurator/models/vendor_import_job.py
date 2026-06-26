@@ -7291,15 +7291,18 @@ class VendorImportJob(models.Model):
 
                 return base
 
+
             sorted_page_images = sorted(
 
                 page_images,
 
                 key=lambda x:(
 
-                    x.get("priority", 0),
+                    x.get("priority",0),
 
-                    x.get("confidence", 0),
+                    x.get("crop_quality",0),
+
+                    x.get("confidence",0),
 
                     ai_visibility_score(x)
 
@@ -8912,6 +8915,7 @@ class VendorImportJob(models.Model):
                     f"width={width} "
 
                     f"height={height}"
+
                 )
 
             improved_assets = sorted(
@@ -12255,6 +12259,14 @@ class VendorImportJob(models.Model):
 
                 asset["confidence"] = confidence
 
+                quality = self._crop_quality_analysis(
+                    asset
+                )
+
+                asset["crop_quality"] = quality["score"]
+
+                asset["crop_reasons"] = quality["reasons"]
+
 
                 if group == "real":
 
@@ -12295,6 +12307,10 @@ class VendorImportJob(models.Model):
                     f"large_area={asset.get('large_area')} "
 
                     f"lifestyle_score={asset.get('lifestyle_score')}"
+
+                    f" crop_quality={quality['score']} "
+
+                    f" reasons={quality['reasons']} "
                 )
 
             # =====================================
@@ -12388,6 +12404,94 @@ class VendorImportJob(models.Model):
             )
 
             return images
+
+    #==========analyse crop quality====================
+    def _crop_quality_analysis(
+        self,
+        asset
+    ):
+
+        width = int(
+            asset.get("width", 0) or 0
+        )
+
+        height = int(
+            asset.get("height", 0) or 0
+        )
+
+        score = 100
+
+        reasons = []
+
+        # =====================================
+        # TOO SMALL
+        # =====================================
+
+        if width < 120 or height < 120:
+
+            score -= 40
+
+            reasons.append("tiny")
+
+        # =====================================
+        # EXTREME RATIO
+        # =====================================
+
+        if width and height:
+
+            ratio = width / height
+
+            if ratio > 4:
+
+                score -= 20
+
+                reasons.append("too_wide")
+
+            elif ratio < 0.25:
+
+                score -= 20
+
+                reasons.append("too_tall")
+
+        # =====================================
+        # COLLAGE
+        # =====================================
+
+        if asset.get("is_collage"):
+
+            score -= 50
+
+            reasons.append("collage")
+
+        # =====================================
+        # LIFESTYLE
+        # =====================================
+
+        if asset.get("asset_group") == "lifestyle":
+
+            score -= 25
+
+            reasons.append("lifestyle")
+
+        return {
+
+            "score": max(0, score),
+
+            "reasons": reasons
+        }
+
+    #==========determine refinement====================
+    def _needs_crop_refinement(
+        self,
+        asset
+    ):
+
+        quality = asset.get(
+            "crop_quality",
+            100
+        )
+
+        return quality < 70
 
     #============marchin AI===================================================
     # LEGACY IMAGE PAYLOAD MATCHER
