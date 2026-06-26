@@ -12199,121 +12199,6 @@ class VendorImportJob(models.Model):
                     ) or 0
                 )
 
-
-                # =====================================
-                # NORMALIZED CONFIDENCE
-                # =====================================
-
-                # confidence = 100
-
-                # confidence += asset.get(
-                #     "crop_quality",
-                #     0
-                # ) * 0.20
-
-                # confidence += asset.get(
-                #     "hero_score",
-                #     0
-                # ) * 0.15
-
-                # confidence += asset.get(
-                #     "gallery_score",
-                #     0
-                # ) * 0.10
-
-                # confidence += asset.get(
-                #     "score",
-                #     0
-                # ) * 0.05
-
-                # # =====================================
-                # # CLEAN PRODUCT BONUS
-                # # =====================================
-
-                # if (
-
-                #     not asset.get("is_lifestyle")
-
-                #     and
-
-                #     not asset.get("portrait")
-
-                #     and
-
-                #     not asset.get("is_collage")
-
-                # ):
-
-                #     confidence += 10
-
-                # group = "real"
-
-                # priority = 1000
-
-                # # =====================================
-                # # PRODUCT DEMONSTRATION SCORE
-                # # =====================================
-
-                # demo_score = 0
-
-                # if asset.get("is_lifestyle"):
-                #     demo_score += 5
-
-                # if asset.get("portrait"):
-                #     demo_score += 2
-
-                # if asset.get("large_image"):
-                #     demo_score += 2
-
-                # if asset.get("large_area"):
-                #     demo_score += 2
-
-                # lifestyle_score = float(
-
-                #     asset.get(
-                #         "lifestyle_score",
-                #         0
-                #     ) or 0
-                # )
-
-                # if lifestyle_score > 0.70:
-                #     demo_score += 5
-
-                # elif lifestyle_score > 0.40:
-                #     demo_score += 3
-
-                # elif lifestyle_score > 0.20:
-                #     demo_score += 1
-
-                
-                # # =====================================
-                # # CLASSIFICATION
-                # # =====================================
-
-                # if asset.get("is_collage"):
-
-                #     group = "marketing"
-
-                #     priority = 0
-
-                #     confidence -= 40
-
-                # elif demo_score >= 9:
-
-                #     group = "lifestyle"
-
-                #     priority = 100
-
-                #     confidence -= 30
-
-                # elif demo_score >= 4:
-
-                #     group = "product_demo"
-
-                #     priority = 300
-
-                #     confidence -= 15
-
                 # =====================================
                 # CROP QUALITY ANALYSIS
                 # =====================================
@@ -12373,6 +12258,75 @@ class VendorImportJob(models.Model):
 
                 priority = 1000
 
+
+                # =====================================
+                # PRODUCT DEMONSTRATION SCORE
+                # =====================================
+
+                demo_score = 0
+
+                if asset.get("is_lifestyle"):
+                    demo_score += 5
+
+                if asset.get("portrait"):
+                    demo_score += 2
+
+                if asset.get("large_image"):
+                    demo_score += 2
+
+                if asset.get("large_area"):
+                    demo_score += 2
+
+                lifestyle_score = float(
+
+                    asset.get(
+                        "lifestyle_score",
+                        0
+                    ) or 0
+                )
+
+                if lifestyle_score > 0.70:
+                    demo_score += 5
+
+                elif lifestyle_score > 0.40:
+                    demo_score += 3
+
+                elif lifestyle_score > 0.20:
+                    demo_score += 1
+
+                # =====================================
+                # CLASSIFICATION
+                # =====================================
+
+                if asset.get("is_collage"):
+
+                    group = "marketing"
+
+                    priority = 0
+
+                    confidence -= 40
+
+                elif demo_score >= 9:
+
+                    group = "lifestyle"
+
+                    priority = 100
+
+                    confidence -= 30
+
+                elif demo_score >= 4:
+
+                    group = "product_demo"
+
+                    priority = 300
+
+                    confidence -= 15
+
+                else:
+
+                    group = "real"
+
+                    priority = 1000
 
                 # =====================================
                 # VERY SMALL IMAGE
@@ -12480,35 +12434,35 @@ class VendorImportJob(models.Model):
             # SORT EACH GROUP
             # =====================================
 
-                def sorter(a):
+            def sorter(a):
 
-                    return (
+                return (
 
-                        a.get(
-                            "crop_quality",
-                            0
-                        ),
+                     a.get(
+                          "crop_quality",
+                         0
+                     ),
 
-                        a.get(
-                            "hero_score",
-                            0
-                        ),
+                    a.get(
+                         "hero_score",
+                         0
+                    ),
 
-                        a.get(
-                            "gallery_score",
-                            0
-                        ),
+                    a.get(
+                        "gallery_score",
+                        0
+                    ),
 
-                        a.get(
-                            "score",
-                            0
-                        ),
+                    a.get(
+                        "score",
+                        0
+                    ),
 
-                        a.get(
-                            "confidence",
-                            0
-                        )
+                    a.get(
+                        "confidence",
+                         0
                     )
+            )
 
             real_images.sort(
                 key=sorter,
