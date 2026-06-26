@@ -12199,13 +12199,155 @@ class VendorImportJob(models.Model):
                     ) or 0
                 )
 
-                confidence = float(
 
-                    asset.get(
-                        "score",
-                        0
-                    ) or 0
+                # =====================================
+                # NORMALIZED CONFIDENCE
+                # =====================================
+
+                # confidence = 100
+
+                # confidence += asset.get(
+                #     "crop_quality",
+                #     0
+                # ) * 0.20
+
+                # confidence += asset.get(
+                #     "hero_score",
+                #     0
+                # ) * 0.15
+
+                # confidence += asset.get(
+                #     "gallery_score",
+                #     0
+                # ) * 0.10
+
+                # confidence += asset.get(
+                #     "score",
+                #     0
+                # ) * 0.05
+
+                # # =====================================
+                # # CLEAN PRODUCT BONUS
+                # # =====================================
+
+                # if (
+
+                #     not asset.get("is_lifestyle")
+
+                #     and
+
+                #     not asset.get("portrait")
+
+                #     and
+
+                #     not asset.get("is_collage")
+
+                # ):
+
+                #     confidence += 10
+
+                # group = "real"
+
+                # priority = 1000
+
+                # # =====================================
+                # # PRODUCT DEMONSTRATION SCORE
+                # # =====================================
+
+                # demo_score = 0
+
+                # if asset.get("is_lifestyle"):
+                #     demo_score += 5
+
+                # if asset.get("portrait"):
+                #     demo_score += 2
+
+                # if asset.get("large_image"):
+                #     demo_score += 2
+
+                # if asset.get("large_area"):
+                #     demo_score += 2
+
+                # lifestyle_score = float(
+
+                #     asset.get(
+                #         "lifestyle_score",
+                #         0
+                #     ) or 0
+                # )
+
+                # if lifestyle_score > 0.70:
+                #     demo_score += 5
+
+                # elif lifestyle_score > 0.40:
+                #     demo_score += 3
+
+                # elif lifestyle_score > 0.20:
+                #     demo_score += 1
+
+                
+                # # =====================================
+                # # CLASSIFICATION
+                # # =====================================
+
+                # if asset.get("is_collage"):
+
+                #     group = "marketing"
+
+                #     priority = 0
+
+                #     confidence -= 40
+
+                # elif demo_score >= 9:
+
+                #     group = "lifestyle"
+
+                #     priority = 100
+
+                #     confidence -= 30
+
+                # elif demo_score >= 4:
+
+                #     group = "product_demo"
+
+                #     priority = 300
+
+                #     confidence -= 15
+
+                # =====================================
+                # CROP QUALITY ANALYSIS
+                # =====================================
+
+                quality = self._crop_quality_analysis(
+                    asset
                 )
+
+                asset["crop_quality"] = quality["score"]
+
+                asset["crop_reasons"] = quality["reasons"]
+
+                # =====================================
+                # NORMALIZED CONFIDENCE
+                # =====================================
+
+                confidence = 100
+
+                confidence += asset["crop_quality"] * 0.20
+
+                confidence += asset.get(
+                    "hero_score",
+                    0
+                ) * 0.15
+
+                confidence += asset.get(
+                    "gallery_score",
+                    0
+                ) * 0.10
+
+                confidence += asset.get(
+                    "score",
+                    0
+                ) * 0.05
 
                 # =====================================
                 # CLEAN PRODUCT BONUS
@@ -12231,75 +12373,6 @@ class VendorImportJob(models.Model):
 
                 priority = 1000
 
-                # =====================================
-                # PRODUCT DEMONSTRATION SCORE
-                # =====================================
-
-                demo_score = 0
-
-                if asset.get("is_lifestyle"):
-                    demo_score += 5
-
-                if asset.get("portrait"):
-                    demo_score += 2
-
-                if asset.get("large_image"):
-                    demo_score += 2
-
-                if asset.get("large_area"):
-                    demo_score += 2
-
-                lifestyle_score = float(
-
-                    asset.get(
-                        "lifestyle_score",
-                        0
-                    ) or 0
-                )
-
-                if lifestyle_score > 0.70:
-                    demo_score += 5
-
-                elif lifestyle_score > 0.40:
-                    demo_score += 3
-
-                elif lifestyle_score > 0.20:
-                    demo_score += 1
-
-                
-                # =====================================
-                # CLASSIFICATION
-                # =====================================
-
-                if asset.get("is_collage"):
-
-                    group = "marketing"
-
-                    priority = 0
-
-                    confidence -= 40
-
-                elif demo_score >= 9:
-
-                    group = "lifestyle"
-
-                    priority = 100
-
-                    confidence -= 30
-
-                elif demo_score >= 4:
-
-                    group = "product_demo"
-
-                    priority = 300
-
-                    confidence -= 15
-
-                else:
-
-                    group = "real"
-
-                    priority = 1000
 
                 # =====================================
                 # VERY SMALL IMAGE
@@ -12339,22 +12412,29 @@ class VendorImportJob(models.Model):
 
                 asset["priority"] = priority
 
-                asset["confidence"] = confidence
-                asset["crop_quality"] = (
 
-                self._calculate_crop_quality(
+                # =====================================
+                # FINAL CONFIDENCE
+                # =====================================
 
-                        asset
+                confidence = max(
+
+                    0,
+
+                    min(
+
+                        100,
+
+                        round(
+
+                            confidence,
+
+                            1
+                        )
                     )
                 )
 
-                quality = self._crop_quality_analysis(
-                    asset
-                )
-
-                asset["crop_quality"] = quality["score"]
-
-                asset["crop_reasons"] = quality["reasons"]
+                asset["confidence"] = confidence
 
 
                 if group == "real":
@@ -12373,7 +12453,6 @@ class VendorImportJob(models.Model):
 
                     marketing_images.append(asset)
 
-
                 _logger.warning(
 
                     f"[RENDER ASSET] "
@@ -12388,9 +12467,11 @@ class VendorImportJob(models.Model):
 
                     f"gallery={asset.get('gallery_score')} "
 
-                    f"confidence={confidence:.1f} "
+                    f"confidence={asset.get('confidence')} "
 
                     f"score={asset.get('score')} "
+
+                    f"priority={priority} "
 
                     f"lifestyle={asset.get('is_lifestyle')}"
                 )
@@ -12399,35 +12480,35 @@ class VendorImportJob(models.Model):
             # SORT EACH GROUP
             # =====================================
 
-            def sorter(a):
+                def sorter(a):
 
-                return (
+                    return (
 
-                    a.get(
-                        "crop_quality",
-                        0
-                    ),
+                        a.get(
+                            "crop_quality",
+                            0
+                        ),
 
-                    a.get(
-                        "hero_score",
-                        0
-                    ),
+                        a.get(
+                            "hero_score",
+                            0
+                        ),
 
-                    a.get(
-                        "gallery_score",
-                        0
-                    ),
+                        a.get(
+                            "gallery_score",
+                            0
+                        ),
 
-                    a.get(
-                        "confidence",
-                        0
-                    ),
+                        a.get(
+                            "score",
+                            0
+                        ),
 
-                    a.get(
-                        "score",
-                        0
+                        a.get(
+                            "confidence",
+                            0
+                        )
                     )
-                )
 
             real_images.sort(
                 key=sorter,
@@ -12700,6 +12781,32 @@ class VendorImportJob(models.Model):
                 "Poor crop quality."
             )
 
+        # =====================================
+        # NO REAL PRODUCT IMAGES
+        # =====================================
+
+        real_products = sum(
+
+            1
+
+            for asset in images
+
+            if asset.get(
+
+                "asset_group"
+
+            ) == "real"
+        )
+
+        if real_products == 0:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "No real product images detected."
+            )
+
         _logger.warning(
 
             f"[PAGE INTELLIGENCE] "
@@ -12725,33 +12832,31 @@ class VendorImportJob(models.Model):
         page_report
     ):
 
-        decision = page_report.get(
+        if page_report.get(
 
-            "decision",
+            "requires_recovery",
 
-            {}
-        )
+            False
+        ):
 
-        strategy = decision.get(
+            strategy = "recover"
 
-            "strategy",
+            confidence = 0.95
 
-            "continue"
-        )
+            reasons = page_report.get(
 
-        confidence = decision.get(
+                "reason",
 
-            "confidence",
+                []
+            )
 
-            1.0
-        )
+        else:
 
-        reasons = decision.get(
+            strategy = "continue"
 
-            "reason",
+            confidence = 1.00
 
-            []
-        )
+            reasons = []
 
         _logger.warning(
 
