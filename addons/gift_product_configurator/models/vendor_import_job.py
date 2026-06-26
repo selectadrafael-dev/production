@@ -12404,6 +12404,416 @@ class VendorImportJob(models.Model):
             )
 
             return images
+    
+    #==========catalogue diagnostics====================
+    def _catalogue_diagnostics(
+
+        self,
+
+        page_number,
+
+        page_data,
+
+        created_products,
+
+        created_variants
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            products = page_data.get(
+                "products",
+                []
+            )
+
+            ai_products = len(products)
+
+            ai_variants = sum(
+
+                len(
+                    p.get(
+                        "variants",
+                        []
+                    )
+                )
+
+                for p in products
+            )
+
+            report = {
+
+                "real": 0,
+
+                "product_demo": 0,
+
+                "lifestyle": 0,
+
+                "marketing": 0,
+
+                "confidence": []
+            }
+
+            # =====================================
+            # IMAGE ANALYSIS
+            # =====================================
+
+            for asset in images:
+
+                group = asset.get(
+
+                    "asset_group",
+
+                    "unknown"
+                )
+
+                if group in report:
+
+                    report[group] += 1
+
+                report["confidence"].append(
+
+                    asset.get(
+
+                        "confidence",
+
+                        0
+                    )
+                )
+
+            # =====================================
+            # AVERAGE CONFIDENCE
+            # =====================================
+
+            average = 0
+
+            if report["confidence"]:
+
+                average = round(
+
+                    sum(
+                        report["confidence"]
+                    )
+
+                    /
+
+                    len(
+                        report["confidence"]
+                    ),
+
+                    1
+                )
+
+            # =====================================
+            # HEALTH SCORE
+            # =====================================
+
+            health = 100
+
+            health -= report["lifestyle"] * 5
+
+            health -= report["marketing"] * 10
+
+            if average < 70:
+
+                health -= 10
+
+            if created_products != ai_products:
+
+                health -= 15
+
+            if created_variants != ai_variants:
+
+                health -= 15
+
+            health = max(
+                0,
+                health
+            )
+
+            if health >= 90:
+
+                status = "PASS"
+
+            elif health >= 70:
+
+                status = "WARNING"
+
+            else:
+
+                status = "REVIEW"
+
+            # =====================================
+            # DIAGNOSTIC WARNINGS
+            # =====================================
+
+            warnings = []
+
+            if created_products != ai_products:
+
+                warnings.append(
+
+                    "AI product count differs from created product count."
+                )
+
+            if created_variants != ai_variants:
+
+                warnings.append(
+
+                    "AI variant count differs from created variant count."
+                )
+
+            if report["lifestyle"] > report["real"]:
+
+                warnings.append(
+
+                    "Lifestyle images exceed real product images."
+                )
+
+            # =====================================
+            # REPORT
+            # =====================================
+
+            _logger.warning("")
+
+            _logger.warning("=" * 70)
+
+            _logger.warning(
+
+                f"[CATALOGUE REPORT] "
+
+                f"PAGE {page_number}"
+            )
+
+            _logger.warning("=" * 70)
+
+            _logger.warning(
+
+                f"Images              : "
+
+                f"{len(images)}"
+            )
+
+            _logger.warning(
+
+                f"Real                : "
+
+                f"{report['real']}"
+            )
+
+            _logger.warning(
+
+                f"Product Demo        : "
+
+                f"{report['product_demo']}"
+            )
+
+            _logger.warning(
+
+                f"Lifestyle           : "
+
+                f"{report['lifestyle']}"
+            )
+
+            _logger.warning(
+
+                f"Marketing           : "
+
+                f"{report['marketing']}"
+            )
+
+            _logger.warning("-" * 70)
+
+            _logger.warning(
+
+                f"AI Products         : "
+
+                f"{ai_products}"
+            )
+
+            _logger.warning(
+
+                f"Created Products    : "
+
+                f"{created_products}"
+            )
+
+            _logger.warning(
+
+                f"AI Variants         : "
+
+                f"{ai_variants}"
+            )
+
+            _logger.warning(
+
+                f"Created Variants    : "
+
+                f"{created_variants}"
+            )
+
+            _logger.warning("-" * 70)
+
+            _logger.warning(
+
+                f"Average Confidence  : "
+
+                f"{average}"
+            )
+
+            _logger.warning(
+
+                f"Health Score        : "
+
+                f"{health}/100"
+            )
+
+            _logger.warning(
+
+                f"Status              : "
+
+                f"{status}"
+            )
+
+            if created_variants < ai_variants:
+
+                warnings.append(
+
+                    "One or more variants were not created. Review variant matching."
+                )
+
+            if warnings:
+
+                _logger.warning("-" * 70)
+
+                _logger.warning(
+
+                    "Warnings:"
+                )
+
+                for warning in warnings:
+
+                    _logger.warning(
+
+                        f"  • {warning}"
+                    )
+
+            _logger.warning("=" * 70)
+
+        except Exception:
+
+            _logger.exception(
+
+                "[CATALOGUE REPORT ERROR]"
+            )
+    
+    #==========print catalogue report====================
+    def _print_catalogue_report(
+
+        self,
+
+        report
+    ):
+
+        if not report:
+
+            return
+
+        _logger.warning("")
+
+        _logger.warning("=" * 60)
+
+        _logger.warning(
+
+            f"[CATALOGUE REPORT] "
+
+            f"PAGE {report['page']}"
+        )
+
+        _logger.warning("=" * 60)
+
+        _logger.warning(
+
+            f"Products          : "
+
+            f"{report['products']}"
+        )
+
+        _logger.warning(
+
+            f"Variants          : "
+
+            f"{report['variants']}"
+        )
+
+        _logger.warning(
+
+            f"Images            : "
+
+            f"{report['images']}"
+        )
+
+        _logger.warning(
+
+            f"Real              : "
+
+            f"{report['real']}"
+        )
+
+        _logger.warning(
+
+            f"Product Demo      : "
+
+            f"{report['product_demo']}"
+        )
+
+        _logger.warning(
+
+            f"Lifestyle         : "
+
+            f"{report['lifestyle']}"
+        )
+
+        _logger.warning(
+
+            f"Marketing         : "
+
+            f"{report['marketing']}"
+        )
+
+        _logger.warning(
+
+            f"Created           : "
+
+            f"{report['created']}"
+        )
+
+        _logger.warning(
+
+            f"Avg Confidence    : "
+
+            f"{report['average_confidence']}"
+        )
+
+        _logger.warning(
+
+            f"Health Score      : "
+
+            f"{report['health_score']}/100"
+        )
+
+        _logger.warning(
+
+            f"Status            : "
+
+            f"{report['status']}"
+        )
+
+        _logger.warning("=" * 60)
 
     #==========analyse crop quality====================
     def _crop_quality_analysis(
@@ -13139,6 +13549,14 @@ class VendorImportJob(models.Model):
                 "page"
             )
 
+            # =====================================
+            # PAGE DIAGNOSTICS
+            # =====================================
+
+            page_created_products = 0
+
+            page_created_variants = 0
+
             page_record = self.env[
                 'vendor.import.page'
             ].search([
@@ -13402,6 +13820,7 @@ class VendorImportJob(models.Model):
                         )
 
                         created_count += 1
+                        page_created_products += 1
 
                     else:
 
@@ -13724,6 +14143,8 @@ class VendorImportJob(models.Model):
                                         f"| y={matched_asset.get('y')}"
                                     )
 
+                                    page_created_variants += 1
+
                             except Exception as e:
 
                                 _logger.warning(
@@ -13745,6 +14166,21 @@ class VendorImportJob(models.Model):
                     continue
 
             try:
+
+                self._catalogue_diagnostics(
+
+                    page_number,
+
+                    page_data,
+
+                    page_created_products,
+
+                    page_created_variants
+                )
+
+                self.last_created_page = (
+                    page_index + 1
+                )
 
                 self.last_created_page = (
                     page_index + 1
