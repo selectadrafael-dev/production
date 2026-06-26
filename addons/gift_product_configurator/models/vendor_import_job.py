@@ -2649,16 +2649,32 @@ class VendorImportJob(models.Model):
 
 
                                 _logger.warning(
-                                    "[SKIP RESEGMENTATION]"
+                                    "[RENDER METADATA MODE]"
                                 )
 
-                                # =====================================
-                                # PREPARE RENDER ASSETS
-                                # =====================================
+                                images = self._prepare_render_assets(
+                                    images
+                                )
 
-                                # images = self._prepare_ai_images(
-                                #     images
-                                # )
+                                page_report = self._analyse_page({
+
+                                    "images": images,
+
+                                    "page_width": page_width,
+
+                                    "page_height": page_height
+                                })
+
+                                strategy = self._select_processing_strategy(
+                                    page_report
+                                )
+
+                                _logger.warning(
+                                    f"[WORKFLOW DECISION] "
+                                    f"{strategy['strategy']}"
+                                )
+
+                                # Intentionally do not execute the strategy yet.
 
                             else:
 
