@@ -2652,7 +2652,14 @@ class VendorImportJob(models.Model):
                                     "[RENDER METADATA MODE]"
                                 )
 
+
+                                images = self._prepare_asset_intelligence(
+
+                                    images
+                                )
+
                                 images = self._prepare_render_assets(
+
                                     images
                                 )
 
@@ -6852,11 +6859,15 @@ class VendorImportJob(models.Model):
 
                         asset["clean_index"] = idx
 
-                page_images = self._prepare_render_assets(
+                page_images = self._prepare_asset_intelligence(
 
                     page_images
                 )
 
+                page_images = self._prepare_render_assets(
+
+                    page_images
+                )
 
                 validation = self._validate_extraction_quality(
 
@@ -9734,7 +9745,6 @@ class VendorImportJob(models.Model):
             )
         return prepared
 
-
     # =======================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
     # =======================================================
@@ -12222,6 +12232,165 @@ class VendorImportJob(models.Model):
 
             return False
 
+    #==========prepare asset intelligence=====================
+    def _prepare_asset_intelligence(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            total = len(images)
+
+            for index, asset in enumerate(images):
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                # -------------------------------------
+                # CLEAN INDEX
+                # -------------------------------------
+
+                asset["clean_index"] = index
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    ) or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    ) or 0
+                )
+
+                score = float(
+
+                    asset.get(
+                        "score",
+                        0
+                    ) or 0
+                )
+
+                area = width * height
+
+                # -------------------------------------
+                # HERO SCORE
+                # -------------------------------------
+
+                hero_score = 0
+
+                hero_score += min(
+
+                    width / 10,
+
+                    25
+                )
+
+                hero_score += min(
+
+                    height / 10,
+
+                    25
+                )
+
+                hero_score += min(
+
+                    area / 20000,
+
+                    20
+                )
+
+                if not asset.get("is_lifestyle"):
+
+                    hero_score += 15
+
+                if not asset.get("portrait"):
+
+                    hero_score += 5
+
+                if asset.get("large_image"):
+
+                    hero_score += 5
+
+                if asset.get("large_area"):
+
+                    hero_score += 5
+
+                # -------------------------------------
+                # GALLERY SCORE
+                # -------------------------------------
+
+                gallery_score = hero_score
+
+                if asset.get("is_lifestyle"):
+
+                    gallery_score += 10
+
+                if total > 1:
+
+                    gallery_score += 5
+
+                # -------------------------------------
+                # NORMALIZE
+                # -------------------------------------
+
+                asset["hero_score"] = round(
+
+                    min(
+                        hero_score,
+                        100
+                    ),
+
+                    1
+                )
+
+                asset["gallery_score"] = round(
+
+                    min(
+                        gallery_score,
+                        100
+                    ),
+
+                    1
+                )
+
+                _logger.warning(
+
+                    f"[ASSET INTELLIGENCE] "
+
+                    f"clean={asset['clean_index']} "
+
+                    f"hero={asset['hero_score']} "
+
+                    f"gallery={asset['gallery_score']} "
+
+                    f"score={score}"
+                )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ASSET INTELLIGENCE ERROR]"
+            )
+
+            return images
+
     #==========prepare render assets=================================
     def _prepare_render_assets(
 
@@ -12282,24 +12451,40 @@ class VendorImportJob(models.Model):
                 # NORMALIZED CONFIDENCE
                 # =====================================
 
-                confidence = 100
-
-                confidence += asset["crop_quality"] * 0.20
+                confidence = 0
 
                 confidence += asset.get(
+
+                    "crop_quality",
+
+                    0
+                ) * 0.45
+
+                confidence += asset.get(
+
                     "hero_score",
+
+                    0
+                ) * 0.25
+
+                confidence += asset.get(
+
+                    "gallery_score",
+
                     0
                 ) * 0.15
 
-                confidence += asset.get(
-                    "gallery_score",
-                    0
-                ) * 0.10
+                confidence += min(
 
-                confidence += asset.get(
-                    "score",
-                    0
-                ) * 0.05
+                    asset.get(
+
+                        "score",
+
+                        0
+                    ) / 1000,
+
+                    15
+                )
 
                 # =====================================
                 # CLEAN PRODUCT BONUS
