@@ -2678,26 +2678,6 @@ class VendorImportJob(models.Model):
                                     page_report
                                 )
 
-                                page_context = self._build_ai_page_context(
-
-                                    i + 1,
-
-                                    {
-
-                                        "page_image": page_image,
-
-                                        "page_width": page_width,
-
-                                        "page_height": page_height
-
-                                    },
-
-                                    images,
-
-                                    page_report,
-
-                                    strategy
-                                )
 
                                 _logger.warning(
                                     f"[WORKFLOW DECISION] "
@@ -2743,34 +2723,6 @@ class VendorImportJob(models.Model):
 
                                         strategy
                                     )
-
-                                # elif strategy["strategy"] == "rerank":
-
-                                #     images = self._execute_strategy(
-
-                                #         "rerank",
-
-                                #         page_data,
-
-                                #         images,
-
-                                #         strategy
-                                #     )
-
-                                # elif strategy["strategy"] == "audit":
-
-                                #     images = self._execute_strategy(
-
-                                #         "audit",
-
-                                #         page_data,
-
-                                #         images,
-
-                                #         strategy
-                                #     )
-
-
 
                             if (
                                 not text
@@ -2836,9 +2788,7 @@ class VendorImportJob(models.Model):
 
                                 "page_width": page_width,
 
-                                "page_height": page_height,
-
-                                "page_context": page_context
+                                "page_height": page_height
                             })
 
 
@@ -6743,74 +6693,6 @@ class VendorImportJob(models.Model):
         # =====================================
         # CLASSIFY IMAGES BEFORE AI
         # =====================================
-
-        # page_images = self._prepare_ai_images(
-        #     page_images
-        # )
-
-        # # =====================================
-        # # BUILD AI PAGE CONTEXT
-        # # =====================================
-
-        # page_context = self._build_ai_page_context(
-
-        #     next_record.page_number,
-
-        #     {
-
-        #         "page_width": page_width,
-
-        #         "page_height": page_height
-
-        #     },
-
-        #     page_images,
-
-        #     validation if "validation" in locals() else {},
-
-        #     {
-
-        #         "strategy":
-
-        #             "recover"
-
-        #             if page_data.get(
-
-        #                 "recovery_required"
-
-        #             )
-
-        #             else
-
-        #             "continue",
-
-        #         "confidence": 1.0,
-
-        #         "reason":
-
-        #             validation.get(
-
-        #                 "reasons",
-
-        #                 []
-
-        #             )
-
-        #             if "validation" in locals()
-
-        #             else []
-        #     }
-        # )
-
-        # _logger.warning(
-
-        #     f"[PDF AI IMAGES] "
-
-        #     f"PAGE={next_record.page_number} "
-
-        #     f"| valid={len(page_images)}"
-        # )
-
 
         if page_images:
 
