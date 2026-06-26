@@ -2665,6 +2665,15 @@ class VendorImportJob(models.Model):
                                     "page_height": page_height
                                 })
 
+                                expected = self._estimate_expected_products(
+
+                                    page_data,
+
+                                    page_report
+                                )
+
+                                page_report.update(expected)
+
                                 strategy = self._select_processing_strategy(
                                     page_report
                                 )
@@ -12526,6 +12535,7 @@ class VendorImportJob(models.Model):
 
             return images
     
+    
     #==========execute workflow===========================
     def _execute_strategy(
 
@@ -12537,7 +12547,7 @@ class VendorImportJob(models.Model):
 
         images,
 
-        metadata
+        strategy_info
     ):
 
         _logger.warning(
@@ -12547,6 +12557,21 @@ class VendorImportJob(models.Model):
             f"{strategy}"
         )
 
+        _logger.warning(
+
+            f"[RECOVERY ENGINE] "
+
+            f"strategy={strategy} "
+
+            f"confidence={strategy_info.get('confidence')} "
+
+            f"reason={strategy_info.get('reason')}"
+        )
+
+        # =====================================
+        # RECOVERY
+        # =====================================
+
         if strategy == "recover":
 
             return self._recover_page(
@@ -12555,8 +12580,12 @@ class VendorImportJob(models.Model):
 
                 images,
 
-                metadata
+                strategy_info
             )
+
+        # =====================================
+        # RERANK
+        # =====================================
 
         elif strategy == "rerank":
 
@@ -12565,6 +12594,10 @@ class VendorImportJob(models.Model):
                 images
             )
 
+        # =====================================
+        # AI AUDIT
+        # =====================================
+
         elif strategy == "audit":
 
             return self._ai_catalogue_recovery(
@@ -12572,8 +12605,12 @@ class VendorImportJob(models.Model):
                 page_data
             )
 
-        return images
+        # =====================================
+        # DEFAULT
+        # =====================================
 
+        return images
+    
     #==========page recovery===========================
     def _recover_page(
 
@@ -12598,6 +12635,136 @@ class VendorImportJob(models.Model):
         #
 
         return images
+
+    #==========estimate expected products===========================
+    def _estimate_expected_products(
+
+        self,
+
+        page_data,
+
+        report
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            page_width = float(
+
+                page_data.get(
+                    "page_width",
+                    0
+                ) or 0
+            )
+
+            page_height = float(
+
+                page_data.get(
+                    "page_height",
+                    0
+                ) or 0
+            )
+
+            page_area = page_width * page_height
+
+            if page_area <= 0:
+
+                return {
+
+                    "expected": len(images),
+
+                    "missing": 0
+                }
+
+            occupied = 0
+
+            for asset in images:
+
+                occupied += float(
+
+                    asset.get(
+                        "crop_area",
+                        0
+                    ) or 0
+                )
+
+            average_product_area = 0
+
+            if images:
+
+                average_product_area = (
+
+                    occupied
+
+                    /
+
+                    len(images)
+
+                )
+
+            expected = len(images)
+
+            if average_product_area > 0:
+
+                estimate = round(
+
+                    page_area
+
+                    /
+
+                    average_product_area
+
+                )
+
+                expected = max(
+
+                    expected,
+
+                    estimate
+                )
+
+            missing = max(
+
+                0,
+
+                expected - len(images)
+            )
+
+            _logger.warning(
+
+                f"[EXPECTED PRODUCTS] "
+
+                f"current={len(images)} "
+
+                f"expected={expected} "
+
+                f"missing={missing}"
+            )
+
+            return {
+
+                "expected": expected,
+
+                "missing": missing
+            }
+
+        except Exception:
+
+            _logger.exception(
+
+                "[EXPECTED PRODUCT ERROR]"
+            )
+
+            return {
+
+                "expected": 0,
+
+                "missing": 0
+            }
 
     #==========page intelligence==========================
     def _analyse_page(
@@ -12823,6 +12990,33 @@ class VendorImportJob(models.Model):
             f"reason={reasons}"
         )
 
+        # =====================================
+        # EXPECTED PRODUCT CHECK
+        # =====================================
+
+        missing = page_report.get(
+
+            "missing",
+
+            0
+        )
+
+        if missing >= 2:
+
+            strategy = "recover"
+
+            confidence = min(
+
+                confidence,
+
+                0.90
+            )
+
+            reasons.append(
+
+                f"Estimated {missing} product(s) missing."
+            )
+
         return {
 
             "strategy": strategy,
@@ -12831,6 +13025,8 @@ class VendorImportJob(models.Model):
 
             "reason": reasons
         }
+
+      
 
     #==========crop quality==============================
     def _calculate_crop_quality(
