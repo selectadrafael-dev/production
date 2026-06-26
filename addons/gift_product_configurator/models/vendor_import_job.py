@@ -12073,7 +12073,7 @@ class VendorImportJob(models.Model):
 
             return False
 
-    #==========prepare render assets====================
+    #==========prepare render assets=================================
     def _prepare_render_assets(
 
         self,
@@ -12405,7 +12405,7 @@ class VendorImportJob(models.Model):
 
             return images
     
-    #==========catalogue diagnostics====================
+    #==========catalogue diagnostics================================
     def _catalogue_diagnostics(
 
         self,
@@ -12711,7 +12711,7 @@ class VendorImportJob(models.Model):
                 "[CATALOGUE REPORT ERROR]"
             )
     
-    #==========print catalogue report====================
+    #==========print catalogue report===============================
     def _print_catalogue_report(
 
         self,
@@ -12815,7 +12815,7 @@ class VendorImportJob(models.Model):
 
         _logger.warning("=" * 60)
 
-    #==========analyse crop quality====================
+    #==========analyse crop quality=================================
     def _crop_quality_analysis(
         self,
         asset
@@ -12890,7 +12890,7 @@ class VendorImportJob(models.Model):
             "reasons": reasons
         }
 
-    #==========determine refinement====================
+    #==========determine refinement================================
     def _needs_crop_refinement(
         self,
         asset
