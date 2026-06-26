@@ -2674,9 +2674,57 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
-                                # images = self._prepare_ai_images(
-                                #     images
-                                # )
+                                page_report = self._analyse_page(
+
+                                        page_data
+                                )
+
+                                strategy = self._select_processing_strategy(
+
+                                    page_report
+                                )
+
+
+                                if strategy["strategy"] == "recover":
+
+                                    images = self._execute_strategy(
+
+                                        "recover",
+
+                                        page_data,
+
+                                        images,
+
+                                        strategy
+                                    )
+
+                                # elif strategy["strategy"] == "rerank":
+
+                                #     images = self._execute_strategy(
+
+                                #         "rerank",
+
+                                #         page_data,
+
+                                #         images,
+
+                                #         strategy
+                                #     )
+
+                                # elif strategy["strategy"] == "audit":
+
+                                #     images = self._execute_strategy(
+
+                                #         "audit",
+
+                                #         page_data,
+
+                                #         images,
+
+                                #         strategy
+                                #     )
+
+
 
                             if (
                                 not text
@@ -8758,16 +8806,34 @@ class VendorImportJob(models.Model):
 
         sorted_assets = sorted(
 
-       
             asset_pool,
 
             key=lambda x: (
 
-                x.get("hero_score", 0),
+                x.get(
+                    "crop_quality",
+                    0
+                ),
 
-                x.get("gallery_score", 0),
+                x.get(
+                    "hero_score",
+                    0
+                ),
 
-                x.get("score", 0)
+                x.get(
+                    "gallery_score",
+                    0
+                ),
+
+                x.get(
+                    "confidence",
+                    0
+                ),
+
+                x.get(
+                    "score",
+                    0
+                )
 
             ),
 
@@ -12258,6 +12324,13 @@ class VendorImportJob(models.Model):
                 asset["priority"] = priority
 
                 asset["confidence"] = confidence
+                asset["crop_quality"] = (
+
+                self._calculate_crop_quality(
+
+                        asset
+                    )
+                )
 
                 quality = self._crop_quality_analysis(
                     asset
@@ -12284,6 +12357,7 @@ class VendorImportJob(models.Model):
 
                     marketing_images.append(asset)
 
+
                 _logger.warning(
 
                     f"[RENDER ASSET] "
@@ -12292,25 +12366,17 @@ class VendorImportJob(models.Model):
 
                     f"group={group} "
 
-                    f"priority={priority} "
+                    f"quality={asset.get('crop_quality')} "
 
-                    f"demo_score={demo_score} "
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
 
                     f"confidence={confidence:.1f} "
 
-                    f"lifestyle={asset.get('is_lifestyle')} "
+                    f"score={asset.get('score')} "
 
-                    f"portrait={asset.get('portrait')} "
-
-                    f"large={asset.get('large_image')} "
-
-                    f"large_area={asset.get('large_area')} "
-
-                    f"lifestyle_score={asset.get('lifestyle_score')}"
-
-                    f" crop_quality={quality['score']} "
-
-                    f" reasons={quality['reasons']} "
+                    f"lifestyle={asset.get('is_lifestyle')}"
                 )
 
             # =====================================
@@ -12320,6 +12386,11 @@ class VendorImportJob(models.Model):
             def sorter(a):
 
                 return (
+
+                    a.get(
+                        "crop_quality",
+                        0
+                    ),
 
                     a.get(
                         "hero_score",
@@ -12340,7 +12411,6 @@ class VendorImportJob(models.Model):
                         "score",
                         0
                     )
-
                 )
 
             real_images.sort(
@@ -12405,18 +12475,455 @@ class VendorImportJob(models.Model):
 
             return images
     
-    #==========catalogue diagnostics================================
-    def _catalogue_diagnostics(
+    #==========execute workflow===========================
+    def _execute_strategy(
 
         self,
+
+        strategy,
+
+        page_data,
+
+        images,
+
+        metadata
+    ):
+
+        _logger.warning(
+
+            f"[EXECUTE STRATEGY] "
+
+            f"{strategy}"
+        )
+
+        if strategy == "recover":
+
+            return self._recover_page(
+
+                page_data,
+
+                images,
+
+                metadata
+            )
+
+        elif strategy == "rerank":
+
+            return self._rerank_assets(
+
+                images
+            )
+
+        elif strategy == "audit":
+
+            return self._ai_catalogue_recovery(
+
+                page_data
+            )
+
+        return images
+
+    #==========page recovery===========================
+    def _recover_page(
+
+        self,
+
+        page_data,
+
+        images,
+
+        report
+    ):
+
+        _logger.warning(
+
+            "[PAGE RECOVERY START]"
+        )
+
+        #
+        # Phase 1
+        #
+        # Return original images.
+        #
+
+        return images
+
+    #==========page intelligence==========================
+    def _analyse_page(
+
+        self,
+
+        page_data
+    ):
+
+        images = page_data.get(
+            "images",
+            []
+        )
+
+        page_width = page_data.get(
+            "page_width",
+            0
+        )
+
+        page_height = page_data.get(
+            "page_height",
+            0
+        )
+
+        report = {
+
+            "total_images": len(images),
+
+            "coverage": 0,
+
+            "quality": 0,
+
+            "requires_recovery": False,
+
+            "reason": []
+
+        }
+
+        if not images:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "No product images extracted."
+            )
+
+            return report
+
+        total_area = 0
+
+        total_quality = 0
+
+        for asset in images:
+
+            width = asset.get(
+                "width",
+                0
+            ) or 0
+
+            height = asset.get(
+                "height",
+                0
+            ) or 0
+
+            total_area += (
+
+                width * height
+            )
+
+            total_quality += asset.get(
+
+                "crop_quality",
+
+                70
+            )
+
+        page_area = max(
+
+            1,
+
+            page_width * page_height
+        )
+
+        report["coverage"] = round(
+
+            total_area
+
+            /
+
+            page_area,
+
+            3
+        )
+
+        report["quality"] = round(
+
+            total_quality
+
+            /
+
+            len(images),
+
+            1
+        )
+
+        # ==========================
+        # DECISION
+        # ==========================
+
+        if len(images) <= 2:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "Very few product crops."
+            )
+
+        if report["coverage"] < 0.28:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "Low page coverage."
+            )
+
+        if report["quality"] < 70:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "Poor crop quality."
+            )
+
+        _logger.warning(
+
+            f"[PAGE INTELLIGENCE] "
+
+            f"images={len(images)} "
+
+            f"coverage={report['coverage']} "
+
+            f"quality={report['quality']} "
+
+            f"recovery={report['requires_recovery']} "
+
+            f"reason={report['reason']}"
+        )
+
+        return report
+
+    #==========workflow strategy==========================
+    def _select_processing_strategy(
+
+        self,
+
+        page_report
+    ):
+
+        decision = page_report.get(
+
+            "decision",
+
+            {}
+        )
+
+        strategy = decision.get(
+
+            "strategy",
+
+            "continue"
+        )
+
+        confidence = decision.get(
+
+            "confidence",
+
+            1.0
+        )
+
+        reasons = decision.get(
+
+            "reason",
+
+            []
+        )
+
+        _logger.warning(
+
+            f"[WORKFLOW STRATEGY] "
+
+            f"{strategy} "
+
+            f"confidence={confidence:.2f} "
+
+            f"reason={reasons}"
+        )
+
+        return {
+
+            "strategy": strategy,
+
+            "confidence": confidence,
+
+            "reason": reasons
+        }
+
+    #==========crop quality==============================
+    def _calculate_crop_quality(
+
+        self,
+
+        asset
+    ):
+
+        quality = 100
+
+        width = int(
+            asset.get(
+                "width",
+                0
+            ) or 0
+        )
+
+        height = int(
+            asset.get(
+                "height",
+                0
+            ) or 0
+        )
+
+        score = float(
+            asset.get(
+                "score",
+                0
+            ) or 0
+        )
+
+        lifestyle_score = float(
+            asset.get(
+                "lifestyle_score",
+                0
+            ) or 0
+        )
+
+        # =====================================
+        # SIZE
+        # =====================================
+
+        if width < 120:
+            quality -= 25
+
+        if height < 120:
+            quality -= 25
+
+        # =====================================
+        # LONG STRIPS
+        # =====================================
+
+        if width and height:
+
+            ratio = width / height
+
+            if ratio > 4:
+
+                quality -= 15
+
+            elif ratio < 0.25:
+
+                quality -= 15
+
+        # =====================================
+        # COLLAGE
+        # =====================================
+
+        if asset.get("is_collage"):
+
+            quality -= 50
+
+        # =====================================
+        # LIFESTYLE
+        # =====================================
+
+        quality -= int(
+            lifestyle_score * 25
+        )
+
+        # =====================================
+        # EXTRACTOR SCORE
+        # =====================================
+
+        if score < 40:
+
+            quality -= 15
+
+        elif score > 90:
+
+            quality += 5
+
+        return max(
+            0,
+            min(
+                quality,
+                100
+            )
+        )
+
+    #==========start validation=========================
+    def _start_validation(self):
+
+        return {
+
+            "expected_products": 0,
+
+            "created_products": 0,
+
+            "expected_variants": 0,
+
+            "created_variants": 0,
+
+            "expected_variant_keys": [],
+
+            "created_variant_keys": [],
+
+            "hero_indexes": [],
+
+            "gallery_indexes": [],
+
+            "variant_indexes": [],
+
+            "duplicate_indexes": [],
+
+            "missing_variant_keys": [],
+
+            "duplicate_variant_keys": [],
+
+            "used_indexes": set(),
+
+            "warnings": []
+        }
+
+    #==========variant key==============================
+    def _variant_key(
+
+        self,
+
+        attributes
+    ):
+
+        if not attributes:
+
+            return ""
+
+        return "|".join(
+
+            f"{k}:{v}"
+
+            for k, v
+
+            in sorted(
+
+                attributes.items()
+            )
+        )
+
+    #==========catalogue diagnostics================================
+
+    def  _catalogue_diagnostics(
 
         page_number,
 
         page_data,
 
-        created_products,
-
-        created_variants
+        page_validation
     ):
 
         try:
@@ -12459,6 +12966,28 @@ class VendorImportJob(models.Model):
             }
 
             # =====================================
+            # CONFIDENCE
+            # =====================================
+
+            # if average < 60:
+
+            #     subsystem = "Confidence"
+
+            #     severity = "WARNING"
+
+            #     reason = (
+
+            #         f"Average confidence "
+
+            #         f"{average}% "
+
+            #         f"is below threshold."
+
+            #     )
+
+            #     warnings.append(reason)
+
+            # =====================================
             # IMAGE ANALYSIS
             # =====================================
 
@@ -12484,6 +13013,25 @@ class VendorImportJob(models.Model):
                         0
                     )
                 )
+            # =====================================
+            # IMAGE CLASSIFICATION
+            # =====================================
+
+            if report["lifestyle"] > report["real"]:
+
+                subsystem = "Image Classification"
+
+                severity = "WARNING"
+
+                reason = (
+
+                    "Lifestyle images exceed "
+
+                    "real product images."
+
+                )
+
+                warnings.append(reason)
 
             # =====================================
             # AVERAGE CONFIDENCE
@@ -12526,16 +13074,91 @@ class VendorImportJob(models.Model):
 
                 health -= 15
 
+            # =====================================
+            # PRODUCT CREATION
+            # =====================================
+
+            if created_products != ai_products:
+
+                subsystem = "Product Creation"
+
+                severity = "ERROR"
+
+                reason = (
+
+                    f"AI detected "
+
+                    f"{ai_products} product(s), "
+
+                    f"but only "
+
+                    f"{created_products} "
+
+                    f"were created."
+
+                )
+
+                warnings.append(reason)
+
             if created_variants != ai_variants:
 
                 health -= 15
+
+            # =====================================
+            # VARIANTS
+            # =====================================
+
+            if created_variants != ai_variants:
+
+                subsystem = "Variant Creation"
+
+                severity = "ERROR"
+
+                reason = (
+
+                    f"AI detected "
+
+                    f"{ai_variants} variant(s), "
+
+                    f"but only "
+
+                    f"{created_variants} "
+
+                    f"were created."
+
+                )
+
+                warnings.append(reason)
+
+
+            # =====================================
+            # DIAGNOSTIC ENGINE
+            # =====================================
+
+            subsystem = "Healthy"
+
+            reason = "No anomaly detected."
+
+            severity = "INFO"
+
+            warnings = []
+
 
             health = max(
                 0,
                 health
             )
 
-            if health >= 90:
+
+            if severity == "ERROR":
+
+                status = "FAILED"
+
+            elif severity == "WARNING":
+
+                status = "WARNING"
+
+            elif health >= 90:
 
                 status = "PASS"
 
@@ -12573,6 +13196,34 @@ class VendorImportJob(models.Model):
 
                     "Lifestyle images exceed real product images."
                 )
+
+            # =====================================
+            # AI CHECK
+            # =====================================
+
+            if (
+
+                ai_products == 0
+
+                and
+
+                len(images) > 0
+
+            ):
+
+                subsystem = "AI"
+
+                severity = "ERROR"
+
+                reason = (
+
+                    "Images exist but "
+
+                    "AI returned no products."
+
+                )
+
+                warnings.append(reason)
 
             # =====================================
             # REPORT
@@ -12679,6 +13330,27 @@ class VendorImportJob(models.Model):
                 f"{status}"
             )
 
+            _logger.warning(
+
+                f"Subsystem           : "
+
+                f"{subsystem}"
+            )
+
+            _logger.warning(
+
+                f"Severity            : "
+
+                f"{severity}"
+            )
+
+            _logger.warning(
+
+                f"Reason              : "
+
+                f"{reason}"
+            )
+
             if created_variants < ai_variants:
 
                 warnings.append(
@@ -12686,20 +13358,23 @@ class VendorImportJob(models.Model):
                     "One or more variants were not created. Review variant matching."
                 )
 
+
             if warnings:
 
                 _logger.warning("-" * 70)
 
                 _logger.warning(
 
-                    "Warnings:"
+                    "Diagnostic Warnings"
                 )
+
+                _logger.warning("-" * 70)
 
                 for warning in warnings:
 
                     _logger.warning(
 
-                        f"  • {warning}"
+                        f"• {warning}"
                     )
 
             _logger.warning("=" * 70)
@@ -13557,6 +14232,8 @@ class VendorImportJob(models.Model):
 
             page_created_variants = 0
 
+            page_validation = self._start_validation()
+
             page_record = self.env[
                 'vendor.import.page'
             ].search([
@@ -13744,6 +14421,30 @@ class VendorImportJob(models.Model):
                         []
                     )
 
+                    page_validation["expected_products"] += 1
+
+                    page_validation["expected_variants"] += len(
+                        variants
+                    )
+
+                    for variant in variants:
+
+                        key = self._variant_key(
+
+                            variant.get(
+
+                                "attributes",
+
+                                {}
+                            )
+                        )
+
+                        page_validation[
+
+                            "expected_variant_keys"
+
+                        ].append(key)
+
                     variant_group = (
 
                         product_data.get(
@@ -13781,7 +14482,8 @@ class VendorImportJob(models.Model):
                         asset_pool
                     )
 
-                    product, created = (
+            
+                    product, created, hero_asset = (
 
                         self._get_or_create_pdf_product(
 
@@ -13806,6 +14508,15 @@ class VendorImportJob(models.Model):
 
                     if created:
 
+                        if hero_asset:
+
+                            page_validation["hero_indexes"].append(
+
+                                hero_asset.get(
+                                    "clean_index"
+                                )
+                            )
+
                         self._apply_product_translation(
                             product
                         )
@@ -13821,6 +14532,12 @@ class VendorImportJob(models.Model):
 
                         created_count += 1
                         page_created_products += 1
+
+                        page_validation[
+
+                            "created_products"
+
+                        ] += 1
 
                     else:
 
@@ -13848,6 +14565,23 @@ class VendorImportJob(models.Model):
                             "attributes",
                             {}
                         )
+
+                        key = self._variant_key(
+
+                            attributes
+                        )
+
+                        page_validation[
+
+                            "created_variant_keys"
+
+                        ].append(key)
+
+                        page_validation[
+
+                            "created_variants"
+
+                        ] += 1
 
                         for attr_name, attr_value in attributes.items():
 
@@ -14085,6 +14819,33 @@ class VendorImportJob(models.Model):
                                     used_asset_indexes
                                 )
 
+                                clean_index = matched_asset.get(
+
+                                    "clean_index"
+                                )
+
+                                if clean_index in page_validation["used_indexes"]:
+
+                                    page_validation[
+
+                                        "duplicate_indexes"
+
+                                    ].append(clean_index)
+
+                                else:
+
+                                    page_validation[
+
+                                        "used_indexes"
+
+                                    ].add(clean_index)
+
+                                page_validation[
+
+                                    "variant_indexes"
+
+                                ].append(clean_index)
+
                                 # =====================================
                                 # APPLY
                                 # =====================================
@@ -14167,16 +14928,22 @@ class VendorImportJob(models.Model):
 
             try:
 
-                self._catalogue_diagnostics(
-
-                    page_number,
-
-                    page_data,
-
-                    page_created_products,
-
-                    page_created_variants
+                expected = set(
+                    page_validation["expected_variant_keys"]
                 )
+
+                created = set(
+                    page_validation["created_variant_keys"]
+                )
+
+                page_validation["missing_variant_keys"] = sorted(
+                    expected - created
+                )
+
+                page_validation["duplicate_variant_keys"] = sorted(
+                    created - expected
+                )
+
 
                 self.last_created_page = (
                     page_index + 1
@@ -14501,11 +15268,20 @@ class VendorImportJob(models.Model):
                 "image"
             )
 
+
             _logger.warning(
 
                 f"[PDF HERO APPLIED] "
 
+                f"index={hero_asset.get('clean_index')} "
+
                 f"score={hero_asset.get('score')} "
+
+                f"hero_score={hero_asset.get('hero_score')} "
+
+                f"gallery_score={hero_asset.get('gallery_score')} "
+
+                f"group={hero_asset.get('asset_group')} "
 
                 f"color={hero_asset.get('dominant_color')}"
             )
@@ -14520,7 +15296,16 @@ class VendorImportJob(models.Model):
 
         ).create(vals)
 
-        return product, True
+
+        return (
+
+            product,
+
+            True,
+
+            hero_asset
+        )
+
 
     #==========pdf and excel stock helper(working helper)================
     def _apply_catalog_stock(
@@ -14935,17 +15720,43 @@ class VendorImportJob(models.Model):
                     {}
                 )
 
+
                 _logger.warning(
+
                     f"[GALLERY CANDIDATE] "
+
                     f"index={index} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
+                    f"confidence={asset.get('confidence')} "
+
                     f"color={asset.get('dominant_color')} "
+
                     f"lifestyle={asset.get('is_lifestyle')} "
+
                     f"width={asset.get('width')} "
-                    f"height={asset.get('height')} "
-                    f"x={asset.get('x')} "
-                    f"y={asset.get('y')}"
+
+                    f"height={asset.get('height')}"
+
                 )
 
+                if asset.get("asset_group") != "real":
+
+                    _logger.warning(
+
+                        f"[NON-REAL GALLERY] "
+
+                        f"index={index} "
+
+                        f"group={asset.get('asset_group')} "
+
+                        f"confidence={asset.get('confidence')}"
+                    )
 
                 gallery_image = (
                     self._resolve_asset_image(
@@ -14965,7 +15776,18 @@ class VendorImportJob(models.Model):
 
                 ).hexdigest()
 
+
                 if image_hash in used_hashes:
+
+                    _logger.warning(
+
+                        f"[GALLERY DUPLICATE SKIP] "
+
+                        f"index={index} "
+
+                        f"color={asset.get('dominant_color')}"
+                    )
+
                     continue
 
                 self.env[
@@ -14982,10 +15804,23 @@ class VendorImportJob(models.Model):
                         gallery_image
                 })
 
+
                 _logger.warning(
+
                     f"[GALLERY ADDED] "
+
                     f"index={index} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"confidence={asset.get('confidence')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
                     f"color={asset.get('dominant_color')} "
+
                     f"lifestyle={asset.get('is_lifestyle')}"
                 )
 
