@@ -2678,6 +2678,27 @@ class VendorImportJob(models.Model):
                                     page_report
                                 )
 
+                                page_context = self._build_ai_page_context(
+
+                                    i + 1,
+
+                                    {
+
+                                        "page_image": page_image,
+
+                                        "page_width": page_width,
+
+                                        "page_height": page_height
+
+                                    },
+
+                                    images,
+
+                                    page_report,
+
+                                    strategy
+                                )
+
                                 _logger.warning(
                                     f"[WORKFLOW DECISION] "
                                     f"{strategy['strategy']}"
@@ -2815,7 +2836,9 @@ class VendorImportJob(models.Model):
 
                                 "page_width": page_width,
 
-                                "page_height": page_height
+                                "page_height": page_height,
+
+                                "page_context": page_context
                             })
 
 
@@ -6725,6 +6748,60 @@ class VendorImportJob(models.Model):
             page_images
         )
 
+        # =====================================
+        # BUILD AI PAGE CONTEXT
+        # =====================================
+
+        page_context = self._build_ai_page_context(
+
+            next_record.page_number,
+
+            {
+
+                "page_width": page_width,
+
+                "page_height": page_height
+
+            },
+
+            page_images,
+
+            validation if "validation" in locals() else {},
+
+            {
+
+                "strategy":
+
+                    "recover"
+
+                    if page_data.get(
+
+                        "recovery_required"
+
+                    )
+
+                    else
+
+                    "continue",
+
+                "confidence": 1.0,
+
+                "reason":
+
+                    validation.get(
+
+                        "reasons",
+
+                        []
+
+                    )
+
+                    if "validation" in locals()
+
+                    else []
+            }
+        )
+
         _logger.warning(
 
             f"[PDF AI IMAGES] "
@@ -6938,8 +7015,57 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROMPT
         # =====================================================
+        context_summary = f"""
+
+        ==================================================
+
+        CATALOGUE PAGE ANALYSIS
+
+        ==================================================
+
+        Page:
+
+        {page_context.get('page')}
+
+        Workflow:
+
+        {page_context.get('workflow')}
+
+        Coverage:
+
+        {page_context.get('coverage')}
+
+        Real Product Images:
+
+        {page_context.get('real_products')}
+
+        Product Demonstration Images:
+
+        {page_context.get('product_demo')}
+
+        Lifestyle Images:
+
+        {page_context.get('lifestyle')}
+
+        Marketing Images:
+
+        {page_context.get('marketing')}
+
+        Recovery Required:
+
+        {page_context.get('requires_recovery')}
+
+        Recovery Reasons:
+
+        {page_context.get('workflow_reason')}
+
+        ==================================================
+
+        """
+
 
         prompt = f"""
+        prompt = context_summary + prompt
         You are an AI ecommerce catalog extraction engine.
 
         Analyze:
@@ -7270,6 +7396,31 @@ class VendorImportJob(models.Model):
         ==================================================
 
         {page_stock}
+
+        Catalogue Analysis
+
+        Page: {page_context.get('page')}
+
+        Coverage: {page_context.get('coverage')}
+
+        Workflow: {page_context.get('workflow')}
+
+        Real Products: {page_context.get('real_products')}
+
+        Product Demo Images: {page_context.get('product_demo')}
+
+        Lifestyle Images: {page_context.get('lifestyle')}
+
+        Marketing Images: {page_context.get('marketing')}
+
+        Recovery Required:
+
+        {page_context.get('requires_recovery')}
+
+        Recovery Reason:
+
+        {page_context.get('workflow_reason')}
+
         """
 
         # =====================================================
@@ -12623,6 +12774,20 @@ class VendorImportJob(models.Model):
         report
     ):
 
+        candidates = self._build_recovery_candidates(
+
+            page_data,
+
+            images
+        )
+
+        _logger.warning(
+
+            f"[RECOVERY INPUT] "
+
+            f"candidates={len(candidates)}"
+        )
+
         _logger.warning(
 
             "[PAGE RECOVERY START]"
@@ -12634,7 +12799,69 @@ class VendorImportJob(models.Model):
         # Return original images.
         #
 
+        page_snapshot = {
+
+            "page_width": page_data.get("page_width"),
+
+            "page_height": page_data.get("page_height"),
+
+            "page_image": page_data.get("page_image"),
+
+            "existing_images": len(images),
+
+            "coverage": page_data.get("coverage")
+        }
+
+        _logger.warning(
+
+            f"[RECOVERY SUMMARY] "
+
+            f"before={len(images)} "
+
+            f"candidates={len(candidates)} "
+        )
+
         return images
+
+    #==========build recovery candidates===========================
+    def _build_recovery_candidates(
+
+        self,
+
+        page_data,
+
+        images
+    ):
+
+        candidates = []
+
+        page_image = page_data.get("page_image")
+
+        if not page_image:
+
+            return candidates
+
+        for asset in images:
+
+            quality = asset.get("crop_quality", 0)
+
+            group = asset.get("asset_group")
+
+            if group == "real" and quality >= 80:
+                continue
+
+            candidates.append(asset)
+
+        _logger.warning(
+
+            f"[RECOVERY CANDIDATES] "
+
+            f"selected={len(candidates)} "
+
+            f"total={len(images)}"
+        )
+
+        return candidates
 
     #==========estimate expected products===========================
     def _estimate_expected_products(
@@ -13025,8 +13252,153 @@ class VendorImportJob(models.Model):
 
             "reason": reasons
         }
+        
 
-      
+      #==========build ai page context==========================
+
+    #================build_ai_page_context===================
+    def _build_ai_page_context(
+
+        self,
+
+        page_number,
+
+        page_data,
+
+        images,
+
+        page_report,
+
+        strategy_info
+    ):
+
+        try:
+
+            report = {
+
+                "real": 0,
+
+                "product_demo": 0,
+
+                "lifestyle": 0,
+
+                "marketing": 0
+            }
+
+            for asset in images:
+
+                group = asset.get(
+
+                    "asset_group",
+
+                    "real"
+                )
+
+                if group in report:
+
+                    report[group] += 1
+
+            context = {
+
+                "page": page_number,
+
+                "coverage": round(
+
+                    page_report.get(
+
+                        "coverage",
+
+                        0
+
+                    ),
+
+                    3
+                ),
+
+                "quality": round(
+
+                    page_report.get(
+
+                        "quality",
+
+                        0
+
+                    ),
+
+                    1
+                ),
+
+                "expected_products": page_report.get(
+
+                    "estimated_products",
+
+                    0
+                ),
+
+                "requires_recovery": page_report.get(
+
+                    "requires_recovery",
+
+                    False
+                ),
+
+                "workflow": strategy_info.get(
+
+                    "strategy",
+
+                    "continue"
+                ),
+
+                "workflow_confidence": strategy_info.get(
+
+                    "confidence",
+
+                    1.0
+                ),
+
+                "workflow_reason": strategy_info.get(
+
+                    "reason",
+
+                    []
+                ),
+
+                "real_products": report["real"],
+
+                "product_demo": report["product_demo"],
+
+                "lifestyle": report["lifestyle"],
+
+                "marketing": report["marketing"]
+            }
+
+            _logger.warning(
+
+                f"[AI PAGE CONTEXT] "
+
+                f"page={context['page']} "
+
+                f"real={context['real_products']} "
+
+                f"demo={context['product_demo']} "
+
+                f"life={context['lifestyle']} "
+
+                f"coverage={context['coverage']} "
+
+                f"workflow={context['workflow']}"
+            )
+
+            return context
+
+        except Exception:
+
+            _logger.exception(
+
+                "[AI PAGE CONTEXT ERROR]"
+            )
+
+            return {}
 
     #==========crop quality==============================
     def _calculate_crop_quality(
