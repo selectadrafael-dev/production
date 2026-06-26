@@ -6744,72 +6744,72 @@ class VendorImportJob(models.Model):
         # CLASSIFY IMAGES BEFORE AI
         # =====================================
 
-        page_images = self._prepare_ai_images(
-            page_images
-        )
+        # page_images = self._prepare_ai_images(
+        #     page_images
+        # )
 
-        # =====================================
-        # BUILD AI PAGE CONTEXT
-        # =====================================
+        # # =====================================
+        # # BUILD AI PAGE CONTEXT
+        # # =====================================
 
-        page_context = self._build_ai_page_context(
+        # page_context = self._build_ai_page_context(
 
-            next_record.page_number,
+        #     next_record.page_number,
 
-            {
+        #     {
 
-                "page_width": page_width,
+        #         "page_width": page_width,
 
-                "page_height": page_height
+        #         "page_height": page_height
 
-            },
+        #     },
 
-            page_images,
+        #     page_images,
 
-            validation if "validation" in locals() else {},
+        #     validation if "validation" in locals() else {},
 
-            {
+        #     {
 
-                "strategy":
+        #         "strategy":
 
-                    "recover"
+        #             "recover"
 
-                    if page_data.get(
+        #             if page_data.get(
 
-                        "recovery_required"
+        #                 "recovery_required"
 
-                    )
+        #             )
 
-                    else
+        #             else
 
-                    "continue",
+        #             "continue",
 
-                "confidence": 1.0,
+        #         "confidence": 1.0,
 
-                "reason":
+        #         "reason":
 
-                    validation.get(
+        #             validation.get(
 
-                        "reasons",
+        #                 "reasons",
 
-                        []
+        #                 []
 
-                    )
+        #             )
 
-                    if "validation" in locals()
+        #             if "validation" in locals()
 
-                    else []
-            }
-        )
+        #             else []
+        #     }
+        # )
 
-        _logger.warning(
+        # _logger.warning(
 
-            f"[PDF AI IMAGES] "
+        #     f"[PDF AI IMAGES] "
 
-            f"PAGE={next_record.page_number} "
+        #     f"PAGE={next_record.page_number} "
 
-            f"| valid={len(page_images)}"
-        )
+        #     f"| valid={len(page_images)}"
+        # )
 
 
         if page_images:
@@ -6950,6 +6950,7 @@ class VendorImportJob(models.Model):
                 "[RECOVERY REQUIRED]"
             )
 
+            
             recovery = self._ai_catalogue_recovery(
                 page_data
             )
@@ -6969,11 +6970,59 @@ class VendorImportJob(models.Model):
 
                         asset["clean_index"] = idx
 
+                page_images = self._prepare_render_assets(
+
+                    page_images
+                )
+
+
+                validation = self._validate_extraction_quality(
+
+                    page_data
+                )
+
+                page_data["validation"] = validation
+
+                page_data["recovery_required"] = (
+
+                    not validation["passed"]
+                )
+
                 _logger.warning(
                     f"[RECOVERY APPLIED] "
                     f"old_images={old_count} "
                     f"new_images={len(page_images)}"
                 )
+
+        # =====================================
+        # BUILD AI PAGE CONTEXT
+        # =====================================
+
+        page_data["images"] = page_images
+
+        page_context = self._build_ai_page_context(
+
+            page_data,
+
+            validation
+        )
+
+        page_data["page_context"] = page_context
+
+        _logger.warning(
+
+            f"[AI CONTEXT READY] "
+
+            f"page={page_context.get('page')} "
+
+            f"real={page_context.get('real_products')} "
+
+            f"demo={page_context.get('product_demo')} "
+
+            f"life={page_context.get('lifestyle')} "
+
+            f"recovery={page_context.get('requires_recovery')}"
+        )
 
         page_price = ""
 
@@ -7064,9 +7113,9 @@ class VendorImportJob(models.Model):
         """
 
 
-        prompt = f"""
-        prompt = context_summary + prompt
+        prompt = context_summary + f"""
         You are an AI ecommerce catalog extraction engine.
+
 
         Analyze:
         - catalog page text
@@ -7396,30 +7445,6 @@ class VendorImportJob(models.Model):
         ==================================================
 
         {page_stock}
-
-        Catalogue Analysis
-
-        Page: {page_context.get('page')}
-
-        Coverage: {page_context.get('coverage')}
-
-        Workflow: {page_context.get('workflow')}
-
-        Real Products: {page_context.get('real_products')}
-
-        Product Demo Images: {page_context.get('product_demo')}
-
-        Lifestyle Images: {page_context.get('lifestyle')}
-
-        Marketing Images: {page_context.get('marketing')}
-
-        Recovery Required:
-
-        {page_context.get('requires_recovery')}
-
-        Recovery Reason:
-
-        {page_context.get('workflow_reason')}
 
         """
 
@@ -13261,18 +13286,19 @@ class VendorImportJob(models.Model):
 
         self,
 
-        page_number,
-
         page_data,
 
-        images,
-
-        page_report,
-
-        strategy_info
+        validation
     ):
 
         try:
+
+            images = page_data.get(
+
+                "images",
+
+                []
+            )
 
             report = {
 
@@ -13287,6 +13313,10 @@ class VendorImportJob(models.Model):
 
             for asset in images:
 
+                if not isinstance(asset, dict):
+
+                    continue
+
                 group = asset.get(
 
                     "asset_group",
@@ -13300,11 +13330,14 @@ class VendorImportJob(models.Model):
 
             context = {
 
-                "page": page_number,
+                "page": page_data.get(
+
+                    "page"
+                ),
 
                 "coverage": round(
 
-                    page_report.get(
+                    validation.get(
 
                         "coverage",
 
@@ -13315,52 +13348,18 @@ class VendorImportJob(models.Model):
                     3
                 ),
 
-                "quality": round(
+                "score": validation.get(
 
-                    page_report.get(
-
-                        "quality",
-
-                        0
-
-                    ),
-
-                    1
-                ),
-
-                "expected_products": page_report.get(
-
-                    "estimated_products",
+                    "score",
 
                     0
                 ),
 
-                "requires_recovery": page_report.get(
+                "requires_recovery": page_data.get(
 
-                    "requires_recovery",
+                    "recovery_required",
 
                     False
-                ),
-
-                "workflow": strategy_info.get(
-
-                    "strategy",
-
-                    "continue"
-                ),
-
-                "workflow_confidence": strategy_info.get(
-
-                    "confidence",
-
-                    1.0
-                ),
-
-                "workflow_reason": strategy_info.get(
-
-                    "reason",
-
-                    []
                 ),
 
                 "real_products": report["real"],
@@ -13369,7 +13368,21 @@ class VendorImportJob(models.Model):
 
                 "lifestyle": report["lifestyle"],
 
-                "marketing": report["marketing"]
+                "marketing": report["marketing"],
+
+                "page_width": page_data.get(
+
+                    "page_width",
+
+                    0
+                ),
+
+                "page_height": page_data.get(
+
+                    "page_height",
+
+                    0
+                )
             }
 
             _logger.warning(
@@ -13386,7 +13399,9 @@ class VendorImportJob(models.Model):
 
                 f"coverage={context['coverage']} "
 
-                f"workflow={context['workflow']}"
+                f"score={context['score']} "
+
+                f"recovery={context['requires_recovery']}"
             )
 
             return context
