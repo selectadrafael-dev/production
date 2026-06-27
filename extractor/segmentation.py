@@ -111,20 +111,17 @@ def segment_catalog_page(pil_image):
                 x:x+w
             ]
 
-            crop_pil = Image.fromarray(crop)
+            crop_pil = numpy_to_pil(
 
-            buffer = io.BytesIO()
-
-            crop_pil.save(
-                buffer,
-                format="JPEG",
-                quality=75
+                crop
             )
 
             results.append(
-                base64.b64encode(
-                    buffer.getvalue()
-                ).decode("utf-8")
+
+                encode_image(
+
+                    crop_pil
+                )
             )
 
         return results[:12]

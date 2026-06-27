@@ -1011,6 +1011,7 @@ def extract_pdf(file):
                     buffer.getvalue()
 
                 ).decode("utf-8")
+                
 
                 image_list.append({
 
