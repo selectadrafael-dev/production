@@ -13701,7 +13701,7 @@ class VendorImportJob(models.Model):
 
             return {}
 
-    #==========build crop plan==========================
+    #==========build crop plan==================================
     def _build_crop_plan(
 
         self,
@@ -13755,7 +13755,7 @@ class VendorImportJob(models.Model):
 
         return plan
 
-    #==========workflow strategy==========================
+    #==========workflow strategy=================================
     def _select_processing_strategy(
 
         self,
@@ -13876,7 +13876,7 @@ class VendorImportJob(models.Model):
             "reason": reasons
         }
     
-    #================build_ai_page_context===================
+    #================build_ai_page_context=======================
     def _build_ai_page_context(
 
         self,
@@ -14010,7 +14010,7 @@ class VendorImportJob(models.Model):
 
             return {}
 
-    #==========crop quality==============================
+    #==========crop quality=======================================
     def _calculate_crop_quality(
 
         self,
@@ -14110,7 +14110,7 @@ class VendorImportJob(models.Model):
             )
         )
 
-    #==========start validation=========================
+    #==========start validation===================================
     def _start_validation(self):
 
         return {
@@ -14144,7 +14144,7 @@ class VendorImportJob(models.Model):
             "warnings": []
         }
 
-    #==========variant key==============================
+    #==========variant key===========================================
     def _variant_key(
 
         self,
