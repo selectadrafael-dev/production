@@ -2663,33 +2663,93 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
-                                page_report = self._analyse_page({
+                                page_data = {
 
                                     "images": images,
 
                                     "page_width": page_width,
 
                                     "page_height": page_height
-                                })
+                                }
 
-                                expected = self._estimate_expected_products(
+                                page_report = self._analyse_page(
 
-                                    page_data,
-
-                                    page_report
+                                    page_data
                                 )
 
-                                page_report.update(expected)
+                                # =====================================
+                                # LAYOUT
+                                # =====================================
+
+                                page_report["layout"] = (
+
+                                    self._detect_catalog_layout(
+
+                                        page_data
+                                    )
+                                )
+
+                                # =====================================
+                                # MISSING PRODUCTS
+                                # =====================================
+
+                                page_report["missing_products"] = (
+
+                                    self._detect_missing_products(
+
+                                        page_data,
+
+                                        page_report["layout"]
+                                    )
+                                )
+
+                                # =====================================
+                                # CROP PLAN
+                                # =====================================
+
+                                page_report["crop_plan"] = (
+
+                                    self._build_crop_plan(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                # =====================================
+                                # RECOVERY PLAN
+                                # =====================================
+
+                                page_report["recovery_plan"] = (
+
+                                    self._plan_page_recovery(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
 
                                 strategy = self._select_processing_strategy(
+
                                     page_report
                                 )
 
-
                                 _logger.warning(
+
                                     f"[WORKFLOW DECISION] "
+
                                     f"{strategy['strategy']}"
                                 )
+
+                                # Recovery execution intentionally disabled
+
+
+                                # _logger.warning(
+                                #     f"[WORKFLOW DECISION] "
+                                #     f"{strategy['strategy']}"
+                                # )
 
                                 # Intentionally do not execute the strategy yet.
 
@@ -2707,11 +2767,6 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
-                                # page_report = self._analyse_page(
-
-                                #         page_data
-                                # )
-
                                 page_report = self._analyse_page(
                                     page_data
                                 )
@@ -2725,6 +2780,26 @@ class VendorImportJob(models.Model):
                                     self._detect_catalog_layout(
 
                                         page_data
+                                    )
+                                )
+
+                                page_report["missing_products"] = (
+
+                                    self._detect_missing_products(
+
+                                        page_data,
+
+                                        page_report["layout"]
+                                    )
+                                )
+
+                                page_report["crop_plan"] = (
+
+                                    self._build_crop_plan(
+
+                                        page_data,
+
+                                        page_report
                                     )
                                 )
 
@@ -13341,11 +13416,31 @@ class VendorImportJob(models.Model):
                 )
             )
 
-            actual = len(images)
 
-            missing = max(
-                0,
-                expected - actual
+            missing_info = page_report.get(
+
+                "missing_products",
+
+                {}
+            )
+
+            actual = missing_info.get(
+
+                "detected",
+
+                len(images)
+            )
+
+            missing = missing_info.get(
+
+                "missing",
+
+                max(
+
+                    0,
+
+                    expected - actual
+                )
             )
 
             plan = {
@@ -13540,6 +13635,125 @@ class VendorImportJob(models.Model):
             )
 
             return {}
+
+    #==========detect missing products==========================
+    def _detect_missing_products(
+
+        self,
+
+        page_data,
+
+        layout
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            expected = layout.get(
+                "expected_products",
+                len(images)
+            )
+
+            missing = max(
+
+                0,
+
+                expected - len(images)
+            )
+
+            result = {
+
+                "expected": expected,
+
+                "detected": len(images),
+
+                "missing": missing,
+
+                "requires_crop_generation": (
+
+                    missing > 0
+                )
+            }
+
+            _logger.warning(
+
+                f"[MISSING DETECTOR] "
+
+                f"expected={expected} "
+
+                f"detected={len(images)} "
+
+                f"missing={missing}"
+            )
+
+            return result
+
+        except Exception:
+
+            _logger.exception(
+
+                "[MISSING DETECTOR ERROR]"
+            )
+
+            return {}
+
+    #==========build crop plan==========================
+    def _build_crop_plan(
+
+        self,
+
+        page_data,
+
+        page_report
+    ):
+
+        layout = page_report.get(
+
+            "layout",
+
+            {}
+        )
+
+        missing = page_report.get(
+
+            "missing_products",
+
+            {}
+        )
+
+        plan = {
+
+            "required": missing.get(
+
+                "requires_crop_generation",
+
+                False
+            ),
+
+            "count": missing.get(
+
+                "missing",
+
+                0
+            ),
+
+            "layout": layout
+        }
+
+        _logger.warning(
+
+            f"[CROP PLAN] "
+
+            f"required={plan['required']} "
+
+            f"count={plan['count']}"
+        )
+
+        return plan
 
     #==========workflow strategy==========================
     def _select_processing_strategy(
