@@ -2736,21 +2736,28 @@ class VendorImportJob(models.Model):
                                     page_report
                                 )
 
-                                _logger.warning(
+                                strategy["crop_plan"] = page_report.get(
 
-                                    f"[WORKFLOW DECISION] "
+                                    "crop_plan",
 
-                                    f"{strategy['strategy']}"
+                                    {}
                                 )
 
+
+                                if strategy["strategy"] != "continue":
+
+                                    images = self._execute_strategy(
+
+                                        strategy["strategy"],
+
+                                        page_data,
+
+                                        images,
+
+                                        strategy
+                                    )
+
                                 # Recovery execution intentionally disabled
-
-
-                                # _logger.warning(
-                                #     f"[WORKFLOW DECISION] "
-                                #     f"{strategy['strategy']}"
-                                # )
-
                                 # Intentionally do not execute the strategy yet.
 
                             else:
@@ -2816,6 +2823,13 @@ class VendorImportJob(models.Model):
                                 strategy = self._select_processing_strategy(
 
                                     page_report
+                                )
+
+                                strategy["crop_plan"] = page_report.get(
+
+                                    "crop_plan",
+
+                                    {}
                                 )
 
 
@@ -12916,7 +12930,18 @@ class VendorImportJob(models.Model):
         # RECOVERY
         # =====================================
 
-        if strategy == "recover":
+        if strategy == "recrop":
+
+            return self._execute_recrop(
+
+                page_data,
+
+                images,
+
+                strategy_info
+            )
+
+        elif strategy == "recover":
 
             return self._recover_page(
 
@@ -12970,6 +12995,139 @@ class VendorImportJob(models.Model):
 
         return images
     
+    #==========execute recrop==============================
+    def _execute_recrop(
+
+        self,
+
+        page_data,
+
+        images,
+
+        strategy_info
+    ):
+
+        try:
+
+            crop_plan = strategy_info.get(
+
+                "crop_plan",
+
+                {}
+            )
+
+            if not crop_plan.get(
+
+                "required",
+
+                False
+            ):
+
+                return images
+
+            _logger.warning(
+
+                f"[RECROP EXECUTOR] "
+
+                f"required={crop_plan.get('count')}"
+            )
+
+            new_assets = self._generate_missing_crops(
+
+                page_data,
+
+                crop_plan
+            )
+
+            if not new_assets:
+
+                _logger.warning(
+
+                    "[RECROP EXECUTOR] "
+
+                    "No additional crops generated."
+                )
+
+                return images
+
+            _logger.warning(
+
+                f"[RECROP EXECUTOR] "
+
+                f"generated={len(new_assets)}"
+            )
+
+            merged = images + new_assets
+
+            merged = self._prepare_asset_intelligence(
+
+                merged
+            )
+
+            merged = self._prepare_render_assets(
+
+                merged
+            )
+
+            return merged
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECROP EXECUTOR ERROR]"
+            )
+
+            return images
+
+    #==========generate missing crops=======================
+    def _generate_missing_crops(
+
+        self,
+
+        page_data,
+
+        crop_plan
+    ):
+
+        try:
+
+            page_image = page_data.get(
+
+                "page_image"
+            )
+
+            if not page_image:
+
+                return []
+
+            _logger.warning(
+
+                f"[AUTO CROP] "
+
+                f"target={crop_plan.get('count')}"
+            )
+
+            #
+            # Recovery V3.2
+            #
+            # This is where OpenCV /
+            # layout segmentation /
+            # page slicing
+            # will generate crops.
+            #
+
+            return []
+
+        except Exception:
+
+            _logger.exception(
+
+                "[AUTO CROP ERROR]"
+            )
+
+            return []
+
     #==========page recovery===========================
     def _recover_page(
 
