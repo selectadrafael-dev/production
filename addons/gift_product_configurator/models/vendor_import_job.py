@@ -13189,6 +13189,48 @@ class VendorImportJob(models.Model):
 
         return images
 
+    #==========rerank assets==========================
+    def _rerank_assets(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            _logger.warning(
+
+                f"[RERANK ASSETS] "
+
+                f"count={len(images)}"
+            )
+
+            images = self._prepare_asset_intelligence(
+
+                images
+            )
+
+            images = self._prepare_render_assets(
+
+                images
+            )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RERANK ASSETS ERROR]"
+            )
+
+            return images
+
     #==========build recovery candidates===========================
     def _build_recovery_candidates(
 
