@@ -2707,9 +2707,23 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
-                                page_report = self._analyse_page(
+                                # page_report = self._analyse_page(
 
-                                        page_data
+                                #         page_data
+                                # )
+
+                                page_report = self._analyse_page(
+                                    page_data
+                                )
+
+                                page_report["recovery_plan"] = (
+
+                                    self._plan_page_recovery(
+
+                                        page_data,
+
+                                        page_report
+                                    )
                                 )
 
                                 strategy = self._select_processing_strategy(
@@ -12848,9 +12862,24 @@ class VendorImportJob(models.Model):
                 page_data
             )
 
+        elif strategy == "recrop":
+
+            return self._recover_missing_regions(
+
+                page_data,
+
+                images,
+
+                strategy_info
+            )
         # =====================================
         # DEFAULT
         # =====================================
+
+        # _logger.warning(
+
+        #     "[RECROP PLACEHOLDER]"
+        # )
 
         return images
     
@@ -13264,6 +13293,101 @@ class VendorImportJob(models.Model):
 
         return report
 
+    #==========plan recovery=========================
+    def _plan_page_recovery(
+
+        self,
+
+        page_data,
+
+        page_report
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            expected = page_report.get(
+                "estimated_products",
+                len(images)
+            )
+
+            actual = len(images)
+
+            missing = max(
+                0,
+                expected - actual
+            )
+
+            plan = {
+
+                "required": page_report.get(
+                    "requires_recovery",
+                    False
+                ),
+
+                "expected": expected,
+
+                "actual": actual,
+
+                "missing": missing,
+
+                "strategy": "continue",
+
+                "regions": []
+            }
+
+            if not plan["required"]:
+
+                return plan
+
+            if missing >= 2:
+
+                plan["strategy"] = "recrop"
+
+            elif page_report.get(
+                "coverage",
+                1
+            ) < 0.40:
+
+                plan["strategy"] = "recrop"
+
+            else:
+
+                plan["strategy"] = "rerank"
+
+            _logger.warning(
+
+                f"[RECOVERY PLAN] "
+
+                f"expected={expected} "
+
+                f"actual={actual} "
+
+                f"missing={missing} "
+
+                f"strategy={plan['strategy']}"
+            )
+
+            return plan
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY PLAN ERROR]"
+            )
+
+            return {
+
+                "required": False,
+
+                "strategy": "continue"
+            }
+    
     #==========workflow strategy==========================
     def _select_processing_strategy(
 
@@ -13272,7 +13396,50 @@ class VendorImportJob(models.Model):
         page_report
     ):
 
-        if page_report.get(
+        # =====================================
+        # DEFAULT
+        # =====================================
+
+        strategy = "continue"
+
+        confidence = 1.00
+
+        reasons = []
+
+        # =====================================
+        # RECOVERY PLAN
+        # =====================================
+
+        recovery_plan = page_report.get(
+
+            "recovery_plan",
+
+            {}
+        )
+
+        if recovery_plan:
+
+            strategy = recovery_plan.get(
+
+                "strategy",
+
+                strategy
+            )
+
+            if strategy != "continue":
+
+                confidence = 0.95
+
+                reasons.append(
+
+                    f"Recovery strategy: {strategy}"
+                )
+
+        # =====================================
+        # LEGACY RECOVERY SUPPORT
+        # =====================================
+
+        elif page_report.get(
 
             "requires_recovery",
 
@@ -13283,31 +13450,15 @@ class VendorImportJob(models.Model):
 
             confidence = 0.95
 
-            reasons = page_report.get(
+            reasons.extend(
 
-                "reason",
+                page_report.get(
 
-                []
+                    "reason",
+
+                    []
+                )
             )
-
-        else:
-
-            strategy = "continue"
-
-            confidence = 1.00
-
-            reasons = []
-
-        _logger.warning(
-
-            f"[WORKFLOW STRATEGY] "
-
-            f"{strategy} "
-
-            f"confidence={confidence:.2f} "
-
-            f"reason={reasons}"
-        )
 
         # =====================================
         # EXPECTED PRODUCT CHECK
@@ -13322,7 +13473,9 @@ class VendorImportJob(models.Model):
 
         if missing >= 2:
 
-            strategy = "recover"
+            if strategy == "continue":
+
+                strategy = "recover"
 
             confidence = min(
 
@@ -13336,6 +13489,17 @@ class VendorImportJob(models.Model):
                 f"Estimated {missing} product(s) missing."
             )
 
+        _logger.warning(
+
+            f"[WORKFLOW STRATEGY] "
+
+            f"{strategy} "
+
+            f"confidence={confidence:.2f} "
+
+            f"reason={reasons}"
+        )
+
         return {
 
             "strategy": strategy,
@@ -13344,10 +13508,7 @@ class VendorImportJob(models.Model):
 
             "reason": reasons
         }
-        
-
-      #==========build ai page context==========================
-
+    
     #================build_ai_page_context===================
     def _build_ai_page_context(
 
