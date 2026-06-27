@@ -2716,6 +2716,18 @@ class VendorImportJob(models.Model):
                                     page_data
                                 )
 
+                                # =====================================
+                                # DETECT PAGE LAYOUT
+                                # =====================================
+
+                                page_report["layout"] = (
+
+                                    self._detect_catalog_layout(
+
+                                        page_data
+                                    )
+                                )
+
                                 page_report["recovery_plan"] = (
 
                                     self._plan_page_recovery(
@@ -13310,9 +13322,23 @@ class VendorImportJob(models.Model):
                 []
             )
 
-            expected = page_report.get(
-                "estimated_products",
-                len(images)
+            layout = page_report.get(
+
+                "layout",
+
+                {}
+            )
+
+            expected = layout.get(
+
+                "expected_products",
+
+                page_report.get(
+
+                    "estimated_products",
+
+                    len(images)
+                )
             )
 
             actual = len(images)
@@ -13372,6 +13398,10 @@ class VendorImportJob(models.Model):
                 f"strategy={plan['strategy']}"
             )
 
+            plan["layout"] = layout
+
+            plan["estimated_missing"] = missing
+
             return plan
 
         except Exception:
@@ -13388,6 +13418,129 @@ class VendorImportJob(models.Model):
                 "strategy": "continue"
             }
     
+    #==========detect catalogue layout=========================
+    def _detect_catalog_layout(
+
+        self,
+
+        page_data
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            width = page_data.get(
+                "page_width",
+                0
+            )
+
+            height = page_data.get(
+                "page_height",
+                0
+            )
+
+            if not width or not height:
+
+                return {}
+
+            boxes = []
+
+            xs = []
+            ys = []
+
+            for asset in images:
+
+                x = asset.get("x", 0)
+                y = asset.get("y", 0)
+                w = asset.get("width", 0)
+                h = asset.get("height", 0)
+
+                boxes.append({
+
+                    "x": x,
+                    "y": y,
+                    "width": w,
+                    "height": h
+                })
+
+                xs.append(x)
+                ys.append(y)
+
+            columns = len(
+
+                sorted(
+
+                    set(
+
+                        round(x / 80)
+
+                        for x in xs
+                    )
+                )
+            )
+
+            rows = len(
+
+                sorted(
+
+                    set(
+
+                        round(y / 80)
+
+                        for y in ys
+                    )
+                )
+            )
+
+            expected = max(
+
+                len(images),
+
+                rows * columns
+            )
+
+            layout = {
+
+                "rows": rows,
+
+                "columns": columns,
+
+                "expected_products": expected,
+
+                "boxes": boxes
+            }
+
+
+            _logger.warning(
+
+                f"[LAYOUT ENGINE] "
+
+                f"rows={rows} "
+
+                f"columns={columns} "
+
+                f"detected={len(images)} "
+
+                f"expected={expected} "
+
+                f"missing={max(0, expected-len(images))}"
+            )
+
+            return layout
+
+        except Exception:
+
+            _logger.exception(
+
+                "[LAYOUT ENGINE ERROR]"
+            )
+
+            return {}
+
     #==========workflow strategy==========================
     def _select_processing_strategy(
 
