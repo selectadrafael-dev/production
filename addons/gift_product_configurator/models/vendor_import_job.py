@@ -2663,6 +2663,11 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
+                                images = self._apply_role_intelligence(
+
+                                    images
+                                )
+
                                 page_data = {
 
                                     "images": images,
@@ -2771,6 +2776,11 @@ class VendorImportJob(models.Model):
                                 )
 
                                 images = self._prepare_render_assets(
+                                    images
+                                )
+
+                                images = self._apply_role_intelligence(
+
                                     images
                                 )
 
@@ -13090,6 +13100,7 @@ class VendorImportJob(models.Model):
         crop_plan
     ):
 
+
         try:
 
             page_image = page_data.get(
@@ -13101,23 +13112,12 @@ class VendorImportJob(models.Model):
 
                 return []
 
-            _logger.warning(
+            return self._generate_grid_crops(
 
-                f"[AUTO CROP] "
+                page_data,
 
-                f"target={crop_plan.get('count')}"
+                crop_plan
             )
-
-            #
-            # Recovery V3.2
-            #
-            # This is where OpenCV /
-            # layout segmentation /
-            # page slicing
-            # will generate crops.
-            #
-
-            return []
 
         except Exception:
 
@@ -13127,6 +13127,229 @@ class VendorImportJob(models.Model):
             )
 
             return []
+
+    #==========generate grid crops=========================
+    def _generate_grid_crops(
+
+        self,
+
+        page_data,
+
+        crop_plan
+    ):
+
+        try:
+
+            page_image = page_data.get(
+
+                "page_image"
+            )
+
+            if not page_image:
+
+                return []
+
+            page_width = page_data.get(
+
+                "page_width",
+
+                0
+            )
+
+            page_height = page_data.get(
+
+                "page_height",
+
+                0
+            )
+
+            layout = crop_plan.get(
+
+                "layout",
+
+                {}
+            )
+
+            rows = max(
+
+                1,
+
+                layout.get(
+
+                    "rows",
+
+                    1
+                )
+            )
+
+            cols = max(
+
+                1,
+
+                layout.get(
+
+                    "columns",
+
+                    1
+                )
+            )
+
+            cell_width = int(
+
+                page_width / cols
+            )
+
+            cell_height = int(
+
+                page_height / rows
+            )
+
+            generated = []
+
+            clean_index = 1000
+
+            for row in range(rows):
+
+                for col in range(cols):
+
+                    duplicate = False
+
+                    for existing in page_data.get(
+
+                        "images",
+
+                        []
+                    ):
+
+                        overlap = self._rectangles_overlap(
+
+                            {
+
+                                "x": col * cell_width,
+
+                                "y": row * cell_height,
+
+                                "width": cell_width,
+
+                                "height": cell_height
+                            },
+
+                            existing
+                        )
+
+                        if overlap > 0.70:
+
+                            duplicate = True
+
+                            break
+
+                    if duplicate:
+
+                        continue
+
+                    generated.append({
+
+                        "generated": True,
+
+                        "clean_index": clean_index,
+
+                        "x": col * cell_width,
+
+                        "y": row * cell_height,
+
+                        "width": cell_width,
+
+                        "height": cell_height,
+
+                        "image": self._crop_page_image(
+
+                            page_image,
+
+                            col * cell_width,
+
+                            row * cell_height,
+
+                            cell_width,
+
+                            cell_height
+                        ),
+
+                        "score": 50,
+
+                        "hero_score": 50,
+
+                        "gallery_score": 50,
+
+                        "crop_quality": 60,
+
+                        "confidence": 60
+                    })
+
+                    clean_index += 1
+
+            _logger.warning(
+
+                f"[GRID CROPS] "
+
+                f"rows={rows} "
+
+                f"cols={cols} "
+
+                f"generated={len(generated)}"
+            )
+
+            return generated
+
+        except Exception:
+
+            _logger.exception(
+
+                "[GRID CROP ERROR]"
+            )
+
+            return []
+
+    #==========rectangle overlap==========================
+    def _rectangles_overlap(
+
+        self,
+
+        a,
+
+        b
+    ):
+
+        ax1 = a["x"]
+        ay1 = a["y"]
+        ax2 = ax1 + a["width"]
+        ay2 = ay1 + a["height"]
+
+        bx1 = b["x"]
+        by1 = b["y"]
+        bx2 = bx1 + b["width"]
+        by2 = by1 + b["height"]
+
+        inter_x = max(
+            0,
+            min(ax2, bx2) - max(ax1, bx1)
+        )
+
+        inter_y = max(
+            0,
+            min(ay2, by2) - max(ay1, by1)
+        )
+
+        intersection = inter_x * inter_y
+
+        if intersection == 0:
+            return 0
+
+        area_a = a["width"] * a["height"]
+
+        return intersection / max(
+            1,
+            area_a
+        )
 
     #==========page recovery===========================
     def _recover_page(
@@ -13409,6 +13632,23 @@ class VendorImportJob(models.Model):
         page_data
     ):
 
+        role_report = {
+
+            "hero":0,
+
+            "variant":0,
+
+            "detail":0,
+
+            "packaging":0,
+
+            "feature":0,
+
+            "lifestyle":0,
+
+            "marketing":0
+        }
+
         images = page_data.get(
             "images",
             []
@@ -13477,6 +13717,17 @@ class VendorImportJob(models.Model):
                 70
             )
 
+            role = asset.get(
+
+                "asset_role",
+
+                "detail"
+            )
+
+            if role in role_report:
+
+                role_report[role] += 1
+
         page_area = max(
 
             1,
@@ -13537,31 +13788,33 @@ class VendorImportJob(models.Model):
                 "Poor crop quality."
             )
 
+
         # =====================================
-        # NO REAL PRODUCT IMAGES
+        # ROLE-BASED RECOVERY
         # =====================================
 
-        real_products = sum(
+        if (
 
-            1
+            role_report["hero"] == 0
 
-            for asset in images
+            and
 
-            if asset.get(
+            role_report["variant"] == 0
 
-                "asset_group"
-
-            ) == "real"
-        )
-
-        if real_products == 0:
+        ):
 
             report["requires_recovery"] = True
 
             report["reason"].append(
 
-                "No real product images detected."
+                "No hero or variant products detected."
             )
+
+        # =====================================
+        # SAVE ROLE REPORT
+        # =====================================
+
+        report["role_report"] = role_report
 
         _logger.warning(
 
@@ -13713,6 +13966,131 @@ class VendorImportJob(models.Model):
                 "strategy": "continue"
             }
     
+    #==========role intelligence==============================
+    def _apply_role_intelligence(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            for asset in images:
+
+                role = "detail"
+
+                width = asset.get(
+
+                    "width",
+
+                    0
+                )
+
+                height = asset.get(
+
+                    "height",
+
+                    0
+                )
+
+                hero = asset.get(
+
+                    "hero_score",
+
+                    0
+                )
+
+                gallery = asset.get(
+
+                    "gallery_score",
+
+                    0
+                )
+
+                confidence = asset.get(
+
+                    "confidence",
+
+                    0
+                )
+
+                if asset.get("is_collage"):
+
+                    role = "marketing"
+
+                elif asset.get("asset_group") == "lifestyle":
+
+                    role = "lifestyle"
+
+                elif hero >= 90:
+
+                    role = "hero"
+
+                elif hero >= 70:
+
+                    role = "variant"
+
+                elif (
+
+                    width > 250
+
+                    and
+
+                    height > 250
+
+                    and
+
+                    gallery >= 70
+
+                ):
+
+                    role = "variant"
+
+                elif (
+
+                    width < 180
+
+                    or
+
+                    height < 180
+
+                ):
+
+                    role = "detail"
+
+                elif confidence > 80:
+
+                    role = "detail"
+
+                asset["asset_role"] = role
+
+                _logger.warning(
+
+                    f"[ROLE ENGINE] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"role={role}"
+                )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ROLE ENGINE ERROR]"
+            )
+
+            return images
+
     #==========detect catalogue layout=========================
     def _detect_catalog_layout(
 
