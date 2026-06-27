@@ -12904,7 +12904,7 @@ class VendorImportJob(models.Model):
             return images
     
     
-    #==========execute workflow===========================
+    #==========execute workflow============================
     def _execute_strategy(
 
         self,
@@ -13005,7 +13005,7 @@ class VendorImportJob(models.Model):
 
         return images
     
-    #==========execute recrop==============================
+    #==========execute recrop===============================
     def _execute_recrop(
 
         self,
@@ -13128,7 +13128,7 @@ class VendorImportJob(models.Model):
 
             return []
 
-    #==========generate grid crops=========================
+    #==========generate grid crops==========================
     def _generate_grid_crops(
 
         self,
