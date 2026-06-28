@@ -13227,10 +13227,6 @@ class VendorImportJob(models.Model):
                 f"generated={len(new_assets)}"
             )
 
-            new_assets = self._recover_generated_assets(
-
-                new_assets
-            )
 
             merged = images + new_assets
 
@@ -14089,12 +14085,54 @@ class VendorImportJob(models.Model):
                 )
             )
 
+            crop_plan = page_report.get(
+
+                "crop_plan",
+
+                {}
+            )
+
+            required = (
+
+                page_report.get(
+
+                    "requires_recovery",
+
+                    False
+                )
+
+                or
+
+                crop_plan.get(
+
+                    "required",
+
+                    False
+                )
+
+                or
+
+                missing >= 2
+            )
+
+            # plan = {
+
+            #     "required": required,
+
+            #     "expected": expected,
+
+            #     "actual": actual,
+
+            #     "missing": missing,
+
+            #     "strategy": "continue",
+
+            #     "regions": []
+            # }
+
             plan = {
 
-                "required": page_report.get(
-                    "requires_recovery",
-                    False
-                ),
+                "required": required,
 
                 "expected": expected,
 
@@ -14107,18 +14145,73 @@ class VendorImportJob(models.Model):
                 "regions": []
             }
 
+            # =====================================
+            # RECOVERY REASONS
+            # =====================================
+
+            plan["reason"] = []
+
+            if missing >= 2:
+
+                plan["reason"].append(
+
+                    f"{missing} products estimated missing."
+                )
+
+            if crop_plan.get(
+
+                "required",
+
+                False
+            ):
+
+                plan["reason"].append(
+
+                    "Crop planner requested recovery."
+                )
+
+            if page_report.get(
+
+                "requires_recovery",
+
+                False
+            ):
+
+                plan["reason"].extend(
+
+                    page_report.get(
+
+                        "reason",
+
+                        []
+                    )
+                )
+
             if not plan["required"]:
 
                 return plan
+
+            coverage = page_report.get(
+
+                "coverage",
+
+                1
+            )
 
             if missing >= 2:
 
                 plan["strategy"] = "recrop"
 
-            elif page_report.get(
-                "coverage",
-                1
-            ) < 0.40:
+            elif crop_plan.get(
+
+                "required",
+
+                False
+            ):
+
+                plan["strategy"] = "recrop"
+
+            elif coverage < 0.40:
 
                 plan["strategy"] = "recrop"
 
