@@ -5225,10 +5225,43 @@ class VendorImportJob(models.Model):
         # ================= CLEAN =================
         cleaned_blocks = self._clean_scraped_blocks(all_blocks)
 
+        # ==========================================
+        # DEBUG REMOVED PRODUCTS
+        # ==========================================
+
+        cleaned_texts = {
+            (b.get("text") or "").strip()
+            for b in cleaned_blocks
+        }
+
+        removed_blocks = []
+
+        for block in all_blocks:
+
+            text = (block.get("text") or "").strip()
+
+            if text not in cleaned_texts:
+
+                removed_blocks.append(block)
+
+        _logger.warning(
+            f"[REMOVED BLOCK DETAILS] {len(removed_blocks)}"
+        )
+
+        for i, block in enumerate(removed_blocks):
+
+            _logger.warning(
+
+                f"[REMOVED {i+1}] "
+
+                f"{(block.get('text') or '')[:300]}"
+            )
+
         _logger.warning(f"CLEAN BLOCKS → {len(cleaned_blocks)}")
         _logger.warning(f"REMOVED BLOCKS → {len(all_blocks) - len(cleaned_blocks)}")
 
-        cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
+        # KEEP WEBSITE ORDER
+        # cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
 
         # ================= BATCH =================
         BLOCK_BATCH_SIZE = 8
@@ -5252,6 +5285,19 @@ class VendorImportJob(models.Model):
 
         # ================= PROCESS ONE BATCH =================
         block_batch = batched_blocks[current_batch]
+
+        _logger.warning(
+            "========== AI INPUT BLOCKS =========="
+        )
+
+        for i, block in enumerate(block_batch):
+
+            _logger.warning(
+
+                f"[AI INPUT {i+1}]\n"
+
+                f"{(block.get('text') or '')[:500]}"
+            )
 
         _logger.warning(f"PROCESSING BLOCK COUNT → {len(block_batch)}")
         _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
@@ -5577,6 +5623,16 @@ class VendorImportJob(models.Model):
             result = re.sub(r"^```(?:json)?|```$", "", result).strip()
 
             parsed = json.loads(result)
+
+            _logger.warning(
+                "[RAW AI OUTPUT]\n%s"
+
+                % json.dumps(
+                    parsed,
+                    indent=4,
+                    default=str
+                )
+            )
 
             if isinstance(parsed, list):
 
@@ -23518,7 +23574,7 @@ class VendorImportJob(models.Model):
             _logger.warning("FLASK PING FAILED")
 
 
-    # #---------------clean_scraped_blocks-------------------------------
+    #---------------clean_scraped_blocks------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
         """
         Clean Apify output before sending to AI
@@ -23536,31 +23592,38 @@ class VendorImportJob(models.Model):
             if not text:
                 continue
 
-            if len(text) < 15:
+            if len(text.strip()) < 5:
                 continue
 
-            if any(x in text.lower() for x in [
-                "privacy", "cookie", "terms", "login",
-                "menu", "navigation", "home"
-            ]):
+            noise = text.lower().strip()
+
+            if noise in [
+                "privacy",
+                "cookies",
+                "cookie",
+                "login",
+                "menu",
+                "home"
+            ]:
                 continue
 
             # ❌ REMOVE DUPLICATES
-            key = text[:120]  # allow more variation
+            # allow more variation
+            key = (
+                text.strip(),
+                item.get("image") or ""
+            )
 
             if key in seen:
                 continue
 
             seen.add(key)
 
-            # cleaned.append({
-            #     "text": text,
-            #     "image": image
-            # })
 
             cleaned.append({
                 "text": text,
                 "image": image,
+                "url": item.get("url", ""),
                 "price": item.get("price", ""),
                 "stock": item.get("stock", "")
             })
