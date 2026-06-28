@@ -13452,7 +13452,7 @@ class VendorImportJob(models.Model):
 
             response = requests.post(
 
-                self.extractor_url + "/recover_page",
+                "https://pdf-extractor-staging.onrender.com/recover_page",
 
                 json=payload,
 
