@@ -14629,7 +14629,19 @@ class VendorImportJob(models.Model):
 
             if strategy == "continue":
 
-                strategy = "recover"
+                recovery_plan = page_report.get(
+
+                    "recovery_plan",
+
+                    {}
+                )
+
+                strategy = recovery_plan.get(
+
+                    "strategy",
+
+                    "recrop"
+                )
 
             confidence = min(
 
@@ -14643,13 +14655,18 @@ class VendorImportJob(models.Model):
                 f"Estimated {missing} product(s) missing."
             )
 
+
         _logger.warning(
 
             f"[WORKFLOW STRATEGY] "
 
-            f"{strategy} "
+            f"strategy={strategy} "
+
+            f"missing={missing} "
 
             f"confidence={confidence:.2f} "
+
+            f"recovery={page_report.get('requires_recovery')} "
 
             f"reason={reasons}"
         )
