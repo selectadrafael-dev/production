@@ -13238,6 +13238,24 @@ class VendorImportJob(models.Model):
             )
 
 
+            # merged = images + new_assets
+
+            new_assets = self._recover_missing_regions(
+
+                new_assets
+            )
+
+            if not new_assets:
+
+                _logger.warning(
+
+                    "[RECROP] "
+
+                    "Extractor returned no crops."
+                )
+
+                return images
+
             merged = images + new_assets
 
             merged = self._prepare_asset_intelligence(
@@ -13323,6 +13341,70 @@ class VendorImportJob(models.Model):
             _logger.exception(
 
                 "[AUTO CROP ERROR]"
+            )
+
+            return []
+
+    #==========recover missing regions==========================
+    def _recover_missing_regions(
+
+        self,
+
+        instructions
+    ):
+
+        try:
+
+            if not instructions:
+
+                return []
+
+            _logger.warning(
+
+                f"[RECOVERY API] "
+
+                f"sending={len(instructions)}"
+            )
+
+            payload = {
+
+                "regions": instructions
+            }
+
+            response = requests.post(
+
+                self.extractor_url + "/recover_page",
+
+                json=payload,
+
+                timeout=120
+            )
+
+            response.raise_for_status()
+
+            result = response.json()
+
+            assets = result.get(
+
+                "assets",
+
+                []
+            )
+
+            _logger.warning(
+
+                f"[RECOVERY API] "
+
+                f"received={len(assets)}"
+            )
+
+            return assets
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY API ERROR]"
             )
 
             return []
