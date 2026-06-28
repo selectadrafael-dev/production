@@ -48,14 +48,6 @@ def segment_catalog_page(pil_image):
             cv2.CHAIN_APPROX_SIMPLE
         )
 
-        _logger.warning(
-
-            f"[CONTOUR COUNT] "
-
-            f"{len(contours)}"
-
-        )
-
         results = []
 
         for contour in contours:
@@ -66,22 +58,6 @@ def segment_catalog_page(pil_image):
                 continue
 
             x, y, w, h = cv2.boundingRect(contour)
-
-            _logger.warning(
-
-                f"[CONTOUR FOUND] "
-
-                f"x={x} "
-
-                f"y={y} "
-
-                f"w={w} "
-
-                f"h={h} "
-
-                f"area={w*h}"
-
-            )
            
             area = cv2.contourArea(
                 contour
@@ -111,27 +87,83 @@ def segment_catalog_page(pil_image):
                 x:x+w
             ]
 
-            crop_pil = numpy_to_pil(
+            crop_pil = Image.fromarray(crop)
 
-                crop
+            buffer = io.BytesIO()
+
+            crop_pil.save(
+                buffer,
+                format="JPEG",
+                quality=75
             )
 
             results.append(
-
-                encode_image(
-
-                    crop_pil
-                )
+                base64.b64encode(
+                    buffer.getvalue()
+                ).decode("utf-8")
             )
 
         return results[:12]
 
     except Exception:
 
+        return []
+    
+
+def recover_region(region):
+
+    try:
+
+        page_image = region.get(
+
+            "page_image"
+        )
+
+        if not page_image:
+
+            return []
+
+        x = int(region["x"])
+        y = int(region["y"])
+        w = int(region["width"])
+        h = int(region["height"])
+
+        image_bytes = base64.b64decode(
+
+            page_image
+        )
+
+        image = Image.open(
+
+            io.BytesIO(image_bytes)
+
+        ).convert("RGB")
+
+        crop = image.crop(
+
+            (
+
+                x,
+
+                y,
+
+                x + w,
+
+                y + h
+
+            )
+        )
+
+        return segment_catalog_page(
+
+            crop
+        )
+
+    except Exception:
+
         _logger.exception(
 
-            "[SEGMENTATION ERROR]"
-
+            "[RECOVER REGION ERROR]"
         )
 
         return []
