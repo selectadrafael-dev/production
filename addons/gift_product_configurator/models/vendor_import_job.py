@@ -13216,7 +13216,7 @@ class VendorImportJob(models.Model):
         # )
 
         return images
-    
+
     #==========execute recrop===============================
     def _execute_recrop(
 
@@ -13254,7 +13254,10 @@ class VendorImportJob(models.Model):
                 f"required={crop_plan.get('count')}"
             )
 
-           
+            # =====================================
+            # BUILD RECOVERY INSTRUCTIONS
+            # =====================================
+
             instructions = self._generate_missing_crops(
 
                 page_data,
@@ -13264,7 +13267,25 @@ class VendorImportJob(models.Model):
 
             if not instructions:
 
+                _logger.warning(
+
+                    "[RECROP EXECUTOR] "
+
+                    "No recovery instructions generated."
+                )
+
                 return images
+
+            _logger.warning(
+
+                f"[RECOVERY API SEND] "
+
+                f"regions={len(instructions)}"
+            )
+
+            # =====================================
+            # CALL EXTRACTOR
+            # =====================================
 
             new_assets = self._recover_missing_regions(
 
@@ -13273,46 +13294,42 @@ class VendorImportJob(models.Model):
 
             if not new_assets:
 
-                return images
-
-            if not new_assets:
-
                 _logger.warning(
 
-                    "[RECROP EXECUTOR] "
+                    "[RECOVERY FAILED] "
 
-                    "No additional crops generated."
+                    "Extractor returned 0 assets."
                 )
 
                 return images
 
             _logger.warning(
 
-                f"[RECROP EXECUTOR] "
+                f"[RECOVERY API RECEIVE] "
 
-                f"generated={len(new_assets)}"
+                f"assets={len(new_assets)}"
             )
 
-
-            # merged = images + new_assets
-
-            new_assets = self._recover_missing_regions(
-
-                new_assets
-            )
-
-            if not new_assets:
-
-                _logger.warning(
-
-                    "[RECROP] "
-
-                    "Extractor returned no crops."
-                )
-
-                return images
+            # =====================================
+            # MERGE
+            # =====================================
 
             merged = images + new_assets
+
+            _logger.warning(
+
+                f"[RECOVERY MERGE] "
+
+                f"original={len(images)} "
+
+                f"recovered={len(new_assets)} "
+
+                f"merged={len(merged)}"
+            )
+
+            # =====================================
+            # RE-RANK
+            # =====================================
 
             merged = self._prepare_asset_intelligence(
 
@@ -13320,6 +13337,11 @@ class VendorImportJob(models.Model):
             )
 
             merged = self._prepare_render_assets(
+
+                merged
+            )
+
+            merged = self._apply_role_intelligence(
 
                 merged
             )
@@ -13334,8 +13356,9 @@ class VendorImportJob(models.Model):
             )
 
             return images
-
+    
     #==========generate missing crops=======================
+
     def _generate_missing_crops(
 
         self,
@@ -23618,7 +23641,6 @@ class VendorImportJob(models.Model):
                 continue
 
             seen.add(key)
-
 
             cleaned.append({
                 "text": text,
