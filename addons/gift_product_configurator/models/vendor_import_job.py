@@ -2668,9 +2668,12 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
+
                                 page_data = {
 
                                     "images": images,
+
+                                    "page_image": page_image,
 
                                     "page_width": page_width,
 
@@ -2843,11 +2846,11 @@ class VendorImportJob(models.Model):
                                 )
 
 
-                                if strategy["strategy"] == "recover":
+                                if strategy["strategy"] != "continue":
 
                                     images = self._execute_strategy(
 
-                                        "recover",
+                                        strategy["strategy"],
 
                                         page_data,
 
@@ -13261,13 +13264,23 @@ class VendorImportJob(models.Model):
 
         crop_plan
     ):
-
+        
 
         try:
+
+            _logger.warning(
+
+                f"[AUTO CROP] page_data keys={list(page_data.keys())}"
+            )
 
             page_image = page_data.get(
 
                 "page_image"
+            )
+
+            _logger.warning(
+
+                f"[AUTO CROP] page_image exists={bool(page_image)}"
             )
 
             if not page_image:
