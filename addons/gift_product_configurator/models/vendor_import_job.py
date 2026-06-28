@@ -12703,6 +12703,16 @@ class VendorImportJob(models.Model):
 
             for asset in images:
 
+                if asset.get("needs_extractor_crop"):
+
+                    asset["asset_group"] = "recovery_candidate"
+                    asset["asset_role"] = "recovery_candidate"
+                    asset["confidence"] = 0
+
+                    marketing_images.append(asset)
+
+                    continue
+
                 if not isinstance(asset, dict):
 
                     continue
@@ -12893,11 +12903,6 @@ class VendorImportJob(models.Model):
                     elif ratio < 0.25:
 
                         confidence -= 15
-
-                probability = self._calculate_asset_probability(
-
-                    asset
-                )
 
                 asset["demo_score"] = demo_score
 
@@ -13144,16 +13149,7 @@ class VendorImportJob(models.Model):
                 page_data
             )
 
-        elif strategy == "recrop":
-
-            return self._recover_missing_regions(
-
-                page_data,
-
-                images,
-
-                strategy_info
-            )
+      
         # ========================================
         # DEFAULT
         # =========================================
@@ -13202,12 +13198,26 @@ class VendorImportJob(models.Model):
                 f"required={crop_plan.get('count')}"
             )
 
-            new_assets = self._generate_missing_crops(
+           
+            instructions = self._generate_missing_crops(
 
                 page_data,
 
                 crop_plan
             )
+
+            if not instructions:
+
+                return images
+
+            new_assets = self._recover_missing_regions(
+
+                instructions
+            )
+
+            if not new_assets:
+
+                return images
 
             if not new_assets:
 
