@@ -13151,9 +13151,9 @@ class VendorImportJob(models.Model):
 
                 strategy_info
             )
-        # =====================================
+        # ========================================
         # DEFAULT
-        # =====================================
+        # =========================================
 
         # _logger.warning(
 
@@ -13224,6 +13224,11 @@ class VendorImportJob(models.Model):
                 f"generated={len(new_assets)}"
             )
 
+            new_assets = self._recover_generated_assets(
+
+                new_assets
+            )
+
             merged = images + new_assets
 
             merged = self._prepare_asset_intelligence(
@@ -13268,13 +13273,31 @@ class VendorImportJob(models.Model):
             if not page_image:
 
                 return []
+            
+            _logger.warning(
 
-            return self._generate_grid_crops(
+                "[AUTO CROP] Calling _generate_grid_crops()"
+            )
+
+            _logger.warning(
+
+                "[AUTO CROP] Calling _generate_grid_crops()"
+            )
+
+            generated = self._generate_grid_crops(
 
                 page_data,
 
                 crop_plan
             )
+
+            _logger.warning(
+
+                f"[AUTO CROP] Returned {len(generated)} crop(s)"
+            )
+
+            return generated
+            
 
         except Exception:
 
@@ -13294,6 +13317,11 @@ class VendorImportJob(models.Model):
 
         crop_plan
     ):
+
+        _logger.warning(
+
+            "[GRID CROPS] START"
+        )
 
         try:
 
