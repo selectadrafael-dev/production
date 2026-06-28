@@ -9173,9 +9173,38 @@ class VendorImportJob(models.Model):
 
                 confidence -= ratio_penalty
 
+
+                 # =====================================
+                # PROBABILITY FEATURES
+                # =====================================
+
+                asset["product_probability"] = max(
+
+                    0,
+
+                    round(
+
+                        confidence,
+
+                        1
+                    )
+                )
+
+                asset["demo_probability"] = 0
+
+                asset["lifestyle_probability"] = (
+
+                    100
+
+                    if asset.get("is_lifestyle")
+
+                    else 0
+                )
+
                 # =====================================
                 # SAVE
                 # =====================================
+
 
                 asset[
                     "asset_confidence"
@@ -9241,6 +9270,137 @@ class VendorImportJob(models.Model):
             )
 
             return asset_pool
+
+
+    #==========asset probability==========================
+    def _calculate_asset_probability(
+
+        self,
+
+        asset
+    ):
+
+        width = asset.get(
+
+            "width",
+
+            0
+        )
+
+        height = asset.get(
+
+            "height",
+
+            0
+        )
+
+        area = width * height
+
+        hero = asset.get(
+
+            "hero_score",
+
+            0
+        )
+
+        gallery = asset.get(
+
+            "gallery_score",
+
+            0
+        )
+
+        lifestyle = asset.get(
+
+            "lifestyle_score",
+
+            0
+        )
+
+        confidence = asset.get(
+
+            "confidence",
+
+            50
+        )
+
+        real_probability = 0
+
+        demo_probability = 0
+
+        lifestyle_probability = 0
+
+        # -----------------------------
+        # REAL PRODUCT
+        # -----------------------------
+
+        real_probability += hero * 0.30
+
+        real_probability += gallery * 0.20
+
+        real_probability += confidence * 0.30
+
+        if area < 250000:
+
+            real_probability += 20
+
+        # -----------------------------
+        # DEMO PRODUCT
+        # -----------------------------
+
+        demo_probability += gallery * 0.40
+
+        demo_probability += hero * 0.15
+
+        demo_probability += confidence * 0.20
+
+        if area >= 250000:
+
+            demo_probability += 10
+
+        # -----------------------------
+        # LIFESTYLE
+        # -----------------------------
+
+        lifestyle_probability += lifestyle * 15
+
+        if asset.get(
+
+            "large_image"
+        ):
+
+            lifestyle_probability += 15
+
+        if asset.get(
+
+            "portrait"
+        ):
+
+            lifestyle_probability += 10
+
+        return {
+
+            "real": round(
+
+                real_probability,
+
+                1
+            ),
+
+            "demo": round(
+
+                demo_probability,
+
+                1
+            ),
+
+            "lifestyle": round(
+
+                lifestyle_probability,
+
+                1
+            )
+        }
 
     #==========classify asset pool=====================
     def _classify_segmented_images(
@@ -12671,39 +12831,33 @@ class VendorImportJob(models.Model):
                 elif lifestyle_score > 0.20:
                     demo_score += 1
 
+                probability = self._calculate_asset_probability(
+                    asset
+                )
+
+                asset["probability"] = probability
+
                 # =====================================
                 # CLASSIFICATION
                 # =====================================
 
-                if asset.get("is_collage"):
+                winner = max(
+                    probability,
+                    key=probability.get
+                )
 
-                    group = "marketing"
+                mapping = {
+                    "real": "real",
+                    "demo": "product_demo",
+                    "lifestyle": "lifestyle"
+                }
 
-                    priority = 0
+                group = mapping.get(
+                    winner,
+                    "real"
+                )
 
-                    confidence -= 40
-
-                elif demo_score >= 9:
-
-                    group = "lifestyle"
-
-                    priority = 100
-
-                    confidence -= 30
-
-                elif demo_score >= 4:
-
-                    group = "product_demo"
-
-                    priority = 300
-
-                    confidence -= 15
-
-                else:
-
-                    group = "real"
-
-                    priority = 1000
+                asset["asset_group"] = group
 
                 # =====================================
                 # VERY SMALL IMAGE
@@ -12737,7 +12891,10 @@ class VendorImportJob(models.Model):
 
                         confidence -= 15
 
-                asset["asset_group"] = group
+                probability = self._calculate_asset_probability(
+
+                    asset
+                )
 
                 asset["demo_score"] = demo_score
 
@@ -12792,19 +12949,19 @@ class VendorImportJob(models.Model):
 
                     f"group={group} "
 
+                    f"winner={winner} "
+
                     f"quality={asset.get('crop_quality')} "
 
                     f"hero={asset.get('hero_score')} "
 
                     f"gallery={asset.get('gallery_score')} "
 
-                    f"confidence={asset.get('confidence')} "
+                    f"confidence={confidence:.1f} "
 
-                    f"score={asset.get('score')} "
+                    f"demo={demo_score} "
 
-                    f"priority={priority} "
-
-                    f"lifestyle={asset.get('is_lifestyle')}"
+                    f"prob={probability}"
                 )
 
             # =====================================
@@ -13247,6 +13404,7 @@ class VendorImportJob(models.Model):
 
                         continue
 
+
                     generated.append({
 
                         "generated": True,
@@ -13261,18 +13419,9 @@ class VendorImportJob(models.Model):
 
                         "height": cell_height,
 
-                        "image": self._crop_page_image(
+                        "needs_extractor_crop": True,
 
-                            page_image,
-
-                            col * cell_width,
-
-                            row * cell_height,
-
-                            cell_width,
-
-                            cell_height
-                        ),
+                        "page_image": page_image,
 
                         "score": 50,
 
@@ -13287,6 +13436,7 @@ class VendorImportJob(models.Model):
 
                     clean_index += 1
 
+
             _logger.warning(
 
                 f"[GRID CROPS] "
@@ -13295,7 +13445,9 @@ class VendorImportJob(models.Model):
 
                 f"cols={cols} "
 
-                f"generated={len(generated)}"
+                f"generated={len(generated)} "
+
+                f"required={crop_plan.get('count', 0)}"
             )
 
             return generated
@@ -14332,6 +14484,63 @@ class VendorImportJob(models.Model):
         )
 
         return plan
+
+    #==========generate additional crops==========================
+    def _generate_additional_crops(
+
+        self,
+
+        page_data,
+
+        crop_plan
+    ):
+
+        page_image = page_data.get(
+
+            "page_image"
+        )
+
+        if not page_image:
+
+            return []
+
+        generated = []
+
+        for crop in crop_plan.get(
+
+            "crops",
+
+            []
+        ):
+
+            generated.append({
+
+                "type": "recrop",
+
+                "x": crop.get("x"),
+
+                "y": crop.get("y"),
+
+                "width": crop.get("width"),
+
+                "height": crop.get("height"),
+
+                "score": crop.get(
+
+                    "priority",
+
+                    0
+                )
+            })
+
+        _logger.warning(
+
+            f"[RECROP PLAN] "
+
+            f"generated={len(generated)}"
+        )
+
+        return generated
 
     #==========workflow strategy=================================
     def _select_processing_strategy(
