@@ -13472,6 +13472,26 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
+                f"[RECOVERY RESPONSE TYPE] "
+
+                f"type={type(assets)} "
+
+                f"count={len(assets)}"
+            )
+
+            if assets:
+
+                _logger.warning(
+
+                    f"[RECOVERY SAMPLE] "
+
+                    f"type={type(assets[0])} "
+
+                    f"value={str(assets[0])[:120]}"
+                )
+
+            _logger.warning(
+
                 f"[RECOVERY API] "
 
                 f"received={len(assets)}"
