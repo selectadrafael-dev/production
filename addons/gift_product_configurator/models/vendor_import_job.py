@@ -16727,6 +16727,116 @@ class VendorImportJob(models.Model):
         except:
             return self._force_translate(text, lang)
 
+
+    #==========expand recovery products=========================
+    def _expand_products_from_recovery(
+
+        self,
+
+        products,
+
+        page_images
+    ):
+
+        try:
+
+            if not products:
+
+                return products
+
+            used_indexes = set()
+
+            for product in products:
+
+                main = product.get(
+
+                    "main_image_index"
+                )
+
+                if main is not None:
+
+                    used_indexes.add(main)
+
+                for idx in product.get(
+
+                    "gallery_image_indexes",
+
+                    []
+                ):
+
+                    used_indexes.add(idx)
+
+            created = 0
+
+            base_product = products[0]
+
+            for asset in page_images:
+
+                if (
+
+                    asset.get("promotion_source") != "recovery"
+
+                ):
+
+                    continue
+
+                clean = asset.get(
+
+                    "clean_index"
+                )
+
+                if clean in used_indexes:
+
+                    continue
+
+                candidate = dict(base_product)
+
+                candidate["generated_from"] = "recovery"
+
+                candidate["main_image_index"] = clean
+
+                candidate["gallery_image_indexes"] = [clean]
+
+                candidate["variants"] = [{
+
+                    "attributes": {
+
+                        "Recovered": f"{clean}"
+
+                    }
+
+                }]
+
+                products.append(candidate)
+
+                used_indexes.add(clean)
+
+                created += 1
+
+                _logger.warning(
+
+                    f"[RECOVERY PRODUCT CREATED] "
+
+                    f"clean={clean}"
+                )
+
+            _logger.warning(
+
+                f"[RECOVERY PRODUCT EXPANSION] "
+
+                f"added={created}"
+            )
+
+            return products
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY PRODUCT EXPANSION ERROR]"
+            )
+
+            return products
     #==========create pdf product==========================================
 
     def create_products_pdf(self):
@@ -17969,7 +18079,6 @@ class VendorImportJob(models.Model):
 
             hero_asset
         )
-
 
     #==========pdf and excel stock helper(working helper)================
     def _apply_catalog_stock(

@@ -314,13 +314,31 @@ class ProductMassUpdateWizard( models.TransientModel):
                 inventory_updated_count += 1
 
                 # =====================
-                # PRODUCT TYPE
+                # TRACK INVENTORY
                 # =====================
 
                 if self.update_track_inventory:
 
-                    product.type = (
-                        self.detailed_type
+                    if self.track_inventory_value:
+
+                        # Inventory-managed product
+                        product.detailed_type = "consu"
+
+                    else:
+
+                        # Non-stocked product
+                        product.detailed_type = "service"
+                        product.tracking = "none"
+
+                    _logger.warning(
+
+                        f"[MASS TRACK INVENTORY] "
+
+                        f"product={product.name} "
+
+                        f"track_inventory={self.track_inventory_value} "
+
+                        f"type={product.detailed_type}"
                     )
 
                 # =====================
@@ -383,7 +401,15 @@ class ProductMassUpdateWizard( models.TransientModel):
                 # STOCK QUANTITY
                 # =====================
 
-                if self.set_quantity:
+                if (
+
+                        self.set_quantity
+
+                        and
+
+                        product.detailed_type == "consu"
+
+                    ):
 
                     warehouse = self.warehouse_id
 
