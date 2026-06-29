@@ -20626,15 +20626,26 @@ class VendorImportJob(models.Model):
 
                 for p in all_products[:20]:
 
-                    _logger.warning(
+                    # _logger.warning(
 
-                        f"[URL DEBUG PRODUCT] "
+                    #     f"[URL DEBUG PRODUCT] "
+
+                    #     f"id={p.id} | "
+
+                    #     f"default_code={p.default_code} | "
+
+                    #     f"name={p.name}"
+                    # )
+
+                    _logger.warning(
 
                         f"id={p.id} | "
 
                         f"default_code={p.default_code} | "
 
-                        f"name={p.name}"
+                        f"name={p.name} | "
+
+                        f"fingerprint={p.vendor_fingerprint}"
                     )
 
                 product = self.env[
@@ -20646,6 +20657,17 @@ class VendorImportJob(models.Model):
                     ('vendor_import_job_id', '=', self.id)
 
                 ], limit=1)
+
+                # product = all_products.filtered(
+                #     lambda p:
+
+                #         str(p.default_code or "").strip() == group_id
+
+                #         or
+
+                #         str(p.name or "").endswith(group_id)
+
+                # )[:1]
 
 
                 _logger.warning(
@@ -22502,13 +22524,43 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
+                    _logger.warning(
+
+                        f"[NEW PRODUCT] "
+
+                        f"id={product.id} | "
+
+                        f"group_id={group_id} | "
+
+                        f"default_code={product.default_code} | "
+
+                        f"name={product.name} | "
+
+                        f"fingerprint={product.vendor_fingerprint}"
+                    )
+
                     #===========currency conversion=====
                     product._update_converted_price()
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
+                   
                     created_count += 1
 
+                     _logger.warning(
+
+                        f"[MERGED PRODUCT] "
+
+                        f"id={product.id} | "
+
+                        f"group_id={group_id} | "
+
+                        f"default_code={product.default_code} | "
+
+                        f"name={product.name} | "
+
+                        f"fingerprint={product.vendor_fingerprint}"
+                    )
 
                     _logger.warning(
 
