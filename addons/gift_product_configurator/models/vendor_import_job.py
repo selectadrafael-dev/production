@@ -12900,31 +12900,58 @@ class VendorImportJob(models.Model):
                 elif lifestyle_score > 0.20:
                     demo_score += 1
 
-                probability = self._calculate_asset_probability(
-                    asset
-                )
+                # =====================================
+                # KEEP PROMOTED RECOVERY ASSETS
+                # =====================================
+
+                if asset.get(
+
+                    "promotion_source"
+
+                ) == "recovery":
+
+                    group = "real"
+
+                    probability = {
+
+                        "real":100,
+
+                        "demo":0,
+
+                        "lifestyle":0
+                    }
+
+                else:
+
+                    probability = self._calculate_asset_probability(
+
+                        asset
+                    )
+
+                    winner = max(
+
+                        probability,
+
+                        key=probability.get
+                    )
+
+                    mapping = {
+
+                        "real":"real",
+
+                        "demo":"product_demo",
+
+                        "lifestyle":"lifestyle"
+                    }
+
+                    group = mapping.get(
+
+                        winner,
+
+                        "marketing"
+                    )
 
                 asset["probability"] = probability
-
-                # =====================================
-                # CLASSIFICATION
-                # =====================================
-
-                winner = max(
-                    probability,
-                    key=probability.get
-                )
-
-                mapping = {
-                    "real": "real",
-                    "demo": "product_demo",
-                    "lifestyle": "lifestyle"
-                }
-
-                group = mapping.get(
-                    winner,
-                    "real"
-                )
 
                 asset["asset_group"] = group
 
