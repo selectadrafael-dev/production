@@ -97,13 +97,75 @@ def segment_catalog_page(pil_image):
                 quality=75
             )
 
-            results.append(
-                base64.b64encode(
-                    buffer.getvalue()
-                ).decode("utf-8")
+            encoded = base64.b64encode(
+
+                buffer.getvalue()
+
+            ).decode("utf-8")
+
+            page_area = max(
+
+                image.shape[0] * image.shape[1],
+
+                1
             )
 
-        return results[:12]
+            crop_area = w * h
+
+            coverage = crop_area / page_area
+
+            score = round(
+
+                coverage * 100,
+
+                2
+            )
+
+            clean_index = len(results)
+
+            results.append({
+                "clean_index": clean_index,
+
+                "image": encoded,
+
+                "x": x,
+
+                "y": y,
+
+                "width": w,
+
+                "height": h,
+
+                "score": score,
+
+                "crop_area": crop_area,
+
+                "large_area": coverage > 0.18,
+
+                "large_image": coverage > 0.30,
+
+                "portrait": h > w,
+
+                "is_lifestyle": False,
+
+                "lifestyle_score": 0,
+
+                "hero_score": score,
+
+                "gallery_score": score,
+
+                "needs_extractor_crop": True
+            })
+
+
+        results.sort(
+
+            key=lambda x: x["score"],
+
+            reverse=True
+        )
+
+        return results
 
     except Exception:
 
