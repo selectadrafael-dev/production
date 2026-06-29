@@ -12123,9 +12123,9 @@ class VendorImportJob(models.Model):
 
                     asset_score += 8
 
-                # =====================================
+                # =======================================
                 # START FROM GALLERY SCORE
-                # =====================================
+                # =======================================
 
                 asset_score += asset.get(
                     "gallery_score",
