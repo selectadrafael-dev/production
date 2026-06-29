@@ -13157,13 +13157,19 @@ class VendorImportJob(models.Model):
 
                     continue
 
+
                 confidence = float(
 
                     asset.get(
 
                         "confidence",
 
-                        0
+                        asset.get(
+
+                            "hero_score",
+
+                            0
+                        )
                     ) or 0
                 )
 
@@ -13173,8 +13179,8 @@ class VendorImportJob(models.Model):
 
                         "crop_quality",
 
-                        0
-                    ) or 0
+                        100
+                    ) or 100
                 )
 
                 hero = float(
@@ -13205,6 +13211,25 @@ class VendorImportJob(models.Model):
 
                         False
                     )
+                )
+
+                _logger.warning(
+
+                    f"[PROMOTION INPUT] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"hero={hero} "
+
+                    f"gallery={gallery} "
+
+                    f"confidence={confidence} "
+
+                    f"quality={quality} "
+
+                    f"lifestyle={lifestyle}"
                 )
 
                 if (
