@@ -22539,7 +22539,7 @@ class VendorImportJob(models.Model):
                         f"fingerprint={product.vendor_fingerprint}"
                     )
 
-                    #===========currency conversion=====
+                    #===========currency conversion======
                     product._update_converted_price()
 
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
@@ -22547,7 +22547,7 @@ class VendorImportJob(models.Model):
                    
                     created_count += 1
 
-                     _logger.warning(
+                    _logger.warning(
 
                         f"[MERGED PRODUCT] "
 
