@@ -13157,20 +13157,53 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                # =====================================
+                # CONFIDENCE
+                # =====================================
 
-                confidence = float(
+                stored_confidence = asset.get(
+
+                    "confidence"
+                )
+
+                hero_confidence = float(
 
                     asset.get(
 
-                        "confidence",
+                        "hero_score",
 
-                        asset.get(
-
-                            "hero_score",
-
-                            0
-                        )
+                        0
                     ) or 0
+                )
+
+                try:
+
+                    stored_confidence = float(
+
+                        stored_confidence
+                    )
+
+                except Exception:
+
+                    stored_confidence = 0
+
+                if stored_confidence <= 0:
+
+                    confidence = hero_confidence
+
+                else:
+
+                    confidence = stored_confidence
+
+                _logger.warning(
+
+                    f"[PROMOTION CONFIDENCE] "
+
+                    f"stored={stored_confidence} "
+
+                    f"hero={hero_confidence} "
+
+                    f"using={confidence}"
                 )
 
                 quality = float(
@@ -13250,7 +13283,11 @@ class VendorImportJob(models.Model):
 
                     asset["asset_role"] = "variant"
 
+                    asset["needs_extractor_crop"] = False
+
                     asset["promotion_source"] = "recovery"
+
+                    asset["confidence"] = confidence
 
                     asset["priority"] = max(
 
@@ -13313,6 +13350,7 @@ class VendorImportJob(models.Model):
             )
 
             return images
+    
     
     #==========execute workflow============================
     def _execute_strategy(
