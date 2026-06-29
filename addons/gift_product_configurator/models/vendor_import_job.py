@@ -11561,6 +11561,28 @@ class VendorImportJob(models.Model):
             # =====================================
             # REQUEST PAYLOAD
             # =====================================
+            _logger.warning(
+
+                f"[AI INPUT] "
+
+                f"assets={len(images)}"
+
+            )
+
+            for asset in images:
+
+                _logger.warning(
+
+                    f"[AI ASSET] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"role={asset.get('asset_role')} "
+
+                    f"source={asset.get('promotion_source')}"
+                )
 
             payload = {
 
@@ -18201,9 +18223,51 @@ class VendorImportJob(models.Model):
         asset_pool
         ):
 
+        _logger.warning(
+
+            f"[PDF GALLERY START] "
+
+            f"product={product_data.get('name')} "
+
+            f"assets={len(asset_pool)}"
+        )
+
         gallery_indexes = product_data.get(
             "gallery_image_indexes",
             []
+        )
+
+        # =====================================
+        # ALWAYS INCLUDE PROMOTED RECOVERY
+        # =====================================
+
+        recovered_indexes = [
+
+            a.get("clean_index")
+
+            for a in asset_pool
+
+            if (
+
+                a.get("promotion_source") == "recovery"
+
+                and
+
+                a.get("asset_group") == "real"
+            )
+        ]
+
+        gallery_indexes.extend(
+
+            recovered_indexes
+        )
+
+        gallery_indexes = list(
+
+            dict.fromkeys(
+
+                gallery_indexes
+            )
         )
 
         # =====================================
@@ -18362,6 +18426,26 @@ class VendorImportJob(models.Model):
                     {}
                 )
 
+                # =====================================
+                # RECOVERY PRIORITY
+                # =====================================
+
+                if (
+
+                    asset.get("promotion_source") == "recovery"
+
+                ):
+
+                    _logger.warning(
+
+                        f"[RECOVERY GALLERY] "
+
+                        f"index={index} "
+
+                        f"hero={asset.get('hero_score')} "
+
+                        f"gallery={asset.get('gallery_score')}"
+                    )
 
                 _logger.warning(
 
@@ -18466,6 +18550,7 @@ class VendorImportJob(models.Model):
                     f"lifestyle={asset.get('is_lifestyle')}"
                 )
 
+               
                 used_hashes.add(
                     image_hash
                 )
@@ -18480,6 +18565,13 @@ class VendorImportJob(models.Model):
 
                     f"| {str(e)}"
                 )
+
+        _logger.warning(
+            f"[PDF GALLERY END] "
+
+            f"product={product_data.get('name')}"
+
+        )
 
     #==========PDF TITLE NORMALIZATION====================================
     def _normalize_pdf_product_title(
