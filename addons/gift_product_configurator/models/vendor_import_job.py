@@ -13124,6 +13124,170 @@ class VendorImportJob(models.Model):
 
             return images
     
+
+    #==========promote recovered assets=====================
+    def _promote_recovered_assets(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            promoted = 0
+
+            rejected = 0
+
+            for asset in images:
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                if asset.get(
+
+                    "asset_group"
+
+                ) != "recovery_candidate":
+
+                    continue
+
+                confidence = float(
+
+                    asset.get(
+
+                        "confidence",
+
+                        0
+                    ) or 0
+                )
+
+                quality = float(
+
+                    asset.get(
+
+                        "crop_quality",
+
+                        0
+                    ) or 0
+                )
+
+                hero = float(
+
+                    asset.get(
+
+                        "hero_score",
+
+                        0
+                    ) or 0
+                )
+
+                gallery = float(
+
+                    asset.get(
+
+                        "gallery_score",
+
+                        0
+                    ) or 0
+                )
+
+                lifestyle = bool(
+
+                    asset.get(
+
+                        "is_lifestyle",
+
+                        False
+                    )
+                )
+
+                if (
+
+                    confidence >= 65
+
+                    and
+
+                    quality >= 65
+
+                    and
+
+                    not lifestyle
+
+                ):
+
+                    asset["asset_group"] = "real"
+
+                    asset["asset_role"] = "variant"
+
+                    asset["promotion_source"] = "recovery"
+
+                    asset["priority"] = max(
+
+                        asset.get(
+
+                            "priority",
+
+                            0
+                        ),
+
+                        850
+                    )
+
+                    promoted += 1
+
+                    _logger.warning(
+
+                        f"[RECOVERY PROMOTE] "
+
+                        f"clean={asset.get('clean_index')} "
+
+                        f"confidence={confidence} "
+
+                        f"quality={quality}"
+                    )
+
+                else:
+
+                    rejected += 1
+
+                    _logger.warning(
+
+                        f"[RECOVERY REJECT] "
+
+                        f"clean={asset.get('clean_index')} "
+
+                        f"confidence={confidence} "
+
+                        f"quality={quality} "
+
+                        f"lifestyle={lifestyle}"
+                    )
+
+            _logger.warning(
+
+                f"[RECOVERY PROMOTION] "
+
+                f"promoted={promoted} "
+
+                f"rejected={rejected}"
+            )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY PROMOTION ERROR]"
+            )
+
+            return images
     
     #==========execute workflow============================
     def _execute_strategy(
@@ -13331,12 +13495,18 @@ class VendorImportJob(models.Model):
             # RE-RANK
             # =====================================
 
+
             merged = self._prepare_asset_intelligence(
 
                 merged
             )
 
             merged = self._prepare_render_assets(
+
+                merged
+            )
+
+            merged = self._promote_recovered_assets(
 
                 merged
             )
@@ -13357,7 +13527,7 @@ class VendorImportJob(models.Model):
 
             return images
     
-    #==========generate missing crops=======================
+    #==========generate missing crops============================
 
     def _generate_missing_crops(
 
@@ -13424,7 +13594,7 @@ class VendorImportJob(models.Model):
 
             return []
 
-    #==========recover missing regions==========================
+    #==========recover missing regions===========================
     def _recover_missing_regions(
 
         self,
@@ -13508,7 +13678,7 @@ class VendorImportJob(models.Model):
 
             return []
 
-    #==========generate grid crops==========================
+    #==========generate grid crops===============================
     def _generate_grid_crops(
 
         self,
