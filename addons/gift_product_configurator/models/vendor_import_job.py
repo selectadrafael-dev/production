@@ -23045,9 +23045,9 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
-                    # =====================================================
-                    # PERMANENT FAMILY ID
-                    # =====================================================
+                    # ==========================================
+                    # KEEP FAMILY LOOKUP
+                    # ==========================================
 
                     if not product.vendor_family_id:
 
@@ -23057,27 +23057,19 @@ class VendorImportJob(models.Model):
                             "vendor.import.family"
                         )
 
-                        family_lookup[group_id] = {
+                        if not family_id:
 
-                            "family_id": family_id,
+                            raise Exception(
+                                "Sequence 'vendor.import.family' was not found."
+                            )
 
-                            "product_id": product.id,
-
-                            "template_id": product.id,
-
-                            "vendor_id": vendor_id,
-
-                        }
+                        product.vendor_family_id = family_id
 
                     else:
 
                         family_id = product.vendor_family_id
 
-                    # ==========================================
-                    # BUILD LOOKUP TABLE
-                    # ==========================================
 
-                    # family_lookup[group_id] = family_id
                     family_lookup[group_id] = {
 
                         "family_id": family_id,
@@ -23086,19 +23078,24 @@ class VendorImportJob(models.Model):
 
                         "template_id": product.id,
 
-                        "vendor_id": vendor_id
+                        "vendor_id": vendor_id,
 
                     }
 
                     _logger.warning(
 
-                        "[FAMILY CREATED] "
+                        "[LOOKUP ENTRY] %s",
+
+                        family_lookup[group_id]
+                    )
+
+                    _logger.warning(
+
+                        "[FAMILY REUSED] "
 
                         f"group={group_id} "
 
-                        f"family={family_id} "
-
-                        f"product={product.id}"
+                        f"family={family_id}"
 
                     )
 
@@ -23155,7 +23152,6 @@ class VendorImportJob(models.Model):
                     # ==========================================
                     # KEEP FAMILY LOOKUP
                     # ==========================================
-
                     if not product.vendor_family_id:
 
                         family_id = self.env[
@@ -23165,12 +23161,33 @@ class VendorImportJob(models.Model):
                         )
 
                         product.vendor_family_id = family_id
+                        product.flush_recordset()
+
+                        _logger.warning(
+
+                            "[PRODUCT FAMILY SAVED] "
+
+                            f"id={product.id} "
+
+                            f"family={product.vendor_family_id}"
+
+                        )
 
                     else:
 
                         family_id = product.vendor_family_id
 
-                    family_lookup[group_id] = family_id
+                        family_lookup[group_id] = {
+
+                            "family_id": family_id,
+
+                            "product_id": product.id,
+
+                            "template_id": product.id,
+
+                            "vendor_id": vendor_id,
+
+                        }
 
                     # =====================================
                     # TRANSLATE EXISTING PRODUCT TOO

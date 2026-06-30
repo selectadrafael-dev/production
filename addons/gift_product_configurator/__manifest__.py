@@ -31,6 +31,7 @@
     'views/product_template_views.xml',
     'views/product_mass_update_views.xml',
     'views/vendor_product_menu.xml',
+    'views/vendor_family_sequence.xml'
 ],
 "assets": {
     "web.assets_frontend": [
