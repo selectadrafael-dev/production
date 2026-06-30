@@ -251,6 +251,12 @@ class VendorImportJob(models.Model):
         string="Default Currency"
     )
 
+    family_lookup_json = fields.Text(
+        string="Family Lookup JSON",
+        copy=False,
+        default="{}"
+    )
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
