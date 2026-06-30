@@ -20778,10 +20778,65 @@ class VendorImportJob(models.Model):
                         description.append(
                             f"Dimensions: {url_data['dimensions']}"
                         )
+   
 
-                    vals["description_sale"] = "<br/><br/>".join(
-                        description
-                    )      
+                    html = []
+
+                    if url_data.get("subtitle"):
+
+                        html.append(
+
+                            f"<h3>{url_data['subtitle']}</h3>"
+
+                        )
+
+                    if url_data.get("description"):
+
+                        html.append(
+
+                            f"<p>{url_data['description']}</p>"
+
+                        )
+
+                    details = []
+
+                    for label, field in [
+
+                        ("Material", "material"),
+
+                        ("Capacity", "capacity"),
+
+                        ("Dimensions", "dimensions"),
+
+                        ("Specifications", "specifications")
+
+                    ]:
+
+                        value = (
+                            url_data.get(field) or ""
+                        ).strip()
+
+                        if value:
+
+                            details.append(
+
+                                f"<li><strong>{label}:</strong> {value}</li>"
+
+                            )
+
+                    if details:
+
+                        html.append(
+
+                            "<ul>"
+
+                            + "".join(details)
+
+                            + "</ul>"
+
+                        )
+
+                    vals["description_sale"] = "\n".join(html)
                 # ====================================
                 # UPDATE PRODUCT
                 # ====================================
@@ -20978,23 +21033,152 @@ class VendorImportJob(models.Model):
 
             for block in raw_data:
 
+                # ======================================
+                # FORMAT 1
+                # Legacy URL extractor
+                # ======================================
+
                 if block.get("text"):
 
                     structured_data.append({
 
-                        "text": block.get("text"),
+                        "source": "legacy",
 
-                        "image": block.get("image")
+                        "title": "",
+
+                        "description": "",
+
+                        "text": block.get("text", "").strip(),
+
+                        "image": block.get("image"),
+
+                        "gallery": block.get("gallery", []),
+
+                        "sku": block.get("sku"),
+
+                        "url": block.get("url")
+
                     })
 
                     continue
 
+                # ======================================
+                # FORMAT 2
+                # Category extractor
+                # ======================================
+
                 if block.get("type") == "PRODUCTS":
 
-                    structured_data.extend(
+                    for item in block.get("items", []):
 
-                        block.get("items", [])
-                    )
+                        structured_data.append({
+
+                            "source": "category",
+
+                            "title": item.get("title", "").strip(),
+
+                            "description": item.get("description", "").strip(),
+
+                            "text": item.get("text", "").strip(),
+
+                            "image": item.get("image"),
+
+                            "gallery": item.get("gallery", []),
+
+                            "sku": item.get("sku"),
+
+                            "url": item.get("url")
+
+                        })
+
+                    continue
+
+                # ======================================
+                # FORMAT 3
+                # New Product Page extractor
+                # ======================================
+
+                if block.get("title"):
+
+                    title = str(
+                        block.get("title") or ""
+                    ).strip()
+
+                    description = str(
+                        block.get("description") or ""
+                    ).strip()
+
+                    specs = block.get(
+                        "specifications"
+                    ) or []
+
+                    # ----------------------------------
+                    # Beautiful text for AI
+                    # ----------------------------------
+
+                    sections = []
+
+                    if title:
+
+                        sections.append(
+
+                            f"TITLE\n{title}"
+
+                        )
+
+                    if description:
+
+                        sections.append(
+
+                            f"DESCRIPTION\n{description}"
+
+                        )
+
+                    if specs:
+
+                        spec_lines = []
+
+                        for spec in specs:
+
+                            spec = str(spec).strip()
+
+                            if spec:
+
+                                spec_lines.append(
+
+                                    f"• {spec}"
+
+                                )
+
+                        if spec_lines:
+
+                            sections.append(
+
+                                "SPECIFICATIONS\n" +
+
+                                "\n".join(spec_lines)
+
+                            )
+
+                    structured_data.append({
+
+                        "source": "product",
+
+                        "title": title,
+
+                        "description": description,
+
+                        "text": "\n\n".join(sections),
+
+                        "image": block.get("image"),
+
+                        "gallery": block.get("gallery", []),
+
+                        "sku": block.get("sku"),
+
+                        "url": block.get("url")
+
+                    })
 
             _logger.warning(
                 "[STRUCTURED DATA SAMPLE]\n%s"
@@ -21650,20 +21834,104 @@ class VendorImportJob(models.Model):
             api_key=api_key
         )
 
-        combined_text = "\n\n".join([
+        # ==========================================
+        # BUILD WELL-FORMATTED AI INPUT
+        # ==========================================
 
-            str(
-                item.get(
-                    "text",
-                    ""
+        sections = []
+
+        for item in structured_data:
+
+            # --------------------------------------
+            # New Product Page Format
+            # --------------------------------------
+
+            if item.get("title"):
+
+                block = []
+
+                title = str(
+                    item.get("title") or ""
+                ).strip()
+
+                description = str(
+                    item.get("description") or ""
+                ).strip()
+
+                specs = item.get(
+                    "specifications"
+                ) or []
+
+                if title:
+
+                    block.append(
+
+                        "PRODUCT TITLE\n"
+
+                        f"{title}"
+
+                    )
+
+                if description:
+
+                    block.append(
+
+                        "DESCRIPTION\n"
+
+                        f"{description}"
+
+                    )
+
+                if specs:
+
+                    spec_lines = []
+
+                    for spec in specs:
+
+                        spec = str(spec).strip()
+
+                        if spec:
+
+                            spec_lines.append(
+
+                                f"• {spec}"
+
+                            )
+
+                    if spec_lines:
+
+                        block.append(
+
+                            "SPECIFICATIONS\n"
+
+                            + "\n".join(spec_lines)
+
+                        )
+
+                sections.append(
+
+                    "\n\n".join(block)
+
                 )
-            )
 
-            for item in structured_data
+                continue
 
-        ])
+            # --------------------------------------
+            # Legacy Support
+            # --------------------------------------
+
+            text = str(
+                item.get("text") or ""
+            ).strip()
+
+            if text:
+
+                sections.append(text)
+
+        combined_text = "\n\n".join(sections)
 
         if not combined_text.strip():
+
             return {}
 
         prompt = f"""
@@ -21672,19 +21940,44 @@ class VendorImportJob(models.Model):
         PRODUCT CODE:
         {group_id}
 
-        IMPORTANT:
+        IMPORTANT
 
-        You are given a PRODUCT CODE.
+        You are enriching an EXISTING product.
 
-        Find ONLY the product whose code exactly matches PRODUCT CODE.
+        The PRODUCT CODE is only used to identify
+        which product to extract.
+
+        Find ONLY the product whose SKU or product code
+        matches the PRODUCT CODE.
 
         Ignore every other product.
 
-        If the code exists:
+        Extract the information exactly as written.
 
-        - title = product code
-        - subtitle = full product title immediately after the code
-        - description = all text belonging to that product
+        Do NOT summarize.
+
+        Do NOT rewrite.
+
+        Do NOT invent information.
+
+        Your task is ONLY to enrich the product description.
+
+        Return:
+
+        subtitle
+
+        description
+
+        material
+
+        capacity
+
+        dimensions
+
+        specifications
+
+        If a field does not exist,
+        return an empty string.
 
         Do NOT summarize.
         Do NOT shorten.
@@ -21703,7 +21996,6 @@ class VendorImportJob(models.Model):
         Return ONLY JSON:
 
         {{
-            "title": "",
             "subtitle": "",
             "description": "",
             "material": "",
@@ -21800,7 +22092,52 @@ class VendorImportJob(models.Model):
                 "[URL ENRICHMENT RETURNING DATA]"
             )
 
-            return parsed
+
+            return {
+
+                "subtitle":
+
+                    parsed.get(
+                        "subtitle",
+                        ""
+                    ).strip(),
+
+                "description":
+
+                    parsed.get(
+                        "description",
+                        ""
+                    ).strip(),
+
+                "material":
+
+                    parsed.get(
+                        "material",
+                        ""
+                    ).strip(),
+
+                "capacity":
+
+                    parsed.get(
+                        "capacity",
+                        ""
+                    ).strip(),
+
+                "dimensions":
+
+                    parsed.get(
+                        "dimensions",
+                        ""
+                    ).strip(),
+
+                "specifications":
+
+                    parsed.get(
+                        "specifications",
+                        ""
+                    ).strip()
+
+            }
 
         except Exception as e:
 
