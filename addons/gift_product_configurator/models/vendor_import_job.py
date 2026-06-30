@@ -61,6 +61,13 @@ class ProductTemplate(models.Model):
         default=False
     )
 
+    vendor_family_id = fields.Char(
+        string="Vendor Family ID",
+        copy=False,
+        readonly=True,
+        index=True,
+    )
+
 
     # =============================================
     # AUTO ASSIGN VENDOR DURING CREATE
@@ -243,7 +250,7 @@ class VendorImportJob(models.Model):
         "res.currency",
         string="Default Currency"
     )
-   
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -20407,7 +20414,10 @@ class VendorImportJob(models.Model):
 
         self.excel_url_index = 0
 
-    #============Excel URL processor==========================
+    #==========================================================
+    #===========Excel Url Data Main Update Method==============
+    #==========================================================
+
     def process_excel_url_queue(self):
 
         import json
@@ -20424,6 +20434,24 @@ class VendorImportJob(models.Model):
 
         rows = json.loads(
             self.excel_url_queue
+        )
+
+        # ====================================
+        # LOAD FAMILY LOOKUP
+        # ====================================
+
+        family_lookup = json.loads(
+            self.family_lookup_json or "{}"
+        )
+
+        _logger.warning(
+
+            "[FAMILY LOOKUP LOADED]\n%s"
+
+            % json.dumps(
+                family_lookup,
+                indent=4
+            )
         )
 
         start = self.excel_url_index or 0
@@ -20459,19 +20487,24 @@ class VendorImportJob(models.Model):
 
                 row = rows[idx]
 
+                group_id = str(
+                    row.get("group_id") or ""
+                ).strip()
+
+                product_url = str(
+                    row.get("url") or ""
+                ).strip()
+
                 _logger.warning(
-                    f"[QUEUE ITEM] "
+
+                    "[QUEUE ITEM] "
+
                     f"idx={idx} | "
-                    f"group_id={row.get('group_id')} | "
-                    f"url={row.get('url')}"
-                )
 
-                group_id = row.get(
-                    "group_id"
-                )
+                    f"group_id={group_id} | "
 
-                product_url = row.get(
-                    "url"
+                    f"url={product_url}"
+
                 )
 
                 if not product_url:
@@ -20563,13 +20596,6 @@ class VendorImportJob(models.Model):
                     )
                 )
 
-                # _logger.warning(
-
-                #     f"[URL DATA NAME] "
-
-                #     f"{url_data.get('name')}"
-                # )
-
                 _logger.warning(
 
                     f"[URL DATA TITLE] "
@@ -20592,83 +20618,102 @@ class VendorImportJob(models.Model):
                 )
 
                 # ====================================
-                # FIND EXISTING PRODUCT
+                # FIND EXISTING FAMILY/VARIANT PRODUCT
                 # ====================================
 
-                group_id = str(
-                    row.get("group_id") or ""
-                ).strip()
-
-                _logger.warning(
-
-                    f"[URL LOOKUP] "
-
-                    f"group_id={group_id} | "
-
-                    f"vendor_id={vendor_id}"
+                template_id = row.get(
+                    "template_id"
                 )
 
-
-                all_products = self.env[
-                    'product.template'
-                ].search([
-
-                        ('vendor_import_job_id', '=', self.id)
-
-                ])
-
-                _logger.warning(
-
-                    f"[URL DEBUG] "
-
-                    f"vendor_products={len(all_products)}"
+                family_id = row.get(
+                    "vendor_family_id"
                 )
 
-                for p in all_products[:20]:
+                # ====================================
+                # FALLBACK TO LOOKUP TABLE
+                # ====================================
 
-                    # _logger.warning(
+                if not template_id:
 
-                    #     f"[URL DEBUG PRODUCT] "
+                    family_info = family_lookup.get(group_id)
 
-                    #     f"id={p.id} | "
+                    if family_info:
 
-                    #     f"default_code={p.default_code} | "
+                        template_id = family_info.get(
+                            "template_id"
+                        )
 
-                    #     f"name={p.name}"
-                    # )
+                        family_id = family_info.get(
+                            "family_id"
+                        )
 
                     _logger.warning(
 
-                        f"id={p.id} | "
+                        "[FAMILY LOOKUP FAILED] "
 
-                        f"default_code={p.default_code} | "
+                        f"group={group_id}"
 
-                        f"name={p.name} | "
-
-                        f"fingerprint={p.vendor_fingerprint}"
                     )
 
+                    self.excel_url_index = idx + 1
+
+                    self._safe_commit_progress()
+
+                    continue
+
+                family_id = family_info.get("family_id")
+
+                template_id = family_info.get("template_id")
+
+                _logger.warning(
+
+                    "[FAMILY LOOKUP] "
+
+                    f"group={group_id} "
+
+                    f"family={family_id} "
+
+                    f"template={template_id}"
+
+                )
+
+                # ====================================
+                # FIND PARENT TEMPLATE
+                # ====================================
+
+                template_id = int(
+                    template_id or 0
+                )
+
                 product = self.env[
-                    'product.template'
-                ].search([
+                    "product.template"
+                ].browse(template_id)
 
-                    ('default_code', '=', group_id),
+                if not product.exists():
 
-                    ('vendor_import_job_id', '=', self.id)
+                    _logger.warning(
+                        "[TEMPLATE NOT FOUND] "
+                        f"{template_id}"
+                    )
 
-                ], limit=1)
+                    product = self.env[
+                        "product.template"
+                    ].search(
+                        [
+                            ("vendor_family_id", "=", family_id),
+                            ("vendor_import_job_id", "=", self.id),
+                        ],
+                        limit=1,
+                    )
 
-                # product = all_products.filtered(
-                #     lambda p:
+                    _logger.warning(
 
-                #         str(p.default_code or "").strip() == group_id
+                        "[FAMILY LOOKUP FALLBACK] "
 
-                #         or
+                        f"count={len(product)}"
 
-                #         str(p.name or "").endswith(group_id)
-
-                # )[:1]
-
+                    )
+                
 
                 _logger.warning(
 
@@ -20677,17 +20722,29 @@ class VendorImportJob(models.Model):
                     f"count={len(product)}"
                 )
 
-                for p in product[:20]:
+
+                if product:
 
                     _logger.warning(
 
-                        f"[URL PRODUCT] "
+                        "[TARGET PRODUCT] "
 
-                        f"id={p.id} | "
+                        f"id={product.id} "
 
-                        f"default_code={p.default_code} | "
+                        f"name={product.name} "
 
-                        f"name={p.name}"
+                        f"family={product.vendor_family_id}"
+
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        "[TARGET PRODUCT NOT FOUND] "
+
+                        f"family={family_id}"
+
                     )
 
 
@@ -20929,6 +20986,7 @@ class VendorImportJob(models.Model):
             self.state = "excel_url_enrichment"
 
             self._safe_commit_progress()
+
 
     # ======================================================
     # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
@@ -21403,8 +21461,11 @@ class VendorImportJob(models.Model):
     #===============EXCEL URL LAST CREATED============================
    
     def _build_excel_url_queue(
-        self,
-        grouped_products
+       self,
+
+        grouped_products,
+
+        family_lookup=None
     ):
 
         import json
@@ -21430,11 +21491,32 @@ class VendorImportJob(models.Model):
 
                 seen_urls.add(url)
 
+                # queue.append({
+
+                family_info = family_lookup.get(group_id, {})
+
                 queue.append({
 
-                    "group_id": str(group_id),
+                    "group_id":
 
-                    "url": url
+                        group_id,
+
+                    "vendor_family_id":
+
+                        family_info.get(
+                            "family_id"
+                        ),
+
+                    "template_id":
+
+                        family_info.get(
+                            "template_id"
+                        ),
+
+                    "url":
+
+                        url
+
                 })
 
                 break
@@ -21933,80 +22015,169 @@ class VendorImportJob(models.Model):
         if not combined_text.strip():
 
             return {}
+        
+        # ==========================================
+        # BUILD AI PAYLOAD
+        # ==========================================
+
+        product_payload = []
+
+        for item in structured_data:
+
+            if item.get("title"):
+
+                product_payload.append({
+
+                    "product_code": group_id,
+
+                    "title": str(
+                        item.get("title") or ""
+                    ).strip(),
+
+                    "description": str(
+                        item.get("description") or ""
+                    ).strip(),
+
+                    "specifications":
+
+                        item.get("specifications") or []
+
+                })
+
+            elif item.get("text"):
+
+                product_payload.append({
+
+                    "text": item.get("text")
+
+                })
 
         prompt = f"""
-        You are a product detail extraction engine.
+        You are enriching ONE existing Odoo product.
 
-        PRODUCT CODE:
+        The product has already been identified.
+
+        DO NOT search for products.
+
+        DO NOT compare products.
+
+        DO NOT identify products.
+
+        DO NOT invent information.
+
+        The structured data below belongs to ONE product only.
+
+        ======================================================
+        PRODUCT IDENTIFICATION
+        ======================================================
+
+        PRODUCT CODE
+
         {group_id}
 
         IMPORTANT
 
-        You are enriching an EXISTING product.
+        Some suppliers use a catalogue code as the official
+        product family name.
 
-        The PRODUCT CODE is only used to identify
-        which product to extract.
+        Examples
 
-        Find ONLY the product whose SKU or product code
-        matches the PRODUCT CODE.
+        94681
 
-        Ignore every other product.
+        94646
 
-        Extract the information exactly as written.
+        94631
 
-        Do NOT summarize.
+        For those suppliers:
 
-        Do NOT rewrite.
+        title = catalogue code
 
-        Do NOT invent information.
+        subtitle = human-readable product name
 
-        Your task is ONLY to enrich the product description.
+        Example
 
-        Return:
+        title
+
+        94681
 
         subtitle
 
-        description
+        MONARDA. Double Wall Stainless Steel Travel Cup 470 mL
 
-        material
+        If the supplier does NOT use catalogue codes,
 
-        capacity
+        return the product title exactly as shown.
 
-        dimensions
+        Never invent titles.
 
-        specifications
+        ======================================================
+        YOUR TASK
+        ======================================================
 
-        If a field does not exist,
-        return an empty string.
+        Extract exactly what belongs to this product.
 
-        Do NOT summarize.
-        Do NOT shorten.
+        Do NOT summarise.
+
         Do NOT rewrite.
-        Do NOT invent information.
-        Extract information exactly as written.
 
-        Rules:
-        - title = product code (numeric identifier)
-        - subtitle = full product name line immediately after the code
-        - description = all descriptive text available for that product
-        - If material/capacity/dimensions/specifications are not present, leave them empty
-        - Never invent information
-        - Never summarize
+        Do NOT shorten.
 
-        Return ONLY JSON:
+        Do NOT remove information.
+
+        Keep wording exactly as written.
+
+        ======================================================
+        DESCRIPTION
+        ======================================================
+
+        The description should contain:
+
+        • product overview
+
+        • product features
+
+        • selling points
+
+        • technical information
+
+        If useful information appears inside the
+        SPECIFICATIONS section,
+
+        include it naturally inside the description as well.
+
+        Do NOT discard specification information.
+
+        ======================================================
+        SPECIFICATIONS
+        ======================================================
+
+        Return ALL specifications.
+
+        Do not remove bullet points.
+
+        Do not simplify.
+
+        Do not merge unrelated items.
+
+        ======================================================
+        RETURN JSON ONLY
+        ======================================================
 
         {{
-            "subtitle": "",
-            "description": "",
-            "material": "",
-            "capacity": "",
-            "dimensions": "",
-            "specifications": ""
+            "title":"",
+            "subtitle":"",
+            "description":"",
+            "material":"",
+            "capacity":"",
+            "dimensions":"",
+            "specifications":""
         }}
 
-        TEXT:
+        ======================================================
+        PRODUCT DATA
+        ======================================================
 
-        {combined_text}
+        {json.dumps(product_payload, indent=2)}
         """
 
         _logger.warning(
@@ -22149,6 +22320,7 @@ class VendorImportJob(models.Model):
             )
 
             return {}
+
 
     #==========create excel product=================================
     def create_products_excel(self):
@@ -22498,6 +22670,12 @@ class VendorImportJob(models.Model):
 
         created_count = 0
         merged_count = 0
+
+        # =====================================================
+        # IMPORT FAMILY LOOKUP
+        # =====================================================
+
+        family_lookup = {}
 
 
         # =====================================================
@@ -22861,6 +23039,53 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
+                    # =====================================================
+                    # PERMANENT FAMILY ID
+                    # =====================================================
+
+                    if not product.vendor_family_id:
+
+                        family_id = self.env[
+                            "ir.sequence"
+                        ].next_by_code(
+                            "vendor.import.family"
+                        )
+
+                        product.vendor_family_id = family_id
+
+                    else:
+
+                        family_id = product.vendor_family_id
+
+                    # ==========================================
+                    # BUILD LOOKUP TABLE
+                    # ==========================================
+
+                    # family_lookup[group_id] = family_id
+                    family_lookup[group_id] = {
+
+                        "family_id": family_id,
+
+                        "product_id": product.id,
+
+                        "template_id": product.id,
+
+                        "vendor_id": vendor_id
+
+                    }
+
+                    _logger.warning(
+
+                        "[FAMILY CREATED] "
+
+                        f"group={group_id} "
+
+                        f"family={family_id} "
+
+                        f"product={product.id}"
+
+                    )
+
                     _logger.warning(
 
                         f"[NEW PRODUCT] "
@@ -22911,6 +23136,25 @@ class VendorImportJob(models.Model):
                 else:
 
                     merged_count += 1
+                    # ==========================================
+                    # KEEP FAMILY LOOKUP
+                    # ==========================================
+
+                    if not product.vendor_family_id:
+
+                        family_id = self.env[
+                            "ir.sequence"
+                        ].next_by_code(
+                            "vendor.import.family"
+                        )
+
+                        product.vendor_family_id = family_id
+
+                    else:
+
+                        family_id = product.vendor_family_id
+
+                    family_lookup[group_id] = family_id
 
                     # =====================================
                     # TRANSLATE EXISTING PRODUCT TOO
@@ -23276,6 +23520,30 @@ class VendorImportJob(models.Model):
 
                 product.invalidate_recordset()
 
+                # =====================================================
+                # PROPAGATE FAMILY ID TO VARIANTS
+                # =====================================================
+
+                for variant in product.product_variant_ids:
+
+                    if variant.vendor_family_id != product.vendor_family_id:
+
+                        variant.vendor_family_id = (
+
+                            product.vendor_family_id
+
+                        )
+
+                _logger.warning(
+
+                    "[FAMILY PROPAGATED] "
+
+                    f"{product.vendor_family_id} "
+
+                    f"variants={len(product.product_variant_ids)}"
+
+                )
+
                 for v in product.product_variant_ids:
 
                     _logger.warning(
@@ -23398,12 +23666,38 @@ class VendorImportJob(models.Model):
 
                 self.excel_ai_index = 0
 
+                # =====================================================
+                # SAVE FAMILY LOOKUP
+                # =====================================================
+
+                self.family_lookup_json = json.dumps(
+                    family_lookup
+                )
+
+                _logger.warning(
+
+                    "[FAMILY LOOKUP SAVED]\n%s"
+
+                    % json.dumps(
+
+                        family_lookup,
+
+                        indent=4
+
+                    )
+
+                )
+
                 # =========================================
                 # BUILD URL QUEUE FROM FINAL PRODUCT SET
                 # =========================================
 
                 self._build_excel_url_queue(
-                    grouped_products
+
+                    grouped_products,
+
+                    family_lookup
+
                 )
 
                 queue = json.loads(
