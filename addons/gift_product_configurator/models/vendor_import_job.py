@@ -23045,18 +23045,12 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
+                   
                     # ==========================================
                     # KEEP FAMILY LOOKUP
                     # ==========================================
 
-                    if not product.vendor_family_id:
-
-                       family_id = self._get_or_create_family_id(product)
-
-                    else:
-
-                        family_id = self._get_or_create_family_id(product)
-
+                    family_id = self._get_or_create_family_id(product)
 
                     family_lookup[group_id] = {
 
@@ -23075,6 +23069,7 @@ class VendorImportJob(models.Model):
                         "[LOOKUP ENTRY] %s",
 
                         family_lookup[group_id]
+
                     )
 
                     _logger.warning(
@@ -23086,7 +23081,6 @@ class VendorImportJob(models.Model):
                         f"family={family_id}"
 
                     )
-
                     _logger.warning(
 
                         f"[NEW PRODUCT] "
@@ -23137,45 +23131,42 @@ class VendorImportJob(models.Model):
                 else:
 
                     merged_count += 1
+
                     # ==========================================
                     # KEEP FAMILY LOOKUP
                     # ==========================================
-                    if not product.vendor_family_id:
 
-                        family_id = self.env[
-                            "ir.sequence"
-                        ].next_by_code(
-                            "vendor.import.family"
-                        )
+                    family_id = self._get_or_create_family_id(product)
 
-                        product.vendor_family_id = family_id
-                        product.flush_recordset()
+                    family_lookup[group_id] = {
 
-                        _logger.warning(
+                        "family_id": family_id,
 
-                            "[PRODUCT FAMILY SAVED] "
+                        "product_id": product.id,
 
-                            f"id={product.id} "
+                        "template_id": product.id,
 
-                            f"family={product.vendor_family_id}"
+                        "vendor_id": vendor_id,
 
-                        )
+                    }
 
-                    else:
+                    _logger.warning(
 
-                        family_id = product.vendor_family_id
+                        "[LOOKUP ENTRY] %s",
 
-                        family_lookup[group_id] = {
+                        family_lookup[group_id]
 
-                            "family_id": family_id,
+                    )
 
-                            "product_id": product.id,
+                    _logger.warning(
 
-                            "template_id": product.id,
+                        "[FAMILY REUSED] "
 
-                            "vendor_id": vendor_id,
+                        f"group={group_id} "
 
-                        }
+                        f"family={family_id}"
+
+                    )
 
                     # =====================================
                     # TRANSLATE EXISTING PRODUCT TOO
