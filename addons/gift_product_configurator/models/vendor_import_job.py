@@ -23051,23 +23051,11 @@ class VendorImportJob(models.Model):
 
                     if not product.vendor_family_id:
 
-                        family_id = self.env[
-                            "ir.sequence"
-                        ].next_by_code(
-                            "vendor.import.family"
-                        )
-
-                        if not family_id:
-
-                            raise Exception(
-                                "Sequence 'vendor.import.family' was not found."
-                            )
-
-                        product.vendor_family_id = family_id
+                       family_id = self._get_or_create_family_id(product)
 
                     else:
 
-                        family_id = product.vendor_family_id
+                        family_id = self._get_or_create_family_id(product)
 
 
                     family_lookup[group_id] = {
@@ -25169,3 +25157,35 @@ class VendorImportJob(models.Model):
                 0,
                 new_price
             )
+
+    def _get_or_create_family_id(self, product):
+
+        if product.vendor_family_id:
+            return product.vendor_family_id
+
+        family_id = self.env[
+            "ir.sequence"
+        ].next_by_code(
+            "vendor.import.family"
+        )
+
+        if not family_id:
+            raise Exception(
+                "Sequence 'vendor.import.family' was not found."
+            )
+
+        product.vendor_family_id = family_id
+        product.flush_recordset()
+
+        _logger.warning(
+
+            "[FAMILY GENERATED] "
+
+            f"product={product.id} "
+
+            f"family={family_id}"
+
+        )
+
+        return family_id
+    
