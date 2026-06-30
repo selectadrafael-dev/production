@@ -23057,7 +23057,17 @@ class VendorImportJob(models.Model):
                             "vendor.import.family"
                         )
 
-                        product.vendor_family_id = family_id
+                        family_lookup[group_id] = {
+
+                            "family_id": family_id,
+
+                            "product_id": product.id,
+
+                            "template_id": product.id,
+
+                            "vendor_id": vendor_id,
+
+                        }
 
                     else:
 
