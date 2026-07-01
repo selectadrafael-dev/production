@@ -35,6 +35,15 @@ class ProductTemplate(models.Model):
         default=False
     )
 
+    vendor_price = fields.Float(
+        string="Vendor Price"
+    )
+
+    vendor_currency_id = fields.Many2one(
+        "res.currency",
+        string="Vendor Currency"
+    )
+
     # =====================================
     # AUTO ASSIGN VENDOR
     # =====================================
@@ -150,3 +159,73 @@ class ProductTemplate(models.Model):
             valuation.unlink()
 
         return super().unlink()
+    
+    #==========currency update logic 1===========
+    @api.model
+    def _convert_vendor_price(
+        self,
+        vendor_price,
+        vendor_currency
+    ):
+
+        company = self.env.company
+
+        company_currency = company.currency_id
+
+        if (
+            not vendor_currency
+            or
+            vendor_currency == company_currency
+        ):
+            return vendor_price
+
+        converted_price = vendor_currency._convert(
+
+            vendor_price,
+
+            company_currency,
+
+            company,
+
+            fields.Date.today()
+        )
+
+        return converted_price
+    
+    #==========currency update logic 2===========
+    def _update_converted_price(self):
+
+        for product in self:
+
+            if (
+                not product.vendor_currency_id
+                or
+                not product.vendor_price
+            ):
+                continue
+
+            converted_price = self._convert_vendor_price(
+
+                product.vendor_price,
+
+                product.vendor_currency_id
+            )
+
+            product.list_price = converted_price
+
+            _logger.warning(
+
+                f"[PRICE CONVERTED] "
+
+                f"{product.name} "
+
+                f"{product.vendor_price} "
+
+                f"{product.vendor_currency_id.name} "
+
+                f"-> "
+
+                f"{converted_price} "
+
+                f"{self.env.company.currency_id.name}"
+            )

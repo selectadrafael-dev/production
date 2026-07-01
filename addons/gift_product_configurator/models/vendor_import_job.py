@@ -61,6 +61,13 @@ class ProductTemplate(models.Model):
         default=False
     )
 
+    vendor_family_id = fields.Char(
+        string="Vendor Family ID",
+        copy=False,
+        readonly=True,
+        index=True,
+    )
+
 
     # =============================================
     # AUTO ASSIGN VENDOR DURING CREATE
@@ -238,7 +245,18 @@ class VendorImportJob(models.Model):
     failure_reason = fields.Text()
     ai_retry_count = fields.Integer(default=0)
     excel_url_queue = fields.Text()
-   
+
+    currency_id = fields.Many2one(
+        "res.currency",
+        string="Default Currency"
+    )
+
+    family_lookup_json = fields.Text(
+        string="Family Lookup JSON",
+        copy=False,
+        default="{}"
+    )
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -555,7 +573,7 @@ class VendorImportJob(models.Model):
         self,
 
         error_message=None
-    ):
+     ):
 
         self.ensure_one()
 
@@ -1687,9 +1705,6 @@ class VendorImportJob(models.Model):
 
                 return
 
-     #=========Variant swatch 1======================================
-   
-
     #=========Variant color swatch logic===========================================
 
     COLOR_HEX_MAP = {
@@ -1785,7 +1800,6 @@ class VendorImportJob(models.Model):
         "multi-color": "#CCCCCC",
         "multicolor": "#CCCCCC",
     }
-
 
     # =========================================
     # REUSABLE ATTRIBUTE ENGINE
@@ -2571,9 +2585,9 @@ class VendorImportJob(models.Model):
                         normalized_blocks = []
 
 
-                        # =========================
+                        # =================================
                         # NORMALIZE
-                        # =========================
+                        # ================================
 
                         for p in pages:
 
@@ -2608,14 +2622,161 @@ class VendorImportJob(models.Model):
                                     "[RENDER METADATA MODE]"
                                 )
 
+                                if images:
+
+                                    sample = images[0]
+
+                                    _logger.warning(
+
+                                        f"[PREPARED IMAGE SAMPLE] "
+
+                                        f"group={sample.get('asset_group')} "
+
+                                        f"priority={sample.get('priority')} "
+
+                                        f"hero={sample.get('hero_score')} "
+
+                                        f"gallery={sample.get('gallery_score')} "
+
+                                        f"lifestyle={sample.get('is_lifestyle')}"
+                                    )
+
+                                    _logger.warning(
+                                        f"[METADATA LIFESTYLE CHECK] "
+                                        f"lifestyle={sample.get('is_lifestyle')} "
+                                        f"score={sample.get('lifestyle_score')} "
+                                        f"large_image={sample.get('large_image')} "
+                                        f"portrait={sample.get('portrait')} "
+                                        f"large_area={sample.get('large_area')} "
+                                        f"width={sample.get('width')} "
+                                        f"height={sample.get('height')}"
+                                    )
+
                                 _logger.warning(
                                     f"[METADATA SAMPLE] "
                                     f"keys={list(images[0].keys())}"
                                 )
 
+
                                 _logger.warning(
-                                    "[SKIP RESEGMENTATION]"
+                                    "[RENDER METADATA MODE]"
                                 )
+
+
+                                images = self._prepare_asset_intelligence(
+
+                                    images
+                                )
+
+                                images = self._prepare_render_assets(
+
+                                    images
+                                )
+
+                                images = self._apply_role_intelligence(
+
+                                    images
+                                )
+
+
+                                page_data = {
+
+                                    "images": images,
+
+                                    "page_image": page_image,
+
+                                    "page_width": page_width,
+
+                                    "page_height": page_height
+                                }
+
+                                page_report = self._analyse_page(
+
+                                    page_data
+                                )
+
+                                # =====================================
+                                # LAYOUT
+                                # =====================================
+
+                                page_report["layout"] = (
+
+                                    self._detect_catalog_layout(
+
+                                        page_data
+                                    )
+                                )
+
+                                # =====================================
+                                # MISSING PRODUCTS
+                                # =====================================
+
+                                page_report["missing_products"] = (
+
+                                    self._detect_missing_products(
+
+                                        page_data,
+
+                                        page_report["layout"]
+                                    )
+                                )
+
+                                # =====================================
+                                # CROP PLAN
+                                # =====================================
+
+                                page_report["crop_plan"] = (
+
+                                    self._build_crop_plan(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                # =====================================
+                                # RECOVERY PLAN
+                                # =====================================
+
+                                page_report["recovery_plan"] = (
+
+                                    self._plan_page_recovery(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                strategy = self._select_processing_strategy(
+
+                                    page_report
+                                )
+
+                                strategy["crop_plan"] = page_report.get(
+
+                                    "crop_plan",
+
+                                    {}
+                                )
+
+
+                                if strategy["strategy"] != "continue":
+
+                                    images = self._execute_strategy(
+
+                                        strategy["strategy"],
+
+                                        page_data,
+
+                                        images,
+
+                                        strategy
+                                    )
+
+                                # Recovery execution intentionally disabled
+                                # Intentionally do not execute the strategy yet.
 
                             else:
 
@@ -2627,6 +2788,86 @@ class VendorImportJob(models.Model):
                                     images
                                 )
 
+                                images = self._prepare_render_assets(
+                                    images
+                                )
+
+                                images = self._apply_role_intelligence(
+
+                                    images
+                                )
+
+                                page_report = self._analyse_page(
+                                    page_data
+                                )
+
+                                # =====================================
+                                # DETECT PAGE LAYOUT
+                                # =====================================
+
+                                page_report["layout"] = (
+
+                                    self._detect_catalog_layout(
+
+                                        page_data
+                                    )
+                                )
+
+                                page_report["missing_products"] = (
+
+                                    self._detect_missing_products(
+
+                                        page_data,
+
+                                        page_report["layout"]
+                                    )
+                                )
+
+                                page_report["crop_plan"] = (
+
+                                    self._build_crop_plan(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                page_report["recovery_plan"] = (
+
+                                    self._plan_page_recovery(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                strategy = self._select_processing_strategy(
+
+                                    page_report
+                                )
+
+                                strategy["crop_plan"] = page_report.get(
+
+                                    "crop_plan",
+
+                                    {}
+                                )
+
+
+                                if strategy["strategy"] != "continue":
+
+                                    images = self._execute_strategy(
+
+                                        strategy["strategy"],
+
+                                        page_data,
+
+                                        images,
+
+                                        strategy
+                                    )
 
                             if (
                                 not text
@@ -3400,7 +3641,7 @@ class VendorImportJob(models.Model):
     def _recover_products_from_page_image(
         self,
         page_data
-    ):
+     ):
 
         try:
 
@@ -4994,10 +5235,43 @@ class VendorImportJob(models.Model):
         # ================= CLEAN =================
         cleaned_blocks = self._clean_scraped_blocks(all_blocks)
 
+        # ==========================================
+        # DEBUG REMOVED PRODUCTS
+        # ==========================================
+
+        cleaned_texts = {
+            (b.get("text") or "").strip()
+            for b in cleaned_blocks
+        }
+
+        removed_blocks = []
+
+        for block in all_blocks:
+
+            text = (block.get("text") or "").strip()
+
+            if text not in cleaned_texts:
+
+                removed_blocks.append(block)
+
+        _logger.warning(
+            f"[REMOVED BLOCK DETAILS] {len(removed_blocks)}"
+        )
+
+        for i, block in enumerate(removed_blocks):
+
+            _logger.warning(
+
+                f"[REMOVED {i+1}] "
+
+                f"{(block.get('text') or '')[:300]}"
+            )
+
         _logger.warning(f"CLEAN BLOCKS → {len(cleaned_blocks)}")
         _logger.warning(f"REMOVED BLOCKS → {len(all_blocks) - len(cleaned_blocks)}")
 
-        cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
+        # KEEP WEBSITE ORDER
+        # cleaned_blocks = sorted(cleaned_blocks, key=lambda x: (x.get("text") or "")[:50])
 
         # ================= BATCH =================
         BLOCK_BATCH_SIZE = 8
@@ -5021,6 +5295,19 @@ class VendorImportJob(models.Model):
 
         # ================= PROCESS ONE BATCH =================
         block_batch = batched_blocks[current_batch]
+
+        _logger.warning(
+            "========== AI INPUT BLOCKS =========="
+        )
+
+        for i, block in enumerate(block_batch):
+
+            _logger.warning(
+
+                f"[AI INPUT {i+1}]\n"
+
+                f"{(block.get('text') or '')[:500]}"
+            )
 
         _logger.warning(f"PROCESSING BLOCK COUNT → {len(block_batch)}")
         _logger.warning(f"AI → PROCESSING BLOCK BATCH {current_batch + 1}")
@@ -5346,6 +5633,16 @@ class VendorImportJob(models.Model):
             result = re.sub(r"^```(?:json)?|```$", "", result).strip()
 
             parsed = json.loads(result)
+
+            _logger.warning(
+                "[RAW AI OUTPUT]\n%s"
+
+                % json.dumps(
+                    parsed,
+                    indent=4,
+                    default=str
+                )
+            )
 
             if isinstance(parsed, list):
 
@@ -6052,9 +6349,9 @@ class VendorImportJob(models.Model):
         ACTOR_ID = "selectad~my-actor"
         #ACTOR_ID = "princ_adex~my-actor"
 
-        # =====================================================
+        # ==============================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
-        # =====================================================
+        # ==============================================================
 
         if not getattr(self, "apify_run_id", False):
 
@@ -6594,16 +6891,9 @@ class VendorImportJob(models.Model):
 
 
         page_images = normalized_page_images
-
-        _logger.warning(
-
-            f"[PDF AI IMAGES] "
-
-            f"PAGE={next_record.page_number} "
-
-            f"| valid={len(page_images)}"
-        )
-
+        # =====================================
+        # CLASSIFY IMAGES BEFORE AI
+        # =====================================
 
         if page_images:
 
@@ -6743,6 +7033,7 @@ class VendorImportJob(models.Model):
                 "[RECOVERY REQUIRED]"
             )
 
+            
             recovery = self._ai_catalogue_recovery(
                 page_data
             )
@@ -6762,11 +7053,63 @@ class VendorImportJob(models.Model):
 
                         asset["clean_index"] = idx
 
+                page_images = self._prepare_asset_intelligence(
+
+                    page_images
+                )
+
+                page_images = self._prepare_render_assets(
+
+                    page_images
+                )
+
+                validation = self._validate_extraction_quality(
+
+                    page_data
+                )
+
+                page_data["validation"] = validation
+
+                page_data["recovery_required"] = (
+
+                    not validation["passed"]
+                )
+
                 _logger.warning(
                     f"[RECOVERY APPLIED] "
                     f"old_images={old_count} "
                     f"new_images={len(page_images)}"
                 )
+
+        # =====================================
+        # BUILD AI PAGE CONTEXT
+        # =====================================
+
+        page_data["images"] = page_images
+
+        page_context = self._build_ai_page_context(
+
+            page_data,
+
+            validation
+        )
+
+        page_data["page_context"] = page_context
+
+        _logger.warning(
+
+            f"[AI CONTEXT READY] "
+
+            f"page={page_context.get('page')} "
+
+            f"real={page_context.get('real_products')} "
+
+            f"demo={page_context.get('product_demo')} "
+
+            f"life={page_context.get('lifestyle')} "
+
+            f"recovery={page_context.get('requires_recovery')}"
+        )
 
         page_price = ""
 
@@ -6808,9 +7151,58 @@ class VendorImportJob(models.Model):
         # =====================================================
         # PROMPT
         # =====================================================
+        context_summary = f"""
 
-        prompt = f"""
+        ==================================================
+
+        CATALOGUE PAGE ANALYSIS
+
+        ==================================================
+
+        Page:
+
+        {page_context.get('page')}
+
+        Workflow:
+
+        {page_context.get('workflow')}
+
+        Coverage:
+
+        {page_context.get('coverage')}
+
+        Real Product Images:
+
+        {page_context.get('real_products')}
+
+        Product Demonstration Images:
+
+        {page_context.get('product_demo')}
+
+        Lifestyle Images:
+
+        {page_context.get('lifestyle')}
+
+        Marketing Images:
+
+        {page_context.get('marketing')}
+
+        Recovery Required:
+
+        {page_context.get('requires_recovery')}
+
+        Recovery Reasons:
+
+        {page_context.get('workflow_reason')}
+
+        ==================================================
+
+        """
+
+
+        prompt = context_summary + f"""
         You are an AI ecommerce catalog extraction engine.
+
 
         Analyze:
         - catalog page text
@@ -7140,6 +7532,7 @@ class VendorImportJob(models.Model):
         ==================================================
 
         {page_stock}
+
         """
 
         # =====================================================
@@ -7220,6 +7613,18 @@ class VendorImportJob(models.Model):
 
                     base *= 0.7
 
+                if asset.get("asset_group") == "real":
+
+                    base *= 3
+
+                elif asset.get("asset_group") == "lifestyle":
+
+                    base *= 0.5
+
+                elif asset.get("asset_group") == "marketing":
+
+                    base *= 0.2
+
                 return base
 
 
@@ -7227,7 +7632,17 @@ class VendorImportJob(models.Model):
 
                 page_images,
 
-                key=ai_visibility_score,
+                key=lambda x:(
+
+                    x.get("priority",0),
+
+                    x.get("crop_quality",0),
+
+                    x.get("confidence",0),
+
+                    ai_visibility_score(x)
+
+                ),
 
                 reverse=True
             )
@@ -8524,28 +8939,189 @@ class VendorImportJob(models.Model):
             )
 
             return False
-        
+
+
+   # #==========prepare ai images=====================
+    def _prepare_ai_images(
+
+        self,
+
+        page_images
+    ):
+
+        try:
+
+            real_images = []
+
+            lifestyle_images = []
+
+            marketing_images = []
+
+            _logger.warning(
+                "[AI IMAGE PREP START]"
+            )
+
+            for asset in page_images:
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                # =====================================
+                # FORCE CLASSIFICATION
+                # =====================================
+
+                if asset.get("is_lifestyle"):
+
+                    asset["asset_group"] = "lifestyle"
+
+                    asset["priority"] = 100
+
+                    lifestyle_images.append(asset)
+
+                elif asset.get("is_collage"):
+
+                    asset["asset_group"] = "marketing"
+
+                    asset["priority"] = 0
+
+                    marketing_images.append(asset)
+
+                else:
+
+                    asset["asset_group"] = "real"
+
+                    asset["priority"] = 1000
+
+                    real_images.append(asset)
+
+                _logger.warning(
+
+                    f"[AI IMAGE CLASSIFY] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"priority={asset.get('priority')} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')}"
+                )
+
+            # =====================================
+            # SORT INSIDE EACH GROUP
+            # =====================================
+
+            def sorter(a):
+
+                return (
+
+                    a.get("hero_score", 0),
+
+                    a.get("gallery_score", 0),
+
+                    a.get("score", 0)
+
+                )
+
+            real_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            lifestyle_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            marketing_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            merged = (
+
+                real_images
+
+                +
+
+                lifestyle_images
+
+                +
+
+                marketing_images
+            )
+
+            _logger.warning(
+
+                f"[AI IMAGE PREP READY] "
+
+                f"real={len(real_images)} "
+
+                f"lifestyle={len(lifestyle_images)} "
+
+                f"marketing={len(marketing_images)}"
+
+            )
+
+            return merged
+
+        except Exception:
+
+            _logger.exception(
+
+                "[AI IMAGE PREP ERROR]"
+            )
+
+            return page_images     
    
     #-----------scoring image before picking best/quality image (image logic)-------------
     def pick_best_image(self, images):
 
         asset_pool = self._prepare_asset_pool(images)
 
+        # asset_pool = self._prepare_asset_intelligence(
+
+        #     asset_pool
+        # )
+
         if not asset_pool:
             return None
 
         sorted_assets = sorted(
 
-       
             asset_pool,
 
             key=lambda x: (
 
-                x.get("hero_score", 0),
+                x.get(
+                    "crop_quality",
+                    0
+                ),
 
-                x.get("gallery_score", 0),
+                x.get(
+                    "hero_score",
+                    0
+                ),
 
-                x.get("score", 0)
+                x.get(
+                    "gallery_score",
+                    0
+                ),
+
+                x.get(
+                    "confidence",
+                    0
+                ),
+
+                x.get(
+                    "score",
+                    0
+                )
 
             ),
 
@@ -8557,6 +9133,541 @@ class VendorImportJob(models.Model):
 
         return sorted_assets[0].get("image")
 
+    #==========asset intelligence====================
+    def _prepare_asset_intelligence(
+
+        self,
+
+        asset_pool
+    ):
+
+        try:
+
+            improved_assets = []
+
+            _logger.warning(
+                "[ASSET INTELLIGENCE START]"
+            )
+
+            for asset in asset_pool:
+
+                base_score = float(
+
+                    asset.get(
+                        "score",
+                        0
+                    )
+
+                    or 0
+                )
+
+                confidence = base_score
+
+                # =====================================
+                # HUMAN PENALTY
+                # =====================================
+
+                human_penalty = 0
+
+                if asset.get(
+                    "is_lifestyle"
+                ):
+
+                    human_penalty = 30
+
+                confidence -= human_penalty
+
+                # =====================================
+                # TEXT PENALTY
+                # (placeholder)
+                # =====================================
+
+                text_penalty = 0
+
+                confidence -= text_penalty
+
+                # =====================================
+                # SIZE PENALTY
+                # =====================================
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    )
+
+                    or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    )
+
+                    or 0
+                )
+
+                crop_penalty = 0
+
+                if (
+                    width < 120
+                    or
+                    height < 120
+                ):
+
+                    crop_penalty = 25
+
+                confidence -= crop_penalty
+
+                # =====================================
+                # ASPECT RATIO PENALTY
+                # =====================================
+
+                ratio_penalty = 0
+
+                if width and height:
+
+                    ratio = width / height
+
+                    if ratio > 4:
+
+                        ratio_penalty = 20
+
+                    elif ratio < 0.25:
+
+                        ratio_penalty = 20
+
+                confidence -= ratio_penalty
+
+
+                 # =====================================
+                # PROBABILITY FEATURES
+                # =====================================
+
+                asset["product_probability"] = max(
+
+                    0,
+
+                    round(
+
+                        confidence,
+
+                        1
+                    )
+                )
+
+                asset["demo_probability"] = 0
+
+                asset["lifestyle_probability"] = (
+
+                    100
+
+                    if asset.get("is_lifestyle")
+
+                    else 0
+                )
+
+                # =====================================
+                # SAVE
+                # =====================================
+
+
+                asset[
+                    "asset_confidence"
+                ] = confidence
+
+                improved_assets.append(
+                    asset
+                )
+
+                _logger.warning(
+
+                    f"[ASSET INTELLIGENCE] "
+
+                    f"index={asset.get('clean_index')} "
+
+                    f"score={base_score} "
+
+                    f"confidence={confidence} "
+
+                    f"lifestyle={asset.get('is_lifestyle')} "
+
+                    f"width={width} "
+
+                    f"height={height}"
+
+                )
+
+            improved_assets = sorted(
+
+                improved_assets,
+
+                key=lambda x: (
+
+                    x.get(
+                        "asset_confidence",
+                        0
+                    ),
+
+                    x.get(
+                        "score",
+                        0
+                    )
+
+                ),
+
+                reverse=True
+            )
+
+            _logger.warning(
+
+                f"[ASSET INTELLIGENCE READY] "
+
+                f"assets={len(improved_assets)}"
+            )
+
+            return improved_assets
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ASSET INTELLIGENCE ERROR]"
+            )
+
+            return asset_pool
+
+
+    #==========asset probability==========================
+    def _calculate_asset_probability(
+
+        self,
+
+        asset
+    ):
+
+        width = asset.get(
+
+            "width",
+
+            0
+        )
+
+        height = asset.get(
+
+            "height",
+
+            0
+        )
+
+        area = width * height
+
+        hero = asset.get(
+
+            "hero_score",
+
+            0
+        )
+
+        gallery = asset.get(
+
+            "gallery_score",
+
+            0
+        )
+
+        lifestyle = asset.get(
+
+            "lifestyle_score",
+
+            0
+        )
+
+        confidence = asset.get(
+
+            "confidence",
+
+            50
+        )
+
+        real_probability = 0
+
+        demo_probability = 0
+
+        lifestyle_probability = 0
+
+        # -----------------------------
+        # REAL PRODUCT
+        # -----------------------------
+
+        real_probability += hero * 0.30
+
+        real_probability += gallery * 0.20
+
+        real_probability += confidence * 0.30
+
+        if area < 250000:
+
+            real_probability += 20
+
+        # -----------------------------
+        # DEMO PRODUCT
+        # -----------------------------
+
+        demo_probability += gallery * 0.40
+
+        demo_probability += hero * 0.15
+
+        demo_probability += confidence * 0.20
+
+        if area >= 250000:
+
+            demo_probability += 10
+
+        # -----------------------------
+        # LIFESTYLE
+        # -----------------------------
+
+        lifestyle_probability += lifestyle * 15
+
+        if asset.get(
+
+            "large_image"
+        ):
+
+            lifestyle_probability += 15
+
+        if asset.get(
+
+            "portrait"
+        ):
+
+            lifestyle_probability += 10
+
+        return {
+
+            "real": round(
+
+                real_probability,
+
+                1
+            ),
+
+            "demo": round(
+
+                demo_probability,
+
+                1
+            ),
+
+            "lifestyle": round(
+
+                lifestyle_probability,
+
+                1
+            )
+        }
+
+    #==========classify asset pool=====================
+    def _classify_segmented_images(
+
+        self,
+
+        asset_pool
+    ):
+
+        try:
+
+            real_assets = []
+
+            lifestyle_assets = []
+
+            marketing_assets = []
+
+            _logger.warning(
+                "[ASSET CLASSIFIER START]"
+            )
+
+            for asset in asset_pool:
+
+                score = float(
+
+                    asset.get(
+                        "score",
+                        0
+                    )
+
+                    or 0
+                )
+
+                lifestyle = bool(
+
+                    asset.get(
+                        "is_lifestyle",
+                        False
+                    )
+                )
+
+                collage = bool(
+
+                    asset.get(
+                        "is_collage",
+                        False
+                    )
+                )
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    )
+
+                    or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    )
+
+                    or 0
+                )
+
+                # =====================================
+                # CLASSIFICATION
+                # =====================================
+
+                if (
+
+                    not lifestyle
+
+                    and
+
+                    not collage
+
+                ):
+
+                    asset["asset_group"] = "real"
+
+                    real_assets.append(asset)
+
+                elif lifestyle:
+
+                    asset["asset_group"] = "lifestyle"
+
+                    lifestyle_assets.append(asset)
+
+                else:
+
+                    asset["asset_group"] = "marketing"
+
+                    marketing_assets.append(asset)
+
+                _logger.warning(
+
+                    f"[ASSET CLASSIFIED] "
+
+                    f"index={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"score={score} "
+
+                    f"lifestyle={lifestyle} "
+
+                    f"collage={collage} "
+
+                    f"size={width}x{height}"
+
+                )
+
+            # =====================================
+            # SORT EACH GROUP
+            # =====================================
+
+            def sorter(a):
+
+                return (
+
+                    a.get(
+                        "hero_score",
+                        0
+                    ),
+
+                    a.get(
+                        "gallery_score",
+                        0
+                    ),
+
+                    a.get(
+                        "score",
+                        0
+                    )
+
+                )
+
+            real_assets.sort(
+
+                key=sorter,
+
+                reverse=True
+            )
+
+            lifestyle_assets.sort(
+
+                key=sorter,
+
+                reverse=True
+            )
+
+            marketing_assets.sort(
+
+                key=sorter,
+
+                reverse=True
+            )
+
+            merged_assets = (
+
+                real_assets
+
+                +
+
+                lifestyle_assets
+
+                +
+
+                marketing_assets
+            )
+
+            _logger.warning(
+
+                f"[ASSET CLASSIFIER READY] "
+
+                f"real={len(real_assets)} "
+
+                f"lifestyle={len(lifestyle_assets)} "
+
+                f"marketing={len(marketing_assets)}"
+
+            )
+
+            return merged_assets
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ASSET CLASSIFIER ERROR]"
+            )
+
+            return asset_pool
 
     #=================Centralized Rusable Image=======================
     def _prepare_asset_pool(self, images):
@@ -8987,7 +10098,6 @@ class VendorImportJob(models.Model):
                 f"height={asset.get('height')}"
             )
         return prepared
-
 
     # =======================================================
     # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS
@@ -9533,6 +10643,16 @@ class VendorImportJob(models.Model):
                     # =====================================
                     # LIFESTYLE DETECTION
                     # =====================================
+
+                    _logger.warning(
+                        f"[LIFESTYLE INPUT] "
+                        f"skin={skin_ratio:.3f} "
+                        f"coverage={coverage_ratio:.3f} "
+                        f"bg={background_ratio:.3f} "
+                        f"hero={hero_score} "
+                        f"gallery={gallery_score} "
+                        f"size={crop_width}x{crop_height}"
+                    )
 
                     is_lifestyle = False
 
@@ -10451,6 +11571,28 @@ class VendorImportJob(models.Model):
             # =====================================
             # REQUEST PAYLOAD
             # =====================================
+            _logger.warning(
+
+                f"[AI INPUT] "
+
+                f"assets={len(images)}"
+
+            )
+
+            for asset in images:
+
+                _logger.warning(
+
+                    f"[AI ASSET] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"role={asset.get('asset_role')} "
+
+                    f"source={asset.get('promotion_source')}"
+                )
 
             payload = {
 
@@ -11013,9 +12155,9 @@ class VendorImportJob(models.Model):
 
                     asset_score += 8
 
-                # =====================================
+                # =======================================
                 # START FROM GALLERY SCORE
-                # =====================================
+                # =======================================
 
                 asset_score += asset.get(
                     "gallery_score",
@@ -11428,7 +12570,6 @@ class VendorImportJob(models.Model):
 
             return False
 
-
     #=================Centralized Rusable Image resolver==============
 
     def _resolve_asset_image(
@@ -11467,6 +12608,3714 @@ class VendorImportJob(models.Model):
 
             return False
 
+    #==========prepare asset intelligence=====================
+    def _prepare_asset_intelligence(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            total = len(images)
+
+            for index, asset in enumerate(images):
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                # -------------------------------------
+                # CLEAN INDEX
+                # -------------------------------------
+
+                asset["clean_index"] = index
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    ) or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    ) or 0
+                )
+
+                score = float(
+
+                    asset.get(
+                        "score",
+                        0
+                    ) or 0
+                )
+
+                area = width * height
+
+                # -------------------------------------
+                # HERO SCORE
+                # -------------------------------------
+
+                hero_score = 0
+
+                hero_score += min(
+
+                    width / 10,
+
+                    25
+                )
+
+                hero_score += min(
+
+                    height / 10,
+
+                    25
+                )
+
+                hero_score += min(
+
+                    area / 20000,
+
+                    20
+                )
+
+                if not asset.get("is_lifestyle"):
+
+                    hero_score += 15
+
+                if not asset.get("portrait"):
+
+                    hero_score += 5
+
+                if asset.get("large_image"):
+
+                    hero_score += 5
+
+                if asset.get("large_area"):
+
+                    hero_score += 5
+
+                # -------------------------------------
+                # GALLERY SCORE
+                # -------------------------------------
+
+                gallery_score = hero_score
+
+                if asset.get("is_lifestyle"):
+
+                    gallery_score += 10
+
+                if total > 1:
+
+                    gallery_score += 5
+
+                # -------------------------------------
+                # NORMALIZE
+                # -------------------------------------
+
+                asset["hero_score"] = round(
+
+                    min(
+                        hero_score,
+                        100
+                    ),
+
+                    1
+                )
+
+                asset["gallery_score"] = round(
+
+                    min(
+                        gallery_score,
+                        100
+                    ),
+
+                    1
+                )
+
+                _logger.warning(
+
+                    f"[ASSET INTELLIGENCE] "
+
+                    f"clean={asset['clean_index']} "
+
+                    f"hero={asset['hero_score']} "
+
+                    f"gallery={asset['gallery_score']} "
+
+                    f"score={score}"
+                )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ASSET INTELLIGENCE ERROR]"
+            )
+
+            return images
+
+    #==========prepare render assets=================================
+    def _prepare_render_assets(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            real_images = []
+
+            product_demo_images = []
+
+            lifestyle_images = []
+
+            marketing_images = []
+
+            for asset in images:
+
+                if asset.get("needs_extractor_crop"):
+
+                    asset["asset_group"] = "recovery_candidate"
+                    asset["asset_role"] = "recovery_candidate"
+                    asset["confidence"] = 0
+
+                    marketing_images.append(asset)
+
+                    continue
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                width = int(
+
+                    asset.get(
+                        "width",
+                        0
+                    ) or 0
+                )
+
+                height = int(
+
+                    asset.get(
+                        "height",
+                        0
+                    ) or 0
+                )
+
+                # =====================================
+                # CROP QUALITY ANALYSIS
+                # =====================================
+
+                quality = self._crop_quality_analysis(
+                    asset
+                )
+
+                asset["crop_quality"] = quality["score"]
+
+                asset["crop_reasons"] = quality["reasons"]
+
+                # =====================================
+                # NORMALIZED CONFIDENCE
+                # =====================================
+
+                confidence = 0
+
+                confidence += asset.get(
+
+                    "crop_quality",
+
+                    0
+                ) * 0.45
+
+                confidence += asset.get(
+
+                    "hero_score",
+
+                    0
+                ) * 0.25
+
+                confidence += asset.get(
+
+                    "gallery_score",
+
+                    0
+                ) * 0.15
+
+                confidence += min(
+
+                    asset.get(
+
+                        "score",
+
+                        0
+                    ) / 1000,
+
+                    15
+                )
+
+                # =====================================
+                # CLEAN PRODUCT BONUS
+                # =====================================
+
+                if (
+
+                    not asset.get("is_lifestyle")
+
+                    and
+
+                    not asset.get("portrait")
+
+                    and
+
+                    not asset.get("is_collage")
+
+                ):
+
+                    confidence += 10
+
+                group = "real"
+
+                priority = 1000
+
+
+                # =====================================
+                # PRODUCT DEMONSTRATION SCORE
+                # =====================================
+
+                demo_score = 0
+
+                if asset.get("is_lifestyle"):
+                    demo_score += 5
+
+                if asset.get("portrait"):
+                    demo_score += 2
+
+                if asset.get("large_image"):
+                    demo_score += 2
+
+                if asset.get("large_area"):
+                    demo_score += 2
+
+                lifestyle_score = float(
+
+                    asset.get(
+                        "lifestyle_score",
+                        0
+                    ) or 0
+                )
+
+                if lifestyle_score > 0.70:
+                    demo_score += 5
+
+                elif lifestyle_score > 0.40:
+                    demo_score += 3
+
+                elif lifestyle_score > 0.20:
+                    demo_score += 1
+
+                # =====================================
+                # KEEP PROMOTED RECOVERY ASSETS
+                # =====================================
+
+                if asset.get(
+
+                    "promotion_source"
+
+                ) == "recovery":
+
+                    group = "real"
+
+                    probability = {
+
+                        "real":100,
+
+                        "demo":0,
+
+                        "lifestyle":0
+                    }
+
+                else:
+
+                    probability = self._calculate_asset_probability(
+
+                        asset
+                    )
+
+                    winner = max(
+
+                        probability,
+
+                        key=probability.get
+                    )
+
+                    mapping = {
+
+                        "real":"real",
+
+                        "demo":"product_demo",
+
+                        "lifestyle":"lifestyle"
+                    }
+
+                    group = mapping.get(
+
+                        winner,
+
+                        "marketing"
+                    )
+
+                asset["probability"] = probability
+
+                asset["asset_group"] = group
+
+                # =====================================
+                # VERY SMALL IMAGE
+                # =====================================
+
+                if (
+
+                    width < 120
+
+                    or
+
+                    height < 120
+
+                ):
+
+                    confidence -= 20
+
+                # =====================================
+                # VERY LONG IMAGE
+                # =====================================
+
+                if width and height:
+
+                    ratio = width / height
+
+                    if ratio > 4:
+
+                        confidence -= 15
+
+                    elif ratio < 0.25:
+
+                        confidence -= 15
+
+                asset["demo_score"] = demo_score
+
+                asset["priority"] = priority
+
+
+                # =====================================
+                # FINAL CONFIDENCE
+                # =====================================
+
+                confidence = max(
+
+                    0,
+
+                    min(
+
+                        100,
+
+                        round(
+
+                            confidence,
+
+                            1
+                        )
+                    )
+                )
+
+                asset["confidence"] = confidence
+
+
+                if group == "real":
+
+                    real_images.append(asset)
+
+                elif group == "product_demo":
+
+                    product_demo_images.append(asset)
+
+                elif group == "lifestyle":
+
+                    lifestyle_images.append(asset)
+
+                else:
+
+                    marketing_images.append(asset)
+
+                _logger.warning(
+
+                    f"[RENDER ASSET] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={group} "
+
+                    f"winner={winner} "
+
+                    f"quality={asset.get('crop_quality')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
+                    f"confidence={confidence:.1f} "
+
+                    f"demo={demo_score} "
+
+                    f"prob={probability}"
+                )
+
+            # =====================================
+            # SORT EACH GROUP
+            # =====================================
+
+            def sorter(a):
+
+                return (
+
+                     a.get(
+                          "crop_quality",
+                         0
+                     ),
+
+                    a.get(
+                         "hero_score",
+                         0
+                    ),
+
+                    a.get(
+                        "gallery_score",
+                        0
+                    ),
+
+                    a.get(
+                        "score",
+                        0
+                    ),
+
+                    a.get(
+                        "confidence",
+                         0
+                    )
+            )
+
+            real_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            lifestyle_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            marketing_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            product_demo_images.sort(
+                key=sorter,
+                reverse=True
+            )
+
+            merged = (
+
+                real_images
+
+                +
+
+                product_demo_images
+
+                +
+
+                lifestyle_images
+
+                +
+
+                marketing_images
+            )
+
+
+            _logger.warning(
+
+                f"[RENDER ASSET READY] "
+
+                f"real={len(real_images)} "
+
+                f"product_demo={len(product_demo_images)} "
+
+                f"lifestyle={len(lifestyle_images)} "
+
+                f"marketing={len(marketing_images)}"
+            )
+
+            return merged
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RENDER ASSET ERROR]"
+            )
+
+            return images
+    
+
+    #==========promote recovered assets=====================
+    def _promote_recovered_assets(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            promoted = 0
+
+            rejected = 0
+
+            for asset in images:
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                if asset.get(
+
+                    "asset_group"
+
+                ) != "recovery_candidate":
+
+                    continue
+
+                # =====================================
+                # CONFIDENCE
+                # =====================================
+
+                stored_confidence = asset.get(
+
+                    "confidence"
+                )
+
+                hero_confidence = float(
+
+                    asset.get(
+
+                        "hero_score",
+
+                        0
+                    ) or 0
+                )
+
+                try:
+
+                    stored_confidence = float(
+
+                        stored_confidence
+                    )
+
+                except Exception:
+
+                    stored_confidence = 0
+
+                if stored_confidence <= 0:
+
+                    confidence = hero_confidence
+
+                else:
+
+                    confidence = stored_confidence
+
+                _logger.warning(
+
+                    f"[PROMOTION CONFIDENCE] "
+
+                    f"stored={stored_confidence} "
+
+                    f"hero={hero_confidence} "
+
+                    f"using={confidence}"
+                )
+
+                quality = float(
+
+                    asset.get(
+
+                        "crop_quality",
+
+                        100
+                    ) or 100
+                )
+
+                occupancy = float(
+
+                    asset.get(
+
+                        "validation",
+
+                        {}
+
+                    ).get(
+
+                        "occupancy",
+
+                        1
+                    )
+                )
+
+                hero = float(
+
+                    asset.get(
+
+                        "hero_score",
+
+                        0
+                    ) or 0
+                )
+
+                gallery = float(
+
+                    asset.get(
+
+                        "gallery_score",
+
+                        0
+                    ) or 0
+                )
+
+                occupancy = float(
+
+                    asset.get(
+
+                        "validation",
+
+                        {}
+
+                    ).get(
+
+                        "occupancy",
+
+                        1
+                    ) or 1
+                )
+
+                lifestyle = bool(
+
+                    asset.get(
+
+                        "is_lifestyle",
+
+                        False
+                    )
+                )
+
+                _logger.warning(
+
+                    f"[PROMOTION INPUT] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"hero={hero} "
+
+                    f"gallery={gallery} "
+
+                    f"confidence={confidence} "
+
+                    f"quality={quality} "
+
+                    f"lifestyle={lifestyle}"
+
+                    f"occupancy={occupancy:.2f} "
+                )
+
+                if (
+
+                    confidence >= 65
+
+                    and
+
+                    quality >= 65
+
+                    and
+
+                    not lifestyle
+
+                ):
+
+                    asset["asset_group"] = "real"
+
+                    asset["asset_role"] = "variant"
+
+                    asset["needs_extractor_crop"] = False
+
+                    asset["promotion_source"] = "recovery"
+
+                    asset["confidence"] = confidence
+
+                    asset["priority"] = max(
+
+                        asset.get(
+
+                            "priority",
+
+                            0
+                        ),
+
+                        850
+                    )
+
+                    promoted += 1
+
+                    _logger.warning(
+
+                        f"[RECOVERY PROMOTE] "
+
+                        f"clean={asset.get('clean_index')} "
+
+                        f"confidence={confidence} "
+
+                        f"quality={quality}"
+                    )
+
+                else:
+
+                    rejected += 1
+
+                    _logger.warning(
+
+                        f"[RECOVERY REJECT] "
+
+                        f"clean={asset.get('clean_index')} "
+
+                        f"confidence={confidence} "
+
+                        f"quality={quality} "
+
+                        f"lifestyle={lifestyle}"
+                    )
+
+            _logger.warning(
+
+                f"[RECOVERY PROMOTION] "
+
+                f"promoted={promoted} "
+
+                f"rejected={rejected}"
+            )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY PROMOTION ERROR]"
+            )
+
+            return images
+    
+    
+    #==========execute workflow============================
+    def _execute_strategy(
+
+        self,
+
+        strategy,
+
+        page_data,
+
+        images,
+
+        strategy_info
+    ):
+
+        _logger.warning(
+
+            f"[EXECUTE STRATEGY] "
+
+            f"{strategy}"
+        )
+
+        _logger.warning(
+
+            f"[RECOVERY ENGINE] "
+
+            f"strategy={strategy} "
+
+            f"confidence={strategy_info.get('confidence')} "
+
+            f"reason={strategy_info.get('reason')}"
+        )
+
+        # =====================================
+        # RECOVERY
+        # =====================================
+
+        if strategy == "recrop":
+
+            return self._execute_recrop(
+
+                page_data,
+
+                images,
+
+                strategy_info
+            )
+
+        elif strategy == "recover":
+
+            return self._recover_page(
+
+                page_data,
+
+                images,
+
+                strategy_info
+            )
+
+        # =====================================
+        # RERANK
+        # =====================================
+
+        elif strategy == "rerank":
+
+            return self._rerank_assets(
+
+                images
+            )
+
+        # =====================================
+        # AI AUDIT
+        # =====================================
+
+        elif strategy == "audit":
+
+            return self._ai_catalogue_recovery(
+
+                page_data
+            )
+
+      
+        # ========================================
+        # DEFAULT
+        # =========================================
+
+        # _logger.warning(
+
+        #     "[RECROP PLACEHOLDER]"
+        # )
+
+        return images
+
+    #==========execute recrop===============================
+    def _execute_recrop(
+
+        self,
+
+        page_data,
+
+        images,
+
+        strategy_info
+    ):
+
+        try:
+
+            crop_plan = strategy_info.get(
+
+                "crop_plan",
+
+                {}
+            )
+
+            if not crop_plan.get(
+
+                "required",
+
+                False
+            ):
+
+                return images
+
+            _logger.warning(
+
+                f"[RECROP EXECUTOR] "
+
+                f"required={crop_plan.get('count')}"
+            )
+
+            # =====================================
+            # BUILD RECOVERY INSTRUCTIONS
+            # =====================================
+
+            instructions = self._generate_missing_crops(
+
+                page_data,
+
+                crop_plan
+            )
+
+            if not instructions:
+
+                _logger.warning(
+
+                    "[RECROP EXECUTOR] "
+
+                    "No recovery instructions generated."
+                )
+
+                return images
+
+            _logger.warning(
+
+                f"[RECOVERY API SEND] "
+
+                f"regions={len(instructions)}"
+            )
+
+            # =====================================
+            # CALL EXTRACTOR
+            # =====================================
+
+            new_assets = self._recover_missing_regions(
+
+                instructions
+            )
+
+            if not new_assets:
+
+                _logger.warning(
+
+                    "[RECOVERY FAILED] "
+
+                    "Extractor returned 0 assets."
+                )
+
+                return images
+
+            _logger.warning(
+
+                f"[RECOVERY API RECEIVE] "
+
+                f"assets={len(new_assets)}"
+            )
+
+            # =====================================
+            # MERGE
+            # =====================================
+
+            merged = images + new_assets
+
+            _logger.warning(
+
+                f"[RECOVERY MERGE] "
+
+                f"original={len(images)} "
+
+                f"recovered={len(new_assets)} "
+
+                f"merged={len(merged)}"
+            )
+
+            # =====================================
+            # RE-RANK
+            # =====================================
+
+
+            merged = self._prepare_asset_intelligence(
+
+                merged
+            )
+
+            merged = self._prepare_render_assets(
+
+                merged
+            )
+
+            merged = self._promote_recovered_assets(
+
+                merged
+            )
+
+            merged = self._apply_role_intelligence(
+
+                merged
+            )
+
+            return merged
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECROP EXECUTOR ERROR]"
+            )
+
+            return images
+    
+    #==========generate missing crops============================
+
+    def _generate_missing_crops(
+
+        self,
+
+        page_data,
+
+        crop_plan
+    ):
+        
+
+        try:
+
+            _logger.warning(
+
+                f"[AUTO CROP] page_data keys={list(page_data.keys())}"
+            )
+
+            page_image = page_data.get(
+
+                "page_image"
+            )
+
+            _logger.warning(
+
+                f"[AUTO CROP] page_image exists={bool(page_image)}"
+            )
+
+            if not page_image:
+
+                return []
+            
+            _logger.warning(
+
+                "[AUTO CROP] Calling _generate_grid_crops()"
+            )
+
+            _logger.warning(
+
+                "[AUTO CROP] Calling _generate_grid_crops()"
+            )
+
+            generated = self._generate_grid_crops(
+
+                page_data,
+
+                crop_plan
+            )
+
+            _logger.warning(
+
+                f"[AUTO CROP] Returned {len(generated)} crop(s)"
+            )
+
+            return generated
+            
+
+        except Exception:
+
+            _logger.exception(
+
+                "[AUTO CROP ERROR]"
+            )
+
+            return []
+
+    #==========recover missing regions===========================
+    def _recover_missing_regions(
+
+        self,
+
+        instructions
+    ):
+
+        try:
+
+            if not instructions:
+
+                return []
+
+            _logger.warning(
+
+                f"[RECOVERY API] "
+
+                f"sending={len(instructions)}"
+            )
+
+            payload = {
+
+                "regions": instructions
+            }
+
+            response = requests.post(
+
+                "https://pdf-extractor-staging.onrender.com/recover_page",
+
+                json=payload,
+
+                timeout=120
+            )
+
+            response.raise_for_status()
+
+            result = response.json()
+
+            assets = result.get(
+
+                "assets",
+
+                []
+            )
+
+            _logger.warning(
+
+                f"[RECOVERY RESPONSE] "
+
+                f"assets={len(assets)}"
+            )
+
+            for asset in assets:
+
+                validation = asset.get(
+
+                    "validation",
+
+                    {}
+                )
+
+                _logger.warning(
+
+                    f"[RVE REPORT] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"accepted={validation.get('accepted')} "
+
+                    f"score={validation.get('score')} "
+
+                    f"coverage={validation.get('coverage')} "
+
+                    f"reason={validation.get('reasons')}"
+                )
+
+            _logger.warning(
+
+                f"[RECOVERY RESPONSE TYPE] "
+
+                f"type={type(assets)} "
+
+                f"count={len(assets)}"
+            )
+
+            if assets:
+
+                _logger.warning(
+
+                    f"[RECOVERY SAMPLE] "
+
+                    f"type={type(assets[0])} "
+
+                    f"value={str(assets[0])[:120]}"
+                )
+
+            _logger.warning(
+
+                f"[RECOVERY API] "
+
+                f"received={len(assets)}"
+            )
+
+            return assets
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY API ERROR]"
+            )
+
+            return []
+
+    #==========generate grid crops===============================
+    def _generate_grid_crops(
+
+        self,
+
+        page_data,
+
+        crop_plan
+    ):
+
+        _logger.warning(
+
+            "[GRID CROPS] START"
+        )
+
+        try:
+
+            page_image = page_data.get(
+
+                "page_image"
+            )
+
+            if not page_image:
+
+                return []
+
+            page_width = page_data.get(
+
+                "page_width",
+
+                0
+            )
+
+            page_height = page_data.get(
+
+                "page_height",
+
+                0
+            )
+
+            layout = crop_plan.get(
+
+                "layout",
+
+                {}
+            )
+
+            rows = max(
+
+                1,
+
+                layout.get(
+
+                    "rows",
+
+                    1
+                )
+            )
+
+            cols = max(
+
+                1,
+
+                layout.get(
+
+                    "columns",
+
+                    1
+                )
+            )
+
+            cell_width = int(
+
+                page_width / cols
+            )
+
+            cell_height = int(
+
+                page_height / rows
+            )
+
+            generated = []
+
+            clean_index = 1000
+
+            for row in range(rows):
+
+                for col in range(cols):
+
+                    duplicate = False
+
+                    for existing in page_data.get(
+
+                        "images",
+
+                        []
+                    ):
+
+                        overlap = self._rectangles_overlap(
+
+                            {
+
+                                "x": col * cell_width,
+
+                                "y": row * cell_height,
+
+                                "width": cell_width,
+
+                                "height": cell_height
+                            },
+
+                            existing
+                        )
+
+                        if overlap > 0.70:
+
+                            duplicate = True
+
+                            break
+
+                    if duplicate:
+
+                        continue
+
+
+                    generated.append({
+
+                        "generated": True,
+
+                        "clean_index": clean_index,
+
+                        "x": col * cell_width,
+
+                        "y": row * cell_height,
+
+                        "width": cell_width,
+
+                        "height": cell_height,
+
+                        "needs_extractor_crop": True,
+
+                        "page_image": page_image,
+
+                        "score": 50,
+
+                        "hero_score": 50,
+
+                        "gallery_score": 50,
+
+                        "crop_quality": 60,
+
+                        "confidence": 60
+                    })
+
+                    clean_index += 1
+
+
+            _logger.warning(
+
+                f"[GRID CROPS] "
+
+                f"rows={rows} "
+
+                f"cols={cols} "
+
+                f"generated={len(generated)} "
+
+                f"required={crop_plan.get('count', 0)}"
+            )
+
+            return generated
+
+        except Exception:
+
+            _logger.exception(
+
+                "[GRID CROP ERROR]"
+            )
+
+            return []
+
+    #==========rectangle overlap==========================
+    def _rectangles_overlap(
+
+        self,
+
+        a,
+
+        b
+    ):
+
+        ax1 = a["x"]
+        ay1 = a["y"]
+        ax2 = ax1 + a["width"]
+        ay2 = ay1 + a["height"]
+
+        bx1 = b["x"]
+        by1 = b["y"]
+        bx2 = bx1 + b["width"]
+        by2 = by1 + b["height"]
+
+        inter_x = max(
+            0,
+            min(ax2, bx2) - max(ax1, bx1)
+        )
+
+        inter_y = max(
+            0,
+            min(ay2, by2) - max(ay1, by1)
+        )
+
+        intersection = inter_x * inter_y
+
+        if intersection == 0:
+            return 0
+
+        area_a = a["width"] * a["height"]
+
+        return intersection / max(
+            1,
+            area_a
+        )
+
+    #==========page recovery===========================
+    def _recover_page(
+
+        self,
+
+        page_data,
+
+        images,
+
+        report
+    ):
+
+        candidates = self._build_recovery_candidates(
+
+            page_data,
+
+            images
+        )
+
+        _logger.warning(
+
+            f"[RECOVERY INPUT] "
+
+            f"candidates={len(candidates)}"
+        )
+
+        _logger.warning(
+
+            "[PAGE RECOVERY START]"
+        )
+
+        #
+        # Phase 1
+        #
+        # Return original images.
+        #
+
+        page_snapshot = {
+
+            "page_width": page_data.get("page_width"),
+
+            "page_height": page_data.get("page_height"),
+
+            "page_image": page_data.get("page_image"),
+
+            "existing_images": len(images),
+
+            "coverage": page_data.get("coverage")
+        }
+
+        _logger.warning(
+
+            f"[RECOVERY SUMMARY] "
+
+            f"before={len(images)} "
+
+            f"candidates={len(candidates)} "
+        )
+
+        return images
+
+    #==========rerank assets==========================
+    def _rerank_assets(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            _logger.warning(
+
+                f"[RERANK ASSETS] "
+
+                f"count={len(images)}"
+            )
+
+            images = self._prepare_asset_intelligence(
+
+                images
+            )
+
+            images = self._prepare_render_assets(
+
+                images
+            )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RERANK ASSETS ERROR]"
+            )
+
+            return images
+
+    #==========build recovery candidates===========================
+    def _build_recovery_candidates(
+
+        self,
+
+        page_data,
+
+        images
+    ):
+
+        candidates = []
+
+        page_image = page_data.get("page_image")
+
+        if not page_image:
+
+            return candidates
+
+        for asset in images:
+
+            quality = asset.get("crop_quality", 0)
+
+            group = asset.get("asset_group")
+
+            if group == "real" and quality >= 80:
+                continue
+
+            candidates.append(asset)
+
+        _logger.warning(
+
+            f"[RECOVERY CANDIDATES] "
+
+            f"selected={len(candidates)} "
+
+            f"total={len(images)}"
+        )
+
+        return candidates
+
+    #==========estimate expected products===========================
+    def _estimate_expected_products(
+
+        self,
+
+        page_data,
+
+        report
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            page_width = float(
+
+                page_data.get(
+                    "page_width",
+                    0
+                ) or 0
+            )
+
+            page_height = float(
+
+                page_data.get(
+                    "page_height",
+                    0
+                ) or 0
+            )
+
+            page_area = page_width * page_height
+
+            if page_area <= 0:
+
+                return {
+
+                    "expected": len(images),
+
+                    "missing": 0
+                }
+
+            occupied = 0
+
+            for asset in images:
+
+                occupied += float(
+
+                    asset.get(
+                        "crop_area",
+                        0
+                    ) or 0
+                )
+
+            average_product_area = 0
+
+            if images:
+
+                average_product_area = (
+
+                    occupied
+
+                    /
+
+                    len(images)
+
+                )
+
+            expected = len(images)
+
+            if average_product_area > 0:
+
+                estimate = round(
+
+                    page_area
+
+                    /
+
+                    average_product_area
+
+                )
+
+                expected = max(
+
+                    expected,
+
+                    estimate
+                )
+
+            missing = max(
+
+                0,
+
+                expected - len(images)
+            )
+
+            _logger.warning(
+
+                f"[EXPECTED PRODUCTS] "
+
+                f"current={len(images)} "
+
+                f"expected={expected} "
+
+                f"missing={missing}"
+            )
+
+            return {
+
+                "expected": expected,
+
+                "missing": missing
+            }
+
+        except Exception:
+
+            _logger.exception(
+
+                "[EXPECTED PRODUCT ERROR]"
+            )
+
+            return {
+
+                "expected": 0,
+
+                "missing": 0
+            }
+
+    #==========page intelligence==========================
+    def _analyse_page(
+
+        self,
+
+        page_data
+    ):
+
+        role_report = {
+
+            "hero":0,
+
+            "variant":0,
+
+            "detail":0,
+
+            "packaging":0,
+
+            "feature":0,
+
+            "lifestyle":0,
+
+            "marketing":0
+        }
+
+        images = page_data.get(
+            "images",
+            []
+        )
+
+        page_width = page_data.get(
+            "page_width",
+            0
+        )
+
+        page_height = page_data.get(
+            "page_height",
+            0
+        )
+
+        report = {
+
+            "total_images": len(images),
+
+            "coverage": 0,
+
+            "quality": 0,
+
+            "requires_recovery": False,
+
+            "reason": []
+
+        }
+
+        if not images:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "No product images extracted."
+            )
+
+            return report
+
+        total_area = 0
+
+        total_quality = 0
+
+        for asset in images:
+
+            width = asset.get(
+                "width",
+                0
+            ) or 0
+
+            height = asset.get(
+                "height",
+                0
+            ) or 0
+
+            total_area += (
+
+                width * height
+            )
+
+            total_quality += asset.get(
+
+                "crop_quality",
+
+                70
+            )
+
+            role = asset.get(
+
+                "asset_role",
+
+                "detail"
+            )
+
+            if role in role_report:
+
+                role_report[role] += 1
+
+        page_area = max(
+
+            1,
+
+            page_width * page_height
+        )
+
+        report["coverage"] = round(
+
+            total_area
+
+            /
+
+            page_area,
+
+            3
+        )
+
+        report["quality"] = round(
+
+            total_quality
+
+            /
+
+            len(images),
+
+            1
+        )
+
+        # ==========================
+        # DECISION
+        # ==========================
+
+        if len(images) <= 2:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "Very few product crops."
+            )
+
+        if report["coverage"] < 0.28:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "Low page coverage."
+            )
+
+        if report["quality"] < 70:
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "Poor crop quality."
+            )
+
+
+        # =====================================
+        # ROLE-BASED RECOVERY
+        # =====================================
+
+        if (
+
+            role_report["hero"] == 0
+
+            and
+
+            role_report["variant"] == 0
+
+        ):
+
+            report["requires_recovery"] = True
+
+            report["reason"].append(
+
+                "No hero or variant products detected."
+            )
+
+        # =====================================
+        # SAVE ROLE REPORT
+        # =====================================
+
+        report["role_report"] = role_report
+
+        _logger.warning(
+
+            f"[PAGE INTELLIGENCE] "
+
+            f"images={len(images)} "
+
+            f"coverage={report['coverage']} "
+
+            f"quality={report['quality']} "
+
+            f"recovery={report['requires_recovery']} "
+
+            f"reason={report['reason']}"
+        )
+
+        return report
+
+    #==========plan recovery=========================
+    def _plan_page_recovery(
+
+        self,
+
+        page_data,
+
+        page_report
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            layout = page_report.get(
+
+                "layout",
+
+                {}
+            )
+
+            expected = layout.get(
+
+                "expected_products",
+
+                page_report.get(
+
+                    "estimated_products",
+
+                    len(images)
+                )
+            )
+
+
+            missing_info = page_report.get(
+
+                "missing_products",
+
+                {}
+            )
+
+            actual = missing_info.get(
+
+                "detected",
+
+                len(images)
+            )
+
+            missing = missing_info.get(
+
+                "missing",
+
+                max(
+
+                    0,
+
+                    expected - actual
+                )
+            )
+
+            crop_plan = page_report.get(
+
+                "crop_plan",
+
+                {}
+            )
+
+            required = (
+
+                page_report.get(
+
+                    "requires_recovery",
+
+                    False
+                )
+
+                or
+
+                crop_plan.get(
+
+                    "required",
+
+                    False
+                )
+
+                or
+
+                missing >= 2
+            )
+
+            # plan = {
+
+            #     "required": required,
+
+            #     "expected": expected,
+
+            #     "actual": actual,
+
+            #     "missing": missing,
+
+            #     "strategy": "continue",
+
+            #     "regions": []
+            # }
+
+            plan = {
+
+                "required": required,
+
+                "expected": expected,
+
+                "actual": actual,
+
+                "missing": missing,
+
+                "strategy": "continue",
+
+                "regions": []
+            }
+
+            # =====================================
+            # RECOVERY REASONS
+            # =====================================
+
+            plan["reason"] = []
+
+            if missing >= 2:
+
+                plan["reason"].append(
+
+                    f"{missing} products estimated missing."
+                )
+
+            if crop_plan.get(
+
+                "required",
+
+                False
+            ):
+
+                plan["reason"].append(
+
+                    "Crop planner requested recovery."
+                )
+
+            if page_report.get(
+
+                "requires_recovery",
+
+                False
+            ):
+
+                plan["reason"].extend(
+
+                    page_report.get(
+
+                        "reason",
+
+                        []
+                    )
+                )
+
+            if not plan["required"]:
+
+                return plan
+
+            coverage = page_report.get(
+
+                "coverage",
+
+                1
+            )
+
+            if missing >= 2:
+
+                plan["strategy"] = "recrop"
+
+            elif crop_plan.get(
+
+                "required",
+
+                False
+            ):
+
+                plan["strategy"] = "recrop"
+
+            elif coverage < 0.40:
+
+                plan["strategy"] = "recrop"
+
+            else:
+
+                plan["strategy"] = "rerank"
+
+            _logger.warning(
+
+                f"[RECOVERY PLAN] "
+
+                f"expected={expected} "
+
+                f"actual={actual} "
+
+                f"missing={missing} "
+
+                f"strategy={plan['strategy']}"
+            )
+
+            plan["layout"] = layout
+
+            plan["estimated_missing"] = missing
+
+            return plan
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY PLAN ERROR]"
+            )
+
+            return {
+
+                "required": False,
+
+                "strategy": "continue"
+            }
+    
+    #==========role intelligence==============================
+    def _apply_role_intelligence(
+
+        self,
+
+        images
+    ):
+
+        try:
+
+            if not images:
+
+                return images
+
+            for asset in images:
+
+                role = "detail"
+
+                width = asset.get(
+
+                    "width",
+
+                    0
+                )
+
+                height = asset.get(
+
+                    "height",
+
+                    0
+                )
+
+                hero = asset.get(
+
+                    "hero_score",
+
+                    0
+                )
+
+                gallery = asset.get(
+
+                    "gallery_score",
+
+                    0
+                )
+
+                confidence = asset.get(
+
+                    "confidence",
+
+                    0
+                )
+
+                if asset.get("is_collage"):
+
+                    role = "marketing"
+
+                elif asset.get("asset_group") == "lifestyle":
+
+                    role = "lifestyle"
+
+                elif hero >= 90:
+
+                    role = "hero"
+
+                elif hero >= 70:
+
+                    role = "variant"
+
+                elif (
+
+                    width > 250
+
+                    and
+
+                    height > 250
+
+                    and
+
+                    gallery >= 70
+
+                ):
+
+                    role = "variant"
+
+                elif (
+
+                    width < 180
+
+                    or
+
+                    height < 180
+
+                ):
+
+                    role = "detail"
+
+                elif confidence > 80:
+
+                    role = "detail"
+
+                asset["asset_role"] = role
+
+                _logger.warning(
+
+                    f"[ROLE ENGINE] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"role={role}"
+                )
+
+            return images
+
+        except Exception:
+
+            _logger.exception(
+
+                "[ROLE ENGINE ERROR]"
+            )
+
+            return images
+
+    #==========detect catalogue layout=========================
+    def _detect_catalog_layout(
+
+        self,
+
+        page_data
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            width = page_data.get(
+                "page_width",
+                0
+            )
+
+            height = page_data.get(
+                "page_height",
+                0
+            )
+
+            if not width or not height:
+
+                return {}
+
+            boxes = []
+
+            xs = []
+            ys = []
+
+            for asset in images:
+
+                x = asset.get("x", 0)
+                y = asset.get("y", 0)
+                w = asset.get("width", 0)
+                h = asset.get("height", 0)
+
+                boxes.append({
+
+                    "x": x,
+                    "y": y,
+                    "width": w,
+                    "height": h
+                })
+
+                xs.append(x)
+                ys.append(y)
+
+            columns = len(
+
+                sorted(
+
+                    set(
+
+                        round(x / 80)
+
+                        for x in xs
+                    )
+                )
+            )
+
+            rows = len(
+
+                sorted(
+
+                    set(
+
+                        round(y / 80)
+
+                        for y in ys
+                    )
+                )
+            )
+
+            expected = max(
+
+                len(images),
+
+                rows * columns
+            )
+
+            layout = {
+
+                "rows": rows,
+
+                "columns": columns,
+
+                "expected_products": expected,
+
+                "boxes": boxes
+            }
+
+
+            _logger.warning(
+
+                f"[LAYOUT ENGINE] "
+
+                f"rows={rows} "
+
+                f"columns={columns} "
+
+                f"detected={len(images)} "
+
+                f"expected={expected} "
+
+                f"missing={max(0, expected-len(images))}"
+            )
+
+            return layout
+
+        except Exception:
+
+            _logger.exception(
+
+                "[LAYOUT ENGINE ERROR]"
+            )
+
+            return {}
+
+    #==========detect missing products==========================
+    def _detect_missing_products(
+
+        self,
+
+        page_data,
+
+        layout
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            expected = layout.get(
+                "expected_products",
+                len(images)
+            )
+
+            missing = max(
+
+                0,
+
+                expected - len(images)
+            )
+
+            result = {
+
+                "expected": expected,
+
+                "detected": len(images),
+
+                "missing": missing,
+
+                "requires_crop_generation": (
+
+                    missing > 0
+                )
+            }
+
+            _logger.warning(
+
+                f"[MISSING DETECTOR] "
+
+                f"expected={expected} "
+
+                f"detected={len(images)} "
+
+                f"missing={missing}"
+            )
+
+            return result
+
+        except Exception:
+
+            _logger.exception(
+
+                "[MISSING DETECTOR ERROR]"
+            )
+
+            return {}
+
+    #==========build crop plan==================================
+    def _build_crop_plan(
+
+        self,
+
+        page_data,
+
+        page_report
+    ):
+
+        layout = page_report.get(
+
+            "layout",
+
+            {}
+        )
+
+        missing = page_report.get(
+
+            "missing_products",
+
+            {}
+        )
+
+        plan = {
+
+            "required": missing.get(
+
+                "requires_crop_generation",
+
+                False
+            ),
+
+            "count": missing.get(
+
+                "missing",
+
+                0
+            ),
+
+            "layout": layout
+        }
+
+        _logger.warning(
+
+            f"[CROP PLAN] "
+
+            f"required={plan['required']} "
+
+            f"count={plan['count']}"
+        )
+
+        return plan
+
+    #==========generate additional crops==========================
+    def _generate_additional_crops(
+
+        self,
+
+        page_data,
+
+        crop_plan
+    ):
+
+        page_image = page_data.get(
+
+            "page_image"
+        )
+
+        if not page_image:
+
+            return []
+
+        generated = []
+
+        for crop in crop_plan.get(
+
+            "crops",
+
+            []
+        ):
+
+            generated.append({
+
+                "type": "recrop",
+
+                "x": crop.get("x"),
+
+                "y": crop.get("y"),
+
+                "width": crop.get("width"),
+
+                "height": crop.get("height"),
+
+                "score": crop.get(
+
+                    "priority",
+
+                    0
+                )
+            })
+
+        _logger.warning(
+
+            f"[RECROP PLAN] "
+
+            f"generated={len(generated)}"
+        )
+
+        return generated
+
+    #==========workflow strategy=================================
+    def _select_processing_strategy(
+
+        self,
+
+        page_report
+    ):
+
+        # =====================================
+        # DEFAULT
+        # =====================================
+
+        strategy = "continue"
+
+        confidence = 1.00
+
+        reasons = []
+
+        # =====================================
+        # RECOVERY PLAN
+        # =====================================
+
+        recovery_plan = page_report.get(
+
+            "recovery_plan",
+
+            {}
+        )
+
+        if recovery_plan:
+
+            strategy = recovery_plan.get(
+
+                "strategy",
+
+                strategy
+            )
+
+            if strategy != "continue":
+
+                confidence = 0.95
+
+                reasons.append(
+
+                    f"Recovery strategy: {strategy}"
+                )
+
+        # =====================================
+        # LEGACY RECOVERY SUPPORT
+        # =====================================
+
+        elif page_report.get(
+
+            "requires_recovery",
+
+            False
+        ):
+
+            strategy = "recover"
+
+            confidence = 0.95
+
+            reasons.extend(
+
+                page_report.get(
+
+                    "reason",
+
+                    []
+                )
+            )
+
+        # =====================================
+        # EXPECTED PRODUCT CHECK
+        # =====================================
+
+        missing = page_report.get(
+
+            "missing",
+
+            0
+        )
+
+        if missing >= 2:
+
+            if strategy == "continue":
+
+                recovery_plan = page_report.get(
+
+                    "recovery_plan",
+
+                    {}
+                )
+
+                strategy = recovery_plan.get(
+
+                    "strategy",
+
+                    "recrop"
+                )
+
+            confidence = min(
+
+                confidence,
+
+                0.90
+            )
+
+            reasons.append(
+
+                f"Estimated {missing} product(s) missing."
+            )
+
+
+        _logger.warning(
+
+            f"[WORKFLOW STRATEGY] "
+
+            f"strategy={strategy} "
+
+            f"missing={missing} "
+
+            f"confidence={confidence:.2f} "
+
+            f"recovery={page_report.get('requires_recovery')} "
+
+            f"reason={reasons}"
+        )
+
+        return {
+
+            "strategy": strategy,
+
+            "confidence": confidence,
+
+            "reason": reasons
+        }
+    
+    #================build_ai_page_context=======================
+    def _build_ai_page_context(
+
+        self,
+
+        page_data,
+
+        validation
+    ):
+
+        try:
+
+            images = page_data.get(
+
+                "images",
+
+                []
+            )
+
+            report = {
+
+                "real": 0,
+
+                "product_demo": 0,
+
+                "lifestyle": 0,
+
+                "marketing": 0
+            }
+
+            for asset in images:
+
+                if not isinstance(asset, dict):
+
+                    continue
+
+                group = asset.get(
+
+                    "asset_group",
+
+                    "real"
+                )
+
+                if group in report:
+
+                    report[group] += 1
+
+            context = {
+
+                "page": page_data.get(
+
+                    "page"
+                ),
+
+                "coverage": round(
+
+                    validation.get(
+
+                        "coverage",
+
+                        0
+
+                    ),
+
+                    3
+                ),
+
+                "score": validation.get(
+
+                    "score",
+
+                    0
+                ),
+
+                "requires_recovery": page_data.get(
+
+                    "recovery_required",
+
+                    False
+                ),
+
+                "real_products": report["real"],
+
+                "product_demo": report["product_demo"],
+
+                "lifestyle": report["lifestyle"],
+
+                "marketing": report["marketing"],
+
+                "page_width": page_data.get(
+
+                    "page_width",
+
+                    0
+                ),
+
+                "page_height": page_data.get(
+
+                    "page_height",
+
+                    0
+                )
+            }
+
+            _logger.warning(
+
+                f"[AI PAGE CONTEXT] "
+
+                f"page={context['page']} "
+
+                f"real={context['real_products']} "
+
+                f"demo={context['product_demo']} "
+
+                f"life={context['lifestyle']} "
+
+                f"coverage={context['coverage']} "
+
+                f"score={context['score']} "
+
+                f"recovery={context['requires_recovery']}"
+            )
+
+            return context
+
+        except Exception:
+
+            _logger.exception(
+
+                "[AI PAGE CONTEXT ERROR]"
+            )
+
+            return {}
+
+    #==========crop quality=======================================
+    def _calculate_crop_quality(
+
+        self,
+
+        asset
+    ):
+
+        quality = 100
+
+        width = int(
+            asset.get(
+                "width",
+                0
+            ) or 0
+        )
+
+        height = int(
+            asset.get(
+                "height",
+                0
+            ) or 0
+        )
+
+        score = float(
+            asset.get(
+                "score",
+                0
+            ) or 0
+        )
+
+        lifestyle_score = float(
+            asset.get(
+                "lifestyle_score",
+                0
+            ) or 0
+        )
+
+        # =====================================
+        # SIZE
+        # =====================================
+
+        if width < 120:
+            quality -= 25
+
+        if height < 120:
+            quality -= 25
+
+        # =====================================
+        # LONG STRIPS
+        # =====================================
+
+        if width and height:
+
+            ratio = width / height
+
+            if ratio > 4:
+
+                quality -= 15
+
+            elif ratio < 0.25:
+
+                quality -= 15
+
+        # =====================================
+        # COLLAGE
+        # =====================================
+
+        if asset.get("is_collage"):
+
+            quality -= 50
+
+        # =====================================
+        # LIFESTYLE
+        # =====================================
+
+        quality -= int(
+            lifestyle_score * 25
+        )
+
+        # =====================================
+        # EXTRACTOR SCORE
+        # =====================================
+
+        if score < 40:
+
+            quality -= 15
+
+        elif score > 90:
+
+            quality += 5
+
+        return max(
+            0,
+            min(
+                quality,
+                100
+            )
+        )
+
+    #==========start validation===================================
+    def _start_validation(self):
+
+        return {
+
+            "expected_products": 0,
+
+            "created_products": 0,
+
+            "expected_variants": 0,
+
+            "created_variants": 0,
+
+            "expected_variant_keys": [],
+
+            "created_variant_keys": [],
+
+            "hero_indexes": [],
+
+            "gallery_indexes": [],
+
+            "variant_indexes": [],
+
+            "duplicate_indexes": [],
+
+            "missing_variant_keys": [],
+
+            "duplicate_variant_keys": [],
+
+            "used_indexes": set(),
+
+            "warnings": []
+        }
+
+    #==========variant key===========================================
+    def _variant_key(
+
+        self,
+
+        attributes
+    ):
+
+        if not attributes:
+
+            return ""
+
+        return "|".join(
+
+            f"{k}:{v}"
+
+            for k, v
+
+            in sorted(
+
+                attributes.items()
+            )
+        )
+
+    #==========catalogue diagnostics================================
+
+    def  _catalogue_diagnostics(
+
+        page_number,
+
+        page_data,
+
+        page_validation
+    ):
+
+        try:
+
+            images = page_data.get(
+                "images",
+                []
+            )
+
+            products = page_data.get(
+                "products",
+                []
+            )
+
+            ai_products = len(products)
+
+            ai_variants = sum(
+
+                len(
+                    p.get(
+                        "variants",
+                        []
+                    )
+                )
+
+                for p in products
+            )
+
+            report = {
+
+                "real": 0,
+
+                "product_demo": 0,
+
+                "lifestyle": 0,
+
+                "marketing": 0,
+
+                "confidence": []
+            }
+
+            # =====================================
+            # CONFIDENCE
+            # =====================================
+
+            # if average < 60:
+
+            #     subsystem = "Confidence"
+
+            #     severity = "WARNING"
+
+            #     reason = (
+
+            #         f"Average confidence "
+
+            #         f"{average}% "
+
+            #         f"is below threshold."
+
+            #     )
+
+            #     warnings.append(reason)
+
+            # =====================================
+            # IMAGE ANALYSIS
+            # =====================================
+
+            for asset in images:
+
+                group = asset.get(
+
+                    "asset_group",
+
+                    "unknown"
+                )
+
+                if group in report:
+
+                    report[group] += 1
+
+                report["confidence"].append(
+
+                    asset.get(
+
+                        "confidence",
+
+                        0
+                    )
+                )
+            # =====================================
+            # IMAGE CLASSIFICATION
+            # =====================================
+
+            if report["lifestyle"] > report["real"]:
+
+                subsystem = "Image Classification"
+
+                severity = "WARNING"
+
+                reason = (
+
+                    "Lifestyle images exceed "
+
+                    "real product images."
+
+                )
+
+                warnings.append(reason)
+
+            # =====================================
+            # AVERAGE CONFIDENCE
+            # =====================================
+
+            average = 0
+
+            if report["confidence"]:
+
+                average = round(
+
+                    sum(
+                        report["confidence"]
+                    )
+
+                    /
+
+                    len(
+                        report["confidence"]
+                    ),
+
+                    1
+                )
+
+            # =====================================
+            # HEALTH SCORE
+            # =====================================
+
+            health = 100
+
+            health -= report["lifestyle"] * 5
+
+            health -= report["marketing"] * 10
+
+            if average < 70:
+
+                health -= 10
+
+            if created_products != ai_products:
+
+                health -= 15
+
+            # =====================================
+            # PRODUCT CREATION
+            # =====================================
+
+            if created_products != ai_products:
+
+                subsystem = "Product Creation"
+
+                severity = "ERROR"
+
+                reason = (
+
+                    f"AI detected "
+
+                    f"{ai_products} product(s), "
+
+                    f"but only "
+
+                    f"{created_products} "
+
+                    f"were created."
+
+                )
+
+                warnings.append(reason)
+
+            if created_variants != ai_variants:
+
+                health -= 15
+
+            # =====================================
+            # VARIANTS
+            # =====================================
+
+            if created_variants != ai_variants:
+
+                subsystem = "Variant Creation"
+
+                severity = "ERROR"
+
+                reason = (
+
+                    f"AI detected "
+
+                    f"{ai_variants} variant(s), "
+
+                    f"but only "
+
+                    f"{created_variants} "
+
+                    f"were created."
+
+                )
+
+                warnings.append(reason)
+
+
+            # =====================================
+            # DIAGNOSTIC ENGINE
+            # =====================================
+
+            subsystem = "Healthy"
+
+            reason = "No anomaly detected."
+
+            severity = "INFO"
+
+            warnings = []
+
+
+            health = max(
+                0,
+                health
+            )
+
+
+            if severity == "ERROR":
+
+                status = "FAILED"
+
+            elif severity == "WARNING":
+
+                status = "WARNING"
+
+            elif health >= 90:
+
+                status = "PASS"
+
+            elif health >= 70:
+
+                status = "WARNING"
+
+            else:
+
+                status = "REVIEW"
+
+            # =====================================
+            # DIAGNOSTIC WARNINGS
+            # =====================================
+
+            warnings = []
+
+            if created_products != ai_products:
+
+                warnings.append(
+
+                    "AI product count differs from created product count."
+                )
+
+            if created_variants != ai_variants:
+
+                warnings.append(
+
+                    "AI variant count differs from created variant count."
+                )
+
+            if report["lifestyle"] > report["real"]:
+
+                warnings.append(
+
+                    "Lifestyle images exceed real product images."
+                )
+
+            # =====================================
+            # AI CHECK
+            # =====================================
+
+            if (
+
+                ai_products == 0
+
+                and
+
+                len(images) > 0
+
+            ):
+
+                subsystem = "AI"
+
+                severity = "ERROR"
+
+                reason = (
+
+                    "Images exist but "
+
+                    "AI returned no products."
+
+                )
+
+                warnings.append(reason)
+
+            # =====================================
+            # REPORT
+            # =====================================
+
+            _logger.warning("")
+
+            _logger.warning("=" * 70)
+
+            _logger.warning(
+
+                f"[CATALOGUE REPORT] "
+
+                f"PAGE {page_number}"
+            )
+
+            _logger.warning("=" * 70)
+
+            _logger.warning(
+
+                f"Images              : "
+
+                f"{len(images)}"
+            )
+
+            _logger.warning(
+
+                f"Real                : "
+
+                f"{report['real']}"
+            )
+
+            _logger.warning(
+
+                f"Product Demo        : "
+
+                f"{report['product_demo']}"
+            )
+
+            _logger.warning(
+
+                f"Lifestyle           : "
+
+                f"{report['lifestyle']}"
+            )
+
+            _logger.warning(
+
+                f"Marketing           : "
+
+                f"{report['marketing']}"
+            )
+
+            _logger.warning("-" * 70)
+
+            _logger.warning(
+
+                f"AI Products         : "
+
+                f"{ai_products}"
+            )
+
+            _logger.warning(
+
+                f"Created Products    : "
+
+                f"{created_products}"
+            )
+
+            _logger.warning(
+
+                f"AI Variants         : "
+
+                f"{ai_variants}"
+            )
+
+            _logger.warning(
+
+                f"Created Variants    : "
+
+                f"{created_variants}"
+            )
+
+            _logger.warning("-" * 70)
+
+            _logger.warning(
+
+                f"Average Confidence  : "
+
+                f"{average}"
+            )
+
+            _logger.warning(
+
+                f"Health Score        : "
+
+                f"{health}/100"
+            )
+
+            _logger.warning(
+
+                f"Status              : "
+
+                f"{status}"
+            )
+
+            _logger.warning(
+
+                f"Subsystem           : "
+
+                f"{subsystem}"
+            )
+
+            _logger.warning(
+
+                f"Severity            : "
+
+                f"{severity}"
+            )
+
+            _logger.warning(
+
+                f"Reason              : "
+
+                f"{reason}"
+            )
+
+            if created_variants < ai_variants:
+
+                warnings.append(
+
+                    "One or more variants were not created. Review variant matching."
+                )
+
+
+            if warnings:
+
+                _logger.warning("-" * 70)
+
+                _logger.warning(
+
+                    "Diagnostic Warnings"
+                )
+
+                _logger.warning("-" * 70)
+
+                for warning in warnings:
+
+                    _logger.warning(
+
+                        f"• {warning}"
+                    )
+
+            _logger.warning("=" * 70)
+
+        except Exception:
+
+            _logger.exception(
+
+                "[CATALOGUE REPORT ERROR]"
+            )
+    
+    #==========print catalogue report===============================
+    def _print_catalogue_report(
+
+        self,
+
+        report
+    ):
+
+        if not report:
+
+            return
+
+        _logger.warning("")
+
+        _logger.warning("=" * 60)
+
+        _logger.warning(
+
+            f"[CATALOGUE REPORT] "
+
+            f"PAGE {report['page']}"
+        )
+
+        _logger.warning("=" * 60)
+
+        _logger.warning(
+
+            f"Products          : "
+
+            f"{report['products']}"
+        )
+
+        _logger.warning(
+
+            f"Variants          : "
+
+            f"{report['variants']}"
+        )
+
+        _logger.warning(
+
+            f"Images            : "
+
+            f"{report['images']}"
+        )
+
+        _logger.warning(
+
+            f"Real              : "
+
+            f"{report['real']}"
+        )
+
+        _logger.warning(
+
+            f"Product Demo      : "
+
+            f"{report['product_demo']}"
+        )
+
+        _logger.warning(
+
+            f"Lifestyle         : "
+
+            f"{report['lifestyle']}"
+        )
+
+        _logger.warning(
+
+            f"Marketing         : "
+
+            f"{report['marketing']}"
+        )
+
+        _logger.warning(
+
+            f"Created           : "
+
+            f"{report['created']}"
+        )
+
+        _logger.warning(
+
+            f"Avg Confidence    : "
+
+            f"{report['average_confidence']}"
+        )
+
+        _logger.warning(
+
+            f"Health Score      : "
+
+            f"{report['health_score']}/100"
+        )
+
+        _logger.warning(
+
+            f"Status            : "
+
+            f"{report['status']}"
+        )
+
+        _logger.warning("=" * 60)
+
+    #==========analyse crop quality=================================
+    def _crop_quality_analysis(
+        self,
+        asset
+    ):
+
+        width = int(
+            asset.get("width", 0) or 0
+        )
+
+        height = int(
+            asset.get("height", 0) or 0
+        )
+
+        score = 100
+
+        reasons = []
+
+        # =====================================
+        # TOO SMALL
+        # =====================================
+
+        if width < 120 or height < 120:
+
+            score -= 40
+
+            reasons.append("tiny")
+
+        # =====================================
+        # EXTREME RATIO
+        # =====================================
+
+        if width and height:
+
+            ratio = width / height
+
+            if ratio > 4:
+
+                score -= 20
+
+                reasons.append("too_wide")
+
+            elif ratio < 0.25:
+
+                score -= 20
+
+                reasons.append("too_tall")
+
+        # =====================================
+        # COLLAGE
+        # =====================================
+
+        if asset.get("is_collage"):
+
+            score -= 50
+
+            reasons.append("collage")
+
+        # =====================================
+        # LIFESTYLE
+        # =====================================
+
+        if asset.get("asset_group") == "lifestyle":
+
+            score -= 25
+
+            reasons.append("lifestyle")
+
+        return {
+
+            "score": max(0, score),
+
+            "reasons": reasons
+        }
+
+    #==========determine refinement================================
+    def _needs_crop_refinement(
+        self,
+        asset
+    ):
+
+        quality = asset.get(
+            "crop_quality",
+            100
+        )
+
+        return quality < 70
 
     #============marchin AI===================================================
     # LEGACY IMAGE PAYLOAD MATCHER
@@ -11953,6 +16802,116 @@ class VendorImportJob(models.Model):
         except:
             return self._force_translate(text, lang)
 
+
+    #==========expand recovery products=========================
+    def _expand_products_from_recovery(
+
+        self,
+
+        products,
+
+        page_images
+    ):
+
+        try:
+
+            if not products:
+
+                return products
+
+            used_indexes = set()
+
+            for product in products:
+
+                main = product.get(
+
+                    "main_image_index"
+                )
+
+                if main is not None:
+
+                    used_indexes.add(main)
+
+                for idx in product.get(
+
+                    "gallery_image_indexes",
+
+                    []
+                ):
+
+                    used_indexes.add(idx)
+
+            created = 0
+
+            base_product = products[0]
+
+            for asset in page_images:
+
+                if (
+
+                    asset.get("promotion_source") != "recovery"
+
+                ):
+
+                    continue
+
+                clean = asset.get(
+
+                    "clean_index"
+                )
+
+                if clean in used_indexes:
+
+                    continue
+
+                candidate = dict(base_product)
+
+                candidate["generated_from"] = "recovery"
+
+                candidate["main_image_index"] = clean
+
+                candidate["gallery_image_indexes"] = [clean]
+
+                candidate["variants"] = [{
+
+                    "attributes": {
+
+                        "Recovered": f"{clean}"
+
+                    }
+
+                }]
+
+                products.append(candidate)
+
+                used_indexes.add(clean)
+
+                created += 1
+
+                _logger.warning(
+
+                    f"[RECOVERY PRODUCT CREATED] "
+
+                    f"clean={clean}"
+                )
+
+            _logger.warning(
+
+                f"[RECOVERY PRODUCT EXPANSION] "
+
+                f"added={created}"
+            )
+
+            return products
+
+        except Exception:
+
+            _logger.exception(
+
+                "[RECOVERY PRODUCT EXPANSION ERROR]"
+            )
+
+            return products
     #==========create pdf product==========================================
 
     def create_products_pdf(self):
@@ -12113,6 +17072,16 @@ class VendorImportJob(models.Model):
             page_number = page_data.get(
                 "page"
             )
+
+            # =====================================
+            # PAGE DIAGNOSTICS
+            # =====================================
+
+            page_created_products = 0
+
+            page_created_variants = 0
+
+            page_validation = self._start_validation()
 
             page_record = self.env[
                 'vendor.import.page'
@@ -12301,6 +17270,30 @@ class VendorImportJob(models.Model):
                         []
                     )
 
+                    page_validation["expected_products"] += 1
+
+                    page_validation["expected_variants"] += len(
+                        variants
+                    )
+
+                    for variant in variants:
+
+                        key = self._variant_key(
+
+                            variant.get(
+
+                                "attributes",
+
+                                {}
+                            )
+                        )
+
+                        page_validation[
+
+                            "expected_variant_keys"
+
+                        ].append(key)
+
                     variant_group = (
 
                         product_data.get(
@@ -12338,7 +17331,8 @@ class VendorImportJob(models.Model):
                         asset_pool
                     )
 
-                    product, created = (
+            
+                    product, created, hero_asset = (
 
                         self._get_or_create_pdf_product(
 
@@ -12358,8 +17352,19 @@ class VendorImportJob(models.Model):
                         )
                     )
 
+                    #====currency conversion===========
+                    product._update_converted_price()
 
                     if created:
+
+                        if hero_asset:
+
+                            page_validation["hero_indexes"].append(
+
+                                hero_asset.get(
+                                    "clean_index"
+                                )
+                            )
 
                         self._apply_product_translation(
                             product
@@ -12375,6 +17380,13 @@ class VendorImportJob(models.Model):
                         )
 
                         created_count += 1
+                        page_created_products += 1
+
+                        page_validation[
+
+                            "created_products"
+
+                        ] += 1
 
                     else:
 
@@ -12402,6 +17414,23 @@ class VendorImportJob(models.Model):
                             "attributes",
                             {}
                         )
+
+                        key = self._variant_key(
+
+                            attributes
+                        )
+
+                        page_validation[
+
+                            "created_variant_keys"
+
+                        ].append(key)
+
+                        page_validation[
+
+                            "created_variants"
+
+                        ] += 1
 
                         for attr_name, attr_value in attributes.items():
 
@@ -12485,95 +17514,22 @@ class VendorImportJob(models.Model):
                     # FOR BOTH NEW + EXISTING PRODUCTS
                     # =====================================
 
-                    try:
+                    #try:
 
-                        stock_qty = int(
+                    stock_qty = int(
 
-                            product_data.get(
-                                "stock_qty",
-                                0
-                            ) or 0
-                        )
+                        product_data.get(
+                           "stock_qty",
+                             0
+                        ) or 0
+                    )
 
-                        _logger.warning(
-
-                            f"[PDF STOCK DEBUG] "
-
-                            f"{product.name} "
-
-                            f"| stock_qty={stock_qty}"
-                        )
-
-                        if not stock_location:
-
-                            _logger.warning(
-                                "[STOCK SKIPPED] No warehouse stock location found"
-                            )
-
-                            continue
-
-
-                        variant = product.product_variant_id
-
-                        _logger.warning(
-                            f"[STOCK START] "
-                            f"product={product.name} "
-                            f"variant_id={variant.id} "
-                            f"location={stock_location.complete_name} "
-                            f"target_qty={stock_qty}"
-                        )
-
-                        current_qty = stock_quant_obj._get_available_quantity(
-                            variant,
-                            stock_location
-                        )
-
-                        difference = (
-                            stock_qty
-                            -
-                            current_qty
-                        )
-
-                        _logger.warning(
-                            f"[STOCK CALC] "
-                            f"current_qty={current_qty} "
-                            f"difference={difference}"
-                        )
-
-                        stock_quant_obj._update_available_quantity(
-                            variant,
-                            stock_location,
-                            difference
-                        )
-
-                        new_qty = stock_quant_obj._get_available_quantity(
-                            variant,
-                            stock_location
-                        )
-
-                        _logger.warning(
-                            f"[STOCK RESULT] "
-                            f"product={product.name} "
-                            f"new_qty={new_qty}"
-                        )
-
-                        _logger.warning(
-                            f"[STOCK UPDATED] "
-                            f"product={product.name} "
-                            f"qty={stock_qty}"
-                        )
-
-                    except Exception as e:
-
-                        _logger.warning(
-
-                            f"[STOCK APPLY FAILED] "
-
-                            f"{product.name} "
-
-                            f"| {str(e)}"
-                        )
-
+                    self._apply_catalog_stock(
+                        product,
+                        stock_qty,
+                        stock_quant_obj,
+                        stock_location
+                    )
 
                     used_asset_indexes = set()
 
@@ -12712,6 +17668,33 @@ class VendorImportJob(models.Model):
                                     used_asset_indexes
                                 )
 
+                                clean_index = matched_asset.get(
+
+                                    "clean_index"
+                                )
+
+                                if clean_index in page_validation["used_indexes"]:
+
+                                    page_validation[
+
+                                        "duplicate_indexes"
+
+                                    ].append(clean_index)
+
+                                else:
+
+                                    page_validation[
+
+                                        "used_indexes"
+
+                                    ].add(clean_index)
+
+                                page_validation[
+
+                                    "variant_indexes"
+
+                                ].append(clean_index)
+
                                 # =====================================
                                 # APPLY
                                 # =====================================
@@ -12770,6 +17753,8 @@ class VendorImportJob(models.Model):
                                         f"| y={matched_asset.get('y')}"
                                     )
 
+                                    page_created_variants += 1
+
                             except Exception as e:
 
                                 _logger.warning(
@@ -12791,6 +17776,27 @@ class VendorImportJob(models.Model):
                     continue
 
             try:
+
+                expected = set(
+                    page_validation["expected_variant_keys"]
+                )
+
+                created = set(
+                    page_validation["created_variant_keys"]
+                )
+
+                page_validation["missing_variant_keys"] = sorted(
+                    expected - created
+                )
+
+                page_validation["duplicate_variant_keys"] = sorted(
+                    created - expected
+                )
+
+
+                self.last_created_page = (
+                    page_index + 1
+                )
 
                 self.last_created_page = (
                     page_index + 1
@@ -12826,7 +17832,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-    #==========pdf product PRODUCT CREATE/GET====================================
+    #==========pdf product CREATE/GET====================================
     
     def _get_or_create_pdf_product(
 
@@ -13012,9 +18018,11 @@ class VendorImportJob(models.Model):
                 ) or 0
             ),
 
-            'list_price': self._safe_parse_price(
+            'vendor_price': self._safe_parse_price(
                 product_data.get("price")
             ),
+
+           'vendor_currency_id': self.env.company.currency_id.id,
         }
 
         hero_index = product_data.get(
@@ -13109,11 +18117,20 @@ class VendorImportJob(models.Model):
                 "image"
             )
 
+
             _logger.warning(
 
                 f"[PDF HERO APPLIED] "
 
+                f"index={hero_asset.get('clean_index')} "
+
                 f"score={hero_asset.get('score')} "
+
+                f"hero_score={hero_asset.get('hero_score')} "
+
+                f"gallery_score={hero_asset.get('gallery_score')} "
+
+                f"group={hero_asset.get('asset_group')} "
 
                 f"color={hero_asset.get('dominant_color')}"
             )
@@ -13128,12 +18145,94 @@ class VendorImportJob(models.Model):
 
         ).create(vals)
 
-        return product, True
 
-     #===============Dead code and unsed=====================
-    
-    
-    #=========pdf product STOCK APPLY=======================
+        return (
+
+            product,
+
+            True,
+
+            hero_asset
+        )
+
+    #==========pdf and excel stock helper(working helper)================
+    def _apply_catalog_stock(
+        self,
+        product,
+        stock_qty,
+        stock_quant_obj,
+        stock_location
+    ):
+
+        try:
+
+            _logger.warning(
+                f"[CATALOG STOCK DEBUG] "
+                f"{product.name} "
+                f"| stock_qty={stock_qty}"
+            )
+
+            if not stock_location:
+
+                _logger.warning(
+                    "[STOCK SKIPPED] No warehouse stock location found"
+                )
+
+                return
+
+            variant = product.product_variant_id
+
+            _logger.warning(
+                f"[STOCK START] "
+                f"product={product.name} "
+                f"variant_id={variant.id} "
+                f"location={stock_location.complete_name} "
+                f"target_qty={stock_qty}"
+            )
+
+            current_qty = stock_quant_obj._get_available_quantity(
+                variant,
+                stock_location
+            )
+
+            difference = (
+                stock_qty
+                -
+                current_qty
+            )
+
+            _logger.warning(
+                f"[STOCK CALC] "
+                f"current_qty={current_qty} "
+                f"difference={difference}"
+            )
+
+            stock_quant_obj._update_available_quantity(
+                variant,
+                stock_location,
+                difference
+            )
+
+            new_qty = stock_quant_obj._get_available_quantity(
+                variant,
+                stock_location
+            )
+
+            _logger.warning(
+                f"[STOCK RESULT] "
+                f"product={product.name} "
+                f"new_qty={new_qty}"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                f"[STOCK APPLY FAILED] "
+                f"{product.name} "
+                f"| {str(e)}"
+            )
+
+    #========= dead product STOCK APPLY===================================
     def _apply_pdf_stock(
 
         self,
@@ -13149,9 +18248,23 @@ class VendorImportJob(models.Model):
         
 
         _logger.warning(
+            f"[PDF HELPER EXISTS] "
+            f"id={variant_record.id} "
+            f"exists={bool(variant_record.exists())}"
+        )
+
+        _logger.warning(
             f"[PDF STOCK HELPER] "
             f"variant={variant_record.id if variant_record else False} "
             f"qty={stock_qty}"
+        )
+
+        _logger.warning(
+            f"[PDF STOCK INPUT] "
+            f"variant_id={variant_record.id if variant_record else False} "
+            f"product={variant_record.display_name if variant_record else False} "
+            f"stock_qty={stock_qty} "
+            f"location={stock_location.id if stock_location else False}"
         )
 
 
@@ -13230,8 +18343,6 @@ class VendorImportJob(models.Model):
                 f"{str(e)}"
             )
 
-
-
     #==========create pdf CATEGORY RESOLVER====================================
     
     def _get_or_create_pdf_category(
@@ -13284,7 +18395,7 @@ class VendorImportJob(models.Model):
 
         return category
 
-    #=========pdf product GALLERY CREATOR=======================
+    #=========pdf product GALLERY CREATOR==============================
     def _create_pdf_gallery(
 
         self,
@@ -13296,9 +18407,51 @@ class VendorImportJob(models.Model):
         asset_pool
         ):
 
+        _logger.warning(
+
+            f"[PDF GALLERY START] "
+
+            f"product={product_data.get('name')} "
+
+            f"assets={len(asset_pool)}"
+        )
+
         gallery_indexes = product_data.get(
             "gallery_image_indexes",
             []
+        )
+
+        # =====================================
+        # ALWAYS INCLUDE PROMOTED RECOVERY
+        # =====================================
+
+        recovered_indexes = [
+
+            a.get("clean_index")
+
+            for a in asset_pool
+
+            if (
+
+                a.get("promotion_source") == "recovery"
+
+                and
+
+                a.get("asset_group") == "real"
+            )
+        ]
+
+        gallery_indexes.extend(
+
+            recovered_indexes
+        )
+
+        gallery_indexes = list(
+
+            dict.fromkeys(
+
+                gallery_indexes
+            )
         )
 
         # =====================================
@@ -13457,17 +18610,63 @@ class VendorImportJob(models.Model):
                     {}
                 )
 
+                # =====================================
+                # RECOVERY PRIORITY
+                # =====================================
+
+                if (
+
+                    asset.get("promotion_source") == "recovery"
+
+                ):
+
+                    _logger.warning(
+
+                        f"[RECOVERY GALLERY] "
+
+                        f"index={index} "
+
+                        f"hero={asset.get('hero_score')} "
+
+                        f"gallery={asset.get('gallery_score')}"
+                    )
+
                 _logger.warning(
+
                     f"[GALLERY CANDIDATE] "
+
                     f"index={index} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
+                    f"confidence={asset.get('confidence')} "
+
                     f"color={asset.get('dominant_color')} "
+
                     f"lifestyle={asset.get('is_lifestyle')} "
+
                     f"width={asset.get('width')} "
-                    f"height={asset.get('height')} "
-                    f"x={asset.get('x')} "
-                    f"y={asset.get('y')}"
+
+                    f"height={asset.get('height')}"
+
                 )
 
+                if asset.get("asset_group") != "real":
+
+                    _logger.warning(
+
+                        f"[NON-REAL GALLERY] "
+
+                        f"index={index} "
+
+                        f"group={asset.get('asset_group')} "
+
+                        f"confidence={asset.get('confidence')}"
+                    )
 
                 gallery_image = (
                     self._resolve_asset_image(
@@ -13487,7 +18686,18 @@ class VendorImportJob(models.Model):
 
                 ).hexdigest()
 
+
                 if image_hash in used_hashes:
+
+                    _logger.warning(
+
+                        f"[GALLERY DUPLICATE SKIP] "
+
+                        f"index={index} "
+
+                        f"color={asset.get('dominant_color')}"
+                    )
+
                     continue
 
                 self.env[
@@ -13504,13 +18714,27 @@ class VendorImportJob(models.Model):
                         gallery_image
                 })
 
+
                 _logger.warning(
+
                     f"[GALLERY ADDED] "
+
                     f"index={index} "
+
+                    f"group={asset.get('asset_group')} "
+
+                    f"confidence={asset.get('confidence')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
                     f"color={asset.get('dominant_color')} "
+
                     f"lifestyle={asset.get('is_lifestyle')}"
                 )
 
+               
                 used_hashes.add(
                     image_hash
                 )
@@ -13525,6 +18749,13 @@ class VendorImportJob(models.Model):
 
                     f"| {str(e)}"
                 )
+
+        _logger.warning(
+            f"[PDF GALLERY END] "
+
+            f"product={product_data.get('name')}"
+
+        )
 
     #==========PDF TITLE NORMALIZATION====================================
     def _normalize_pdf_product_title(
@@ -15251,7 +20482,10 @@ class VendorImportJob(models.Model):
 
         self.excel_url_index = 0
 
-    #============Excel URL processor==========================
+    #==========================================================
+    #===========Excel Url Data Main Update Method==============
+    #==========================================================
+
     def process_excel_url_queue(self):
 
         import json
@@ -15268,6 +20502,24 @@ class VendorImportJob(models.Model):
 
         rows = json.loads(
             self.excel_url_queue
+        )
+
+        # ====================================
+        # LOAD FAMILY LOOKUP
+        # ====================================
+
+        family_lookup = json.loads(
+            self.family_lookup_json or "{}"
+        )
+
+        _logger.warning(
+
+            "[FAMILY LOOKUP LOADED]\n%s"
+
+            % json.dumps(
+                family_lookup,
+                indent=4
+            )
         )
 
         start = self.excel_url_index or 0
@@ -15303,19 +20555,24 @@ class VendorImportJob(models.Model):
 
                 row = rows[idx]
 
+                group_id = str(
+                    row.get("group_id") or ""
+                ).strip()
+
+                product_url = str(
+                    row.get("url") or ""
+                ).strip()
+
                 _logger.warning(
-                    f"[QUEUE ITEM] "
+
+                    "[QUEUE ITEM] "
+
                     f"idx={idx} | "
-                    f"group_id={row.get('group_id')} | "
-                    f"url={row.get('url')}"
-                )
 
-                group_id = row.get(
-                    "group_id"
-                )
+                    f"group_id={group_id} | "
 
-                product_url = row.get(
-                    "url"
+                    f"url={product_url}"
+
                 )
 
                 if not product_url:
@@ -15407,13 +20664,6 @@ class VendorImportJob(models.Model):
                     )
                 )
 
-                # _logger.warning(
-
-                #     f"[URL DATA NAME] "
-
-                #     f"{url_data.get('name')}"
-                # )
-
                 _logger.warning(
 
                     f"[URL DATA TITLE] "
@@ -15436,61 +20686,94 @@ class VendorImportJob(models.Model):
                 )
 
                 # ====================================
-                # FIND EXISTING PRODUCT
+                # FIND EXISTING FAMILY/VARIANT PRODUCT
                 # ====================================
 
-                group_id = str(
-                    row.get("group_id") or ""
-                ).strip()
+                template_id = row.get("template_id")
+                family_id = row.get("vendor_family_id")
 
-                _logger.warning(
+                # ------------------------------------
+                # Fallback for older queues
+                # ------------------------------------
 
-                    f"[URL LOOKUP] "
+                if not template_id:
 
-                    f"group_id={group_id} | "
+                    family_info = family_lookup.get(group_id)
 
-                    f"vendor_id={vendor_id}"
-                )
+                    if isinstance(family_info, dict):
 
+                        template_id = family_info.get("template_id")
+                        family_id = family_info.get("family_id")
 
-                all_products = self.env[
-                    'product.template'
-                ].search([
+                # ------------------------------------
+                # Still nothing?
+                # ------------------------------------
 
-                        ('vendor_import_job_id', '=', self.id)
-
-                ])
-
-                _logger.warning(
-
-                    f"[URL DEBUG] "
-
-                    f"vendor_products={len(all_products)}"
-                )
-
-                for p in all_products[:20]:
+                if not template_id:
 
                     _logger.warning(
 
-                        f"[URL DEBUG PRODUCT] "
+                        "[FAMILY LOOKUP FAILED] "
 
-                        f"id={p.id} | "
+                        f"group={group_id}"
 
-                        f"default_code={p.default_code} | "
-
-                        f"name={p.name}"
                     )
 
+                    self.excel_url_index = idx + 1
+
+                    self._safe_commit_progress()
+
+                    continue
+
+                _logger.warning(
+
+                    "[TARGET LOOKUP] "
+
+                    f"group={group_id} "
+
+                    f"template={template_id} "
+
+                    f"family={family_id}"
+
+                )
+
+                # ====================================
+                # FIND PARENT TEMPLATE
+                # ====================================
+
+                template_id = int(
+                    template_id or 0
+                )
+
                 product = self.env[
-                    'product.template'
-                ].search([
+                    "product.template"
+                ].browse(template_id)
 
-                    ('default_code', '=', group_id),
+                if not product.exists():
 
-                    ('vendor_import_job_id', '=', self.id)
+                    _logger.warning(
+                        "[TEMPLATE NOT FOUND] "
+                        f"{template_id}"
+                    )
 
-                ], limit=1)
+                    product = self.env[
+                        "product.template"
+                    ].search(
+                        [
+                            ("vendor_family_id", "=", family_id),
+                            ("vendor_import_job_id", "=", self.id),
+                        ],
+                        limit=1,
+                    )
 
+                    _logger.warning(
+
+                        "[FAMILY LOOKUP FALLBACK] "
+
+                        f"count={len(product)}"
+
+                    )
+                
 
                 _logger.warning(
 
@@ -15499,17 +20782,29 @@ class VendorImportJob(models.Model):
                     f"count={len(product)}"
                 )
 
-                for p in product[:20]:
+
+                if product:
 
                     _logger.warning(
 
-                        f"[URL PRODUCT] "
+                        "[TARGET PRODUCT] "
 
-                        f"id={p.id} | "
+                        f"id={product.id} "
 
-                        f"default_code={p.default_code} | "
+                        f"name={product.name} "
 
-                        f"name={p.name}"
+                        f"family={product.vendor_family_id}"
+
+                    )
+
+                else:
+
+                    _logger.warning(
+
+                        "[TARGET PRODUCT NOT FOUND] "
+
+                        f"family={family_id}"
+
                     )
 
 
@@ -15530,80 +20825,180 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                
                 # ====================================
                 # BUILD UPDATE VALUES
                 # ====================================
 
                 vals = {}
 
-                description_parts = []
+                # ------------------------------------
+                # Build HTML description
+                # ------------------------------------
 
-                # ====================================
-                # ALWAYS KEEP SUBTITLE IF PRESENT
-                # ====================================
+                html = []
 
-                subtitle = url_data.get(
-                    "subtitle"
-                )
+                # ========= Subtitle =========
+
+                subtitle = str(
+                    url_data.get("subtitle") or ""
+                ).strip()
 
                 if subtitle:
 
-                    description_parts.append(
-                        str(subtitle)
+                    html.append(
+
+                        f"<h3>{subtitle}</h3>"
+
                     )
 
-                # ====================================
-                # EXTRA DETAILS
-                # ====================================
+                # ========= Description =========
 
-                for field in [
+                description = str(
+                    url_data.get("description") or ""
+                ).strip()
 
-                    "description",
+                if description:
 
-                    "material",
+                    paragraphs = [
 
-                    "capacity",
+                        p.strip()
 
-                    "dimensions",
+                        for p in description.splitlines()
 
-                    "specifications"
+                        if p.strip()
+
+                    ]
+
+                    if paragraphs:
+
+                        for p in paragraphs:
+
+                            html.append(
+
+                                f"<p>{p}</p>"
+
+                            )
+
+                    else:
+
+                        html.append(
+
+                            f"<p>{description}</p>"
+
+                        )
+
+                # ========= Technical Details =========
+
+                details = []
+
+                for label, field in [
+
+                    ("Material", "material"),
+
+                    ("Capacity", "capacity"),
+
+                    ("Dimensions", "dimensions"),
+
+                    ("Specifications", "specifications")
 
                 ]:
 
-                    value = url_data.get(
-                        field
-                    )
+                    value = url_data.get(field)
+
+                    # AI may return specifications as a list
+                    if isinstance(value, list):
+
+                        value = "<br/>".join(
+
+                            str(v).strip()
+
+                            for v in value
+
+                            if str(v).strip()
+
+                        )
+
+                    else:
+
+                        value = str(
+                            value or ""
+                        ).strip()
 
                     if value:
 
-                        description_parts.append(
-                            str(value)
+                        details.append(
+
+                            f"<li><strong>{label}:</strong> {value}</li>"
+
                         )
 
-                if description_parts:
+                if details:
 
-        
-                    description = []
+                    html.append(
 
-                    if url_data.get("subtitle"):
-                        description.append(url_data["subtitle"])
+                        "<ul>"
 
-                    if url_data.get("description"):
-                        description.append(url_data["description"])
+                        + "".join(details)
 
-                    if url_data.get("capacity"):
-                        description.append(
-                            f"Capacity: {url_data['capacity']}"
-                        )
+                        + "</ul>"
 
-                    if url_data.get("dimensions"):
-                        description.append(
-                            f"Dimensions: {url_data['dimensions']}"
-                        )
+                    )
 
-                    vals["description_sale"] = "<br/><br/>".join(
-                        description
-                    )      
+                # ========= Save HTML =========
+
+                if html:
+
+                    vals["description_sale"] = "\n".join(html)
+
+                # ====================================
+                # UPDATE PRODUCT NAME FROM APIFY SKU
+                # ====================================
+
+                name = self._get_best_product_name(
+                    url_data,
+                    family_products[:1].name if family_products else ""
+                )
+
+                if name:
+
+                    _logger.warning(
+
+                        "[FAMILY NAME UPDATE] "
+
+                        f"familyName={name} "
+
+                    )
+
+                    vals["name"] = name
+
+                # sku = str(
+                #     url_data.get("sku") or ""
+                # ).strip()
+
+                # if sku:
+                #     _logger.warning(
+
+                #         "[FAMILY NAME UPDATE] "
+
+                #         f"family={family_id} "
+
+                #         f"sku={sku} "
+
+                #     )
+
+                #     vals["name"] = sku
+
+                #     _logger.warning(
+
+                #         "[SKU UPDATE] "
+
+                #         f"family={family_id} "
+
+                #         f"sku={sku}"
+
+                #     )
+                
                 # ====================================
                 # UPDATE PRODUCT
                 # ====================================
@@ -15619,7 +21014,47 @@ class VendorImportJob(models.Model):
                             ""
                         )[:3000]
                     )
-                    product.write(vals)
+
+                    # ====================================
+                    # UPDATE ENTIRE FAMILY
+                    # ====================================
+
+                    family_products = self.env[
+                        "product.template"
+                    ].search([
+
+                        (
+                            "vendor_family_id",
+                            "=",
+                            family_id
+                        )
+
+                    ])
+
+                    _logger.warning(
+
+                        "[FAMILY UPDATE] "
+
+                        f"family={family_id} "
+
+                        f"count={len(family_products)}"
+
+                    )
+
+
+                    _logger.warning(
+
+                        "[WRITE TARGETS] "
+
+                        f"ids={family_products.ids} "
+
+                        f"family={family_id} "
+
+                        f"description_len={len(vals.get('description_sale', ''))}"
+
+                    )
+
+                    family_products.write(vals)
 
                     _logger.warning(
 
@@ -15696,6 +21131,48 @@ class VendorImportJob(models.Model):
             self.state = "excel_url_enrichment"
 
             self._safe_commit_progress()
+
+    #==============Enrich url product name=======================
+
+    def _get_best_product_name(self, url_data, existing_name=""):
+
+        sku = str(
+            url_data.get("sku") or ""
+        ).strip()
+
+        if sku:
+            return sku
+
+        title = str(
+            url_data.get("title") or ""
+        ).strip()
+
+        if title:
+            return title
+
+        description = str(
+            url_data.get("description") or ""
+        ).strip()
+
+        if description:
+
+            line = description.splitlines()[0].strip()
+
+            if line:
+                return line[:150]
+
+        text = str(
+            url_data.get("text") or ""
+        ).strip()
+
+        if text:
+
+            line = text.splitlines()[0].strip()
+
+            if line:
+                return line[:150]
+
+        return existing_name
 
     # ======================================================
     # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
@@ -15800,23 +21277,152 @@ class VendorImportJob(models.Model):
 
             for block in raw_data:
 
+                # ======================================
+                # FORMAT 1
+                # Legacy URL extractor
+                # ======================================
+
                 if block.get("text"):
 
                     structured_data.append({
 
-                        "text": block.get("text"),
+                        "source": "legacy",
 
-                        "image": block.get("image")
+                        "title": "",
+
+                        "description": "",
+
+                        "text": block.get("text", "").strip(),
+
+                        "image": block.get("image"),
+
+                        "gallery": block.get("gallery", []),
+
+                        "sku": block.get("sku"),
+
+                        "url": block.get("url")
+
                     })
 
                     continue
 
+                # ======================================
+                # FORMAT 2
+                # Category extractor
+                # ======================================
+
                 if block.get("type") == "PRODUCTS":
 
-                    structured_data.extend(
+                    for item in block.get("items", []):
 
-                        block.get("items", [])
-                    )
+                        structured_data.append({
+
+                            "source": "category",
+
+                            "title": item.get("title", "").strip(),
+
+                            "description": item.get("description", "").strip(),
+
+                            "text": item.get("text", "").strip(),
+
+                            "image": item.get("image"),
+
+                            "gallery": item.get("gallery", []),
+
+                            "sku": item.get("sku"),
+
+                            "url": item.get("url")
+
+                        })
+
+                    continue
+
+                # ======================================
+                # FORMAT 3
+                # New Product Page extractor
+                # ======================================
+
+                if block.get("title"):
+
+                    title = str(
+                        block.get("title") or ""
+                    ).strip()
+
+                    description = str(
+                        block.get("description") or ""
+                    ).strip()
+
+                    specs = block.get(
+                        "specifications"
+                    ) or []
+
+                    # ----------------------------------
+                    # Beautiful text for AI
+                    # ----------------------------------
+
+                    sections = []
+
+                    if title:
+
+                        sections.append(
+
+                            f"TITLE\n{title}"
+
+                        )
+
+                    if description:
+
+                        sections.append(
+
+                            f"DESCRIPTION\n{description}"
+
+                        )
+
+                    if specs:
+
+                        spec_lines = []
+
+                        for spec in specs:
+
+                            spec = str(spec).strip()
+
+                            if spec:
+
+                                spec_lines.append(
+
+                                    f"• {spec}"
+
+                                )
+
+                        if spec_lines:
+
+                            sections.append(
+
+                                "SPECIFICATIONS\n" +
+
+                                "\n".join(spec_lines)
+
+                            )
+
+                    structured_data.append({
+
+                        "source": "product",
+
+                        "title": title,
+
+                        "description": description,
+
+                        "text": "\n\n".join(sections),
+
+                        "image": block.get("image"),
+
+                        "gallery": block.get("gallery", []),
+
+                        "sku": block.get("sku"),
+
+                        "url": block.get("url")
+
+                    })
 
             _logger.warning(
                 "[STRUCTURED DATA SAMPLE]\n%s"
@@ -15856,42 +21462,77 @@ class VendorImportJob(models.Model):
                 f"{product_url}"
             )
 
+           
+            # =========================================
+            # USE APIFY IDENTITY
+            # =========================================
+
+            product_record = {}
+
+            for item in structured_data:
+
+                if item.get("title"):
+
+                    product_record = item
+
+                    break
+
             return {
 
+                "sku":
+
+                    str(
+                        product_record.get("sku") or ""
+                    ).strip(),
+
                 "title":
-                    enriched.get(
-                        "title"
-                    ),
+
+                    str(
+                        product_record.get("title") or ""
+                    ).strip(),
 
                 "subtitle":
+
                     enriched.get(
-                        "subtitle"
+                        "subtitle",
+                        ""
                     ),
 
                 "description":
+
                     enriched.get(
-                        "description"
+                        "description",
+                        ""
                     ),
 
                 "material":
+
                     enriched.get(
-                        "material"
+                        "material",
+                        ""
                     ),
 
                 "capacity":
+
                     enriched.get(
-                        "capacity"
+                        "capacity",
+                        ""
                     ),
 
                 "dimensions":
+
                     enriched.get(
-                        "dimensions"
+                        "dimensions",
+                        ""
                     ),
 
                 "specifications":
+
                     enriched.get(
-                        "specifications"
+                        "specifications",
+                        ""
                     )
+
             }
 
         except Exception as e:
@@ -16041,8 +21682,11 @@ class VendorImportJob(models.Model):
     #===============EXCEL URL LAST CREATED============================
    
     def _build_excel_url_queue(
-        self,
-        grouped_products
+       self,
+
+        grouped_products,
+
+        family_lookup=None
     ):
 
         import json
@@ -16068,11 +21712,32 @@ class VendorImportJob(models.Model):
 
                 seen_urls.add(url)
 
+                # queue.append({
+
+                family_info = family_lookup.get(group_id, {})
+
                 queue.append({
 
-                    "group_id": str(group_id),
+                    "group_id":
 
-                    "url": url
+                        group_id,
+
+                    "vendor_family_id":
+
+                        family_info.get(
+                            "family_id"
+                        ),
+
+                    "template_id":
+
+                        family_info.get(
+                            "template_id"
+                        ),
+
+                    "url":
+
+                        url
+
                 })
 
                 break
@@ -16472,71 +22137,266 @@ class VendorImportJob(models.Model):
             api_key=api_key
         )
 
-        combined_text = "\n\n".join([
+        # ==========================================
+        # BUILD WELL-FORMATTED AI INPUT
+        # ==========================================
 
-            str(
-                item.get(
-                    "text",
-                    ""
+        sections = []
+
+        for item in structured_data:
+
+            # --------------------------------------
+            # New Product Page Format
+            # --------------------------------------
+
+            if item.get("title"):
+
+                block = []
+
+                title = str(
+                    item.get("title") or ""
+                ).strip()
+
+                description = str(
+                    item.get("description") or ""
+                ).strip()
+
+                specs = item.get(
+                    "specifications"
+                ) or []
+
+                if title:
+
+                    block.append(
+
+                        "PRODUCT TITLE\n"
+
+                        f"{title}"
+
+                    )
+
+                if description:
+
+                    block.append(
+
+                        "DESCRIPTION\n"
+
+                        f"{description}"
+
+                    )
+
+                if specs:
+
+                    spec_lines = []
+
+                    for spec in specs:
+
+                        spec = str(spec).strip()
+
+                        if spec:
+
+                            spec_lines.append(
+
+                                f"• {spec}"
+
+                            )
+
+                    if spec_lines:
+
+                        block.append(
+
+                            "SPECIFICATIONS\n"
+
+                            + "\n".join(spec_lines)
+
+                        )
+
+                sections.append(
+
+                    "\n\n".join(block)
+
                 )
-            )
 
-            for item in structured_data
+                continue
 
-        ])
+            # --------------------------------------
+            # Legacy Support
+            # --------------------------------------
+
+            text = str(
+                item.get("text") or ""
+            ).strip()
+
+            if text:
+
+                sections.append(text)
+
+        combined_text = "\n\n".join(sections)
 
         if not combined_text.strip():
+
             return {}
+        
+
+        # ==========================================
+        # BUILD AI PAYLOAD
+        # ==========================================
+
+        product_payload = []
+
+        for item in structured_data:
+
+            # --------------------------------------
+            # New Product Page Format
+            # --------------------------------------
+
+            if item.get("title"):
+
+                specs = item.get("specifications") or []
+
+                # Normalize specifications into a list
+                if isinstance(specs, str):
+
+                    specs = [
+
+                        line.strip()
+
+                        for line in specs.splitlines()
+
+                        if line.strip()
+
+                    ]
+
+                elif not isinstance(specs, list):
+
+                    specs = [str(specs)]
+
+                product_payload.append({
+
+                    "sku": str(
+                        item.get("sku") or ""
+                    ).strip(),
+
+                    "title": str(
+                        item.get("title") or ""
+                    ).strip(),
+
+                    "description": str(
+                        item.get("description") or ""
+                    ).strip(),
+
+                    "specifications": specs,
+
+                })
+
+                continue
+
+            # --------------------------------------
+            # Legacy Support
+            # --------------------------------------
+
+            text = str(
+                item.get("text") or ""
+            ).strip()
+
+            if text:
+
+                product_payload.append({
+
+                    "text": text
+
+                })
+
 
         prompt = f"""
-        You are a product detail extraction engine.
+        You are an AI product enrichment engine.
 
-        PRODUCT CODE:
-        {group_id}
+        The product has ALREADY been identified.
 
-        IMPORTANT:
+        DO NOT identify products.
 
-        You are given a PRODUCT CODE.
+        DO NOT search for products.
 
-        Find ONLY the product whose code exactly matches PRODUCT CODE.
+        DO NOT compare products.
 
-        Ignore every other product.
+        DO NOT invent information.
 
-        If the code exists:
+        The SKU and product title have already been extracted directly from the supplier website.
 
-        - title = product code
-        - subtitle = full product title immediately after the code
-        - description = all text belonging to that product
+        Your ONLY task is to clean and organise the product information.
 
-        Do NOT summarize.
-        Do NOT shorten.
-        Do NOT rewrite.
-        Do NOT invent information.
-        Extract information exactly as written.
+        ========================================================
+        KNOWN PRODUCT
+        ========================================================
 
-        Rules:
-        - title = product code (numeric identifier)
-        - subtitle = full product name line immediately after the code
-        - description = all descriptive text available for that product
-        - If material/capacity/dimensions/specifications are not present, leave them empty
-        - Never invent information
-        - Never summarize
+        SKU
 
-        Return ONLY JSON:
+        {product_payload[0].get("sku", group_id) if product_payload else group_id}
+        ========================================================
+        YOUR TASK
+        ========================================================
+
+        Extract and organise ONLY:
+
+        • subtitle
+
+        • description
+
+        • material
+
+        • capacity
+
+        • dimensions
+
+        • specifications
+
+        Rules
+
+        - Keep the supplier wording.
+
+        - Do NOT rewrite marketing text.
+
+        - Do NOT summarise.
+
+        - Do NOT shorten.
+
+        - Do NOT invent information.
+
+        - Preserve important product features.
+
+        - Preserve technical information.
+
+        - If useful information exists inside Specifications,
+        include it naturally inside the description as well.
+
+        - Return ALL specification items.
+
+        - Do NOT remove bullet points.
+
+        - Ignore duplicated lines.
+
+        - Ignore repeated headings.
+
+        - Ignore repeated product titles.
+
+        ========================================================
+        RETURN JSON ONLY
+        ========================================================
 
         {{
-            "title": "",
-            "subtitle": "",
-            "description": "",
-            "material": "",
-            "capacity": "",
-            "dimensions": "",
-            "specifications": ""
+            "subtitle":"",
+            "description":"",
+            "material":"",
+            "capacity":"",
+            "dimensions":"",
+            "specifications":[]
         }}
 
-        TEXT:
+        ========================================================
+        SUPPLIER DATA
+        ========================================================
 
-        {combined_text}
+        {json.dumps(product_payload, indent=2)}
         """
 
         _logger.warning(
@@ -16622,7 +22482,90 @@ class VendorImportJob(models.Model):
                 "[URL ENRICHMENT RETURNING DATA]"
             )
 
-            return parsed
+            # ==========================================
+            # NORMALIZE AI RESPONSE
+            # ==========================================
+
+            def clean(value):
+
+                if value is None:
+
+                    return ""
+
+                if isinstance(value, list):
+
+                    return "\n".join(
+
+                        str(v).strip()
+
+                        for v in value
+
+                        if str(v).strip()
+
+                    )
+
+                return str(value).strip()
+
+
+            _logger.warning(
+
+                "[URL ENRICHMENT TYPES] "
+
+                f"title={type(parsed.get('title')).__name__} | "
+
+                f"subtitle={type(parsed.get('subtitle')).__name__} | "
+
+                f"description={type(parsed.get('description')).__name__} | "
+
+                f"specifications={type(parsed.get('specifications')).__name__}"
+
+            )
+
+            return {
+
+                "title":
+
+                    clean(
+                        parsed.get("title")
+                    ),
+
+                "subtitle":
+
+                    clean(
+                        parsed.get("subtitle")
+                    ),
+
+                "description":
+
+                    clean(
+                        parsed.get("description")
+                    ),
+
+                "material":
+
+                    clean(
+                        parsed.get("material")
+                    ),
+
+                "capacity":
+
+                    clean(
+                        parsed.get("capacity")
+                    ),
+
+                "dimensions":
+
+                    clean(
+                        parsed.get("dimensions")
+                    ),
+
+                "specifications":
+
+                    clean(
+                        parsed.get("specifications")
+                    )
+
+            }
 
         except Exception as e:
 
@@ -16634,6 +22577,7 @@ class VendorImportJob(models.Model):
             )
 
             return {}
+
 
     #==========create excel product=================================
     def create_products_excel(self):
@@ -16984,6 +22928,12 @@ class VendorImportJob(models.Model):
         created_count = 0
         merged_count = 0
 
+        # =====================================================
+        # IMPORT FAMILY LOOKUP
+        # =====================================================
+
+        family_lookup = {}
+
 
         # =====================================================
         # PROCESS GROUPS
@@ -17312,11 +23262,11 @@ class VendorImportJob(models.Model):
                             ) or 0
                         ),
 
+                        'vendor_price': self._safe_float(
+                            main_product.get("price")
+                        ),
 
-                        'list_price':
-                            self._safe_float(
-                                main_product.get("price")
-                            ),
+                        'vendor_currency_id': self.env.company.currency_id.id,
 
                         'vendor_fingerprint': fingerprint,
 
@@ -17346,10 +23296,79 @@ class VendorImportJob(models.Model):
                         vals
                     )
 
+                   
+                    # ==========================================
+                    # KEEP FAMILY LOOKUP
+                    # ==========================================
+
+                    family_id = self._get_or_create_family_id(product)
+
+                    family_lookup[group_id] = {
+
+                        "family_id": family_id,
+
+                        "product_id": product.id,
+
+                        "template_id": product.id,
+
+                        "vendor_id": vendor_id,
+
+                    }
+
+                    _logger.warning(
+
+                        "[LOOKUP ENTRY] %s",
+
+                        family_lookup[group_id]
+
+                    )
+
+                    _logger.warning(
+
+                        "[FAMILY REUSED] "
+
+                        f"group={group_id} "
+
+                        f"family={family_id}"
+
+                    )
+                    _logger.warning(
+
+                        f"[NEW PRODUCT] "
+
+                        f"id={product.id} | "
+
+                        f"group_id={group_id} | "
+
+                        f"default_code={product.default_code} | "
+
+                        f"name={product.name} | "
+
+                        f"fingerprint={product.vendor_fingerprint}"
+                    )
+
+                    #===========currency conversion======
+                    product._update_converted_price()
+
                     # ✅ SAFE TRANSLATION CALL (PLUG-IN)
                     self._apply_product_translation(product)
+                   
                     created_count += 1
 
+                    _logger.warning(
+
+                        f"[MERGED PRODUCT] "
+
+                        f"id={product.id} | "
+
+                        f"group_id={group_id} | "
+
+                        f"default_code={product.default_code} | "
+
+                        f"name={product.name} | "
+
+                        f"fingerprint={product.vendor_fingerprint}"
+                    )
 
                     _logger.warning(
 
@@ -17363,6 +23382,42 @@ class VendorImportJob(models.Model):
                 else:
 
                     merged_count += 1
+
+                    # ==========================================
+                    # KEEP FAMILY LOOKUP
+                    # ==========================================
+
+                    family_id = self._get_or_create_family_id(product)
+
+                    family_lookup[group_id] = {
+
+                        "family_id": family_id,
+
+                        "product_id": product.id,
+
+                        "template_id": product.id,
+
+                        "vendor_id": vendor_id,
+
+                    }
+
+                    _logger.warning(
+
+                        "[LOOKUP ENTRY] %s",
+
+                        family_lookup[group_id]
+
+                    )
+
+                    _logger.warning(
+
+                        "[FAMILY REUSED] "
+
+                        f"group={group_id} "
+
+                        f"family={family_id}"
+
+                    )
 
                     # =====================================
                     # TRANSLATE EXISTING PRODUCT TOO
@@ -17728,6 +23783,30 @@ class VendorImportJob(models.Model):
 
                 product.invalidate_recordset()
 
+                # =====================================================
+                # PROPAGATE FAMILY ID TO VARIANTS
+                # =====================================================
+
+                for variant in product.product_variant_ids:
+
+                    if variant.vendor_family_id != product.vendor_family_id:
+
+                        variant.vendor_family_id = (
+
+                            product.vendor_family_id
+
+                        )
+
+                _logger.warning(
+
+                    "[FAMILY PROPAGATED] "
+
+                    f"{product.vendor_family_id} "
+
+                    f"variants={len(product.product_variant_ids)}"
+
+                )
+
                 for v in product.product_variant_ids:
 
                     _logger.warning(
@@ -17755,66 +23834,13 @@ class VendorImportJob(models.Model):
                     ) or 0
                 )
 
-                warehouse = self.env[
-                    "stock.warehouse"
-                ].search(
-                    [],
-                    limit=1
-                )
-
-                stock_location = (
-                    warehouse.lot_stock_id
-                    if warehouse
-                    else False
-                )
-
-                product.invalidate_recordset()
-
-                variant = product.product_variant_id
-
-                _logger.warning(
-                    f"[EXCEL STOCK VARIANT] "
-                    f"product={product.name} "
-                    f"variant_id={variant.id if variant else False} "
-                    f"variant_count={len(product.product_variant_ids)}"
-                )
-
-                if (
-                    variant
-                    and
+                self._apply_catalog_stock(
+                    product,
+                    stock_qty,
+                    stock_quant_obj,
                     stock_location
-                ):
+                )
 
-                    _logger.warning(
-                        f"[EXCEL PRODUCT STATE] "
-                        f"id={product.id} "
-                        f"type={product.type} "
-                        f"variants={len(product.product_variant_ids)}"
-                    )
-
-                    _logger.warning(
-                        f"[VARIANT STATE BEFORE STOCK] "
-                        f"variant_id={variant.id} "
-                        f"variant_type={variant.type} "
-                        f"template_type={product.type}"
-                    )
-
-                    _logger.warning(
-                        f"[EXCEL PDF STOCK CALL] "
-                        f"product={product.name} "
-                        f"variant={variant.id} "
-                        f"qty={stock_qty}"
-                    )
-
-                    self._apply_pdf_stock(
-                        variant,
-                        stock_qty,
-                        stock_quant_obj,
-                        stock_location
-                    )
-
-                   
-               
                 # =================================================
                 # SAVE PROGRESS
                 # =================================================
@@ -17903,12 +23929,38 @@ class VendorImportJob(models.Model):
 
                 self.excel_ai_index = 0
 
+                # =====================================================
+                # SAVE FAMILY LOOKUP
+                # =====================================================
+
+                self.family_lookup_json = json.dumps(
+                    family_lookup
+                )
+
+                _logger.warning(
+
+                    "[FAMILY LOOKUP SAVED]\n%s"
+
+                    % json.dumps(
+
+                        family_lookup,
+
+                        indent=4
+
+                    )
+
+                )
+
                 # =========================================
                 # BUILD URL QUEUE FROM FINAL PRODUCT SET
                 # =========================================
 
                 self._build_excel_url_queue(
-                    grouped_products
+
+                    grouped_products,
+
+                    family_lookup
+
                 )
 
                 queue = json.loads(
@@ -18972,7 +25024,7 @@ class VendorImportJob(models.Model):
             _logger.warning("FLASK PING FAILED")
 
 
-    # #---------------clean_scraped_blocks-------------------------------
+    #---------------clean_scraped_blocks------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
         """
         Clean Apify output before sending to AI
@@ -18990,31 +25042,37 @@ class VendorImportJob(models.Model):
             if not text:
                 continue
 
-            if len(text) < 15:
+            if len(text.strip()) < 5:
                 continue
 
-            if any(x in text.lower() for x in [
-                "privacy", "cookie", "terms", "login",
-                "menu", "navigation", "home"
-            ]):
+            noise = text.lower().strip()
+
+            if noise in [
+                "privacy",
+                "cookies",
+                "cookie",
+                "login",
+                "menu",
+                "home"
+            ]:
                 continue
 
             # ❌ REMOVE DUPLICATES
-            key = text[:120]  # allow more variation
+            # allow more variation
+            key = (
+                text.strip(),
+                item.get("image") or ""
+            )
 
             if key in seen:
                 continue
 
             seen.add(key)
 
-            # cleaned.append({
-            #     "text": text,
-            #     "image": image
-            # })
-
             cleaned.append({
                 "text": text,
                 "image": image,
+                "url": item.get("url", ""),
                 "price": item.get("price", ""),
                 "stock": item.get("stock", "")
             })
@@ -19174,7 +25232,7 @@ class VendorImportJob(models.Model):
         except:
             return 0.0
 
-    #======product translate ==========================
+   #======product translate ==========================
     
     def translate_global_views(self, target_lang):
 
@@ -19341,3 +25399,34 @@ class VendorImportJob(models.Model):
                 0,
                 new_price
             )
+
+    def _get_or_create_family_id(self, product):
+
+        if product.vendor_family_id:
+            return product.vendor_family_id
+
+        family_id = self.env[
+            "ir.sequence"
+        ].next_by_code(
+            "vendor.import.family"
+        )
+        if not family_id:
+            raise Exception(
+                "Sequence 'vendor.import.family' was not found."
+            )
+
+        product.vendor_family_id = family_id
+        product.flush_recordset()
+
+        _logger.warning(
+
+            "[FAMILY GENERATED] "
+
+            f"product={product.id} "
+
+            f"family={family_id}"
+
+        )
+
+        return family_id
+    

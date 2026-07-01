@@ -182,6 +182,16 @@ class ProductMassUpdateWizard( models.TransientModel):
         string="Show Available Quantity"
     )
 
+    available_threshold = fields.Integer(
+
+        string="Only Show Below",
+
+        default=100000,
+
+        help="Website will display available quantity only when stock is below this value."
+
+    )
+
     continue_selling = fields.Boolean(
         string="Continue Selling When Out Of Stock"
     )
@@ -191,18 +201,27 @@ class ProductMassUpdateWizard( models.TransientModel):
         string="Routes"
     )
 
-    currency_id = fields.Many2one(
-        'res.currency',
-        string='Currency'
-    )
-
     update_currency = fields.Boolean()
 
+    currency_id = fields.Many2one(
+        'res.currency',
+        string='Currency',
+        domain=[
+            (
+                'name',
+                'in',
+                [
+                    'USD',
+                    'AZN',
+                    'RUB'
+                ]
+            )
+        ]
+    )
 
     # =========================
     # ACTION
     # =========================
-
     def action_apply(self):
 
         active_ids = self.env.context.get(
@@ -216,15 +235,6 @@ class ProductMassUpdateWizard( models.TransientModel):
                 "No products were selected."
             )
         
-        # if (
-        #     self.update_currency
-        #     and
-        #     self.currency_id
-        # ):
-        #     product.currency_id = (
-        #         self.currency_id.id
-        #     )
-
         if (
             self.publish_products
             and
@@ -306,22 +316,84 @@ class ProductMassUpdateWizard( models.TransientModel):
                 category_updated_count += 1
 
             # =====================
-            # INVENTORY
+            # TRACK INVENTORY
             # =====================
 
-            if self.update_inventory:
+            inventory_vals = {}
 
-                inventory_updated_count += 1
+            # --------------------------------------------------
+            # Inventory Tracking
+            # --------------------------------------------------
 
-                # =====================
-                # PRODUCT TYPE
-                # =====================
+            if self.update_track_inventory:
 
-                if self.update_track_inventory:
+                if self.track_inventory_value:
 
-                    product.type = (
-                        self.detailed_type
-                    )
+                    inventory_vals.update({
+
+                        "type": "consu",
+
+                        "is_storable": True,
+
+                    })
+
+                else:
+
+                    inventory_vals.update({
+
+                        "type": "service",
+
+                        "is_storable": False,
+
+                        "tracking": "none",
+
+                    })
+
+            # --------------------------------------------------
+            # Website Availability
+            # --------------------------------------------------
+
+            if self.show_available_qty:
+
+                inventory_vals.update({
+
+                    "show_availability": True,
+
+                    "available_threshold": self.available_threshold,
+
+                })
+
+            else:
+
+                inventory_vals.update({
+
+                    "show_availability": False,
+
+                })
+           
+            # --------------------------------------------------
+            # Apply Inventory Changes
+            # --------------------------------------------------
+
+            if inventory_vals:
+
+                product.write(inventory_vals)
+
+                _logger.warning(
+
+                    "[MASS INVENTORY UPDATE] "
+
+                    f"product={product.name} | "
+
+                    f"type={inventory_vals.get('type')} | "
+
+                    f"is_storable={inventory_vals.get('is_storable')} | "
+
+                    f"show_availability={inventory_vals.get('show_availability')} | "
+
+                    f"available_threshold={inventory_vals.get('available_threshold')}"
+
+                )
 
                 # =====================
                 # SALES
@@ -383,7 +455,15 @@ class ProductMassUpdateWizard( models.TransientModel):
                 # STOCK QUANTITY
                 # =====================
 
-                if self.set_quantity:
+                if (
+
+                        self.set_quantity
+
+                        and
+
+                        product.detailed_type == "consu"
+
+                    ):
 
                     warehouse = self.warehouse_id
 
@@ -426,14 +506,16 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                     quantity_updated_count += 1
 
-            # =====================
+            # =================================
             # PRICE
-            # =====================
+            # =================================
 
             if self.update_price:
 
                 current = (
-                    product.list_price
+                    product.vendor_price
+                    if product.vendor_price
+                    else product.list_price
                 )
 
                 if (
@@ -515,13 +597,37 @@ class ProductMassUpdateWizard( models.TransientModel):
                             self.value
                         )
 
-                product.list_price = max(
+
+                product.vendor_price = max(
                     0,
                     new_price
                 )
 
+                if (
+                    self.update_currency
+                    and
+                    self.currency_id
+                ):
+                    product.vendor_currency_id = self.currency_id
+
+                product._update_converted_price()
+
+                _logger.warning(
+
+                    f"[MASS PRICE UPDATE] "
+
+                    f"product={product.name} "
+
+                    f"vendor_price={product.vendor_price} "
+
+                    f"currency={product.vendor_currency_id.name} "
+
+                    f"list_price={product.list_price}"
+                )
+
                 price_updated_count += 1
 
+   
         return {
 
             "type":

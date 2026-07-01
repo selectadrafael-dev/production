@@ -1,0 +1,14 @@
+<odoo>
+    <record id="seq_vendor_import_family" model="ir.sequence">
+        <field name="name">Vendor Import Family</field>
+        
+
+        <field name="code">vendor.import.family</field>
+
+        <field name="prefix">IMP</field>
+
+        <field name="padding">8</field>
+
+        <field name="number_increment">1</field>
+    </record>
+</odoo>
