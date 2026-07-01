@@ -95,8 +95,8 @@
                                 "
                             />
 
-                            <field name="available_threshold"
-                            attrs="{'invisible': [('update_show_available_qty','=',False)]}"/>
+                            <field name="available_threshold" 
+                            readonly="not update_show_available_qty"/>
 
                             <field
                                 name="detailed_type"
