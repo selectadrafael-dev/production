@@ -353,18 +353,24 @@ class ProductMassUpdateWizard( models.TransientModel):
             # Website Availability
             # --------------------------------------------------
 
-            if self.update_show_available_qty:
+            if self.show_available_qty:
 
                 inventory_vals.update({
 
-                    "show_availability":
-                        self.show_available_qty,
+                    "show_availability": True,
 
-                    "available_threshold":
-                        self.available_threshold,
+                    "available_threshold": self.available_threshold,
 
                 })
 
+            else:
+
+                inventory_vals.update({
+
+                    "show_availability": False,
+
+                })
+           
             # --------------------------------------------------
             # Apply Inventory Changes
             # --------------------------------------------------
