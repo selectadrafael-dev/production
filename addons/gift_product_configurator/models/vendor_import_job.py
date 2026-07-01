@@ -20898,6 +20898,17 @@ class VendorImportJob(models.Model):
                 ).strip()
 
                 if sku:
+                    _logger.warning(
+
+                        "[FAMILY NAME UPDATE] "
+
+                        f"family={family_id} "
+
+                        f"sku={sku} "
+
+                        f"products={family_products.ids}"
+
+                    )
 
                     vals["name"] = sku
 
