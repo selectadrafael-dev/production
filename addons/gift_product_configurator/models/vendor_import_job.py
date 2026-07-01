@@ -22022,6 +22022,7 @@ class VendorImportJob(models.Model):
 
             return {}
         
+
         # ==========================================
         # BUILD AI PAYLOAD
         # ==========================================
@@ -22030,7 +22031,30 @@ class VendorImportJob(models.Model):
 
         for item in structured_data:
 
+            # --------------------------------------
+            # New Product Page Format
+            # --------------------------------------
+
             if item.get("title"):
+
+                specs = item.get("specifications") or []
+
+                # Normalize specifications into a list
+                if isinstance(specs, str):
+
+                    specs = [
+
+                        line.strip()
+
+                        for line in specs.splitlines()
+
+                        if line.strip()
+
+                    ]
+
+                elif not isinstance(specs, list):
+
+                    specs = [str(specs)]
 
                 product_payload.append({
 
@@ -22044,17 +22068,25 @@ class VendorImportJob(models.Model):
                         item.get("description") or ""
                     ).strip(),
 
-                    "specifications":
-
-                        item.get("specifications") or []
+                    "specifications": specs,
 
                 })
 
-            elif item.get("text"):
+                continue
+
+            # --------------------------------------
+            # Legacy Support
+            # --------------------------------------
+
+            text = str(
+                item.get("text") or ""
+            ).strip()
+
+            if text:
 
                 product_payload.append({
 
-                    "text": item.get("text")
+                    "text": text
 
                 })
 
@@ -22269,50 +22301,88 @@ class VendorImportJob(models.Model):
                 "[URL ENRICHMENT RETURNING DATA]"
             )
 
+            # ==========================================
+            # NORMALIZE AI RESPONSE
+            # ==========================================
+
+            def clean(value):
+
+                if value is None:
+
+                    return ""
+
+                if isinstance(value, list):
+
+                    return "\n".join(
+
+                        str(v).strip()
+
+                        for v in value
+
+                        if str(v).strip()
+
+                    )
+
+                return str(value).strip()
+
+
+            _logger.warning(
+
+                "[URL ENRICHMENT TYPES] "
+
+                f"title={type(parsed.get('title')).__name__} | "
+
+                f"subtitle={type(parsed.get('subtitle')).__name__} | "
+
+                f"description={type(parsed.get('description')).__name__} | "
+
+                f"specifications={type(parsed.get('specifications')).__name__}"
+
+            )
 
             return {
 
+                "title":
+
+                    clean(
+                        parsed.get("title")
+                    ),
+
                 "subtitle":
 
-                    parsed.get(
-                        "subtitle",
-                        ""
-                    ).strip(),
+                    clean(
+                        parsed.get("subtitle")
+                    ),
 
                 "description":
 
-                    parsed.get(
-                        "description",
-                        ""
-                    ).strip(),
+                    clean(
+                        parsed.get("description")
+                    ),
 
                 "material":
 
-                    parsed.get(
-                        "material",
-                        ""
-                    ).strip(),
+                    clean(
+                        parsed.get("material")
+                    ),
 
                 "capacity":
 
-                    parsed.get(
-                        "capacity",
-                        ""
-                    ).strip(),
+                    clean(
+                        parsed.get("capacity")
+                    ),
 
                 "dimensions":
 
-                    parsed.get(
-                        "dimensions",
-                        ""
-                    ).strip(),
+                    clean(
+                        parsed.get("dimensions")
+                    ),
 
                 "specifications":
 
-                    parsed.get(
-                        "specifications",
-                        ""
-                    ).strip()
+                    clean(
+                        parsed.get("specifications")
+                    )
 
             }
 
@@ -25159,7 +25229,6 @@ class VendorImportJob(models.Model):
         ].next_by_code(
             "vendor.import.family"
         )
-
         if not family_id:
             raise Exception(
                 "Sequence 'vendor.import.family' was not found."

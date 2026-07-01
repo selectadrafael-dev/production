@@ -1,6 +1,7 @@
 <odoo>
     <record id="seq_vendor_import_family" model="ir.sequence">
         <field name="name">Vendor Import Family</field>
+        
 
         <field name="code">vendor.import.family</field>
 
