@@ -20627,31 +20627,27 @@ class VendorImportJob(models.Model):
                 # FIND EXISTING FAMILY/VARIANT PRODUCT
                 # ====================================
 
-                template_id = row.get(
-                    "template_id"
-                )
+                template_id = row.get("template_id")
+                family_id = row.get("vendor_family_id")
 
-                family_id = row.get(
-                    "vendor_family_id"
-                )
-
-                # ====================================
-                # FALLBACK TO LOOKUP TABLE
-                # ====================================
+                # ------------------------------------
+                # Fallback for older queues
+                # ------------------------------------
 
                 if not template_id:
 
                     family_info = family_lookup.get(group_id)
 
-                    if family_info:
+                    if isinstance(family_info, dict):
 
-                        template_id = family_info.get(
-                            "template_id"
-                        )
+                        template_id = family_info.get("template_id")
+                        family_id = family_info.get("family_id")
 
-                        family_id = family_info.get(
-                            "family_id"
-                        )
+                # ------------------------------------
+                # Still nothing?
+                # ------------------------------------
+
+                if not template_id:
 
                     _logger.warning(
 
@@ -20667,19 +20663,15 @@ class VendorImportJob(models.Model):
 
                     continue
 
-                family_id = family_info.get("family_id")
-
-                template_id = family_info.get("template_id")
-
                 _logger.warning(
 
-                    "[FAMILY LOOKUP] "
+                    "[TARGET LOOKUP] "
 
                     f"group={group_id} "
 
-                    f"family={family_id} "
+                    f"template={template_id} "
 
-                    f"template={template_id}"
+                    f"family={family_id}"
 
                 )
 
@@ -20771,135 +20763,132 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                
                 # ====================================
                 # BUILD UPDATE VALUES
                 # ====================================
 
                 vals = {}
 
-                description_parts = []
+                # ------------------------------------
+                # Build HTML description
+                # ------------------------------------
 
-                # ====================================
-                # ALWAYS KEEP SUBTITLE IF PRESENT
-                # ====================================
+                html = []
 
-                subtitle = url_data.get(
-                    "subtitle"
-                )
+                # ========= Subtitle =========
+
+                subtitle = str(
+                    url_data.get("subtitle") or ""
+                ).strip()
 
                 if subtitle:
 
-                    description_parts.append(
-                        str(subtitle)
+                    html.append(
+
+                        f"<h3>{subtitle}</h3>"
+
                     )
 
-                # ====================================
-                # EXTRA DETAILS
-                # ====================================
+                # ========= Description =========
 
-                for field in [
+                description = str(
+                    url_data.get("description") or ""
+                ).strip()
 
-                    "description",
+                if description:
 
-                    "material",
+                    paragraphs = [
 
-                    "capacity",
+                        p.strip()
 
-                    "dimensions",
+                        for p in description.splitlines()
 
-                    "specifications"
+                        if p.strip()
 
-                ]:
+                    ]
 
-                    value = url_data.get(
-                        field
-                    )
+                    if paragraphs:
 
-                    if value:
+                        for p in paragraphs:
 
-                        description_parts.append(
-                            str(value)
-                        )
+                            html.append(
 
-                if description_parts:
-
-        
-                    description = []
-
-                    if url_data.get("subtitle"):
-                        description.append(url_data["subtitle"])
-
-                    if url_data.get("description"):
-                        description.append(url_data["description"])
-
-                    if url_data.get("capacity"):
-                        description.append(
-                            f"Capacity: {url_data['capacity']}"
-                        )
-
-                    if url_data.get("dimensions"):
-                        description.append(
-                            f"Dimensions: {url_data['dimensions']}"
-                        )
-   
-
-                    html = []
-
-                    if url_data.get("subtitle"):
-
-                        html.append(
-
-                            f"<h3>{url_data['subtitle']}</h3>"
-
-                        )
-
-                    if url_data.get("description"):
-
-                        html.append(
-
-                            f"<p>{url_data['description']}</p>"
-
-                        )
-
-                    details = []
-
-                    for label, field in [
-
-                        ("Material", "material"),
-
-                        ("Capacity", "capacity"),
-
-                        ("Dimensions", "dimensions"),
-
-                        ("Specifications", "specifications")
-
-                    ]:
-
-                        value = (
-                            url_data.get(field) or ""
-                        ).strip()
-
-                        if value:
-
-                            details.append(
-
-                                f"<li><strong>{label}:</strong> {value}</li>"
+                                f"<p>{p}</p>"
 
                             )
 
-                    if details:
+                    else:
 
                         html.append(
 
-                            "<ul>"
-
-                            + "".join(details)
-
-                            + "</ul>"
+                            f"<p>{description}</p>"
 
                         )
 
+                # ========= Technical Details =========
+
+                details = []
+
+                for label, field in [
+
+                    ("Material", "material"),
+
+                    ("Capacity", "capacity"),
+
+                    ("Dimensions", "dimensions"),
+
+                    ("Specifications", "specifications")
+
+                ]:
+
+                    value = url_data.get(field)
+
+                    # AI may return specifications as a list
+                    if isinstance(value, list):
+
+                        value = "<br/>".join(
+
+                            str(v).strip()
+
+                            for v in value
+
+                            if str(v).strip()
+
+                        )
+
+                    else:
+
+                        value = str(
+                            value or ""
+                        ).strip()
+
+                    if value:
+
+                        details.append(
+
+                            f"<li><strong>{label}:</strong> {value}</li>"
+
+                        )
+
+                if details:
+
+                    html.append(
+
+                        "<ul>"
+
+                        + "".join(details)
+
+                        + "</ul>"
+
+                    )
+
+                # ========= Save HTML =========
+
+                if html:
+
                     vals["description_sale"] = "\n".join(html)
+                
                 # ====================================
                 # UPDATE PRODUCT
                 # ====================================
