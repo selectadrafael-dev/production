@@ -58,34 +58,29 @@ def segment_catalog_page(pil_image):
                 continue
 
             x, y, w, h = cv2.boundingRect(contour)
+            crop = image[
+                            y:y+h,
+                            x:x+w
+            ]
+
+            validation = validate_recovered_crop(
+
+                crop=crop,
+
+                contour=contour,
+
+                image_width=image.shape[1],
+
+                image_height=image.shape[0]
+            )
+
+            if not validation["accepted"]:
+
+                continue
            
             area = cv2.contourArea(
                 contour
             )
-
-            if area < 4500:
-
-                _logger.warning(
-
-                    f"[EXTRACTOR REJECT AREA] "
-
-                    f"area={area}"
-                )
-
-                continue
-
-            if w < 120 or h < 120:
-                continue
-
-            ratio = w / float(h)
-
-            if ratio > 4.5 or ratio < 0.22:
-                continue
-
-            crop = image[
-                y:y+h,
-                x:x+w
-            ]
 
             crop_pil = Image.fromarray(crop)
 
@@ -123,10 +118,25 @@ def segment_catalog_page(pil_image):
 
             clean_index = len(results)
 
+            # =====================================
+            # RECOVERY VALIDATION REPORT
+            # =====================================
+
+            validation["score"] = score
+
+            validation["coverage"] = round(
+
+                coverage,
+
+                3
+            )
+
             results.append({
                 "clean_index": clean_index,
 
                 "image": encoded,
+
+                "rve_version": 1,
 
                 "x": x,
 
@@ -153,6 +163,10 @@ def segment_catalog_page(pil_image):
                 "hero_score": score,
 
                 "gallery_score": score,
+
+                 "coverage": coverage,
+
+                "validation": validation,
 
                 "needs_extractor_crop": True
             })
@@ -230,3 +244,148 @@ def recover_region(region):
 
         return []
     
+#===========================================================
+# Recovery Validation Engine
+#===========================================================
+
+def validate_recovered_crop(
+
+    crop,
+
+    contour,
+
+    image_width,
+
+    image_height
+):
+
+    try:
+
+        x, y, w, h = cv2.boundingRect(
+
+            contour
+        )
+
+        reasons = []
+
+        # =====================================
+        # BORDER TOUCH
+        # =====================================
+
+        border = 5
+
+        if (
+
+            x <= border
+
+            or
+
+            y <= border
+
+            or
+
+            (x + w) >= (image_width - border)
+
+            or
+
+            (y + h) >= (image_height - border)
+
+        ):
+
+            reasons.append(
+
+                "border_touch"
+            )
+
+        # =====================================
+        # SIZE
+        # =====================================
+
+        area = w * h
+
+        if area < 4500:
+
+            reasons.append(
+
+                "small_area"
+            )
+
+        # =====================================
+        # ASPECT
+        # =====================================
+
+        ratio = w / float(
+
+            max(
+
+                h,
+
+                1
+            )
+        )
+
+        if (
+
+            ratio > 4.5
+
+            or
+
+            ratio < 0.22
+
+        ):
+
+            reasons.append(
+
+                "bad_ratio"
+            )
+
+        accepted = (
+
+            len(reasons) == 0
+        )
+
+        _logger.warning(
+
+            f"[RVE] "
+
+            f"x={x} "
+
+            f"y={y} "
+
+            f"w={w} "
+
+            f"h={h} "
+
+            f"area={area} "
+
+            f"ratio={ratio:.2f} "
+
+            f"accepted={accepted} "
+
+            f"reasons={reasons}"
+        )
+
+        return {
+
+            "accepted": accepted,
+
+            "reasons": reasons
+
+        }
+
+    except Exception:
+
+        _logger.exception(
+
+            "[RVE ERROR]"
+        )
+
+        return {
+
+            "accepted": False,
+
+            "reasons": [
+
+                "validator_error"
+            ]
+        }
