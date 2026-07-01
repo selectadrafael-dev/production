@@ -20906,8 +20906,6 @@ class VendorImportJob(models.Model):
 
                         f"sku={sku} "
 
-                        f"products={family_products.ids}"
-
                     )
 
                     vals["name"] = sku
