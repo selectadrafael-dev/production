@@ -74,6 +74,7 @@ def segment_catalog_page(pil_image):
                 image_height=image.shape[0]
             )
 
+
             if not validation["accepted"]:
 
                 continue
@@ -266,6 +267,8 @@ def validate_recovered_crop(
             contour
         )
 
+        reasons = []
+
         # =====================================
         # PRODUCT OCCUPANCY
         # =====================================
@@ -284,14 +287,12 @@ def validate_recovered_crop(
 
         occupancy = contour_area / bounding_area
 
-        if occupancy < 0.45:
+        if occupancy < 0.30:
 
             reasons.append(
 
                 "low_occupancy"
             )
-
-        reasons = []
 
         # =====================================
         # BORDER TOUCH
