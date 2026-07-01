@@ -1705,9 +1705,6 @@ class VendorImportJob(models.Model):
 
                 return
 
-     #=========Variant swatch 1======================================
-   
-
     #=========Variant color swatch logic===========================================
 
     COLOR_HEX_MAP = {
@@ -13767,6 +13764,37 @@ class VendorImportJob(models.Model):
 
             _logger.warning(
 
+                f"[RECOVERY RESPONSE] "
+
+                f"assets={len(assets)}"
+            )
+
+            for asset in assets:
+
+                validation = asset.get(
+
+                    "validation",
+
+                    {}
+                )
+
+                _logger.warning(
+
+                    f"[RVE REPORT] "
+
+                    f"clean={asset.get('clean_index')} "
+
+                    f"accepted={validation.get('accepted')} "
+
+                    f"score={validation.get('score')} "
+
+                    f"coverage={validation.get('coverage')} "
+
+                    f"reason={validation.get('reason')}"
+                )
+
+            _logger.warning(
+
                 f"[RECOVERY RESPONSE TYPE] "
 
                 f"type={type(assets)} "
@@ -20893,32 +20921,49 @@ class VendorImportJob(models.Model):
                 # UPDATE PRODUCT NAME FROM APIFY SKU
                 # ====================================
 
-                sku = str(
-                    url_data.get("sku") or ""
-                ).strip()
+                name = self._get_best_product_name(
+                    url_data,
+                    family_products[:1].name if family_products else ""
+                )
 
-                if sku:
+                if name:
+
                     _logger.warning(
 
                         "[FAMILY NAME UPDATE] "
 
-                        f"family={family_id} "
-
-                        f"sku={sku} "
+                        f"familyName={name} "
 
                     )
 
-                    vals["name"] = sku
+                    vals["name"] = name
 
-                    _logger.warning(
+                # sku = str(
+                #     url_data.get("sku") or ""
+                # ).strip()
 
-                        "[SKU UPDATE] "
+                # if sku:
+                #     _logger.warning(
 
-                        f"family={family_id} "
+                #         "[FAMILY NAME UPDATE] "
 
-                        f"sku={sku}"
+                #         f"family={family_id} "
 
-                    )
+                #         f"sku={sku} "
+
+                #     )
+
+                #     vals["name"] = sku
+
+                #     _logger.warning(
+
+                #         "[SKU UPDATE] "
+
+                #         f"family={family_id} "
+
+                #         f"sku={sku}"
+
+                #     )
                 
                 # ====================================
                 # UPDATE PRODUCT
@@ -21053,6 +21098,47 @@ class VendorImportJob(models.Model):
 
             self._safe_commit_progress()
 
+    #==============Enrich url product name=======================
+
+    def _get_best_product_name(self, url_data, existing_name=""):
+
+        sku = str(
+            url_data.get("sku") or ""
+        ).strip()
+
+        if sku:
+            return sku
+
+        title = str(
+            url_data.get("title") or ""
+        ).strip()
+
+        if title:
+            return title
+
+        description = str(
+            url_data.get("description") or ""
+        ).strip()
+
+        if description:
+
+            line = description.splitlines()[0].strip()
+
+            if line:
+                return line[:150]
+
+        text = str(
+            url_data.get("text") or ""
+        ).strip()
+
+        if text:
+
+            line = text.splitlines()[0].strip()
+
+            if line:
+                return line[:150]
+
+        return existing_name
 
     # ======================================================
     # LIGHTWEIGHT URL ENRICHMENT (excel url backup)
