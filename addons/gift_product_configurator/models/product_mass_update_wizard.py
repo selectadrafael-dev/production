@@ -306,40 +306,41 @@ class ProductMassUpdateWizard( models.TransientModel):
                 category_updated_count += 1
 
             # =====================
-            # INVENTORY
+            # TRACK INVENTORY
             # =====================
 
-            if self.update_inventory:
+            if self.update_track_inventory:
 
-                inventory_updated_count += 1
+                vals = {}
 
-                # =====================
-                # TRACK INVENTORY
-                # =====================
+                if self.track_inventory_value:
 
-                if self.update_track_inventory:
+                    # Goods that are inventory managed
+                    vals["type"] = "consu"
+                    vals["is_storable"] = True
 
-                    if self.track_inventory_value:
+                else:
 
-                        # Inventory-managed product
-                        product.detailed_type = "consu"
+                    # Service / non-stocked
+                    vals["type"] = "service"
+                    vals["is_storable"] = False
+                    vals["tracking"] = "none"
 
-                    else:
+                product.write(vals)
 
-                        # Non-stocked product
-                        product.detailed_type = "service"
-                        product.tracking = "none"
+                _logger.warning(
 
-                    _logger.warning(
+                    "[MASS TRACK INVENTORY] "
 
-                        f"[MASS TRACK INVENTORY] "
+                    f"product={product.name} "
 
-                        f"product={product.name} "
+                    f"track_inventory={self.track_inventory_value} "
 
-                        f"track_inventory={self.track_inventory_value} "
+                    f"type={vals.get('type')} "
 
-                        f"type={product.detailed_type}"
-                    )
+                    f"is_storable={vals.get('is_storable')}"
+
+                )
 
                 # =====================
                 # SALES
