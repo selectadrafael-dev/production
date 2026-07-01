@@ -13275,6 +13275,22 @@ class VendorImportJob(models.Model):
                     ) or 100
                 )
 
+                occupancy = float(
+
+                    asset.get(
+
+                        "validation",
+
+                        {}
+
+                    ).get(
+
+                        "occupancy",
+
+                        1
+                    )
+                )
+
                 hero = float(
 
                     asset.get(
