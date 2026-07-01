@@ -20888,6 +20888,28 @@ class VendorImportJob(models.Model):
                 if html:
 
                     vals["description_sale"] = "\n".join(html)
+
+                # ====================================
+                # UPDATE PRODUCT NAME FROM APIFY SKU
+                # ====================================
+
+                sku = str(
+                    url_data.get("sku") or ""
+                ).strip()
+
+                if sku:
+
+                    vals["name"] = sku
+
+                    _logger.warning(
+
+                        "[SKU UPDATE] "
+
+                        f"family={family_id} "
+
+                        f"sku={sku}"
+
+                    )
                 
                 # ====================================
                 # UPDATE PRODUCT
@@ -20904,7 +20926,47 @@ class VendorImportJob(models.Model):
                             ""
                         )[:3000]
                     )
-                    product.write(vals)
+
+                    # ====================================
+                    # UPDATE ENTIRE FAMILY
+                    # ====================================
+
+                    family_products = self.env[
+                        "product.template"
+                    ].search([
+
+                        (
+                            "vendor_family_id",
+                            "=",
+                            family_id
+                        )
+
+                    ])
+
+                    _logger.warning(
+
+                        "[FAMILY UPDATE] "
+
+                        f"family={family_id} "
+
+                        f"count={len(family_products)}"
+
+                    )
+
+
+                    _logger.warning(
+
+                        "[WRITE TARGETS] "
+
+                        f"ids={family_products.ids} "
+
+                        f"family={family_id} "
+
+                        f"description_len={len(vals.get('description_sale', ''))}"
+
+                    )
+
+                    family_products.write(vals)
 
                     _logger.warning(
 
@@ -21271,42 +21333,77 @@ class VendorImportJob(models.Model):
                 f"{product_url}"
             )
 
+           
+            # =========================================
+            # USE APIFY IDENTITY
+            # =========================================
+
+            product_record = {}
+
+            for item in structured_data:
+
+                if item.get("title"):
+
+                    product_record = item
+
+                    break
+
             return {
 
+                "sku":
+
+                    str(
+                        product_record.get("sku") or ""
+                    ).strip(),
+
                 "title":
-                    enriched.get(
-                        "title"
-                    ),
+
+                    str(
+                        product_record.get("title") or ""
+                    ).strip(),
 
                 "subtitle":
+
                     enriched.get(
-                        "subtitle"
+                        "subtitle",
+                        ""
                     ),
 
                 "description":
+
                     enriched.get(
-                        "description"
+                        "description",
+                        ""
                     ),
 
                 "material":
+
                     enriched.get(
-                        "material"
+                        "material",
+                        ""
                     ),
 
                 "capacity":
+
                     enriched.get(
-                        "capacity"
+                        "capacity",
+                        ""
                     ),
 
                 "dimensions":
+
                     enriched.get(
-                        "dimensions"
+                        "dimensions",
+                        ""
                     ),
 
                 "specifications":
+
                     enriched.get(
-                        "specifications"
+                        "specifications",
+                        ""
                     )
+
             }
 
         except Exception as e:
@@ -22047,7 +22144,9 @@ class VendorImportJob(models.Model):
 
                 product_payload.append({
 
-                    "product_code": group_id,
+                    "sku": str(
+                        item.get("sku") or ""
+                    ).strip(),
 
                     "title": str(
                         item.get("title") or ""
@@ -22079,130 +22178,94 @@ class VendorImportJob(models.Model):
 
                 })
 
-        prompt = f"""
-        You are enriching ONE existing Odoo product.
 
-        The product has already been identified.
+        prompt = f"""
+        You are an AI product enrichment engine.
+
+        The product has ALREADY been identified.
+
+        DO NOT identify products.
 
         DO NOT search for products.
 
         DO NOT compare products.
 
-        DO NOT identify products.
-
         DO NOT invent information.
 
-        The structured data below belongs to ONE product only.
+        The SKU and product title have already been extracted directly from the supplier website.
 
-        ======================================================
-        PRODUCT IDENTIFICATION
-        ======================================================
+        Your ONLY task is to clean and organise the product information.
 
-        PRODUCT CODE
+        ========================================================
+        KNOWN PRODUCT
+        ========================================================
 
-        {group_id}
+        SKU
 
-        IMPORTANT
-
-        Some suppliers use a catalogue code as the official
-        product family name.
-
-        Examples
-
-        94681
-
-        94646
-
-        94631
-
-        For those suppliers:
-
-        title = catalogue code
-
-        subtitle = human-readable product name
-
-        Example
-
-        title
-
-        94681
-
-        subtitle
-
-        MONARDA. Double Wall Stainless Steel Travel Cup 470 mL
-
-        If the supplier does NOT use catalogue codes,
-
-        return the product title exactly as shown.
-
-        Never invent titles.
-
-        ======================================================
+        {product_payload[0].get("sku", group_id) if product_payload else group_id}
+        ========================================================
         YOUR TASK
-        ======================================================
+        ========================================================
 
-        Extract exactly what belongs to this product.
+        Extract and organise ONLY:
 
-        Do NOT summarise.
+        • subtitle
 
-        Do NOT rewrite.
+        • description
 
-        Do NOT shorten.
+        • material
 
-        Do NOT remove information.
+        • capacity
 
-        Keep wording exactly as written.
+        • dimensions
 
-        ======================================================
-        DESCRIPTION
-        ======================================================
+        • specifications
 
-        The description should contain:
+        Rules
 
-        • product overview
+        - Keep the supplier wording.
 
-        • product features
+        - Do NOT rewrite marketing text.
 
-        • selling points
+        - Do NOT summarise.
 
-        • technical information
+        - Do NOT shorten.
 
-        If useful information appears inside the
-        SPECIFICATIONS section,
+        - Do NOT invent information.
 
+        - Preserve important product features.
+
+        - Preserve technical information.
+
+        - If useful information exists inside Specifications,
         include it naturally inside the description as well.
 
-        Do NOT discard specification information.
+        - Return ALL specification items.
 
-        ======================================================
-        SPECIFICATIONS
-        ======================================================
+        - Do NOT remove bullet points.
 
-        Return ALL specifications.
+        - Ignore duplicated lines.
 
-        Do not remove bullet points.
+        - Ignore repeated headings.
 
-        Do not simplify.
+        - Ignore repeated product titles.
 
-        Do not merge unrelated items.
-
-        ======================================================
+        ========================================================
         RETURN JSON ONLY
-        ======================================================
+        ========================================================
 
         {{
-            "title":"",
             "subtitle":"",
             "description":"",
             "material":"",
             "capacity":"",
             "dimensions":"",
-            "specifications":""
+            "specifications":[]
         }}
 
-        ======================================================
-        PRODUCT DATA
-        ======================================================
+        ========================================================
+        SUPPLIER DATA
+        ========================================================
 
         {json.dumps(product_payload, indent=2)}
         """
