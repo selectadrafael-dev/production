@@ -266,6 +266,31 @@ def validate_recovered_crop(
             contour
         )
 
+        # =====================================
+        # PRODUCT OCCUPANCY
+        # =====================================
+
+        bounding_area = max(
+
+            w * h,
+
+            1
+        )
+
+        contour_area = cv2.contourArea(
+
+            contour
+        )
+
+        occupancy = contour_area / bounding_area
+
+        if occupancy < 0.45:
+
+            reasons.append(
+
+                "low_occupancy"
+            )
+
         reasons = []
 
         # =====================================
@@ -348,6 +373,7 @@ def validate_recovered_crop(
 
             f"[RVE] "
 
+            
             f"x={x} "
 
             f"y={y} "
@@ -360,6 +386,8 @@ def validate_recovered_crop(
 
             f"ratio={ratio:.2f} "
 
+            f"occupancy={occupancy:.2f} "
+
             f"accepted={accepted} "
 
             f"reasons={reasons}"
@@ -369,7 +397,14 @@ def validate_recovered_crop(
 
             "accepted": accepted,
 
-            "reasons": reasons
+            "reasons": reasons,
+
+            "occupancy": round(
+
+                occupancy,
+
+                3
+            ),
 
         }
 
