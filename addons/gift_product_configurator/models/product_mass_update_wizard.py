@@ -182,6 +182,16 @@ class ProductMassUpdateWizard( models.TransientModel):
         string="Show Available Quantity"
     )
 
+    available_threshold = fields.Integer(
+
+        string="Only Show Below",
+
+        default=100000,
+
+        help="Website will display available quantity only when stock is below this value."
+
+    )
+
     continue_selling = fields.Boolean(
         string="Continue Selling When Out Of Stock"
     )
@@ -309,36 +319,73 @@ class ProductMassUpdateWizard( models.TransientModel):
             # TRACK INVENTORY
             # =====================
 
-            if self.update_track_inventory:
+            inventory_vals = {}
 
-                vals = {}
+            # --------------------------------------------------
+            # Inventory Tracking
+            # --------------------------------------------------
+
+            if self.update_track_inventory:
 
                 if self.track_inventory_value:
 
-                    # Goods that are inventory managed
-                    vals["type"] = "consu"
-                    vals["is_storable"] = True
+                    inventory_vals.update({
+
+                        "type": "consu",
+
+                        "is_storable": True,
+
+                    })
 
                 else:
 
-                    # Service / non-stocked
-                    vals["type"] = "service"
-                    vals["is_storable"] = False
-                    vals["tracking"] = "none"
+                    inventory_vals.update({
 
-                product.write(vals)
+                        "type": "service",
+
+                        "is_storable": False,
+
+                        "tracking": "none",
+
+                    })
+
+            # --------------------------------------------------
+            # Website Availability
+            # --------------------------------------------------
+
+            if self.update_show_available_qty:
+
+                inventory_vals.update({
+
+                    "show_availability":
+                        self.show_available_qty,
+
+                    "available_threshold":
+                        self.available_threshold,
+
+                })
+
+            # --------------------------------------------------
+            # Apply Inventory Changes
+            # --------------------------------------------------
+
+            if inventory_vals:
+
+                product.write(inventory_vals)
 
                 _logger.warning(
 
-                    "[MASS TRACK INVENTORY] "
+                    "[MASS INVENTORY UPDATE] "
 
-                    f"product={product.name} "
+                    f"product={product.name} | "
 
-                    f"track_inventory={self.track_inventory_value} "
+                    f"type={inventory_vals.get('type')} | "
 
-                    f"type={vals.get('type')} "
+                    f"is_storable={inventory_vals.get('is_storable')} | "
 
-                    f"is_storable={vals.get('is_storable')}"
+                    f"show_availability={inventory_vals.get('show_availability')} | "
+
+                    f"available_threshold={inventory_vals.get('available_threshold')}"
 
                 )
 
