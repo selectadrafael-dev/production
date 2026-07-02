@@ -5012,34 +5012,111 @@ class VendorImportJob(models.Model):
         for block in raw_data:
 
             # ==============================================
-            # FORMAT 1 → ORIGINAL EB FORMAT
+            # FORMAT 1 → Legacy EverythingBranded
             # ==============================================
 
             if block.get("text"):
 
                 structured_data.append({
+
                     "text": block.get("text"),
+
                     "image": block.get("image")
+
                 })
 
                 continue
 
             # ==============================================
-            # FORMAT 2 → STRUCTURED FORMAT
+            # FORMAT 2 → Wrapped PRODUCTS
             # ==============================================
 
             if block.get("type") == "PRODUCTS":
 
                 items = block.get("items", [])
 
-                if not items:
-                    continue
+                if items:
 
-                structured_data.extend(items)
+                    structured_data.extend(items)
 
-        # =====================================================
-        # NO PRODUCTS AFTER PARSE
-        # =====================================================
+                continue
+
+            # ==============================================
+            # FORMAT 3 → Direct Product List (NEW)
+            # ==============================================
+
+            if (
+
+                block.get("semanticType") == "PRODUCT"
+
+                or block.get("title")
+
+                or block.get("url")
+
+            ):
+
+                structured_data.append({
+
+                    "title":
+
+                        block.get("title"),
+
+                    "sku":
+
+                        block.get("sku"),
+
+                    "description":
+
+                        block.get("description"),
+
+                    "price":
+
+                        block.get("price"),
+
+                    "currency":
+
+                        block.get("currency"),
+
+                    "url":
+
+                        block.get("url"),
+
+                    "image":
+
+                        block.get("image"),
+
+                    "rawText":
+
+                        block.get("rawText"),
+
+                    "brand":
+
+                        block.get("brand"),
+
+                    "stock":
+
+                        block.get("stock"),
+
+                    "rating":
+
+                        block.get("rating"),
+
+                    "semanticType":
+
+                        block.get("semanticType")
+
+                })
+
+                continue
+
+
+        _logger.warning(
+
+            "[URL PARSER] "
+
+            f"structured_products={len(structured_data)}"
+
+        )
 
         if not structured_data:
 
@@ -5078,11 +5155,14 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"[URL PARSE BATCH] "
+            "[URL PARSE BATCH] "
 
             f"{start} -> {end} "
 
-            f"| total={len(normalized if 'normalized' in locals() else structured_data)}"
+            f"| batch={len(structured_data)} "
+
+            f"| total={total_structured}"
+
         )
 
 
@@ -6349,9 +6429,9 @@ class VendorImportJob(models.Model):
         ACTOR_ID = "selectad~my-actor"
         #ACTOR_ID = "princ_adex~my-actor"
 
-        # ==============================================================
+        # ===========================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
-        # ==============================================================
+        # ===========================================================
 
         if not getattr(self, "apify_run_id", False):
 
@@ -12791,15 +12871,24 @@ class VendorImportJob(models.Model):
 
             for asset in images:
 
-                if asset.get("needs_extractor_crop"):
+
+                if asset.get("recovered_by_extractor"):
 
                     asset["asset_group"] = "recovery_candidate"
                     asset["asset_role"] = "recovery_candidate"
-                    asset["confidence"] = 0
 
-                    marketing_images.append(asset)
+                    _logger.warning(
 
-                    continue
+                        f"[RECOVERY CANDIDATE] "
+
+                        f"clean={asset.get('clean_index')} "
+
+                        f"occupancy={asset.get('validation', {}).get('occupancy')}"
+
+                    )
+
+                    # Let recovery assets continue through
+                    # the normal render classification pipeline.
 
                 if not isinstance(asset, dict):
 
@@ -12959,6 +13048,49 @@ class VendorImportJob(models.Model):
 
                         asset
                     )
+
+                    # =====================================
+                    # RECOVERY BOOST
+                    # =====================================
+
+                    if asset.get("asset_group") == "recovery_candidate":
+
+                        validation = asset.get(
+
+                            "validation",
+
+                            {}
+                        )
+
+                        occupancy = validation.get(
+
+                            "occupancy",
+
+                            0
+                        )
+
+                        if (
+
+                            validation.get("accepted")
+
+                            and
+
+                            occupancy >= 0.45
+
+                        ):
+
+                            probability["real"] += 12
+
+                            _logger.warning(
+
+                                f"[RECOVERY BOOST] "
+
+                                f"clean={asset.get('clean_index')} "
+
+                                f"occupancy={occupancy:.2f} "
+
+                                f"real={probability['real']}"
+                            )
 
                     winner = max(
 
@@ -20955,49 +21087,9 @@ class VendorImportJob(models.Model):
                 # UPDATE PRODUCT NAME FROM APIFY SKU
                 # ====================================
 
-                name = self._get_best_product_name(
-                    url_data,
-                    family_products[:1].name if family_products else ""
-                )
+               
 
-                if name:
-
-                    _logger.warning(
-
-                        "[FAMILY NAME UPDATE] "
-
-                        f"familyName={name} "
-
-                    )
-
-                    vals["name"] = name
-
-                # sku = str(
-                #     url_data.get("sku") or ""
-                # ).strip()
-
-                # if sku:
-                #     _logger.warning(
-
-                #         "[FAMILY NAME UPDATE] "
-
-                #         f"family={family_id} "
-
-                #         f"sku={sku} "
-
-                #     )
-
-                #     vals["name"] = sku
-
-                #     _logger.warning(
-
-                #         "[SKU UPDATE] "
-
-                #         f"family={family_id} "
-
-                #         f"sku={sku}"
-
-                #     )
+               
                 
                 # ====================================
                 # UPDATE PRODUCT
@@ -21030,6 +21122,38 @@ class VendorImportJob(models.Model):
                         )
 
                     ])
+
+                    # ====================================
+                    # DETERMINE BEST FAMILY NAME
+                    # ====================================
+
+                    existing_name = ""
+
+                    if family_products:
+
+                        existing_name = family_products[0].name or ""
+
+                    name = self._get_best_product_name(
+
+                        url_data,
+
+                        existing_name
+
+                    )
+
+                    if name:
+
+                        vals["name"] = name
+
+                        _logger.warning(
+
+                            "[FAMILY NAME UPDATE] "
+
+                            f"family={family_id} "
+
+                            f"name={name}"
+
+                        )
 
                     _logger.warning(
 
@@ -25170,6 +25294,93 @@ class VendorImportJob(models.Model):
                     f"URL DEBUG → "
                     f"{item.get('reason')}"
                 )
+            
+            # =====================================================
+            # FORMAT 3 → NEW STRUCTURED PRODUCT
+            # =====================================================
+
+            elif (
+
+                item.get("semanticType") == "PRODUCT"
+
+                or item.get("title")
+
+                or item.get("url")
+
+            ):
+
+                image = item.get("image")
+
+                if (
+                    image
+                    and isinstance(image, str)
+                    and not image.startswith("http")
+                ):
+                    image = None
+
+                title = str(
+                    item.get("title") or ""
+                ).strip()
+
+                description = str(
+                    item.get("description") or ""
+                ).strip()
+
+                raw_text = str(
+                    item.get("rawText") or ""
+                ).strip()
+
+                # --------------------------------------
+                # Build AI text
+                # --------------------------------------
+
+                text = "\n\n".join(
+
+                    x for x in [
+
+                        title,
+
+                        description,
+
+                        raw_text
+
+                    ]
+
+                    if x
+
+                )
+
+                if len(text) < 5:
+
+                    continue
+
+                blocks.append({
+
+                    "text": text,
+
+                    "title": title,
+
+                    "sku": item.get("sku"),
+
+                    "description": description,
+
+                    "price": item.get("price", ""),
+
+                    "currency": item.get("currency", ""),
+
+                    "stock": item.get("stock", ""),
+
+                    "url": item.get("url", ""),
+
+                    "image": image,
+
+                    "brand": item.get("brand", ""),
+
+                    "rating": item.get("rating", ""),
+
+                    "rawText": raw_text,
+
+                })
 
         _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
 
@@ -25177,7 +25388,7 @@ class VendorImportJob(models.Model):
         # 🔥 SPLIT INTO MULTIPLE PAGES (CRITICAL FIX)
         # =====================================================
 
-        PAGE_SIZE = 20  # 🔥 prevents AI overload
+        PAGE_SIZE = 15  # 🔥 prevents AI overload
 
         pages = []
 
