@@ -232,8 +232,7 @@ def recover_region(region):
             )
         )
 
-        return segment_catalog_page(
-
+        return recover_single_product(
             crop
         )
 
@@ -552,3 +551,116 @@ def refine_crop(crop):
         )
 
         return crop
+    
+
+#===========================================================
+# Recover Single Product
+#===========================================================
+
+def recover_single_product(crop):
+
+    try:
+
+        if crop is None:
+            return []
+
+        image = np.array(crop)
+
+        gray = cv2.cvtColor(
+            image,
+            cv2.COLOR_RGB2GRAY
+        )
+
+        _, thresh = cv2.threshold(
+            gray,
+            245,
+            255,
+            cv2.THRESH_BINARY_INV
+        )
+
+        contours, _ = cv2.findContours(
+            thresh,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        if not contours:
+
+            _logger.warning(
+                "[RECOVERY SINGLE] no contours"
+            )
+
+            return []
+
+        contour = max(
+            contours,
+            key=cv2.contourArea
+        )
+
+        x, y, w, h = cv2.boundingRect(
+            contour
+        )
+
+        pad = 8
+
+        x = max(0, x - pad)
+        y = max(0, y - pad)
+
+        w = min(
+            image.shape[1] - x,
+            w + pad * 2
+        )
+
+        h = min(
+            image.shape[0] - y,
+            h + pad * 2
+        )
+
+        refined = image[
+            y:y+h,
+            x:x+w
+        ]
+
+        buffer = io.BytesIO()
+
+        Image.fromarray(
+            refined
+        ).save(
+            buffer,
+            format="JPEG",
+            quality=80
+        )
+
+        encoded = base64.b64encode(
+            buffer.getvalue()
+        ).decode("utf-8")
+
+        _logger.warning(
+
+            f"[RECOVERY SINGLE] "
+
+            f"returned=1 "
+
+            f"size={w}x{h}"
+        )
+
+        return [{
+            "image": encoded,
+            "width": w,
+            "height": h,
+            "hero_score": 80,
+            "gallery_score": 80,
+            "score": 80,
+            "confidence": 85,
+            "needs_extractor_crop": True,
+            "is_lifestyle": False,
+            "asset_group": "recovery_candidate"
+        }]
+
+    except Exception:
+
+        _logger.exception(
+            "[RECOVERY SINGLE ERROR]"
+        )
+
+        return []
