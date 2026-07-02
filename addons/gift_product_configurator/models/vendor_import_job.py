@@ -5012,34 +5012,111 @@ class VendorImportJob(models.Model):
         for block in raw_data:
 
             # ==============================================
-            # FORMAT 1 → ORIGINAL EB FORMAT
+            # FORMAT 1 → Legacy EverythingBranded
             # ==============================================
 
             if block.get("text"):
 
                 structured_data.append({
+
                     "text": block.get("text"),
+
                     "image": block.get("image")
+
                 })
 
                 continue
 
             # ==============================================
-            # FORMAT 2 → STRUCTURED FORMAT
+            # FORMAT 2 → Wrapped PRODUCTS
             # ==============================================
 
             if block.get("type") == "PRODUCTS":
 
                 items = block.get("items", [])
 
-                if not items:
-                    continue
+                if items:
 
-                structured_data.extend(items)
+                    structured_data.extend(items)
 
-        # =====================================================
-        # NO PRODUCTS AFTER PARSE
-        # =====================================================
+                continue
+
+            # ==============================================
+            # FORMAT 3 → Direct Product List (NEW)
+            # ==============================================
+
+            if (
+
+                block.get("semanticType") == "PRODUCT"
+
+                or block.get("title")
+
+                or block.get("url")
+
+            ):
+
+                structured_data.append({
+
+                    "title":
+
+                        block.get("title"),
+
+                    "sku":
+
+                        block.get("sku"),
+
+                    "description":
+
+                        block.get("description"),
+
+                    "price":
+
+                        block.get("price"),
+
+                    "currency":
+
+                        block.get("currency"),
+
+                    "url":
+
+                        block.get("url"),
+
+                    "image":
+
+                        block.get("image"),
+
+                    "rawText":
+
+                        block.get("rawText"),
+
+                    "brand":
+
+                        block.get("brand"),
+
+                    "stock":
+
+                        block.get("stock"),
+
+                    "rating":
+
+                        block.get("rating"),
+
+                    "semanticType":
+
+                        block.get("semanticType")
+
+                })
+
+                continue
+
+
+        _logger.warning(
+
+            "[URL PARSER] "
+
+            f"structured_products={len(structured_data)}"
+
+        )
 
         if not structured_data:
 
@@ -5078,11 +5155,14 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
 
-            f"[URL PARSE BATCH] "
+            "[URL PARSE BATCH] "
 
             f"{start} -> {end} "
 
-            f"| total={len(normalized if 'normalized' in locals() else structured_data)}"
+            f"| batch={len(structured_data)} "
+
+            f"| total={total_structured}"
+
         )
 
 
@@ -25170,6 +25250,93 @@ class VendorImportJob(models.Model):
                     f"URL DEBUG → "
                     f"{item.get('reason')}"
                 )
+            
+            # =====================================================
+            # FORMAT 3 → NEW STRUCTURED PRODUCT
+            # =====================================================
+
+            elif (
+
+                item.get("semanticType") == "PRODUCT"
+
+                or item.get("title")
+
+                or item.get("url")
+
+            ):
+
+                image = item.get("image")
+
+                if (
+                    image
+                    and isinstance(image, str)
+                    and not image.startswith("http")
+                ):
+                    image = None
+
+                title = str(
+                    item.get("title") or ""
+                ).strip()
+
+                description = str(
+                    item.get("description") or ""
+                ).strip()
+
+                raw_text = str(
+                    item.get("rawText") or ""
+                ).strip()
+
+                # --------------------------------------
+                # Build AI text
+                # --------------------------------------
+
+                text = "\n\n".join(
+
+                    x for x in [
+
+                        title,
+
+                        description,
+
+                        raw_text
+
+                    ]
+
+                    if x
+
+                )
+
+                if len(text) < 5:
+
+                    continue
+
+                blocks.append({
+
+                    "text": text,
+
+                    "title": title,
+
+                    "sku": item.get("sku"),
+
+                    "description": description,
+
+                    "price": item.get("price", ""),
+
+                    "currency": item.get("currency", ""),
+
+                    "stock": item.get("stock", ""),
+
+                    "url": item.get("url", ""),
+
+                    "image": image,
+
+                    "brand": item.get("brand", ""),
+
+                    "rating": item.get("rating", ""),
+
+                    "rawText": raw_text,
+
+                })
 
         _logger.warning(f"NORMALIZED BLOCKS → {len(blocks)}")
 
@@ -25177,7 +25344,7 @@ class VendorImportJob(models.Model):
         # 🔥 SPLIT INTO MULTIPLE PAGES (CRITICAL FIX)
         # =====================================================
 
-        PAGE_SIZE = 20  # 🔥 prevents AI overload
+        PAGE_SIZE = 15  # 🔥 prevents AI overload
 
         pages = []
 
