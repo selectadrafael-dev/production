@@ -21087,49 +21087,9 @@ class VendorImportJob(models.Model):
                 # UPDATE PRODUCT NAME FROM APIFY SKU
                 # ====================================
 
-                name = self._get_best_product_name(
-                    url_data,
-                    family_products[:1].name if family_products else ""
-                )
+               
 
-                if name:
-
-                    _logger.warning(
-
-                        "[FAMILY NAME UPDATE] "
-
-                        f"familyName={name} "
-
-                    )
-
-                    vals["name"] = name
-
-                # sku = str(
-                #     url_data.get("sku") or ""
-                # ).strip()
-
-                # if sku:
-                #     _logger.warning(
-
-                #         "[FAMILY NAME UPDATE] "
-
-                #         f"family={family_id} "
-
-                #         f"sku={sku} "
-
-                #     )
-
-                #     vals["name"] = sku
-
-                #     _logger.warning(
-
-                #         "[SKU UPDATE] "
-
-                #         f"family={family_id} "
-
-                #         f"sku={sku}"
-
-                #     )
+               
                 
                 # ====================================
                 # UPDATE PRODUCT
@@ -21162,6 +21122,38 @@ class VendorImportJob(models.Model):
                         )
 
                     ])
+
+                    # ====================================
+                    # DETERMINE BEST FAMILY NAME
+                    # ====================================
+
+                    existing_name = ""
+
+                    if family_products:
+
+                        existing_name = family_products[0].name or ""
+
+                    name = self._get_best_product_name(
+
+                        url_data,
+
+                        existing_name
+
+                    )
+
+                    if name:
+
+                        vals["name"] = name
+
+                        _logger.warning(
+
+                            "[FAMILY NAME UPDATE] "
+
+                            f"family={family_id} "
+
+                            f"name={name}"
+
+                        )
 
                     _logger.warning(
 
