@@ -2,8 +2,9 @@ from flask import Flask, request, jsonify
 import logging
 import os
 
-from extract_pdf import extract_pdf
+# from extract_pdf import extract_pdf
 # from recovery import recover_page
+from extractor_dispatcher import extract_pdf
 from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
 

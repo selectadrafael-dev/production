@@ -8,6 +8,8 @@ from page_features import analyze_page
 
 from layout_classifier import LayoutClassifier
 
+from page_analyzer import page_analyzer
+
 
 classifier = LayoutClassifier()
 
@@ -51,6 +53,12 @@ def detect_family(file):
         image
 
     )
+
+    layout = page_analyzer.analyze(
+        image
+    )
+
+    features.update(layout)
 
     result = classifier.classify(
 
