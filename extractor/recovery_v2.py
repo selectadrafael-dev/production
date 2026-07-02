@@ -1,6 +1,8 @@
 import logging
 import time
 
+from flask import jsonify
+
 from models import RecoveryPage
 
 _logger = logging.getLogger(__name__)
@@ -8,43 +10,19 @@ _logger = logging.getLogger(__name__)
 
 class RecoveryV2:
 
-    def recover_page(self, page_data):
+def recover_page(self):
 
-        start = time.time()
+    return jsonify({
 
-        _logger.info("========== RECOVERY V2 START ==========")
+        "success": True,
 
-        page = RecoveryPage(
+        "version": "v2",
 
-            page_number=page_data.get("page_number", 0),
+        "message": "Recovery V2 reached successfully.",
 
-            page_width=page_data.get("page_width", 0),
+        "assets": []
 
-            page_height=page_data.get("page_height", 0),
-
-            page_image=page_data.get("page_image")
-
-        )
-
-        self.layout(page)
-
-        self.detect(page)
-
-        self.segment(page)
-
-        self.certify(page)
-
-        result = self.package(page)
-
-        _logger.info(
-
-            "[RECOVERY V2 FINISHED] %.2fs",
-
-            time.time() - start
-
-        )
-
-        return result
+    })
 
     def layout(self, page):
 

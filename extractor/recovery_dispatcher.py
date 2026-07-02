@@ -15,15 +15,15 @@ RECOVERY_ENGINE = os.getenv(
 def dispatch():
 
     _logger.warning(
-
-        "[RECOVERY DISPATCH] "
-
-        f"engine={RECOVERY_ENGINE}"
-
+        f"[RECOVERY DISPATCH] engine={RECOVERY_ENGINE}"
     )
 
     if RECOVERY_ENGINE == "v2":
 
+        _logger.warning("[USING RECOVERY V2]")
+
         return recovery_v2.recover_page()
+
+    _logger.warning("[USING RECOVERY V1]")
 
     return recover_page()
