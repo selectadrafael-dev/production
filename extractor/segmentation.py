@@ -288,7 +288,7 @@ def validate_recovered_crop(
 
         occupancy = contour_area / bounding_area
 
-        if occupancy < 0.30:
+        if occupancy < 0.15:
 
             reasons.append(
 
@@ -299,7 +299,7 @@ def validate_recovered_crop(
         # BORDER TOUCH
         # =======================================
 
-        border = 5
+        border = 1
 
         if (
 
@@ -330,7 +330,7 @@ def validate_recovered_crop(
 
         area = w * h
 
-        if area < 4500:
+        if area < 2000:
 
             reasons.append(
 
