@@ -13824,7 +13824,7 @@ class VendorImportJob(models.Model):
 
                     f"coverage={validation.get('coverage')} "
 
-                    f"reason={validation.get('reason')}"
+                    f"reason={validation.get('reasons')}"
                 )
 
             _logger.warning(
