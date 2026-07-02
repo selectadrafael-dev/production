@@ -644,17 +644,86 @@ def recover_single_product(crop):
             f"size={w}x{h}"
         )
 
+        crop_area = w * h
+
+        image_area = max(
+
+            image.shape[0] * image.shape[1],
+
+            1
+        )
+
+        coverage = crop_area / image_area
+
+        occupancy = round(
+
+            coverage,
+
+            3
+        )
+
+        score = round(
+
+            coverage * 100,
+
+            2
+        )
+
+        confidence = min(
+
+            95,
+
+            score + 10
+        )
+
         return [{
+
             "image": encoded,
+
+            "x": 0,
+            "y": 0,
+
             "width": w,
             "height": h,
-            "hero_score": 80,
-            "gallery_score": 80,
-            "score": 80,
-            "confidence": 85,
+
+            "crop_area": crop_area,
+
+            "large_area": occupancy > 0.18,
+
+            "large_image": occupancy > 0.30,
+
+            "portrait": h > w,
+
+            "hero_score": score,
+
+            "gallery_score": score,
+
+            "score": score,
+
+            "confidence": confidence,
+
             "needs_extractor_crop": True,
+
             "is_lifestyle": False,
-            "asset_group": "recovery_candidate"
+
+            "lifestyle_score": 0,
+
+            "asset_group": "recovery_candidate",
+
+            "validation": {
+
+                "accepted": True,
+
+                "score": score,
+
+                "coverage": occupancy,
+
+                "occupancy": occupancy,
+
+                "reasons": []
+
+            }
+
         }]
 
     except Exception:
