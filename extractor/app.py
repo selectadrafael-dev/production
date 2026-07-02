@@ -3,7 +3,9 @@ import logging
 import os
 
 from extract_pdf import extract_pdf
-from recovery import recover_page
+# from recovery import recover_page
+from recovery_dispatcher import dispatch
+from recovery_v2 import recovery_v2
 
 app = Flask(__name__)
 
@@ -58,10 +60,31 @@ def extract():
         }), 500
 
 # ================= RECOVERY =================
+# @app.route("/recover_page", methods=["POST"])
+# def recover():
+
+#      return recover_page()
+
 @app.route("/recover_page", methods=["POST"])
 def recover():
 
-     return recover_page()
+    return dispatch()
+
+#=================RECOVERY 2===================
+@app.route("/recover_page_v2", methods=["POST"])
+def recover_v2():
+
+    page_data = request.get_json()
+
+    return jsonify(
+
+        recovery_v2.recover_page(
+
+            page_data
+
+        )
+
+    )
 
 # ================= START APP =================
 if __name__ == "__main__":
