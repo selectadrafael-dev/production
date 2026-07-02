@@ -6,19 +6,23 @@ from recovery_v2 import recovery_v2
 
 _logger = logging.getLogger(__name__)
 
-RECOVERY_ENGINE = os.getenv(
-    "RECOVERY_ENGINE",
-    "v1"
-).lower()
-
 
 def dispatch():
 
+    engine = os.getenv("RECOVERY_ENGINE", "v1").lower()
+
     _logger.warning(
-        f"[RECOVERY DISPATCH] engine={RECOVERY_ENGINE}"
+        f"[RECOVERY DISPATCH] ENV={engine}"
     )
 
-    if RECOVERY_ENGINE == "v2":
+    # TEMPORARY: Force V2 for testing
+    engine = "v2"
+
+    _logger.warning(
+        f"[RECOVERY DISPATCH] USING={engine}"
+    )
+
+    if engine == "v2":
 
         _logger.warning("[USING RECOVERY V2]")
 
