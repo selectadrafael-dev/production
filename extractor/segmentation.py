@@ -58,10 +58,11 @@ def segment_catalog_page(pil_image):
                 continue
 
             x, y, w, h = cv2.boundingRect(contour)
-            crop = image[
-                            y:y+h,
-                            x:x+w
-            ]
+
+            crop = refine_crop(
+
+                crop
+            )
 
             validation = validate_recovered_crop(
 
@@ -425,3 +426,129 @@ def validate_recovered_crop(
                 "validator_error"
             ]
         }
+    
+#===========================================================
+# Refine Recovery Crop
+#===========================================================
+
+def refine_crop(crop):
+
+    try:
+
+        if crop is None:
+
+            return crop
+
+        image = crop.copy()
+
+        gray = cv2.cvtColor(
+
+            image,
+
+            cv2.COLOR_RGB2GRAY
+        )
+
+        _, thresh = cv2.threshold(
+
+            gray,
+
+            245,
+
+            255,
+
+            cv2.THRESH_BINARY_INV
+        )
+
+        points = cv2.findNonZero(
+
+            thresh
+        )
+
+        if points is None:
+
+            return crop
+
+        x, y, w, h = cv2.boundingRect(
+
+            points
+        )
+
+        margin = 6
+
+        x = max(
+
+            0,
+
+            x - margin
+        )
+
+        y = max(
+
+            0,
+
+            y - margin
+        )
+
+        w = min(
+
+            image.shape[1] - x,
+
+            w + margin * 2
+        )
+
+        h = min(
+
+            image.shape[0] - y,
+
+            h + margin * 2
+        )
+
+        refined = image[
+
+            y:y+h,
+
+            x:x+w
+
+        ]
+
+        _logger.warning(
+
+            f"[REFINE CROP] "
+
+            f"before={crop.shape[1]}x{crop.shape[0]} "
+
+            f"after={refined.shape[1]}x{refined.shape[0]} "
+
+            f"saved={crop.shape[0]-refined.shape[0]}px"
+        )
+
+        # =====================================
+        # REMOVE BOTTOM CAPTION STRIP
+        # =====================================
+
+        height = refined.shape[0]
+
+        caption = int(
+
+            height * 0.12
+        )
+
+        if caption > 20:
+
+            refined = refined[
+
+                :height-caption,
+
+                :
+            ]
+
+        return refined
+
+    except Exception:
+
+        _logger.exception(
+
+            "[REFINE CROP ERROR]"
+        )
+
+        return crop
