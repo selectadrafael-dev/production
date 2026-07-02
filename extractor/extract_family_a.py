@@ -1,4 +1,3 @@
-#from flask import Flask, request, jsonify
 import fitz
 import base64
 import logging
@@ -144,15 +143,15 @@ def split_catalog_image(pil_image):
     
 
 # ================= PDF EXTRACT =================
-#@app.route("/extract", methods=["POST"])
-#def extract():
 def extract_pdf(file):
 
     _logger.info("PDF REQUEST RECEIVED")
 
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+    if file is None:
 
+        return {
+            "error": "No file uploaded"
+        }
     #file = request.files["file"]
     # file is already passed in
 
