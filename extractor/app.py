@@ -74,17 +74,36 @@ def recover():
 @app.route("/recover_page_v2", methods=["POST"])
 def recover_v2():
 
-    page_data = request.get_json()
+    return recovery_v2.recover_page()
 
-    return jsonify(
+#=================RECOVERY V2 TEST====================
 
-        recovery_v2.recover_page(
+@app.route("/test_recovery_v2", methods=["POST"])
 
-            page_data
+def test_recovery_v2():
 
-        )
+    return recovery_v2.recover_page()
 
-    )
+
+#=================CATALOG TEST====================
+
+@app.route("/test_catalog", methods=["POST"])
+def test_catalog():
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "No PDF uploaded"
+
+        }), 400
+
+    file = request.files["file"]
+
+    return recovery_v2.process_catalog(file)
+
 
 # ================= START APP =================
 if __name__ == "__main__":
