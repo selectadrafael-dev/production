@@ -2,7 +2,7 @@ import logging
 
 from family_detector import detect_family
 
-from extract_family_a import extract as extract_family_a
+from extract_family_a import extract_pdf as extract_family_a
 
 from extract_family_b import extract_pdf as extract_family_b
 
