@@ -170,7 +170,9 @@ def segment_catalog_page(pil_image):
 
                 "validation": validation,
 
-                "needs_extractor_crop": True
+                "needs_extractor_crop": False,
+
+                "recovered_by_extractor": True,
             })
 
 
