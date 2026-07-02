@@ -12871,15 +12871,24 @@ class VendorImportJob(models.Model):
 
             for asset in images:
 
-                if asset.get("needs_extractor_crop"):
+
+                if asset.get("recovered_by_extractor"):
 
                     asset["asset_group"] = "recovery_candidate"
                     asset["asset_role"] = "recovery_candidate"
-                    asset["confidence"] = 0
 
-                    marketing_images.append(asset)
+                    _logger.warning(
 
-                    continue
+                        f"[RECOVERY CANDIDATE] "
+
+                        f"clean={asset.get('clean_index')} "
+
+                        f"occupancy={asset.get('validation', {}).get('occupancy')}"
+
+                    )
+
+                    # Let recovery assets continue through
+                    # the normal render classification pipeline.
 
                 if not isinstance(asset, dict):
 
@@ -13039,6 +13048,49 @@ class VendorImportJob(models.Model):
 
                         asset
                     )
+
+                    # =====================================
+                    # RECOVERY BOOST
+                    # =====================================
+
+                    if asset.get("asset_group") == "recovery_candidate":
+
+                        validation = asset.get(
+
+                            "validation",
+
+                            {}
+                        )
+
+                        occupancy = validation.get(
+
+                            "occupancy",
+
+                            0
+                        )
+
+                        if (
+
+                            validation.get("accepted")
+
+                            and
+
+                            occupancy >= 0.45
+
+                        ):
+
+                            probability["real"] += 12
+
+                            _logger.warning(
+
+                                f"[RECOVERY BOOST] "
+
+                                f"clean={asset.get('clean_index')} "
+
+                                f"occupancy={occupancy:.2f} "
+
+                                f"real={probability['real']}"
+                            )
 
                     winner = max(
 
