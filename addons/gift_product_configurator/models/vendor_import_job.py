@@ -13311,6 +13311,22 @@ class VendorImportJob(models.Model):
                     ) or 0
                 )
 
+                occupancy = float(
+
+                    asset.get(
+
+                        "validation",
+
+                        {}
+
+                    ).get(
+
+                        "occupancy",
+
+                        1
+                    ) or 1
+                )
+
                 lifestyle = bool(
 
                     asset.get(
@@ -13338,6 +13354,8 @@ class VendorImportJob(models.Model):
                     f"quality={quality} "
 
                     f"lifestyle={lifestyle}"
+
+                    f"occupancy={occupancy:.2f} "
                 )
 
                 if (
