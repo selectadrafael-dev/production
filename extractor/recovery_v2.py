@@ -10,19 +10,19 @@ _logger = logging.getLogger(__name__)
 
 class RecoveryV2:
 
-def recover_page(self):
+    def recover_page(self):
 
-    return jsonify({
+        return jsonify({
 
-        "success": True,
+            "success": True,
 
-        "version": "v2",
+            "version": "v2",
 
-        "message": "Recovery V2 reached successfully.",
+            "message": "Recovery V2 reached successfully.",
 
-        "assets": []
+            "assets": []
 
-    })
+        })
 
     def layout(self, page):
 
