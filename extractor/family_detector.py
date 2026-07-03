@@ -52,17 +52,8 @@ def detect_family(file):
     layout = page_analyzer.analyze(image)
 
     features.update(layout)
-    fingerprint = layout_fingerprint.build(
-        features
-    )
 
-    result = classifier.classify(
-
-        features,
-
-        fingerprint
-
-    )
+    result = classifier.classify(features)
 
     _logger.warning(
 
