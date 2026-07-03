@@ -1,15 +1,14 @@
+import logging
 import fitz
-
-import io
 
 from PIL import Image
 
 from page_features import analyze_page
-
+from page_analyzer import page_analyzer
 from layout_classifier import LayoutClassifier
 
-from page_analyzer import page_analyzer
 
+_logger = logging.getLogger(__name__)
 
 classifier = LayoutClassifier()
 
@@ -48,21 +47,27 @@ def detect_family(file):
 
     )
 
-    features = analyze_page(
+    features = analyze_page(image)
 
-        image
-
-    )
-
-    layout = page_analyzer.analyze(
-        image
-    )
+    layout = page_analyzer.analyze(image)
 
     features.update(layout)
 
-    result = classifier.classify(
+    result = classifier.classify(features)
 
-        features
+    _logger.warning(
+
+        f"[FAMILY DETECTOR] "
+
+        f"features={features}"
+
+    )
+
+    _logger.warning(
+
+        f"[FAMILY DETECTOR] "
+
+        f"family={result['family']}"
 
     )
 
