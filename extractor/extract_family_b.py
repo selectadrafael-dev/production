@@ -64,7 +64,6 @@ def extract_pdf(
     ocr_blocks = ocr_block_extractor.extract(
 
         page
-
     )
 
     pix = page.get_pixmap(
@@ -85,10 +84,10 @@ def extract_pdf(
 
     )
 
-
     regions = page_region_analyzer.analyze(
         image
     )
+
 
     classified = region_classifier.classify(
 
@@ -99,17 +98,11 @@ def extract_pdf(
     )
 
     processing_report.add(
-
-        "Region Selector",
-
+        "Region Classifier",
         "PASS",
-
         {
-
-            "selected": len(selected)
-
+            "regions": len(classified)
         }
-
     )
 
     selected = product_region_selector.select(
@@ -118,6 +111,13 @@ def extract_pdf(
 
     )
 
+    processing_report.add(
+        "Region Selector",
+        "PASS",
+        {
+            "selected": len(selected)
+        }
+    )
 
     selected = product_region_decomposer.decompose(
 
@@ -127,6 +127,16 @@ def extract_pdf(
 
     )
 
+
+    processing_report.add(
+        "Region Decomposer",
+        "PASS",
+        {
+            "regions": len(selected)
+        }
+    )
+
+
     selected = product_grid_splitter.split(
 
         image,
@@ -134,33 +144,9 @@ def extract_pdf(
 
     )
 
-
     processing_report.add(
 
-        "Region Decomposer",
-
-        "PASS",
-
-        {
-
-            "regions": len(selected)
-
-        }
-
-    )
-
-   
-    selected = product_cropper.crop(
-
-        image,
-
-        selected
-
-    )
-
-    processing_report.add(
-
-        "Cropper",
+        "Grid Splitter",
 
         "PASS",
 
@@ -170,6 +156,23 @@ def extract_pdf(
 
         }
 
+    )
+
+
+    selected = product_cropper.crop(
+
+        image,
+
+        selected
+
+    )
+
+    processing_report.add(
+        "Cropper",
+        "PASS",
+        {
+            "products": len(selected)
+        }
     )
 
     candidates = product_candidate_builder.build(
@@ -183,17 +186,11 @@ def extract_pdf(
     )
 
     processing_report.add(
-
         "Candidate Builder",
-
         "PASS",
-
         {
-
             "candidates": len(candidates)
-
         }
-
     )
 
     metadata = metadata_detector.detect(
@@ -220,56 +217,16 @@ def extract_pdf(
     )
 
     processing_report.add(
-
         "Association Engine",
-
         "PASS",
-
         {
-
             "candidates": len(candidates)
-
         }
-
     )
-
-
-    processing_report.add(
-
-        "Region Classifier",
-
-        "PASS",
-
-        {
-
-            "regions": len(classified)
-
-        }
-
-    )
-
-
-    if preview:
-
-        return preview_generator.preview(
-
-            preview_data
-
-        )
-    
-    
-    try:
-
-        doc.close()
-
-    except Exception:
-
-        pass
-
 
     preview_data = {
 
-        "page_image": image,
+        "page_image": image.copy(),
 
         "family": "B",
 
@@ -291,8 +248,30 @@ def extract_pdf(
 
             "candidates": len(candidates),
 
-            "metadata_blocks": len(metadata)
+            "metadata_blocks": len(metadata),
+
+            "family": "B",
+
+            "pipeline_steps": len(
+
+                processing_report.to_dict()["steps"]
+
+            )
 
         }
 
     }
+
+    try:
+        # existing processing logic...
+
+        if preview:
+            return preview_generator.preview(preview_data)
+
+        return jsonify(preview_data)
+
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
