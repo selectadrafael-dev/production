@@ -23,37 +23,49 @@ class ProductRegionDecomposer:
 
             height = region["height"]
 
+            area = region["area"]
+
             ratio = width / max(height, 1)
 
-            # --------------------------------
+            structure = "single_product"
 
-            # Single Product
+            # ---------------------------------
+            # Very Large Region
+            # ---------------------------------
 
-            # --------------------------------
+            if area > 350000:
 
-            if ratio < 1.6:
+                structure = "hero_banner"
 
-                region["structure"] = "single"
+            # ---------------------------------
+            # Wide Grid
+            # ---------------------------------
 
-            # --------------------------------
+            elif ratio > 1.8:
 
-            # Multiple Products
+                structure = "product_grid"
 
-            # --------------------------------
+            # ---------------------------------
+            # Tall Lifestyle
+            # ---------------------------------
 
-            else:
+            elif ratio < 0.60:
 
-                region["structure"] = "multiple"
+                structure = "lifestyle"
+
+            region["structure"] = structure
 
             output.append(region)
 
-        _logger.warning(
+            _logger.warning(
 
-            "[REGION DECOMPOSER] "
+                f"[DECOMPOSER] "
 
-            f"regions={len(output)}"
+                f"{structure} "
 
-        )
+                f"{width}x{height}"
+
+            )
 
         return output
 

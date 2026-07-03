@@ -11,6 +11,7 @@ from region_classifier import region_classifier
 
 from product_region_selector import product_region_selector
 from product_region_decomposer import product_region_decomposer
+from product_cropper import product_cropper
 
 _logger = logging.getLogger(__name__)
 
@@ -75,6 +76,14 @@ def extract_pdf(file):
     )
 
     selected = product_region_decomposer.decompose(
+
+        image,
+
+        selected
+
+    )
+
+    selected = product_cropper.crop(
 
         image,
 
