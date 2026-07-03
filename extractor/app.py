@@ -43,9 +43,10 @@ def extract():
 
     try:
 
-        result = extract_pdf(file)
+        return extract_pdf(file)
 
-        return jsonify(result)
+        # result = extract_pdf(file)
+        # return jsonify(result)
 
     except Exception as e:
 

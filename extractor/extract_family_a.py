@@ -157,6 +157,9 @@ def extract_pdf(file):
 
     try:
         pdf_bytes = file.read()
+
+        file.seek(0)
+
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     except Exception as e:
         _logger.error(f"INVALID PDF → {str(e)}")
