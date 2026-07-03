@@ -11,13 +11,21 @@ class PreviewGenerator:
 
         self,
 
-        page_image,
-
-        candidates,
-
-        metadata
+        preview_data
 
     ):
+        
+        page_image = preview_data["page_image"]
+
+        candidates = preview_data["candidates"]
+
+        metadata = preview_data["metadata"]
+
+        pipeline = preview_data["pipeline"]
+
+        statistics = preview_data["statistics"]
+
+        family = preview_data["family"]
 
         report = report_renderer.build(
 

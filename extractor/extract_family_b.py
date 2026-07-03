@@ -253,11 +253,7 @@ def extract_pdf(
 
         return preview_generator.preview(
 
-            image,
-
-            candidates,
-
-            metadata
+            preview_data
 
         )
     
@@ -271,11 +267,15 @@ def extract_pdf(
         pass
 
 
-    return jsonify({
+    preview_data = {
+
+        "page_image": image,
 
         "family": "B",
 
         "regions": classified,
+
+        "selected": selected,
 
         "metadata": metadata,
 
@@ -295,4 +295,4 @@ def extract_pdf(
 
         }
 
-    })
+    }
