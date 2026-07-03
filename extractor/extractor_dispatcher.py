@@ -8,25 +8,11 @@ _logger = logging.getLogger(__name__)
 
 def extract_pdf(file):
 
-    result = detect_family(file)
-
-    family = result["family"]
+    family = detect_family(file)
 
     _logger.warning(
 
-        f"[CATALOG FAMILY] "
-
-        f"{family}"
-
-    )
-
-    _logger.warning(
-
-        f"[DISPATCHER] "
-
-        f"family={family} "
-
-        f"confidence={result['confidence']}"
+        f"[DISPATCHER] family={family}"
 
     )
 

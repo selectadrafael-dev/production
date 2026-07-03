@@ -5,32 +5,25 @@ _logger = logging.getLogger(__name__)
 
 class LayoutClassifier:
 
-   def classify(
-
-        self,
-
-        features,
-
-        fingerprint
-
-    ):
+    def classify(self, features):
 
         family = "B"
-
         confidence = 0.90
 
+        # -----------------------------
+        # Family A (Grid Layout)
+        # -----------------------------
         if (
 
-            fingerprint["region_density"] >= 10
+            features["large_regions"] <= 2
 
             and
 
-            fingerprint["large_ratio"] <= 2
+            features["small_regions"] >= 8
 
         ):
 
             family = "A"
-
             confidence = 0.98
 
         _logger.warning(
