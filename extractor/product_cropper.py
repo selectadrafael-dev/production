@@ -19,6 +19,8 @@ class ProductCropper:
 
     ):
 
+        DEBUG_RETURN_IMAGES = False
+
         output = []
 
         for product in products:
@@ -79,11 +81,23 @@ class ProductCropper:
 
             )
 
-            product["image"] = base64.b64encode(
+            # product["image"] = base64.b64encode(
 
+            #     buffer.getvalue()
+
+            # ).decode("utf-8")
+
+            encoded = base64.b64encode(
                 buffer.getvalue()
-
             ).decode("utf-8")
+
+            if DEBUG_RETURN_IMAGES:
+
+                product["image"] = encoded
+
+            else:
+
+                product["image_size"] = len(encoded)
 
             output.append(product)
 
