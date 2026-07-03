@@ -30,23 +30,32 @@ def home():
 @app.route("/extract", methods=["POST"])
 def extract():
 
-    if "file" not in request.files:
+    _logger.warning("========== EXTRACT ==========")
+
+    _logger.warning(f"Content-Type: {request.content_type}")
+
+    _logger.warning(f"Request.files = {request.files}")
+
+    _logger.warning(f"Request.form = {request.form}")
+
+    _logger.warning(f"Request.headers = {dict(request.headers)}")
+
+    if len(request.files) == 0:
 
         return jsonify({
 
-            "error": "No file uploaded this time"
+            "error": "No file uploaded",
+
+            "content_type": request.content_type,
+
+            "files": list(request.files.keys()),
+
+            "form": list(request.form.keys())
 
         }), 400
 
-    _logger.warning(
-        "[APP] Calling Dispatcher"
-    )
+    file = next(iter(request.files.values()))
 
-    file = request.files["file"]
-
-    _logger.warning(
-        f"[APP] file={file} filename={file.filename}"
-    )
 
     try:
 
