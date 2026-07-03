@@ -1,29 +1,44 @@
-from flask import jsonify
+# Flask
+from flask import jsonify, request
+
+# Standard
 import logging
 import fitz
 
+# Pillow
 from PIL import Image
 
-import io
+# OCR
+from ocr_block_extractor import ocr_block_extractor
 
+# Analysis
 from page_regions import page_region_analyzer
 from region_classifier import region_classifier
-
 from product_region_selector import product_region_selector
 from product_region_decomposer import product_region_decomposer
-from product_cropper import product_cropper
 from product_grid_splitter import product_grid_splitter
+
+# Candidate
+from product_cropper import product_cropper
 from product_candidate_builder import product_candidate_builder
 from metadata_detector import metadata_detector
 from association_engine import association_engine
-from ocr_block_extractor import ocr_block_extractor
+
+# QA
 from qa.preview_generator import preview_generator
+from qa.processing_report import processing_report
+
 
 _logger = logging.getLogger(__name__)
 
 
-def extract_pdf(file):
+def extract_pdf(
 
+    file,
+
+    preview=False
+
+):
     _logger.warning(
 
         "[FAMILY B] "
@@ -31,6 +46,8 @@ def extract_pdf(file):
         "Extractor Selected"
 
     )
+
+    processing_report.clear()
 
     pdf_bytes = file.read()
 
@@ -81,11 +98,26 @@ def extract_pdf(file):
 
     )
 
+    processing_report.add(
+
+        "Region Selector",
+
+        "PASS",
+
+        {
+
+            "selected": len(selected)
+
+        }
+
+    )
+
     selected = product_region_selector.select(
 
         classified
 
     )
+
 
     selected = product_region_decomposer.decompose(
 
@@ -95,11 +127,48 @@ def extract_pdf(file):
 
     )
 
+    selected = product_grid_splitter.split(
+
+        image,
+        selected
+
+    )
+
+
+    processing_report.add(
+
+        "Region Decomposer",
+
+        "PASS",
+
+        {
+
+            "regions": len(selected)
+
+        }
+
+    )
+
+   
     selected = product_cropper.crop(
 
         image,
 
         selected
+
+    )
+
+    processing_report.add(
+
+        "Cropper",
+
+        "PASS",
+
+        {
+
+            "products": len(selected)
+
+        }
 
     )
 
@@ -113,8 +182,36 @@ def extract_pdf(file):
 
     )
 
+    processing_report.add(
+
+        "Candidate Builder",
+
+        "PASS",
+
+        {
+
+            "candidates": len(candidates)
+
+        }
+
+    )
+
     metadata = metadata_detector.detect(
         ocr_blocks
+    )
+
+    processing_report.add(
+
+        "Metadata Detector",
+
+        "PASS",
+
+        {
+
+            "blocks": len(metadata)
+
+        }
+
     )
 
     candidates = association_engine.associate(
@@ -122,25 +219,37 @@ def extract_pdf(file):
         metadata
     )
 
+    processing_report.add(
 
-    selected = product_grid_splitter.split(
+        "Association Engine",
 
-        image,
-        selected
+        "PASS",
 
-    )
+        {
 
-    from flask import request
+            "candidates": len(candidates)
 
-    preview = request.args.get(
-
-        "preview",
-
-        "0"
+        }
 
     )
 
-    if preview == "1":
+
+    processing_report.add(
+
+        "Region Classifier",
+
+        "PASS",
+
+        {
+
+            "regions": len(classified)
+
+        }
+
+    )
+
+
+    if preview:
 
         return preview_generator.preview(
 
@@ -151,14 +260,39 @@ def extract_pdf(file):
             metadata
 
         )
+    
+    
+    try:
+
+        doc.close()
+
+    except Exception:
+
+        pass
 
 
     return jsonify({
+
         "family": "B",
 
         "regions": classified,
 
         "metadata": metadata,
 
-        "candidates": candidates
+        "candidates": candidates,
+
+        "pipeline": processing_report.to_dict(),
+
+        "statistics": {
+
+            "regions": len(classified),
+
+            "selected_regions": len(selected),
+
+            "candidates": len(candidates),
+
+            "metadata_blocks": len(metadata)
+
+        }
+
     })

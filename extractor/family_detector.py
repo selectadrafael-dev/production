@@ -7,6 +7,7 @@ from page_features import analyze_page
 from page_analyzer import page_analyzer
 from layout_classifier import LayoutClassifier
 from layout_fingerprint import layout_fingerprint
+from qa.processing_report import processing_report
 
 _logger = logging.getLogger(__name__)
 
@@ -72,5 +73,28 @@ def detect_family(file):
         f"confidence={result['confidence']}"
 
     )
+
+    processing_report.add(
+
+        "Family Detector",
+
+        "PASS",
+
+        {
+
+            "family": result["family"]
+
+        }
+
+    )
+
+
+    try:
+
+        doc.close()
+
+    except Exception:
+
+        pass
 
     return result["family"]

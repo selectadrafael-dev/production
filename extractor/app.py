@@ -1,13 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 import logging
 import os
 
-# from extract_pdf import extract_pdf
-# from recovery import recover_page
 from extractor_dispatcher import extract_pdf
 from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
-from flask import send_file
 
 app = Flask(__name__)
 
@@ -121,24 +118,59 @@ def test_catalog():
     return recovery_v2.process_catalog(file)
 
 
-# ================= PREVIEW ROUTE =================
+#================ PREVIEW CATALOG =================
 
 @app.route(
 
-    "/preview"
+    "/preview_catalog",
+
+    methods=["POST"]
 
 )
+def preview_catalog():
 
-def preview():
+    if len(request.files) == 0:
 
-    return send_file(
+        return jsonify({
 
-        "preview.png",
+            "error": "No file uploaded"
 
-        mimetype="image/png"
+        }), 400
+
+    file = next(
+
+        iter(
+
+            request.files.values()
+
+        )
 
     )
 
+    try:
+
+        return extract_pdf(
+
+            file,
+
+            preview=True
+
+        )
+
+    except Exception as e:
+
+        _logger.exception(
+
+            "[PREVIEW FAILED]"
+
+        )
+
+        return jsonify({
+
+            "error": str(e)
+
+        }), 500
+    
 # ================= START APP =================
 if __name__ == "__main__":
 
