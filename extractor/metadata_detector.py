@@ -22,9 +22,10 @@ class MetadataDetector:
 
     )
 
+
     SKU = re.compile(
 
-        r"[A-Z]{2,}[A-Z0-9\-]*"
+        r"^[A-Z0-9]{2,8}[-_/][A-Z0-9]{2,12}$"
 
     )
 
@@ -59,6 +60,14 @@ class MetadataDetector:
             elif self.CAPACITY.search(text):
 
                 item["type"] = "capacity"
+            
+            # =====================================
+            # Long paragraph → Description
+            # =====================================
+
+            elif len(text.split()) > 12:
+
+                item["type"] = "description"
 
             elif self.SKU.search(text):
 

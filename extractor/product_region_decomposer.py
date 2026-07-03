@@ -62,11 +62,15 @@ class ProductRegionDecomposer:
 
             # ----------------------------------
 
-            if product_count <= 1:
+            if region["type"] == "hero":
+
+                structure = "hero_banner"
+
+            elif product_count <=1:
 
                 structure = "single_product"
 
-            elif product_count <= 4:
+            elif product_count <=4:
 
                 structure = "product_group"
 

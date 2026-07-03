@@ -81,23 +81,24 @@ class ProductCropper:
 
             )
 
-            # product["image"] = base64.b64encode(
-
-            #     buffer.getvalue()
-
-            # ).decode("utf-8")
 
             encoded = base64.b64encode(
+
                 buffer.getvalue()
+
             ).decode("utf-8")
 
-            if DEBUG_RETURN_IMAGES:
+            # Always keep production image
 
-                product["image"] = encoded
+            product["image"] = encoded
 
-            else:
+            # Debug only
 
-                product["image_size"] = len(encoded)
+            product["image_size"] = len(encoded)
+
+            product["crop_width"] = crop.width
+
+            product["crop_height"] = crop.height
 
             output.append(product)
 

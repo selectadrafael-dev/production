@@ -24,7 +24,8 @@ class AssociationEngine:
 
             bottom = bbox["y"] + bbox["height"]
 
-            candidate["metadata"] = {}
+            # candidate["metadata"] = {}
+            candidate["metadata_matches"]=[]
 
             for block in metadata:
 

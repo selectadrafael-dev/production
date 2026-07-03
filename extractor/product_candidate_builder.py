@@ -53,11 +53,34 @@ class ProductCandidateBuilder:
 
                 ),
 
-                "crop": product.get(
+               
+                "crop": {
 
-                    "image"
+                    "image": product.get(
 
-                ),
+                        "image"
+
+                    ),
+
+                    "width": product.get(
+
+                        "crop_width"
+
+                    ),
+
+                    "height": product.get(
+
+                        "crop_height"
+
+                    ),
+
+                    "size": product.get(
+
+                        "image_size"
+
+                    )
+
+                },
 
                 "metadata": {
 
