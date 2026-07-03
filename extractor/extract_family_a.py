@@ -134,6 +134,7 @@ def split_catalog_image(pil_image):
                     buffer.getvalue()
                 ).decode("utf-8")
             )
+            
 
         return results[:12]
 
@@ -1335,9 +1336,27 @@ def extract_pdf(file):
             quality=85
         )
 
+        _logger.warning(
+
+            f"[PAGE COMPLETE] "
+
+            f"page={page_number+1} "
+
+            f"products={len(image_list)}"
+
+        )
+
         page_base64 = base64.b64encode(
             page_buffer.getvalue()
         ).decode("utf-8")
+
+        _logger.warning(
+
+            f"[PAGE IMAGE] "
+
+            f"size={len(page_base64)}"
+
+        )
 
         pages_data.append({
 
@@ -1355,6 +1374,42 @@ def extract_pdf(file):
 
             "images": image_list
         })
+
+        # ======================================
+        # FAMILY A DEBUG SUMMARY
+        # ======================================
+
+        _logger.warning(
+            "========== FAMILY A SUMMARY =========="
+        )
+
+        _logger.warning(
+            f"Pages Extracted: {len(pages_data)}"
+        )
+
+        for page in pages_data:
+
+            _logger.warning(
+
+                f"[PAGE {page['page']}] "
+
+                f"Images={len(page['images'])} "
+
+                f"PageSize={page['page_width']}x{page['page_height']}"
+
+            )
+
+            for index, image in enumerate(page["images"]):
+
+                _logger.warning(
+
+                    f"   Crop {index+1}: "
+
+                    f"{image.get('width')}x{image.get('height')} "
+
+                    f"Lifestyle={image.get('is_lifestyle')}"
+
+                )
 
     # 🔒 response size protection
     try:
