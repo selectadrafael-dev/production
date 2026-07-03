@@ -10,6 +10,7 @@ from page_regions import page_region_analyzer
 from region_classifier import region_classifier
 
 from product_region_selector import product_region_selector
+from product_region_decomposer import product_region_decomposer
 
 _logger = logging.getLogger(__name__)
 
@@ -73,6 +74,15 @@ def extract_pdf(file):
 
     )
 
+    selected = product_region_decomposer.decompose(
+
+        image,
+
+        selected
+
+    )
+
+  
     return jsonify({
 
         "family": "B",
