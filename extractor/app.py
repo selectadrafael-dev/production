@@ -7,6 +7,7 @@ import os
 from extractor_dispatcher import extract_pdf
 from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
+from flask import send_file
 
 app = Flask(__name__)
 
@@ -119,6 +120,24 @@ def test_catalog():
 
     return recovery_v2.process_catalog(file)
 
+
+# ================= PREVIEW ROUTE =================
+
+@app.route(
+
+    "/preview"
+
+)
+
+def preview():
+
+    return send_file(
+
+        "preview.png",
+
+        mimetype="image/png"
+
+    )
 
 # ================= START APP =================
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from flask import request, jsonify
 from product_region_splitter import product_region_splitter
+from preview_generator import preview_generator
 
 
 #app = Flask(__name__)

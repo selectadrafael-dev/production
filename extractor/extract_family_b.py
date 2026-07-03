@@ -17,6 +17,7 @@ from product_candidate_builder import product_candidate_builder
 from metadata_detector import metadata_detector
 from association_engine import association_engine
 from ocr_block_extractor import ocr_block_extractor
+from qa.preview_generator import preview_generator
 
 _logger = logging.getLogger(__name__)
 
@@ -128,6 +129,28 @@ def extract_pdf(file):
         selected
 
     )
+
+    from flask import request
+
+    preview = request.args.get(
+
+        "preview",
+
+        "0"
+
+    )
+
+    if preview == "1":
+
+        return preview_generator.preview(
+
+            image,
+
+            candidates,
+
+            metadata
+
+        )
 
 
     return jsonify({
