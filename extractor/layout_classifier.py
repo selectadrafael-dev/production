@@ -5,58 +5,37 @@ _logger = logging.getLogger(__name__)
 
 class LayoutClassifier:
 
-    def classify(
+   def classify(
 
         self,
 
-        page_features
+        features,
+
+        fingerprint
 
     ):
 
-        _logger.warning(
+        family = "B"
 
-            "[LAYOUT] "
-
-            "Default Family A"
-
-        )
-
-
-class LayoutClassifier:
-
-    def classify(
-
-        self,
-
-        page_features
-
-    ):
-
-        family = "A"
-
-        confidence = 0.95
-
-        # ----------------------------------
-        # Family B Indicators
-        # ----------------------------------
+        confidence = 0.90
 
         if (
 
-            page_features["large_regions"] >= 2
+            fingerprint["region_density"] >= 10
 
             and
 
-            page_features["small_regions"] >= 4
+            fingerprint["large_ratio"] <= 2
 
         ):
 
-            family = "B"
+            family = "A"
 
-            confidence = 0.90
+            confidence = 0.98
 
         _logger.warning(
 
-            "[LAYOUT CLASSIFIER] "
+            f"[LAYOUT CLASSIFIER] "
 
             f"family={family} "
 
@@ -71,7 +50,3 @@ class LayoutClassifier:
             "confidence": confidence
 
         }
-
-
-
-        

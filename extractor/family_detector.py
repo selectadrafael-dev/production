@@ -1,11 +1,12 @@
 import logging
 import fitz
+
 from PIL import Image
+
 from page_features import analyze_page
 from page_analyzer import page_analyzer
 from layout_classifier import LayoutClassifier
-from grid_detector import grid_detector
-
+from layout_fingerprint import layout_fingerprint
 
 _logger = logging.getLogger(__name__)
 
@@ -50,23 +51,18 @@ def detect_family(file):
 
     layout = page_analyzer.analyze(image)
 
-    grid = grid_detector.detect(
-
-        layout["regions"]
-
+    features.update(layout)
+    fingerprint = layout_fingerprint.build(
+        features
     )
 
     result = classifier.classify(
 
         features,
 
-        grid
+        fingerprint
 
     )
-
-    features.update(layout)
-
-    result = classifier.classify(features)
 
     _logger.warning(
 
@@ -80,7 +76,9 @@ def detect_family(file):
 
         f"[FAMILY DETECTOR] "
 
-        f"family={result['family']}"
+        f"family={result['family']} "
+
+        f"confidence={result['confidence']}"
 
     )
 

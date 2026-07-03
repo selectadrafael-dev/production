@@ -79,6 +79,7 @@ class PageAnalyzer:
             "small_regions": small_regions
 
         }
+    
 
 
 page_analyzer = PageAnalyzer()
