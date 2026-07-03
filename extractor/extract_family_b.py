@@ -12,6 +12,7 @@ from region_classifier import region_classifier
 from product_region_selector import product_region_selector
 from product_region_decomposer import product_region_decomposer
 from product_cropper import product_cropper
+from product_grid_splitter import product_grid_splitter
 
 _logger = logging.getLogger(__name__)
 
@@ -83,6 +84,14 @@ def extract_pdf(file):
 
     )
 
+    selected = product_grid_splitter.split(
+
+        image,
+
+        selected
+
+    )
+
     selected = product_cropper.crop(
 
         image,
@@ -91,7 +100,7 @@ def extract_pdf(file):
 
     )
 
-  
+    
     return jsonify({
 
         "family": "B",
