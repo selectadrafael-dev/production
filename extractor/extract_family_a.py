@@ -10,6 +10,7 @@ import numpy as np
 from flask import request, jsonify
 from product_region_splitter import product_region_splitter
 
+
 #app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)

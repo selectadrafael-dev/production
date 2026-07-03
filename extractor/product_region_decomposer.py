@@ -1,59 +1,82 @@
 import logging
+import cv2
+import numpy as np
+from PIL import Image
 
 _logger = logging.getLogger(__name__)
 
 
 class ProductRegionDecomposer:
 
-    def decompose(
-
-        self,
-
-        image,
-
-        regions
-
-    ):
+    def decompose(self, page_image, regions):
 
         output = []
 
         for region in regions:
 
-            width = region["width"]
+            x = region["x"]
+            y = region["y"]
+            w = region["width"]
+            h = region["height"]
 
-            height = region["height"]
+            crop = page_image.crop((x, y, x + w, y + h))
 
-            area = region["area"]
+            gray = cv2.cvtColor(
+                np.array(crop),
+                cv2.COLOR_RGB2GRAY
+            )
 
-            ratio = width / max(height, 1)
+            _, thresh = cv2.threshold(
+                gray,
+                245,
+                255,
+                cv2.THRESH_BINARY_INV
+            )
 
-            structure = "single_product"
+            kernel = np.ones((5, 5), np.uint8)
 
-            # ---------------------------------
-            # Very Large Region
-            # ---------------------------------
+            thresh = cv2.morphologyEx(
+                thresh,
+                cv2.MORPH_CLOSE,
+                kernel
+            )
 
-            if area > 350000:
+            contours, _ = cv2.findContours(
+                thresh,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE
+            )
 
-                structure = "hero_banner"
+            product_count = 0
 
-            # ---------------------------------
-            # Wide Grid
-            # ---------------------------------
+            for contour in contours:
 
-            elif ratio > 1.8:
+                area = cv2.contourArea(contour)
+
+                if area > 6000:
+                    product_count += 1
+
+            # ----------------------------------
+
+            # Intelligent structure decision
+
+            # ----------------------------------
+
+            if product_count <= 1:
+
+                structure = "single_product"
+
+            elif product_count <= 4:
+
+                structure = "product_group"
+
+            else:
 
                 structure = "product_grid"
 
-            # ---------------------------------
-            # Tall Lifestyle
-            # ---------------------------------
-
-            elif ratio < 0.60:
-
-                structure = "lifestyle"
-
             region["structure"] = structure
+
+            region["detected_products"] = product_count
 
             output.append(region)
 
@@ -63,7 +86,7 @@ class ProductRegionDecomposer:
 
                 f"{structure} "
 
-                f"{width}x{height}"
+                f"objects={product_count}"
 
             )
 
