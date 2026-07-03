@@ -1,11 +1,10 @@
 import logging
 import fitz
-
 from PIL import Image
-
 from page_features import analyze_page
 from page_analyzer import page_analyzer
 from layout_classifier import LayoutClassifier
+from grid_detector import grid_detector
 
 
 _logger = logging.getLogger(__name__)
@@ -50,6 +49,20 @@ def detect_family(file):
     features = analyze_page(image)
 
     layout = page_analyzer.analyze(image)
+
+    grid = grid_detector.detect(
+
+        layout["regions"]
+
+    )
+
+    result = classifier.classify(
+
+        features,
+
+        grid
+
+    )
 
     features.update(layout)
 
