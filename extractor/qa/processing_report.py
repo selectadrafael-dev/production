@@ -5,8 +5,18 @@ class ProcessingReport:
 
     def __init__(self):
 
+        self.clear()
+
+    # ==========================================
+    # Reset report for every new PDF request
+    # ==========================================
+    def clear(self):
+
         self.steps = []
 
+    # ==========================================
+    # Add one pipeline step
+    # ==========================================
     def add(
 
         self,
@@ -37,6 +47,9 @@ class ProcessingReport:
 
         })
 
+    # ==========================================
+    # Return report
+    # ==========================================
     def to_dict(self):
 
         return self.steps
