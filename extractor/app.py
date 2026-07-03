@@ -38,15 +38,19 @@ def extract():
 
         }), 400
 
+    _logger.warning(
+        "[APP] Calling Dispatcher"
+    )
 
     file = request.files["file"]
+
+    _logger.warning(
+        f"[APP] file={file} filename={file.filename}"
+    )
 
     try:
 
         return extract_pdf(file)
-
-        # result = extract_pdf(file)
-        # return jsonify(result)
 
     except Exception as e:
 

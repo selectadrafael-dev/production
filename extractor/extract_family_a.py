@@ -147,10 +147,22 @@ def extract_pdf(file):
 
     _logger.info("PDF REQUEST RECEIVED")
 
+    _logger.warning(
+        f"[FAMILY A ENTRY] file={file}"
+    )
+
+    _logger.warning(
+        f"[FAMILY A ENTRY] filename={getattr(file, 'filename', None)}"
+    )
+
+    _logger.warning(
+        f"[FAMILY A CHECK] is_none={file is None}"
+    )
+
     if file is None:
 
         return {
-            "error": "No file uploaded"
+            "error": "No file uploaded this time"
         }
     #file = request.files["file"]
     # file is already passed in
