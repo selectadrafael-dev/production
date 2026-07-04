@@ -73,7 +73,6 @@ def extract():
         }), 500
 
 #===========Catalogue Route==============================
-
 @app.route(
 
     "/preview_catalog",
@@ -81,18 +80,29 @@ def extract():
     methods=["POST"]
 
 )
-
 def preview_catalog():
 
-    if "file" not in request.files:
+    _logger.warning("========== PREVIEW ==========")
+
+    _logger.warning(f"FILES: {request.files}")
+
+    _logger.warning(f"FORM : {request.form}")
+
+    if len(request.files) == 0:
 
         return jsonify({
 
-            "error": "No PDF uploaded"
+            "error": "No PDF uploaded yet",
+
+            "files": list(request.files.keys()),
+
+            "form": list(request.form.keys()),
+
+            "content_type": request.content_type
 
         }), 400
 
-    file = request.files["file"]
+    file = next(iter(request.files.values()))
 
     return extract_pdf(
 
