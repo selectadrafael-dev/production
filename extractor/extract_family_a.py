@@ -10,6 +10,7 @@ import numpy as np
 from flask import request, jsonify
 from product_region_splitter import product_region_splitter
 from preview_generator import preview_generator
+from debug_pipeline import pipeline_tracer
 
 
 #app = Flask(__name__)
@@ -1118,6 +1119,11 @@ def extract_pdf(
                 f"w={crop.shape[1]} "
                 f"h={crop.shape[0]}"
             )
+
+        _logger.warning(
+            "[TRACE] "
+            f"CandidateImagesBeforeSort={len(candidate_images)}"
+        )
             
         candidate_images = sorted(
 
@@ -1209,6 +1215,15 @@ def extract_pdf(
                         0
                     ),
                 })
+
+                _logger.warning(
+                    "[TRACE FINAL] "
+                    f"ImagesNow={len(image_list)} "
+                    f"x={item.get('x')} "
+                    f"y={item.get('y')} "
+                    f"w={item.get('width')} "
+                    f"h={item.get('height')}"
+                )
 
                 if item.get("is_lifestyle"):
 
