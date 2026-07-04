@@ -72,6 +72,36 @@ def extract():
 
         }), 500
 
+#===========Catalogue Route==============================
+
+@app.route(
+
+    "/preview_catalog",
+
+    methods=["POST"]
+
+)
+
+def preview_catalog():
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "error": "No PDF uploaded"
+
+        }), 400
+
+    file = request.files["file"]
+
+    return extract_pdf(
+
+        file,
+
+        preview=True
+
+    )
+
 # ================= RECOVERY =================
 # @app.route("/recover_page", methods=["POST"])
 # def recover():
@@ -117,59 +147,6 @@ def test_catalog():
 
     return recovery_v2.process_catalog(file)
 
-
-#================ PREVIEW CATALOG =================
-
-@app.route(
-
-    "/preview_catalog",
-
-    methods=["POST"]
-
-)
-def preview_catalog():
-
-    if len(request.files) == 0:
-
-        return jsonify({
-
-            "error": "No file uploaded"
-
-        }), 400
-
-    file = next(
-
-        iter(
-
-            request.files.values()
-
-        )
-
-    )
-
-    try:
-
-        return extract_pdf(
-
-            file,
-
-            preview=True
-
-        )
-
-    except Exception as e:
-
-        _logger.exception(
-
-            "[PREVIEW FAILED]"
-
-        )
-
-        return jsonify({
-
-            "error": str(e)
-
-        }), 500
     
 # ================= START APP =================
 if __name__ == "__main__":
