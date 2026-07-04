@@ -7,16 +7,12 @@ class ProcessingReport:
 
         self.clear()
 
-    # ==========================================
-    # Reset report for every new PDF request
-    # ==========================================
     def clear(self):
+
+        self.started = time.time()
 
         self.steps = []
 
-    # ==========================================
-    # Add one pipeline step
-    # ==========================================
     def add(
 
         self,
@@ -31,9 +27,9 @@ class ProcessingReport:
 
         self.steps.append({
 
-            "time": round(
+            "elapsed": round(
 
-                time.time(),
+                time.time() - self.started,
 
                 3
 
@@ -47,12 +43,32 @@ class ProcessingReport:
 
         })
 
-    # ==========================================
-    # Return report
-    # ==========================================
+    def summary(self):
+
+        return {
+
+            "steps": len(self.steps),
+
+            "duration": round(
+
+                time.time() - self.started,
+
+                3
+
+            )
+
+        }
+
     def to_dict(self):
 
-        return self.steps
+        return {
+
+            "summary": self.summary(),
+
+            "steps": self.steps
+
+        }
+    
 
 
 processing_report = ProcessingReport()

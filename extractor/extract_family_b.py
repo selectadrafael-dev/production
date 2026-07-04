@@ -224,6 +224,8 @@ def extract_pdf(
         }
     )
 
+    pipeline = processing_report.to_dict()
+
     preview_data = {
 
         "page_image": image.copy(),
@@ -238,7 +240,7 @@ def extract_pdf(
 
         "candidates": candidates,
 
-        "pipeline": processing_report.to_dict(),
+        "pipeline": pipeline,
 
         "statistics": {
 
@@ -252,11 +254,9 @@ def extract_pdf(
 
             "family": "B",
 
-            "pipeline_steps": len(
+            "pipeline_steps": pipeline["summary"]["steps"],
 
-                processing_report.to_dict()["steps"]
-
-            )
+            "processing_time": pipeline["summary"]["duration"]
 
         }
 

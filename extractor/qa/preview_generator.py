@@ -29,11 +29,7 @@ class PreviewGenerator:
 
         report = report_renderer.build(
 
-            page_image,
-
-            candidates,
-
-            metadata
+            preview_data
 
         )
 
