@@ -220,18 +220,6 @@ def extract_pdf(
 
     )
 
-    candidates, recovery_report = recovery_engine.recover(
-
-        image,
-
-        candidates,
-
-        metadata,
-
-        classified
-
-    )
-
     processing_report.add(
         "Candidate Builder",
         "PASS",
@@ -257,6 +245,7 @@ def extract_pdf(
         }
 
     )
+
 
     candidates = association_engine.associate(
         candidates,
