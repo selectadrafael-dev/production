@@ -353,14 +353,6 @@ def extract_pdf(
     try:
         # existing processing logic...
 
-        # if preview:
-
-        #     return preview_generator.preview(
-
-        #         preview_context
-
-        #     )
-
         preview_type = request.args.get(
 
             "type",

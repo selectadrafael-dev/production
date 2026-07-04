@@ -53,9 +53,53 @@ class ProductCandidateBuilder:
 
                 ),
                
+                # "crop": {
+
+                #     "image": product.get(
+
+                #         "image"
+
+                #     ),
+
+                
+
+                #     "width": product.get(
+
+                #         "crop_width"
+
+                #     ),
+
+                #     "height": product.get(
+
+                #         "crop_height"
+
+                #     ),
+
+                #     "size": product.get(
+
+                #         "image_size"
+
+                #     )
+
+                # },
+
                 "crop": {
 
+                    #
+                    # PIL image for QA
+                    #
+
                     "image": product.get(
+
+                        "crop_image"
+
+                    ),
+
+                    #
+                    # Base64 for AI
+                    #
+
+                    "encoded": product.get(
 
                         "image"
 
@@ -106,6 +150,18 @@ class ProductCandidateBuilder:
             }
 
             candidates.append(candidate)
+
+                _logger.warning(
+
+            "[CANDIDATE] "
+
+            f"{candidate['id']} "
+
+            f"crop_image="
+
+            f"{candidate['crop']['image'] is not None}"
+
+        )
 
         _logger.warning(
 

@@ -88,6 +88,12 @@ class ProductCropper:
 
             ).decode("utf-8")
 
+            #
+            # Keep PIL image for QA Preview
+            #
+
+            product["crop_image"] = crop.copy()
+
             # Always keep production image
 
             product["image"] = encoded
