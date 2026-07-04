@@ -27,6 +27,7 @@ from association_engine import association_engine
 # QA
 from qa.preview_generator import preview_generator
 from qa.processing_report import processing_report
+from qa.region_diagnostics import region_diagnostics
 
 
 _logger = logging.getLogger(__name__)
@@ -144,6 +145,28 @@ def extract_pdf(
 
     )
 
+    for region in selected:
+
+        region["detected_products"] = len(
+
+            region.get(
+
+                "products",
+
+                []
+
+            )
+
+        )
+
+    diagnostics = region_diagnostics.build(
+
+        classified,
+
+        selected
+
+    )
+
     processing_report.add(
 
         "Grid Splitter",
@@ -242,6 +265,8 @@ def extract_pdf(
 
         "pipeline": pipeline,
 
+        "diagnostics": diagnostics,
+
         "statistics": {
 
             "regions": len(classified),
@@ -276,7 +301,9 @@ def extract_pdf(
 
         "pipeline": preview_context["pipeline"],
 
-        "statistics": preview_context["statistics"]
+        "statistics": preview_context["statistics"],
+        
+        "diagnostics": preview_context["diagnostics"]
 
     }
 

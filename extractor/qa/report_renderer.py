@@ -30,6 +30,8 @@ class ReportRenderer:
 
         family = preview_data["family"]
 
+        diagnostics = preview_data["diagnostics"]
+
         # ==========================================
         # Prepare canvas
         # ==========================================
@@ -69,6 +71,70 @@ class ReportRenderer:
             fill="black"
 
         )
+
+        # ==========================================
+        # Region Diagnostics
+        # ==========================================
+
+        for region in diagnostics:
+
+            bbox = region["bbox"]
+
+            x = bbox["x"]
+
+            y = bbox["y"]
+
+            w = bbox["width"]
+
+            h = bbox["height"]
+
+            color = "green" if region["selected"] else "orange"
+
+            draw.rectangle(
+
+                [
+
+                    x,
+
+                    y,
+
+                    x + w,
+
+                    y + h
+
+                ],
+
+                outline=color,
+
+                width=3
+
+            )
+
+            draw.text(
+
+                (
+
+                    x,
+
+                    max(
+
+                        0,
+
+                        y - 18
+
+                    )
+
+                ),
+
+                f"{region['id']} | "
+
+                f"{region['structure']} | "
+
+                f"{region['products']}",
+
+                fill=color
+
+            )
 
         # ==========================================
         # Draw Product Candidates
