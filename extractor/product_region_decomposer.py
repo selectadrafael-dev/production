@@ -26,11 +26,34 @@ class ProductRegionDecomposer:
                 cv2.COLOR_RGB2GRAY
             )
 
-            _, thresh = cv2.threshold(
+            #
+            # Dark object mask
+            #
+
+            dark_mask = cv2.threshold(
                 gray,
                 245,
                 255,
                 cv2.THRESH_BINARY_INV
+            )[1]
+
+            #
+            # Light object mask
+            #
+
+            edge_mask = cv2.Canny(
+                gray,
+                40,
+                120
+            )
+
+            #
+            # Merge both
+            #
+
+            thresh = cv2.bitwise_or(
+                dark_mask,
+                edge_mask
             )
 
             kernel = np.ones((5, 5), np.uint8)

@@ -34,6 +34,7 @@ from region_analyzer_dispatcher import region_analyzer_dispatcher
 from product_relationship_engine import product_relationship_engine
 from qa.preview_generator import preview_generator
 from qa.asset_preview_generator import asset_preview_generator
+from universal_contour_detector import universal_contour_detector
 
 
 _logger = logging.getLogger(__name__)
@@ -91,9 +92,40 @@ def extract_pdf(
 
     )
 
-    regions = page_region_analyzer.analyze(
+
+    regions_old = page_region_analyzer.analyze(
+
         image
+
     )
+
+    regions_new = universal_contour_detector.detect(
+
+        image
+
+    )
+
+    _logger.warning(
+
+        "[COMPARE] "
+
+        f"Old={len(regions_old)} "
+
+        f"New={len(regions_new)}"
+
+    )
+
+    #
+    # Temporarily use the better detector
+    #
+
+    if len(regions_new) > len(regions_old):
+
+        regions = regions_new
+
+    else:
+
+        regions = regions_old
 
     regions = region_analyzer_dispatcher.analyze(
 
