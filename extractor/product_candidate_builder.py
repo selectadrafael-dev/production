@@ -151,7 +151,7 @@ class ProductCandidateBuilder:
 
             candidates.append(candidate)
 
-                _logger.warning(
+            _logger.warning(
 
             "[CANDIDATE] "
 
