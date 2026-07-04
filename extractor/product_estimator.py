@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
+import logging
 
+_logger = logging.getLogger(__name__)
 
 class ProductEstimator:
 
@@ -18,6 +20,14 @@ class ProductEstimator:
         y = region["y"]
         w = region["width"]
         h = region["height"]
+
+        _logger.warning(
+
+            "[PRODUCT ESTIMATOR START] "
+
+            f"bbox=({x},{y},{w},{h})"
+
+        )
 
         roi = image.crop(
 
@@ -65,6 +75,14 @@ class ProductEstimator:
 
         )
 
+        _logger.warning(
+
+            "[PRODUCT ESTIMATOR] "
+
+            f"total_contours={len(contours)}"
+
+        )
+
         products = 0
 
         for contour in contours:
@@ -75,17 +93,65 @@ class ProductEstimator:
 
             )
 
+            x2, y2, w2, h2 = cv2.boundingRect(
+
+                contour
+
+            )
+
+            _logger.warning(
+
+                "[PRODUCT ESTIMATOR] "
+
+                f"area={int(area)} "
+
+                f"bbox=({x2},{y2},{w2},{h2})"
+
+            )
+
+
             if area > 4000:
 
                 products += 1
 
-        return max(
+                _logger.warning(
+
+                    "[PRODUCT ESTIMATOR] "
+
+                    f"ACCEPT contour "
+
+                    f"#{products}"
+
+                )
+
+            else:
+
+                _logger.warning(
+
+                    "[PRODUCT ESTIMATOR] "
+
+                    "REJECT contour"
+
+                )
+
+
+        estimated = max(
 
             1,
 
             products
 
         )
+
+        _logger.warning(
+
+            "[PRODUCT ESTIMATOR RESULT] "
+
+            f"estimated_products={estimated}"
+
+        )
+
+        return estimated
 
 
 product_estimator = ProductEstimator()
