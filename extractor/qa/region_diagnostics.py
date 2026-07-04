@@ -56,11 +56,11 @@ class RegionDiagnostics:
                 "selected": id(region) in selected_lookup,
 
                 "products": region.get(
-
                     "detected_products",
-
-                    0
-
+                    region.get(
+                        "estimated_products",
+                        0
+                    )
                 ),
 
                 "bbox": {
