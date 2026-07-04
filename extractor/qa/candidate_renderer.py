@@ -27,6 +27,10 @@ class CandidateRenderer:
 
             h = bbox["height"]
 
+            #
+            # Draw candidate rectangle
+            #
+
             draw.rectangle(
 
                 (
@@ -35,9 +39,9 @@ class CandidateRenderer:
 
                     y,
 
-                    x+w,
+                    x + w,
 
-                    y+h
+                    y + h
 
                 ),
 
@@ -47,17 +51,95 @@ class CandidateRenderer:
 
             )
 
+            #
+            # Candidate Role
+            #
+
+            role = candidate.get(
+
+                "role",
+
+                ""
+
+            )
+
+            if role == "parent":
+
+                role = "[P]"
+
+            elif role == "variant":
+
+                role = "[V]"
+
+            elif role == "detail":
+
+                role = "[D]"
+
+            elif role == "lifestyle":
+
+                role = "[L]"
+
+            else:
+
+                role = ""
+
+            #
+            # Candidate Label
+            #
+
+            family = candidate.get(
+
+                "family",
+
+                ""
+
+            )
+
+            role = candidate.get(
+
+                "role",
+
+                ""
+
+            )
+
+            label = candidate["id"]
+
+            if family:
+
+                label += f" {family}"
+
+            if role == "parent":
+
+                label += " [P]"
+
+            elif role == "variant":
+
+                label += " [V]"
+
+            elif role == "detail":
+
+                label += " [D]"
+
+            elif role == "lifestyle":
+
+                label += " [L]"
+
+            if role:
+
+                label += " " + role
+
             draw.text(
 
                 (
 
                     x,
 
-                    y-18
+                    y - 18
 
                 ),
 
-                candidate["id"],
+                label,
 
                 fill=RED
 

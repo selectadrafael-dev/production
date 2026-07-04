@@ -30,6 +30,7 @@ from qa.processing_report import processing_report
 from qa.region_diagnostics import region_diagnostics
 
 from region_analyzer_dispatcher import region_analyzer_dispatcher
+from product_relationship_engine import product_relationship_engine
 
 
 _logger = logging.getLogger(__name__)
@@ -247,6 +248,14 @@ def extract_pdf(
     candidates = association_engine.associate(
         candidates,
         metadata
+    )
+
+    candidates = product_relationship_engine.build(
+
+        candidates,
+
+        metadata
+
     )
 
     processing_report.add(
