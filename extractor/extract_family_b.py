@@ -116,7 +116,7 @@ def extract_pdf(
     )
 
     #
-    # Temporarily use the better detector
+    #  Temporarily use the better detector
     #
 
     if len(regions_new) > len(regions_old):
