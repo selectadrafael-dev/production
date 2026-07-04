@@ -20618,6 +20618,7 @@ class VendorImportJob(models.Model):
     #===========Excel Url Data Main Update Method==============
     #==========================================================
 
+
     def process_excel_url_queue(self):
 
         import json
@@ -20656,6 +20657,11 @@ class VendorImportJob(models.Model):
 
         start = self.excel_url_index or 0
 
+        processed = 0
+        updated = 0
+        skipped = 0
+        failed = 0
+
         BATCH_SIZE = 5
 
         end = min(
@@ -20686,6 +20692,7 @@ class VendorImportJob(models.Model):
             try:
 
                 row = rows[idx]
+                processed += 1
 
                 group_id = str(
                     row.get("group_id") or ""
@@ -20720,6 +20727,7 @@ class VendorImportJob(models.Model):
 
                     self._safe_commit_progress()
 
+                    skipped += 1
                     continue
 
                 if not group_id:
@@ -20735,6 +20743,7 @@ class VendorImportJob(models.Model):
 
                     self._safe_commit_progress()
 
+                    skipped += 1
                     continue
 
                
@@ -20855,6 +20864,7 @@ class VendorImportJob(models.Model):
 
                     self._safe_commit_progress()
 
+                    skipped += 1
                     continue
 
                 _logger.warning(
@@ -20955,6 +20965,7 @@ class VendorImportJob(models.Model):
 
                     self._safe_commit_progress()
 
+                    skipped += 1
                     continue
 
                 
@@ -21083,13 +21094,6 @@ class VendorImportJob(models.Model):
 
                     vals["description_sale"] = "\n".join(html)
 
-                # ====================================
-                # UPDATE PRODUCT NAME FROM APIFY SKU
-                # ====================================
-
-               
-
-               
                 
                 # ====================================
                 # UPDATE PRODUCT
@@ -21255,6 +21259,7 @@ class VendorImportJob(models.Model):
             self.state = "excel_url_enrichment"
 
             self._safe_commit_progress()
+
 
     #==============Enrich url product name=======================
 
@@ -21876,6 +21881,33 @@ class VendorImportJob(models.Model):
 
             f"{len(queue)} queued"
         )
+
+        _logger.warning(
+            "[URL QUEUE BUILT] "
+            f"groups={len(queue)}"
+        )
+
+        for i, item in enumerate(queue):
+
+            _logger.warning(
+
+                "[QUEUE %s] "
+
+                "group=%s "
+
+                "family=%s "
+
+                "url=%s",
+
+                i,
+
+                item.get("group_id"),
+
+                item.get("family_id"),
+
+                item.get("url")
+
+            )
     
     # ======================================================
     # URL AI PRODUCT EXTRACTOR
