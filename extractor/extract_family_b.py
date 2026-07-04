@@ -29,6 +29,8 @@ from qa.preview_generator import preview_generator
 from qa.processing_report import processing_report
 from qa.region_diagnostics import region_diagnostics
 
+from region_analyzer_dispatcher import region_analyzer_dispatcher
+
 
 _logger = logging.getLogger(__name__)
 
@@ -87,6 +89,14 @@ def extract_pdf(
 
     regions = page_region_analyzer.analyze(
         image
+    )
+
+    regions = region_analyzer_dispatcher.analyze(
+
+        image,
+
+        regions
+
     )
 
 
