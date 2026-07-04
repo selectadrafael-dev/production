@@ -89,6 +89,23 @@ class RegionClassifier:
 
             )
 
+ 
+            _logger.warning(
+
+                "[PRODUCT ESTIMATOR] "
+
+                f"label={label} "
+
+                f"structure={structure} "
+
+                f"estimated_products={estimated_products} "
+
+                f"area={area} "
+
+                f"size={width}x{height}"
+
+            )
+
             #
             # Refine structure using estimated products
             #
