@@ -49,12 +49,51 @@ class ProductRegionDecomposer:
 
             product_count = 0
 
+            products = []
+
             for contour in contours:
 
                 area = cv2.contourArea(contour)
 
-                if area > 6000:
-                    product_count += 1
+                if area < 6000:
+
+                    continue
+
+                rx, ry, rw, rh = cv2.boundingRect(
+
+                    contour
+
+                )
+
+                #
+                # Ignore tiny detections
+                #
+
+                if rw < 40 or rh < 40:
+
+                    continue
+
+                products.append(
+
+                    {
+
+                        "x": x + rx,
+
+                        "y": y + ry,
+
+                        "width": rw,
+
+                        "height": rh,
+
+                        "area": rw * rh,
+
+                        "type": "product"
+
+                    }
+
+                )
+
+            product_count = len(products)
 
             # ----------------------------------
 
@@ -82,7 +121,23 @@ class ProductRegionDecomposer:
 
             region["detected_products"] = product_count
 
-            output.append(region)
+                        #
+            # Real decomposition
+            #
+
+            if structure == "single_product":
+
+                output.append(region)
+
+            else:
+
+                for product in products:
+
+                    product["structure"] = "single_product"
+
+                    product["detected_products"] = 1
+
+                    output.append(product)
 
             _logger.warning(
 
