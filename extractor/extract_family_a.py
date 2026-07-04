@@ -147,7 +147,13 @@ def split_catalog_image(pil_image):
     
 
 # ================= PDF EXTRACT =================
-def extract_pdf(file):
+def extract_pdf(
+
+    file,
+
+    preview=False
+
+):
 
     _logger.info("PDF REQUEST RECEIVED")
 

@@ -6,7 +6,13 @@ from extract_family_b import extract_pdf as extract_family_b
 _logger = logging.getLogger(__name__)
 
 
-def extract_pdf(file):
+def extract_pdf(
+
+    file,
+
+    preview=False
+
+):
 
     family = detect_family(file)
 
@@ -20,6 +26,18 @@ def extract_pdf(file):
 
     if family == "A":
 
-        return extract_family_a(file)
+        return extract_family_a(
 
-    return extract_family_b(file)
+            file,
+
+            preview=preview
+
+        )
+
+    return extract_family_b(
+
+        file,
+
+        preview=preview
+
+    )
