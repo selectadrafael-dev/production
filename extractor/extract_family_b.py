@@ -226,7 +226,7 @@ def extract_pdf(
 
     pipeline = processing_report.to_dict()
 
-    preview_data = {
+    preview_context = {
 
         "page_image": image.copy(),
 
@@ -262,13 +262,40 @@ def extract_pdf(
 
     }
 
+    response_data = {
+
+        "family": preview_context["family"],
+
+        "regions": preview_context["regions"],
+
+        "selected": preview_context["selected"],
+
+        "metadata": preview_context["metadata"],
+
+        "candidates": preview_context["candidates"],
+
+        "pipeline": preview_context["pipeline"],
+
+        "statistics": preview_context["statistics"]
+
+    }
+
     try:
         # existing processing logic...
 
         if preview:
-            return preview_generator.preview(preview_data)
 
-        return jsonify(preview_data)
+            return preview_generator.preview(
+
+                preview_context
+
+            )
+
+        return jsonify(
+
+            response_data
+
+        )
 
     finally:
         try:
