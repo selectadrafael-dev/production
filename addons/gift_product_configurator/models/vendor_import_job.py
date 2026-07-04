@@ -21845,6 +21845,16 @@ class VendorImportJob(models.Model):
 
                 family_info = family_lookup.get(group_id, {})
 
+                _logger.warning(
+
+                    "[QUEUE BUILD] "
+
+                    f"group={group_id} "
+
+                    f"family_info={family_info}"
+
+                )
+
                 queue.append({
 
                     "group_id":
@@ -23086,9 +23096,32 @@ class VendorImportJob(models.Model):
 
         # =====================================================
         # IMPORT FAMILY LOOKUP
+        # (ACCUMULATE ACROSS CREATE BATCHES)
         # =====================================================
 
-        family_lookup = {}
+        try:
+
+            family_lookup = json.loads(
+
+                self.family_lookup_json or "{}"
+
+            )
+
+            if not isinstance(family_lookup, dict):
+
+                family_lookup = {}
+
+        except Exception:
+
+            family_lookup = {}
+
+        _logger.warning(
+
+            "[FAMILY LOOKUP LOADED] "
+
+            f"{len(family_lookup)} existing families"
+
+        )
 
 
         # =====================================================
@@ -23471,6 +23504,24 @@ class VendorImportJob(models.Model):
 
                     }
 
+                    self.family_lookup_json = json.dumps(
+
+                        family_lookup
+
+                    )
+
+                    self.family_lookup_json = json.dumps(
+                        family_lookup
+                    )
+
+                    _logger.warning(
+
+                        "[FAMILY LOOKUP SAVED] "
+
+                        f"families={len(family_lookup)}"
+
+                    )
+
                     _logger.warning(
 
                         "[LOOKUP ENTRY] %s",
@@ -23556,6 +23607,18 @@ class VendorImportJob(models.Model):
                         "vendor_id": vendor_id,
 
                     }
+
+                    self.family_lookup_json = json.dumps(
+                        family_lookup
+                    )
+
+                    _logger.warning(
+
+                        "[FAMILY LOOKUP SAVED] "
+
+                        f"families={len(family_lookup)}"
+
+                    )
 
                     _logger.warning(
 
