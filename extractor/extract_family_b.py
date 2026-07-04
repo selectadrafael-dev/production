@@ -22,7 +22,7 @@ from product_grid_splitter import product_grid_splitter
 from product_cropper import product_cropper
 from product_candidate_builder import product_candidate_builder
 from metadata_detector import metadata_detector
-from recovery.recovery_engine import recovery_engine
+from asset_recovery.recovery_engine import recovery_engine
 from association_engine import association_engine
 
 # QA
