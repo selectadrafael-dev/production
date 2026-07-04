@@ -55,13 +55,15 @@ def extract_pdf(
 
     if family == "A":
 
-        return extract_family_a(
+        # return extract_family_a(
 
-            file,
+        #     file,
 
-            preview=preview
+        #     preview=preview
 
-        )
+        # )
+
+         return extract_family_a(file)
 
     return extract_family_b(
 

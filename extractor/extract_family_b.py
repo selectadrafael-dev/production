@@ -22,6 +22,7 @@ from product_grid_splitter import product_grid_splitter
 from product_cropper import product_cropper
 from product_candidate_builder import product_candidate_builder
 from metadata_detector import metadata_detector
+from recovery.recovery_engine import recovery_engine
 from association_engine import association_engine
 
 # QA
@@ -219,6 +220,18 @@ def extract_pdf(
 
     )
 
+    candidates, recovery_report = recovery_engine.recover(
+
+        image,
+
+        candidates,
+
+        metadata,
+
+        classified
+
+    )
+
     processing_report.add(
         "Candidate Builder",
         "PASS",
@@ -248,6 +261,22 @@ def extract_pdf(
     candidates = association_engine.associate(
         candidates,
         metadata
+    )
+
+    #
+    # Recovery Layer
+    #
+
+    candidates, recovery_report = recovery_engine.recover(
+
+        image,
+
+        candidates,
+
+        metadata,
+
+        classified
+
     )
 
     candidates = product_relationship_engine.build(
@@ -286,6 +315,8 @@ def extract_pdf(
 
         "diagnostics": diagnostics,
 
+        "recovery": recovery_report,
+
         "statistics": {
 
             "regions": len(classified),
@@ -322,8 +353,10 @@ def extract_pdf(
 
         "statistics": preview_context["statistics"],
         
-        "diagnostics": preview_context["diagnostics"]
-
+        "diagnostics": preview_context["diagnostics"],
+        
+        "recovery": preview_context["recovery"],
+       
     }
 
     try:
