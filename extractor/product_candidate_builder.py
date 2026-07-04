@@ -52,7 +52,6 @@ class ProductCandidateBuilder:
                     "structure"
 
                 ),
-
                
                 "crop": {
 

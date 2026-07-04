@@ -32,6 +32,8 @@ from qa.region_diagnostics import region_diagnostics
 
 from region_analyzer_dispatcher import region_analyzer_dispatcher
 from product_relationship_engine import product_relationship_engine
+from qa.preview_generator import preview_generator
+from qa.asset_preview_generator import asset_preview_generator
 
 
 _logger = logging.getLogger(__name__)
@@ -351,7 +353,31 @@ def extract_pdf(
     try:
         # existing processing logic...
 
+        # if preview:
+
+        #     return preview_generator.preview(
+
+        #         preview_context
+
+        #     )
+
+        preview_type = request.args.get(
+
+            "type",
+
+            "boxes"
+
+        )
+
         if preview:
+
+            if preview_type == "assets":
+
+                return asset_preview_generator.preview(
+
+                    preview_context
+
+                )
 
             return preview_generator.preview(
 
