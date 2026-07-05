@@ -35,6 +35,7 @@ from product_relationship_engine import product_relationship_engine
 # from qa.preview_generator import preview_generator
 from qa.asset_preview_generator import asset_preview_generator
 from universal_contour_detector import universal_contour_detector
+from family_b_response_adapter import family_b_response_builder
 
 
 _logger = logging.getLogger(__name__)
@@ -420,9 +421,12 @@ def extract_pdf(
 
             )
         
-        response_data = self._serialize_response(
 
-            response_data
+        response_data = family_b_response_builder.build(
+
+            response_data,
+
+            preview=preview
 
         )
 
