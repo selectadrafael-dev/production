@@ -47,7 +47,9 @@
 
                                 <div class="qty_wrapper d-flex">
                                     <div id="qty_tiers">
-                                            <div class="tier-card active qty_tiers_card">
+                                    
+
+                                            <div class="tier-card qty_tiers_card active" data-qty="1000" data-discount="0">
                                                 <strong>1000+</strong>
                                                 <div id="actual_price">
                                                     <span class="price">
@@ -57,17 +59,17 @@
                                             </div>
 
                                            
-                                            <div class="tier-card qty_tiers_card" data-discount="5">
+                                          <div class="tier-card qty_tiers_card" data-qty="2000" data-discount="5">
                                                 <strong>2000+</strong>
                                                 <span class="price"></span>
                                             </div>
 
-                                            <div class="tier-card qty_tiers_card" data-discount="10">
+                                           <div class="tier-card qty_tiers_card" data-qty="3000" data-discount="10">
                                                 <strong>3000+</strong>
                                                 <span class="price"></span>
                                             </div>
 
-                                           <div class="tier-card qty_tiers_card" data-discount="15">
+                                         <div class="tier-card qty_tiers_card" data-qty="4000" data-discount="15">
                                                 <strong>4000+</strong>
                                                 <span class="price"></span>
                                             </div>

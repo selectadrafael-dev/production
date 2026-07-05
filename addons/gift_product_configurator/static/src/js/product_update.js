@@ -43,174 +43,149 @@
 
   //product quantity price update
   //==========================================================
-// Dynamic Quantity Pricing - Odoo 18
-//==========================================================
+  // Dynamic Quantity Pricing - Odoo 18
+  //==========================================================
 
-document.addEventListener("DOMContentLoaded", function () {
+  document.addEventListener("DOMContentLoaded", function () {
 
-    const mainPrice = document.querySelector("#dynamic_main_price");
-    const tierCards = document.querySelectorAll("#qty_tiers .tier-card");
+      const tierCards = document.querySelectorAll("#qty_tiers .tier-card");
+      const mainPrice = document.querySelector(".price-display .price");
 
-    if (!mainPrice || !tierCards.length) {
-        return;
-    }
+      if (!tierCards.length || !mainPrice) {
+          return;
+      }
 
-    //------------------------------------------------------
-    // Currency Symbol
-    //------------------------------------------------------
+      //--------------------------------------------------
+      // Store original Odoo price
+      //--------------------------------------------------
 
-    function getCurrencySymbol() {
+      const defaultPriceHTML = mainPrice.innerHTML;
 
-        const txt = mainPrice.textContent.trim();
+      //--------------------------------------------------
+      // Get numeric base price
+      //--------------------------------------------------
 
-        const match = txt.match(/[^\d.,\s-]+/);
+      function getBasePrice() {
 
-        return match ? match[0] : "$";
+          // First try data attribute
+          if (mainPrice.dataset.basePrice) {
 
-    }
+              const value = parseFloat(mainPrice.dataset.basePrice);
 
-    //------------------------------------------------------
-    // Base Price
-    //------------------------------------------------------
+              if (!isNaN(value)) {
+                  return value;
+              }
 
-    function getBasePrice() {
+          }
 
-        let price = parseFloat(mainPrice.dataset.basePrice);
+          // Fallback: extract from displayed text
+          const text = mainPrice.textContent
+              .replace(/[^0-9.,]/g, "")
+              .replace(",", "");
 
-        if (!isNaN(price)) {
-            return price;
-        }
+          const value = parseFloat(text);
 
-        const txt = mainPrice.textContent
-            .replace(/[^0-9.,]/g, "")
-            .replace(",", "");
+          return isNaN(value) ? 0 : value;
 
-        price = parseFloat(txt);
+      }
 
-        return isNaN(price) ? 0 : price;
+      //--------------------------------------------------
+      // Detect currency symbol
+      //--------------------------------------------------
 
-    }
+      function getCurrencySymbol() {
 
-    //------------------------------------------------------
-    // Format Price
-    //------------------------------------------------------
+          const txt = mainPrice.textContent.trim();
 
-    function formatPrice(price) {
+          const match = txt.match(/[^\d.,\s]+/);
 
-        return getCurrencySymbol() + price.toFixed(2);
+          return match ? match[0] : "$";
 
-    }
+      }
 
-    //------------------------------------------------------
-    // Build All Tier Prices
-    //------------------------------------------------------
+      //--------------------------------------------------
+      // Build quantity prices
+      //--------------------------------------------------
 
-    function updateTierPrices() {
+      function buildTierPrices() {
 
-        const basePrice = getBasePrice();
+          const basePrice = getBasePrice();
 
-        if (!basePrice) {
-            return;
-        }
+          if (!basePrice) {
+              return;
+          }
 
-        tierCards.forEach(card => {
+          const currency = getCurrencySymbol();
 
-            const discount = parseFloat(card.dataset.discount || 0);
+          tierCards.forEach(card => {
 
-            const tierPrice =
-                basePrice * (1 - discount / 100);
+              const discount =
+                  parseFloat(card.dataset.discount || 0);
 
-            card.dataset.calculatedPrice = tierPrice;
+              const newPrice =
+                  basePrice * (1 - discount / 100);
 
-            const span = card.querySelector(".price");
+              const priceSpan =
+                  card.querySelector(".price");
 
-            if (span) {
+              if (!priceSpan) {
+                  return;
+              }
 
-                span.textContent =
-                    formatPrice(tierPrice);
+              priceSpan.textContent =
+                  currency +
+                  newPrice.toFixed(2);
 
-            }
+          });
 
-        });
+      }
 
-        //--------------------------------------------------
-        // Keep selected card synced
-        //--------------------------------------------------
+      //--------------------------------------------------
+      // Initial calculation
+      //--------------------------------------------------
 
-        const activeCard = document.querySelector(
-            "#qty_tiers .tier-card.active"
-        );
+      buildTierPrices();
 
-        if (activeCard) {
+      //--------------------------------------------------
+      // Click behaviour (same logic as original JS)
+      //--------------------------------------------------
 
-            updateMainPrice(activeCard);
+      tierCards.forEach(card => {
 
-        }
+          card.addEventListener("click", function () {
 
-    }
+              tierCards.forEach(c =>
+                  c.classList.remove("active")
+              );
 
-    //------------------------------------------------------
-    // Update Main Price
-    //------------------------------------------------------
+              this.classList.add("active");
 
-    function updateMainPrice(card) {
+              // First/default tier restores original Odoo price
+              if (
+                  parseFloat(this.dataset.discount || 0) === 0
+              ) {
 
-        const price = parseFloat(
-            card.dataset.calculatedPrice || 0
-        );
+                  mainPrice.innerHTML = defaultPriceHTML;
+                  return;
 
-        if (!price) {
-            return;
-        }
+              }
 
-        mainPrice.innerHTML = formatPrice(price);
+              // Copy displayed price
+              const priceElement =
+                  this.querySelector(".price");
 
-    }
+              if (!priceElement) {
+                  return;
+              }
 
-    //------------------------------------------------------
-    // Quantity Click
-    //------------------------------------------------------
+              mainPrice.textContent =
+                  priceElement.textContent.trim();
 
-    tierCards.forEach(card => {
+          });
 
-        card.addEventListener("click", function () {
+      });
 
-            tierCards.forEach(c => c.classList.remove("active"));
-
-            this.classList.add("active");
-
-            updateMainPrice(this);
-
-        });
-
-    });
-
-    //------------------------------------------------------
-    // Initial Calculation
-    //------------------------------------------------------
-
-    updateTierPrices();
-
-    //------------------------------------------------------
-    // Watch for Odoo Price Updates
-    //------------------------------------------------------
-
-    const observer = new MutationObserver(function () {
-
-            updateTierPrices();
-
-        });
-
-        observer.observe(mainPrice, {
-
-            childList: true,
-            subtree: true,
-            characterData: true
-
-        });
-
-    });
-
+  });
 
   //  document.addEventListener('DOMContentLoaded', function () {
 
