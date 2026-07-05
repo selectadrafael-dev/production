@@ -1,5 +1,6 @@
 import logging
-from product_estimator import product_estimator
+#from product_estimator import product_estimator
+from segmentation_engine_v2 import segmentation_engine
 
 _logger = logging.getLogger(__name__)
 
@@ -67,9 +68,9 @@ class RegionClassifier:
 
                 structure = "single_product"
 
-            # ----------------------------------
+            # ---------------------------------------
             # Detail Region
-            # ----------------------------------
+            # ---------------------------------------
 
             else:
 
@@ -77,34 +78,30 @@ class RegionClassifier:
 
                 structure = "detail"
 
-            # ----------------------------------
+            # --------------------------------------
             # Estimate Products
-            # ----------------------------------
+            # ---------------------------------------
+            children = []
 
-            estimated_products = product_estimator.estimate(
+            estimated_products = 1
 
-                image,
+            if label == "product":
+                region["label"] = label
 
-                region
+                region["structure"] = structure
 
-            )
+                children = segmentation_engine.segment(
 
- 
-            _logger.warning(
+                    image,
 
-                "[PRODUCT ESTIMATOR] "
+                    region
+                )
 
-                f"label={label} "
+                estimated_products = len(children)
 
-                f"structure={structure} "
+                if estimated_products == 0:
 
-                f"estimated_products={estimated_products} "
-
-                f"area={area} "
-
-                f"size={width}x{height}"
-
-            )
+                    estimated_products = 1
 
             #
             # Refine structure using estimated products
@@ -134,9 +131,22 @@ class RegionClassifier:
 
             region["estimated_products"] = estimated_products
 
+            region["children"] = children
+
             classified.append(
 
                 region
+
+            )
+
+
+            _logger.warning(
+
+                "[REGION CLASSIFIER] "
+
+                f"Segmentation returned "
+
+                f"{estimated_products} children"
 
             )
 
@@ -149,28 +159,6 @@ class RegionClassifier:
         )
 
         return classified
-
-    # ==========================================
-    # Estimate number of products in a region
-    # ==========================================
-
-    def _estimate_products(
-
-        self,
-
-        image,
-
-        region
-
-    ):
-
-        #
-        # Temporary implementation.
-        # This will be replaced with
-        # OpenCV object estimation.
-        #
-
-        return 1
 
 
 region_classifier = RegionClassifier()

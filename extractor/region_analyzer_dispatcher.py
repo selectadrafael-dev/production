@@ -1,7 +1,11 @@
 from hero_region_analyzer import hero_region_analyzer
-from product_region_analyzer import product_region_analyzer
 from variant_region_analyzer import variant_region_analyzer
 from gallery_region_analyzer import gallery_region_analyzer
+from product_region_analyzer_v2 import (
+
+    product_region_analyzer_v2
+
+)
 
 
 class RegionAnalyzerDispatcher:
@@ -44,7 +48,7 @@ class RegionAnalyzerDispatcher:
 
                 output.extend(
 
-                    product_region_analyzer.analyze(
+                    product_region_analyzer_v2.analyze(
 
                         image,
 
