@@ -10793,6 +10793,116 @@ class VendorImportJob(models.Model):
 
                 deduped.append(asset)
 
+                #
+        # PRIORITIZE CLEAN PRODUCT IMAGES
+        #
+
+        for asset in deduped:
+
+            priority = 0
+
+            #
+            # Highest priority:
+            # isolated clean ecommerce renders
+            #
+
+            if not asset.get("is_lifestyle", False):
+
+                priority += 1000
+
+            #
+            # Prefer hero quality
+            #
+
+            priority += asset.get(
+
+                "hero_score",
+
+                0
+
+            )
+
+            #
+            # Then gallery quality
+            #
+
+            priority += asset.get(
+
+                "gallery_score",
+
+                0
+
+            )
+
+            #
+            # Slight preference for centered objects
+            #
+
+            if asset.get(
+
+                "centered_object",
+
+                False
+
+            ):
+
+                priority += 25
+
+            #
+            # Penalize collages slightly
+            #
+
+            if asset.get(
+
+                "is_collage",
+
+                False
+
+            ):
+
+                priority -= 15
+
+            asset["_priority"] = priority
+
+
+        deduped.sort(
+
+            key=lambda a: (
+
+                -a["_priority"],
+
+                -a.get("score", 0)
+
+            )
+
+        )
+
+        _logger.warning(
+
+            "[IMAGE PRIORITY] "
+
+            f"sorted={len(deduped)}"
+
+        )
+
+        for idx, asset in enumerate(deduped):
+
+            _logger.warning(
+
+                "[IMAGE ORDER] "
+
+                f"{idx+1} "
+
+                f"priority={asset.get('_priority')} "
+
+                f"lifestyle={asset.get('is_lifestyle')} "
+
+                f"hero={asset.get('hero_score')} "
+
+                f"gallery={asset.get('gallery_score')}"
+
+            )
+
         _logger.warning(
             f"[POST-DEDUPE COUNT] total={len(deduped)}"
         )
