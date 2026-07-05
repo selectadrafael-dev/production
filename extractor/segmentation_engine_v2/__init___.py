@@ -1,12 +1,45 @@
 import logging
 
-from .preprocess import preprocess
-from .connected_components import connected_components
-from .splitter import splitter
-from .validator import validator
-from .region_builder import region_builder
+_logger = logging.getLogger(__name__)
+
+import logging
 
 _logger = logging.getLogger(__name__)
+
+try:
+    from .preprocess import preprocess
+    _logger.warning("[IMPORT] preprocess OK")
+except Exception:
+    _logger.exception("[IMPORT] preprocess FAILED")
+    raise
+
+try:
+    from .connected_components import connected_components
+    _logger.warning("[IMPORT] connected_components OK")
+except Exception:
+    _logger.exception("[IMPORT] connected_components FAILED")
+    raise
+
+try:
+    from .splitter import splitter
+    _logger.warning("[IMPORT] splitter OK")
+except Exception:
+    _logger.exception("[IMPORT] splitter FAILED")
+    raise
+
+try:
+    from .validator import validator
+    _logger.warning("[IMPORT] validator OK")
+except Exception:
+    _logger.exception("[IMPORT] validator FAILED")
+    raise
+
+try:
+    from .region_builder import region_builder
+    _logger.warning("[IMPORT] region_builder OK")
+except Exception:
+    _logger.exception("[IMPORT] region_builder FAILED")
+    raise
 
 
 class SegmentationEngine:
@@ -23,7 +56,7 @@ class SegmentationEngine:
             Full catalogue page.
 
         region : dict
-            Parent region selected by Family B.
+            Parents region selected by Family B.
 
         Returns
         -------
