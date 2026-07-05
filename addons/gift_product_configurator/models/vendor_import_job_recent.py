@@ -1,867 +1,3 @@
-#======current pdf=================
-#===============etxract pdf=============================
-    def extract_pdf(self):
-
-        import gc
-        import json
-        import io
-        import re
-        import fitz
-        import base64
-        import requests
-
-        _logger.warning(
-            f"[PDF EXTRACT] START "
-            f"| job={self.id}"
-        )
-
-        MAX_RETRIES = 3
-
-        # balanced batch size
-        BATCH_SIZE = 3
-
-        doc = None
-
-        try:
-
-            pdf_bytes = base64.b64decode(
-                self.pdf_file
-            )
-
-        except Exception as e:
-
-            _logger.exception(
-                f"[PDF EXTRACT ERROR] "
-                f"PDF DECODE FAILED "
-                f"| {str(e)}"
-            )
-
-            self.state = "failed"
-
-            return
-
-
-        # =========================================
-        # OPEN PDF
-        # =========================================
-
-        try:
-
-            doc = fitz.open(
-                stream=pdf_bytes,
-                filetype="pdf"
-            )
-
-        except Exception as e:
-
-            _logger.exception(
-                f"[PDF EXTRACT ERROR] "
-                f"PDF OPEN FAILED "
-                f"| {str(e)}"
-            )
-
-            self.state = "failed"
-
-            return
-
-
-        try:
-
-            total_pages = len(doc)
-
-            self.total_pages = total_pages
-
-
-            _logger.warning(
-                f"[PDF EXTRACT] "
-                f"TOTAL PAGES={total_pages}"
-            )
-
-
-            # =====================================
-            # CRASH SAFE RECOVERY
-            # =====================================
-
-            existing_pages = self.env[
-                'vendor.import.page'
-            ].search([
-
-                ('job_id', '=', self.id)
-
-            ], order='page_number desc', limit=1)
-
-
-            if existing_pages:
-
-                # move to NEXT page
-                start_page = (
-                    existing_pages.page_number
-                )
-
-                _logger.warning(
-                    f"[PDF RECOVERY] "
-                    f"LAST SAVED PAGE="
-                    f"{existing_pages.page_number}"
-                )
-
-            else:
-
-                start_page = (
-                    self.current_page or 0
-                )
-
-                _logger.warning(
-                    f"[PDF RECOVERY] "
-                    f"NO SAVED PAGES"
-                )
-
-
-            # =====================================
-            # SAFETY CLAMP
-            # =====================================
-
-            if start_page >= total_pages:
-
-                start_page = total_pages
-
-
-            end_page = min(
-                start_page + BATCH_SIZE,
-                total_pages
-            )
-
-
-            _logger.warning(
-                f"[PDF BATCH] "
-                f"START={start_page + 1} "
-                f"| END={end_page}"
-            )
-
-
-            processed_count = 0
-
-
-            # =====================================
-            # PROCESS PAGES
-            # =====================================
-
-            for i in range(start_page, end_page):
-
-                _logger.warning(
-                    f"[PDF PAGE] "
-                    f"START PAGE={i + 1}"
-                )
-
-                page_success = False
-
-
-                # =================================
-                # SKIP IF ALREADY EXISTS
-                # =================================
-
-                existing = self.env[
-                    'vendor.import.page'
-                ].search([
-
-                    ('job_id', '=', self.id),
-
-                    ('page_number', '=', i + 1)
-
-                ], limit=1)
-
-
-                if existing:
-
-                    _logger.warning(
-                        f"[PDF PAGE] "
-                        f"SKIP EXISTING "
-                        f"| page={i + 1}"
-                    )
-
-                    self.current_page = i + 1
-
-                    continue
-
-
-                for attempt in range(MAX_RETRIES):
-
-                    single_pdf = None
-                    pdf_bytes_io = None
-
-                    try:
-
-                        _logger.warning(
-                            f"[PDF API] "
-                            f"PAGE={i + 1} "
-                            f"| ATTEMPT={attempt + 1}"
-                        )
-
-
-                        # =========================
-                        # SINGLE PAGE PDF
-                        # =========================
-
-                        single_pdf = fitz.open()
-
-                        single_pdf.insert_pdf(
-
-                            doc,
-
-                            from_page=i,
-
-                            to_page=i
-                        )
-
-
-                        pdf_bytes_io = io.BytesIO()
-
-                        single_pdf.save(
-                            pdf_bytes_io
-                        )
-
-                        pdf_bytes_io.seek(0)
-
-
-                        # =========================
-                        # API CALL
-                        # =========================
-
-                        response = requests.post(
-
-                            "https://pdf-extractor-staging.onrender.com/extract",
-
-                            files={
-
-                                "file": (
-
-                                    "page.pdf",
-
-                                    pdf_bytes_io,
-
-                                    "application/pdf"
-                                )
-                            },
-
-                            timeout=45
-                        )
-
-
-                        _logger.warning(
-                            f"[PDF API] "
-                            f"STATUS="
-                            f"{response.status_code} "
-                            f"| page={i + 1}"
-                        )
-
-
-                        if response.status_code != 200:
-
-                            continue
-
-                       
-                        page_data = response.json()
-
-
-                        # =========================
-                        # RESPONSE FORMAT
-                        # =========================
-
-                        if isinstance(page_data, dict):
-
-                            pages = page_data.get(
-                                "pages",
-                                []
-                            )
-
-                        elif isinstance(
-                            page_data,
-                            list
-                        ):
-
-                            pages = page_data
-
-                        else:
-
-                            pages = []
-
-                        
-                        # =========================
-                        # PAGE IMAGE DEBUG
-                        # =========================
-
-                        if pages:
-
-                            page = pages[0]
-                            _logger.warning(
-                                f"[PAGE IMAGE PREVIEW] "
-                                f"page={page.get('page')} "
-                                f"images={len(page.get('images', []))}"
-                            )
-
-                            _logger.warning(
-                                f"[PAGE IMAGE EXISTS] "
-                                f"{bool(page.get('page_image'))}"
-                            )
-
-                            _logger.warning(
-                                f"[PAGE IMAGE SIZE] "
-                                f"{page.get('page_image_size')}"
-                            )
-
-                            _logger.warning(
-                                f"[PAGE IMAGE DIMENSIONS] "
-                                f"{page.get('page_width')}x"
-                                f"{page.get('page_height')}"
-                            )
-
-
-                        if not pages:
-
-                            _logger.warning(
-                                f"[PDF PAGE] "
-                                f"EMPTY RESPONSE "
-                                f"| page={i + 1}"
-                            )
-
-                            continue
-
-
-                        normalized_blocks = []
-
-
-                        # =================================
-                        # NORMALIZE
-                        # ================================
-
-                        for p in pages:
-
-                            text = p.get(
-                                "text",
-                                ""
-                            )
-
-                            images = p.get(
-                                "images",
-                                []
-                            )
-
-                            page_image = p.get(
-                                "page_image",
-                                ""
-                            )
-
-                            page_width = p.get(
-                                "page_width",
-                                0
-                            )
-
-                            page_height = p.get(
-                                "page_height",
-                                0
-                            )
-
-                            if images and isinstance(images[0], dict):
-
-                                _logger.warning(
-                                    "[RENDER METADATA MODE]"
-                                )
-
-                                if images:
-
-                                    sample = images[0]
-
-                                    _logger.warning(
-
-                                        f"[PREPARED IMAGE SAMPLE] "
-
-                                        f"group={sample.get('asset_group')} "
-
-                                        f"priority={sample.get('priority')} "
-
-                                        f"hero={sample.get('hero_score')} "
-
-                                        f"gallery={sample.get('gallery_score')} "
-
-                                        f"lifestyle={sample.get('is_lifestyle')}"
-                                    )
-
-                                    _logger.warning(
-                                        f"[METADATA LIFESTYLE CHECK] "
-                                        f"lifestyle={sample.get('is_lifestyle')} "
-                                        f"score={sample.get('lifestyle_score')} "
-                                        f"large_image={sample.get('large_image')} "
-                                        f"portrait={sample.get('portrait')} "
-                                        f"large_area={sample.get('large_area')} "
-                                        f"width={sample.get('width')} "
-                                        f"height={sample.get('height')}"
-                                    )
-
-                                _logger.warning(
-                                    f"[METADATA SAMPLE] "
-                                    f"keys={list(images[0].keys())}"
-                                )
-
-
-                                _logger.warning(
-                                    "[RENDER METADATA MODE]"
-                                )
-
-
-                                images = self._prepare_asset_intelligence(
-
-                                    images
-                                )
-
-                                images = self._prepare_render_assets(
-
-                                    images
-                                )
-
-                                images = self._apply_role_intelligence(
-
-                                    images
-                                )
-
-
-                                page_data = {
-
-                                    "images": images,
-
-                                    "page_image": page_image,
-
-                                    "page_width": page_width,
-
-                                    "page_height": page_height
-                                }
-
-                                page_report = self._analyse_page(
-
-                                    page_data
-                                )
-
-                                # =====================================
-                                # LAYOUT
-                                # =====================================
-
-                                page_report["layout"] = (
-
-                                    self._detect_catalog_layout(
-
-                                        page_data
-                                    )
-                                )
-
-                                # =====================================
-                                # MISSING PRODUCTS
-                                # =====================================
-
-                                page_report["missing_products"] = (
-
-                                    self._detect_missing_products(
-
-                                        page_data,
-
-                                        page_report["layout"]
-                                    )
-                                )
-
-                                # =====================================
-                                # CROP PLAN
-                                # =====================================
-
-                                page_report["crop_plan"] = (
-
-                                    self._build_crop_plan(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                # =====================================
-                                # RECOVERY PLAN
-                                # =====================================
-
-                                page_report["recovery_plan"] = (
-
-                                    self._plan_page_recovery(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                strategy = self._select_processing_strategy(
-
-                                    page_report
-                                )
-
-                                strategy["crop_plan"] = page_report.get(
-
-                                    "crop_plan",
-
-                                    {}
-                                )
-
-
-                                if strategy["strategy"] != "continue":
-
-                                    images = self._execute_strategy(
-
-                                        strategy["strategy"],
-
-                                        page_data,
-
-                                        images,
-
-                                        strategy
-                                    )
-
-                                # Recovery execution intentionally disabled
-                                # Intentionally do not execute the strategy yet.
-
-                            else:
-
-                                _logger.warning(
-                                    "[LEGACY IMAGE MODE]"
-                                )
-
-                                images = self._segment_catalog_images(
-                                    images
-                                )
-
-                                images = self._prepare_render_assets(
-                                    images
-                                )
-
-                                images = self._apply_role_intelligence(
-
-                                    images
-                                )
-
-                                page_report = self._analyse_page(
-                                    page_data
-                                )
-
-                                # =====================================
-                                # DETECT PAGE LAYOUT
-                                # =====================================
-
-                                page_report["layout"] = (
-
-                                    self._detect_catalog_layout(
-
-                                        page_data
-                                    )
-                                )
-
-                                page_report["missing_products"] = (
-
-                                    self._detect_missing_products(
-
-                                        page_data,
-
-                                        page_report["layout"]
-                                    )
-                                )
-
-                                page_report["crop_plan"] = (
-
-                                    self._build_crop_plan(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                page_report["recovery_plan"] = (
-
-                                    self._plan_page_recovery(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                strategy = self._select_processing_strategy(
-
-                                    page_report
-                                )
-
-                                strategy["crop_plan"] = page_report.get(
-
-                                    "crop_plan",
-
-                                    {}
-                                )
-
-
-                                if strategy["strategy"] != "continue":
-
-                                    images = self._execute_strategy(
-
-                                        strategy["strategy"],
-
-                                        page_data,
-
-                                        images,
-
-                                        strategy
-                                    )
-
-                            if (
-                                not text
-                                and
-                                not images
-                            ):
-                                continue
-
-
-                            price = ""
-
-                            stock = ""
-
-
-                            price_match = re.search(
-
-                                r'(\$|€|£)\s?\d+[.,]?\d*',
-
-                                text
-                            )
-
-
-                            if price_match:
-
-                                price = (
-                                    price_match.group(0)
-                                )
-
-
-                            stock_match = re.search(
-
-                                r'(stock|available)'
-                                r'\s*:?\s*'
-                                r'(\d+)'
-                                r'\s*(pcs|pieces)?',
-
-                                text,
-
-                                re.I
-                            )
-
-
-                            if stock_match:
-
-                                stock = (
-                                    stock_match.group(2)
-                                )
-
-
-                            normalized_blocks.append({
-
-                                "page": i + 1,
-
-                                "text": text,
-
-                                "price": price,
-
-                                "stock": stock,
-
-                                "images": images,
-
-                                "page_image": page_image,
-
-                                "page_width": page_width,
-
-                                "page_height": page_height
-                            })
-
-
-                        if not normalized_blocks:
-
-                            _logger.warning(
-                                f"[PDF PAGE] "
-                                f"NO VALID BLOCKS "
-                                f"| page={i + 1}"
-                            )
-
-                            continue
-
-
-                        # ===========================
-                        # SAVE PAGE
-                        # ===========================
-
-
-                        all_page_images = []
-
-                        _logger.warning(
-                            f"[PAGE IMAGE DEBUG 1] "
-                            f"blocks={len(normalized_blocks)}"
-                        )
-
-                        for block in normalized_blocks:
-                           
-                            all_page_images.extend(
-                                block.get("images", [])
-                            )
-
-                            self._safe_commit_progress()
-
-                        _logger.warning(
-                            f"[PAGE IMAGE DEBUG 2] "
-                            f"images={len(all_page_images)}"
-                        )
-                        
-                        if all_page_images:
-
-                            first = all_page_images[0]
-
-                            _logger.warning(
-                                f"[PAGE IMAGE SAMPLE] "
-                                f"keys={list(first.keys()) if isinstance(first, dict) else type(first)} "
-                                f"lifestyle={first.get('is_lifestyle') if isinstance(first, dict) else 'NA'} "
-                                f"width={first.get('width') if isinstance(first, dict) else 'NA'} "
-                                f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
-                                f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
-                                f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
-                            )
-
-                        self.env[
-                            'vendor.import.page'
-                        ].create({
-
-                            'job_id': self.id,
-
-                            'page_number': i + 1,
-
-                            'extracted_json': json.dumps(
-                                normalized_blocks
-                            ),
-
-                            'page_images_json': json.dumps(
-                                all_page_images
-                            )
-                        })
-
-
-                        _logger.warning(
-                            f"[PDF PAGE] "
-                            f"SAVED "
-                            f"| page={i + 1}"
-                        )
-
-
-                        self.current_page = i + 1
-
-                        processed_count += 1
-
-                        page_success = True
-
-                        break
-
-
-                    except Exception as e:
-
-                        _logger.exception(
-                            f"[PDF PAGE ERROR] "
-                            f"page={i + 1} "
-                            f"| {str(e)}"
-                        )
-
-
-                    finally:
-
-                        try:
-
-                            if pdf_bytes_io:
-                                pdf_bytes_io.close()
-
-                        except Exception:
-                            pass
-
-
-                        try:
-
-                            if single_pdf:
-                                single_pdf.close()
-
-                        except Exception:
-                            pass
-
-
-                if not page_success:
-
-                    _logger.error(
-                        f"[PDF PAGE FAILED] "
-                        f"page={i + 1}"
-                    )
-
-
-            # =====================================
-            # SAVE BATCH ONCE
-            # =====================================
-
-            _logger.warning(
-                f"[PDF BATCH] "
-                f"PROCESSED="
-                f"{processed_count}"
-            )
-
-
-            if self.current_page < total_pages:
-
-                self.state = "pdf_extracting"
-
-            else:
-
-                self.state = "pdf_ai"
-
-
-            try:
-
-                self._safe_commit_progress()
-
-                _logger.warning(
-                    f"[PDF SAVE] "
-                    f"SUCCESS "
-                    f"| state={self.state} "
-                    f"| current={self.current_page}"
-                )
-
-            except Exception as e:
-
-                _logger.exception(
-                    f"[PDF SAVE ERROR] "
-                    f"{str(e)}"
-                )
-
-
-        finally:
-
-            try:
-
-                if doc:
-                    doc.close()
-
-            except Exception:
-                pass
-
-
-            gc.collect()
-
-            _logger.warning(
-                "[PDF GC] COMPLETE"
-            )
-
-
-
-
-
 #===========Last Stable Copy=============
 from odoo import models, fields
 import base64
@@ -3715,7 +2851,7 @@ class VendorImportJob(models.Model):
 
             return False
         
-    # ---------------- Extract PDF ----------------
+    # ======== Extract PDF (OLD BACKUP)============================
  
     def extract_pdf(self):
 
@@ -4128,6 +3264,866 @@ class VendorImportJob(models.Model):
                             )
 
                             self._safe_commit_progress()
+
+                        self.env[
+                            'vendor.import.page'
+                        ].create({
+
+                            'job_id': self.id,
+
+                            'page_number': i + 1,
+
+                            'extracted_json': json.dumps(
+                                normalized_blocks
+                            ),
+
+                            'page_images_json': json.dumps(
+                                all_page_images
+                            )
+                        })
+
+
+                        _logger.warning(
+                            f"[PDF PAGE] "
+                            f"SAVED "
+                            f"| page={i + 1}"
+                        )
+
+
+                        self.current_page = i + 1
+
+                        processed_count += 1
+
+                        page_success = True
+
+                        break
+
+
+                    except Exception as e:
+
+                        _logger.exception(
+                            f"[PDF PAGE ERROR] "
+                            f"page={i + 1} "
+                            f"| {str(e)}"
+                        )
+
+
+                    finally:
+
+                        try:
+
+                            if pdf_bytes_io:
+                                pdf_bytes_io.close()
+
+                        except Exception:
+                            pass
+
+
+                        try:
+
+                            if single_pdf:
+                                single_pdf.close()
+
+                        except Exception:
+                            pass
+
+
+                if not page_success:
+
+                    _logger.error(
+                        f"[PDF PAGE FAILED] "
+                        f"page={i + 1}"
+                    )
+
+
+            # =====================================
+            # SAVE BATCH ONCE
+            # =====================================
+
+            _logger.warning(
+                f"[PDF BATCH] "
+                f"PROCESSED="
+                f"{processed_count}"
+            )
+
+
+            if self.current_page < total_pages:
+
+                self.state = "pdf_extracting"
+
+            else:
+
+                self.state = "pdf_ai"
+
+
+            try:
+
+                self._safe_commit_progress()
+
+                _logger.warning(
+                    f"[PDF SAVE] "
+                    f"SUCCESS "
+                    f"| state={self.state} "
+                    f"| current={self.current_page}"
+                )
+
+            except Exception as e:
+
+                _logger.exception(
+                    f"[PDF SAVE ERROR] "
+                    f"{str(e)}"
+                )
+
+
+        finally:
+
+            try:
+
+                if doc:
+                    doc.close()
+
+            except Exception:
+                pass
+
+
+            gc.collect()
+
+            _logger.warning(
+                "[PDF GC] COMPLETE"
+            )
+
+    #======current pdf=================
+    #===============etxract pdf=============================
+    def extract_pdf(self):
+
+        import gc
+        import json
+        import io
+        import re
+        import fitz
+        import base64
+        import requests
+
+        _logger.warning(
+            f"[PDF EXTRACT] START "
+            f"| job={self.id}"
+        )
+
+        MAX_RETRIES = 3
+
+        # balanced batch size
+        BATCH_SIZE = 3
+
+        doc = None
+
+        try:
+
+            pdf_bytes = base64.b64decode(
+                self.pdf_file
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[PDF EXTRACT ERROR] "
+                f"PDF DECODE FAILED "
+                f"| {str(e)}"
+            )
+
+            self.state = "failed"
+
+            return
+
+
+        # =========================================
+        # OPEN PDF
+        # =========================================
+
+        try:
+
+            doc = fitz.open(
+                stream=pdf_bytes,
+                filetype="pdf"
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[PDF EXTRACT ERROR] "
+                f"PDF OPEN FAILED "
+                f"| {str(e)}"
+            )
+
+            self.state = "failed"
+
+            return
+
+
+        try:
+
+            total_pages = len(doc)
+
+            self.total_pages = total_pages
+
+
+            _logger.warning(
+                f"[PDF EXTRACT] "
+                f"TOTAL PAGES={total_pages}"
+            )
+
+
+            # =====================================
+            # CRASH SAFE RECOVERY
+            # =====================================
+
+            existing_pages = self.env[
+                'vendor.import.page'
+            ].search([
+
+                ('job_id', '=', self.id)
+
+            ], order='page_number desc', limit=1)
+
+
+            if existing_pages:
+
+                # move to NEXT page
+                start_page = (
+                    existing_pages.page_number
+                )
+
+                _logger.warning(
+                    f"[PDF RECOVERY] "
+                    f"LAST SAVED PAGE="
+                    f"{existing_pages.page_number}"
+                )
+
+            else:
+
+                start_page = (
+                    self.current_page or 0
+                )
+
+                _logger.warning(
+                    f"[PDF RECOVERY] "
+                    f"NO SAVED PAGES"
+                )
+
+
+            # =====================================
+            # SAFETY CLAMP
+            # =====================================
+
+            if start_page >= total_pages:
+
+                start_page = total_pages
+
+
+            end_page = min(
+                start_page + BATCH_SIZE,
+                total_pages
+            )
+
+
+            _logger.warning(
+                f"[PDF BATCH] "
+                f"START={start_page + 1} "
+                f"| END={end_page}"
+            )
+
+
+            processed_count = 0
+
+
+            # =====================================
+            # PROCESS PAGES
+            # =====================================
+
+            for i in range(start_page, end_page):
+
+                _logger.warning(
+                    f"[PDF PAGE] "
+                    f"START PAGE={i + 1}"
+                )
+
+                page_success = False
+
+
+                # =================================
+                # SKIP IF ALREADY EXISTS
+                # =================================
+
+                existing = self.env[
+                    'vendor.import.page'
+                ].search([
+
+                    ('job_id', '=', self.id),
+
+                    ('page_number', '=', i + 1)
+
+                ], limit=1)
+
+
+                if existing:
+
+                    _logger.warning(
+                        f"[PDF PAGE] "
+                        f"SKIP EXISTING "
+                        f"| page={i + 1}"
+                    )
+
+                    self.current_page = i + 1
+
+                    continue
+
+
+                for attempt in range(MAX_RETRIES):
+
+                    single_pdf = None
+                    pdf_bytes_io = None
+
+                    try:
+
+                        _logger.warning(
+                            f"[PDF API] "
+                            f"PAGE={i + 1} "
+                            f"| ATTEMPT={attempt + 1}"
+                        )
+
+
+                        # =========================
+                        # SINGLE PAGE PDF
+                        # =========================
+
+                        single_pdf = fitz.open()
+
+                        single_pdf.insert_pdf(
+
+                            doc,
+
+                            from_page=i,
+
+                            to_page=i
+                        )
+
+
+                        pdf_bytes_io = io.BytesIO()
+
+                        single_pdf.save(
+                            pdf_bytes_io
+                        )
+
+                        pdf_bytes_io.seek(0)
+
+
+                        # =========================
+                        # API CALL
+                        # =========================
+
+                        response = requests.post(
+
+                            "https://pdf-extractor-staging.onrender.com/extract",
+
+                            files={
+
+                                "file": (
+
+                                    "page.pdf",
+
+                                    pdf_bytes_io,
+
+                                    "application/pdf"
+                                )
+                            },
+
+                            timeout=45
+                        )
+
+
+                        _logger.warning(
+                            f"[PDF API] "
+                            f"STATUS="
+                            f"{response.status_code} "
+                            f"| page={i + 1}"
+                        )
+
+
+                        if response.status_code != 200:
+
+                            continue
+
+                       
+                        page_data = response.json()
+
+
+                        # =========================
+                        # RESPONSE FORMAT
+                        # =========================
+
+                        if isinstance(page_data, dict):
+
+                            pages = page_data.get(
+                                "pages",
+                                []
+                            )
+
+                        elif isinstance(
+                            page_data,
+                            list
+                        ):
+
+                            pages = page_data
+
+                        else:
+
+                            pages = []
+
+                        
+                        # =========================
+                        # PAGE IMAGE DEBUG
+                        # =========================
+
+                        if pages:
+
+                            page = pages[0]
+                            _logger.warning(
+                                f"[PAGE IMAGE PREVIEW] "
+                                f"page={page.get('page')} "
+                                f"images={len(page.get('images', []))}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE EXISTS] "
+                                f"{bool(page.get('page_image'))}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE SIZE] "
+                                f"{page.get('page_image_size')}"
+                            )
+
+                            _logger.warning(
+                                f"[PAGE IMAGE DIMENSIONS] "
+                                f"{page.get('page_width')}x"
+                                f"{page.get('page_height')}"
+                            )
+
+
+                        if not pages:
+
+                            _logger.warning(
+                                f"[PDF PAGE] "
+                                f"EMPTY RESPONSE "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        normalized_blocks = []
+
+
+                        # =================================
+                        # NORMALIZE
+                        # ================================
+
+                        for p in pages:
+
+                            text = p.get(
+                                "text",
+                                ""
+                            )
+
+                            images = p.get(
+                                "images",
+                                []
+                            )
+
+                            page_image = p.get(
+                                "page_image",
+                                ""
+                            )
+
+                            page_width = p.get(
+                                "page_width",
+                                0
+                            )
+
+                            page_height = p.get(
+                                "page_height",
+                                0
+                            )
+
+                            if images and isinstance(images[0], dict):
+
+                                _logger.warning(
+                                    "[RENDER METADATA MODE]"
+                                )
+
+                                if images:
+
+                                    sample = images[0]
+
+                                    _logger.warning(
+
+                                        f"[PREPARED IMAGE SAMPLE] "
+
+                                        f"group={sample.get('asset_group')} "
+
+                                        f"priority={sample.get('priority')} "
+
+                                        f"hero={sample.get('hero_score')} "
+
+                                        f"gallery={sample.get('gallery_score')} "
+
+                                        f"lifestyle={sample.get('is_lifestyle')}"
+                                    )
+
+                                    _logger.warning(
+                                        f"[METADATA LIFESTYLE CHECK] "
+                                        f"lifestyle={sample.get('is_lifestyle')} "
+                                        f"score={sample.get('lifestyle_score')} "
+                                        f"large_image={sample.get('large_image')} "
+                                        f"portrait={sample.get('portrait')} "
+                                        f"large_area={sample.get('large_area')} "
+                                        f"width={sample.get('width')} "
+                                        f"height={sample.get('height')}"
+                                    )
+
+                                _logger.warning(
+                                    f"[METADATA SAMPLE] "
+                                    f"keys={list(images[0].keys())}"
+                                )
+
+
+                                _logger.warning(
+                                    "[RENDER METADATA MODE]"
+                                )
+
+
+                                images = self._prepare_asset_intelligence(
+
+                                    images
+                                )
+
+                                images = self._prepare_render_assets(
+
+                                    images
+                                )
+
+                                images = self._apply_role_intelligence(
+
+                                    images
+                                )
+
+
+                                page_data = {
+
+                                    "images": images,
+
+                                    "page_image": page_image,
+
+                                    "page_width": page_width,
+
+                                    "page_height": page_height
+                                }
+
+                                page_report = self._analyse_page(
+
+                                    page_data
+                                )
+
+                                # =====================================
+                                # LAYOUT
+                                # =====================================
+
+                                page_report["layout"] = (
+
+                                    self._detect_catalog_layout(
+
+                                        page_data
+                                    )
+                                )
+
+                                # =====================================
+                                # MISSING PRODUCTS
+                                # =====================================
+
+                                page_report["missing_products"] = (
+
+                                    self._detect_missing_products(
+
+                                        page_data,
+
+                                        page_report["layout"]
+                                    )
+                                )
+
+                                # =====================================
+                                # CROP PLAN
+                                # =====================================
+
+                                page_report["crop_plan"] = (
+
+                                    self._build_crop_plan(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                # =====================================
+                                # RECOVERY PLAN
+                                # =====================================
+
+                                page_report["recovery_plan"] = (
+
+                                    self._plan_page_recovery(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                strategy = self._select_processing_strategy(
+
+                                    page_report
+                                )
+
+                                strategy["crop_plan"] = page_report.get(
+
+                                    "crop_plan",
+
+                                    {}
+                                )
+
+
+                                if strategy["strategy"] != "continue":
+
+                                    images = self._execute_strategy(
+
+                                        strategy["strategy"],
+
+                                        page_data,
+
+                                        images,
+
+                                        strategy
+                                    )
+
+                                # Recovery execution intentionally disabled
+                                # Intentionally do not execute the strategy yet.
+
+                            else:
+
+                                _logger.warning(
+                                    "[LEGACY IMAGE MODE]"
+                                )
+
+                                images = self._segment_catalog_images(
+                                    images
+                                )
+
+                                images = self._prepare_render_assets(
+                                    images
+                                )
+
+                                images = self._apply_role_intelligence(
+
+                                    images
+                                )
+
+                                page_report = self._analyse_page(
+                                    page_data
+                                )
+
+                                # =====================================
+                                # DETECT PAGE LAYOUT
+                                # =====================================
+
+                                page_report["layout"] = (
+
+                                    self._detect_catalog_layout(
+
+                                        page_data
+                                    )
+                                )
+
+                                page_report["missing_products"] = (
+
+                                    self._detect_missing_products(
+
+                                        page_data,
+
+                                        page_report["layout"]
+                                    )
+                                )
+
+                                page_report["crop_plan"] = (
+
+                                    self._build_crop_plan(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                page_report["recovery_plan"] = (
+
+                                    self._plan_page_recovery(
+
+                                        page_data,
+
+                                        page_report
+                                    )
+                                )
+
+                                strategy = self._select_processing_strategy(
+
+                                    page_report
+                                )
+
+                                strategy["crop_plan"] = page_report.get(
+
+                                    "crop_plan",
+
+                                    {}
+                                )
+
+
+                                if strategy["strategy"] != "continue":
+
+                                    images = self._execute_strategy(
+
+                                        strategy["strategy"],
+
+                                        page_data,
+
+                                        images,
+
+                                        strategy
+                                    )
+
+                            if (
+                                not text
+                                and
+                                not images
+                            ):
+                                continue
+
+
+                            price = ""
+
+                            stock = ""
+
+
+                            price_match = re.search(
+
+                                r'(\$|€|£)\s?\d+[.,]?\d*',
+
+                                text
+                            )
+
+
+                            if price_match:
+
+                                price = (
+                                    price_match.group(0)
+                                )
+
+
+                            stock_match = re.search(
+
+                                r'(stock|available)'
+                                r'\s*:?\s*'
+                                r'(\d+)'
+                                r'\s*(pcs|pieces)?',
+
+                                text,
+
+                                re.I
+                            )
+
+
+                            if stock_match:
+
+                                stock = (
+                                    stock_match.group(2)
+                                )
+
+
+                            normalized_blocks.append({
+
+                                "page": i + 1,
+
+                                "text": text,
+
+                                "price": price,
+
+                                "stock": stock,
+
+                                "images": images,
+
+                                "page_image": page_image,
+
+                                "page_width": page_width,
+
+                                "page_height": page_height
+                            })
+
+
+                        if not normalized_blocks:
+
+                            _logger.warning(
+                                f"[PDF PAGE] "
+                                f"NO VALID BLOCKS "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        # ===========================
+                        # SAVE PAGE
+                        # ===========================
+
+
+                        all_page_images = []
+
+                        _logger.warning(
+                            f"[PAGE IMAGE DEBUG 1] "
+                            f"blocks={len(normalized_blocks)}"
+                        )
+
+                        for block in normalized_blocks:
+                           
+                            all_page_images.extend(
+                                block.get("images", [])
+                            )
+
+                            self._safe_commit_progress()
+
+                        _logger.warning(
+                            f"[PAGE IMAGE DEBUG 2] "
+                            f"images={len(all_page_images)}"
+                        )
+                        
+                        if all_page_images:
+
+                            first = all_page_images[0]
+
+                            _logger.warning(
+                                f"[PAGE IMAGE SAMPLE] "
+                                f"keys={list(first.keys()) if isinstance(first, dict) else type(first)} "
+                                f"lifestyle={first.get('is_lifestyle') if isinstance(first, dict) else 'NA'} "
+                                f"width={first.get('width') if isinstance(first, dict) else 'NA'} "
+                                f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
+                                f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
+                                f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
+                            )
 
                         self.env[
                             'vendor.import.page'
@@ -11998,7 +11994,7 @@ class VendorImportJob(models.Model):
         return
 
 
-   #=============flask setup/installation=================== 
+    #=============flask setup/installation=================== 
     def ping_flask_server(self):
       
         try:
@@ -12008,7 +12004,7 @@ class VendorImportJob(models.Model):
             _logger.warning("FLASK PING FAILED")
 
 
-    # #---------------clean_scraped_blocks-------------------------------
+    #---------------clean_scraped_blocks-------------------------------
     def _clean_scraped_blocks(self, raw_blocks):
         """
         Clean Apify output before sending to AI

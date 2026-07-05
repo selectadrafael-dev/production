@@ -56,19 +56,20 @@
                                                 </div>
                                             </div>
 
-                                            <div class="tier-card popular qty_tiers_card">
+                                           
+                                            <div class="tier-card qty_tiers_card" data-discount="5">
                                                 <strong>2000+</strong>
-                                                <span class="price">$5.40 each</span>
+                                                <span class="price"></span>
                                             </div>
 
-                                            <div class="tier-card qty_tiers_card">
+                                            <div class="tier-card qty_tiers_card" data-discount="10">
                                                 <strong>3000+</strong>
-                                                <span class="price">$4.80 each</span>
+                                                <span class="price"></span>
                                             </div>
 
-                                            <div class="tier-card qty_tiers_card">
+                                           <div class="tier-card qty_tiers_card" data-discount="15">
                                                 <strong>4000+</strong>
-                                                <span class="price">$4.10 each</span>
+                                                <span class="price"></span>
                                             </div>
 
                                             <!--larger qty-->
