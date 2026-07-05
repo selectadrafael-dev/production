@@ -75,6 +75,26 @@ def extract_pdf(
         page
     )
 
+    page_text = "\n".join(
+
+        block.get(
+
+            "text",
+
+            ""
+
+        ).strip()
+
+        for block in ocr_blocks
+
+        if block.get(
+
+            "text"
+
+        )
+
+    )
+
     pix = page.get_pixmap(
 
         matrix=fitz.Matrix(2,2),
@@ -336,6 +356,8 @@ def extract_pdf(
 
         "page_image": image.copy(),
 
+        "text": page_text,
+
         "family": "B",
 
         "regions": classified,
@@ -391,6 +413,8 @@ def extract_pdf(
         "diagnostics": preview_context["diagnostics"],
         
         "recovery": preview_context["recovery"],
+
+        "text": preview_context["text"],
        
     }
 
