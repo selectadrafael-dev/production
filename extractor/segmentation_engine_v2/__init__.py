@@ -1,5 +1,5 @@
 from .preprocess import preprocess
-from .connected_components.connected_components import connected_components
+from .connected_components import connected_components
 from .splitter import splitter
 from .validator import validator
 from .region_builder import region_builder
