@@ -42,74 +42,174 @@
 
 
   //product quantity price update
-  document.addEventListener("DOMContentLoaded", function () {
+  //==========================================================
+// Dynamic Quantity Pricing - Odoo 18
+//==========================================================
 
-    const tierCards = document.querySelectorAll(".tier-card");
+document.addEventListener("DOMContentLoaded", function () {
 
     const mainPrice = document.querySelector("#dynamic_main_price");
+    const tierCards = document.querySelectorAll("#qty_tiers .tier-card");
 
-    if (!mainPrice)
+    if (!mainPrice || !tierCards.length) {
         return;
+    }
 
-    const basePrice = parseFloat(
-        mainPrice.dataset.basePrice || 0
-    );
+    //------------------------------------------------------
+    // Currency Symbol
+    //------------------------------------------------------
 
-    if (!basePrice)
-        return;
+    function getCurrencySymbol() {
 
-    //--------------------------------------------------
-    // Build prices for every tier
-    //--------------------------------------------------
+        const txt = mainPrice.textContent.trim();
 
-    tierCards.forEach(card => {
+        const match = txt.match(/[^\d.,\s-]+/);
 
-        const discount =
-            parseFloat(card.dataset.discount || 0);
+        return match ? match[0] : "$";
 
-        const tierPrice =
-            basePrice * (1 - discount / 100);
+    }
 
-        const priceSpan =
-            card.querySelector(".dynamic-tier-price");
+    //------------------------------------------------------
+    // Base Price
+    //------------------------------------------------------
 
-        if (priceSpan) {
+    function getBasePrice() {
 
-            priceSpan.textContent =
-                "$" + tierPrice.toFixed(2) + " each";
+        let price = parseFloat(mainPrice.dataset.basePrice);
+
+        if (!isNaN(price)) {
+            return price;
+        }
+
+        const txt = mainPrice.textContent
+            .replace(/[^0-9.,]/g, "")
+            .replace(",", "");
+
+        price = parseFloat(txt);
+
+        return isNaN(price) ? 0 : price;
+
+    }
+
+    //------------------------------------------------------
+    // Format Price
+    //------------------------------------------------------
+
+    function formatPrice(price) {
+
+        return getCurrencySymbol() + price.toFixed(2);
+
+    }
+
+    //------------------------------------------------------
+    // Build All Tier Prices
+    //------------------------------------------------------
+
+    function updateTierPrices() {
+
+        const basePrice = getBasePrice();
+
+        if (!basePrice) {
+            return;
+        }
+
+        tierCards.forEach(card => {
+
+            const discount = parseFloat(card.dataset.discount || 0);
+
+            const tierPrice =
+                basePrice * (1 - discount / 100);
+
+            card.dataset.calculatedPrice = tierPrice;
+
+            const span = card.querySelector(".price");
+
+            if (span) {
+
+                span.textContent =
+                    formatPrice(tierPrice);
+
+            }
+
+        });
+
+        //--------------------------------------------------
+        // Keep selected card synced
+        //--------------------------------------------------
+
+        const activeCard = document.querySelector(
+            "#qty_tiers .tier-card.active"
+        );
+
+        if (activeCard) {
+
+            updateMainPrice(activeCard);
 
         }
 
-    });
+    }
 
-    //--------------------------------------------------
-    // Click behaviour
-    //--------------------------------------------------
+    //------------------------------------------------------
+    // Update Main Price
+    //------------------------------------------------------
+
+    function updateMainPrice(card) {
+
+        const price = parseFloat(
+            card.dataset.calculatedPrice || 0
+        );
+
+        if (!price) {
+            return;
+        }
+
+        mainPrice.innerHTML = formatPrice(price);
+
+    }
+
+    //------------------------------------------------------
+    // Quantity Click
+    //------------------------------------------------------
 
     tierCards.forEach(card => {
 
         card.addEventListener("click", function () {
 
-            tierCards.forEach(c =>
-                c.classList.remove("active")
-            );
+            tierCards.forEach(c => c.classList.remove("active"));
 
             this.classList.add("active");
 
-            const discount =
-                parseFloat(this.dataset.discount || 0);
-
-            const newPrice =
-                basePrice * (1 - discount / 100);
-
-            mainPrice.innerHTML =
-                "$" + newPrice.toFixed(2);
+            updateMainPrice(this);
 
         });
 
     });
 
-});
+    //------------------------------------------------------
+    // Initial Calculation
+    //------------------------------------------------------
+
+    updateTierPrices();
+
+    //------------------------------------------------------
+    // Watch for Odoo Price Updates
+    //------------------------------------------------------
+
+    const observer = new MutationObserver(function () {
+
+            updateTierPrices();
+
+        });
+
+        observer.observe(mainPrice, {
+
+            childList: true,
+            subtree: true,
+            characterData: true
+
+        });
+
+    });
 
 
   //  document.addEventListener('DOMContentLoaded', function () {
