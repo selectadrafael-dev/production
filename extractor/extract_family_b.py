@@ -419,6 +419,12 @@ def extract_pdf(
                 preview_context
 
             )
+        
+        response_data = self._serialize_response(
+
+            response_data
+
+        )
 
         return jsonify(
 
