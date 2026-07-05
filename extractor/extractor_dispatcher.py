@@ -1,18 +1,9 @@
 import logging
-
 from family_detector import detect_family
-
 from extract_family_a import extract_pdf as extract_family_a
 from extract_family_b import extract_pdf as extract_family_b
 
-
 _logger = logging.getLogger(__name__)
-
-
-#
-# Temporary switch
-#
-USE_GROUP_B = True
 
 
 def extract_pdf(
@@ -23,39 +14,25 @@ def extract_pdf(
 
 ):
 
-    # ===================================
-    # TEMPORARY UNIVERSAL ENGINE
-    # ===================================
+    family = detect_family(file)
 
-    if USE_GROUP_B:
+    _logger.warning(
 
-        _logger.warning(
+        f"[DISPATCHER] family={family}"
 
-            "[DISPATCHER] "
+    )
 
-            "Routing ALL catalogues "
+    file.seek(0)
 
-            "to Group B"
+    if family == "A":
 
-        )
-
-        return extract_family_b(
+        return extract_family_a(
 
             file,
 
             preview=preview
 
         )
-
-    # ===================================
-    # Legacy fallback
-    # ===================================
-
-    family = detect_family(file)
-
-    if family == "A":
-
-         return extract_family_a(file)
 
     return extract_family_b(
 

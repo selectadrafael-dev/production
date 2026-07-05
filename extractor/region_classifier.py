@@ -1,6 +1,6 @@
 import logging
-#from product_estimator import product_estimator
-from segmentation_engine_v2 import segmentation_engine
+from product_estimator import product_estimator
+#from segmentation_engine_v2 import segmentation_engine
 
 _logger = logging.getLogger(__name__)
 
@@ -90,10 +90,15 @@ class RegionClassifier:
 
                 region["structure"] = structure
 
-                children = segmentation_engine.segment(
+                # children = product_estimator.segment(
 
+                #     image,
+
+                #     region
+                # )
+
+                estimated_products = product_estimator.estimate(
                     image,
-
                     region
                 )
 
