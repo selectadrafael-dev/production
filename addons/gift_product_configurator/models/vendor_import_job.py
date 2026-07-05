@@ -2256,6 +2256,7 @@ class VendorImportJob(models.Model):
 
 
     #===============etxract pdf=============================
+ 
     def extract_pdf(self):
 
         import gc
@@ -2514,7 +2515,7 @@ class VendorImportJob(models.Model):
 
                             continue
 
-                       
+
                         page_data = response.json()
 
 
@@ -2540,36 +2541,6 @@ class VendorImportJob(models.Model):
 
                             pages = []
 
-                        
-                        # =========================
-                        # PAGE IMAGE DEBUG
-                        # =========================
-
-                        if pages:
-
-                            page = pages[0]
-                            _logger.warning(
-                                f"[PAGE IMAGE PREVIEW] "
-                                f"page={page.get('page')} "
-                                f"images={len(page.get('images', []))}"
-                            )
-
-                            _logger.warning(
-                                f"[PAGE IMAGE EXISTS] "
-                                f"{bool(page.get('page_image'))}"
-                            )
-
-                            _logger.warning(
-                                f"[PAGE IMAGE SIZE] "
-                                f"{page.get('page_image_size')}"
-                            )
-
-                            _logger.warning(
-                                f"[PAGE IMAGE DIMENSIONS] "
-                                f"{page.get('page_width')}x"
-                                f"{page.get('page_height')}"
-                            )
-
 
                         if not pages:
 
@@ -2585,9 +2556,9 @@ class VendorImportJob(models.Model):
                         normalized_blocks = []
 
 
-                        # =================================
+                        # =========================
                         # NORMALIZE
-                        # ================================
+                        # =========================
 
                         for p in pages:
 
@@ -2601,273 +2572,14 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
-                            page_image = p.get(
-                                "page_image",
-                                ""
+                            # ===========================
+                            # CLEAN CATALOG SEGMENTATION
+                            # ===========================
+
+                            images = self._segment_catalog_images(
+                                images
                             )
 
-                            page_width = p.get(
-                                "page_width",
-                                0
-                            )
-
-                            page_height = p.get(
-                                "page_height",
-                                0
-                            )
-
-                            if images and isinstance(images[0], dict):
-
-                                _logger.warning(
-                                    "[RENDER METADATA MODE]"
-                                )
-
-                                if images:
-
-                                    sample = images[0]
-
-                                    _logger.warning(
-
-                                        f"[PREPARED IMAGE SAMPLE] "
-
-                                        f"group={sample.get('asset_group')} "
-
-                                        f"priority={sample.get('priority')} "
-
-                                        f"hero={sample.get('hero_score')} "
-
-                                        f"gallery={sample.get('gallery_score')} "
-
-                                        f"lifestyle={sample.get('is_lifestyle')}"
-                                    )
-
-                                    _logger.warning(
-                                        f"[METADATA LIFESTYLE CHECK] "
-                                        f"lifestyle={sample.get('is_lifestyle')} "
-                                        f"score={sample.get('lifestyle_score')} "
-                                        f"large_image={sample.get('large_image')} "
-                                        f"portrait={sample.get('portrait')} "
-                                        f"large_area={sample.get('large_area')} "
-                                        f"width={sample.get('width')} "
-                                        f"height={sample.get('height')}"
-                                    )
-
-                                _logger.warning(
-                                    f"[METADATA SAMPLE] "
-                                    f"keys={list(images[0].keys())}"
-                                )
-
-
-                                _logger.warning(
-                                    "[RENDER METADATA MODE]"
-                                )
-
-
-                                images = self._prepare_asset_intelligence(
-
-                                    images
-                                )
-
-                                images = self._prepare_render_assets(
-
-                                    images
-                                )
-
-                                images = self._apply_role_intelligence(
-
-                                    images
-                                )
-
-
-                                page_data = {
-
-                                    "images": images,
-
-                                    "page_image": page_image,
-
-                                    "page_width": page_width,
-
-                                    "page_height": page_height
-                                }
-
-                                page_report = self._analyse_page(
-
-                                    page_data
-                                )
-
-                                # =====================================
-                                # LAYOUT
-                                # =====================================
-
-                                page_report["layout"] = (
-
-                                    self._detect_catalog_layout(
-
-                                        page_data
-                                    )
-                                )
-
-                                # =====================================
-                                # MISSING PRODUCTS
-                                # =====================================
-
-                                page_report["missing_products"] = (
-
-                                    self._detect_missing_products(
-
-                                        page_data,
-
-                                        page_report["layout"]
-                                    )
-                                )
-
-                                # =====================================
-                                # CROP PLAN
-                                # =====================================
-
-                                page_report["crop_plan"] = (
-
-                                    self._build_crop_plan(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                # =====================================
-                                # RECOVERY PLAN
-                                # =====================================
-
-                                page_report["recovery_plan"] = (
-
-                                    self._plan_page_recovery(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                strategy = self._select_processing_strategy(
-
-                                    page_report
-                                )
-
-                                strategy["crop_plan"] = page_report.get(
-
-                                    "crop_plan",
-
-                                    {}
-                                )
-
-
-                                if strategy["strategy"] != "continue":
-
-                                    images = self._execute_strategy(
-
-                                        strategy["strategy"],
-
-                                        page_data,
-
-                                        images,
-
-                                        strategy
-                                    )
-
-                                # Recovery execution intentionally disabled
-                                # Intentionally do not execute the strategy yet.
-
-                            else:
-
-                                _logger.warning(
-                                    "[LEGACY IMAGE MODE]"
-                                )
-
-                                images = self._segment_catalog_images(
-                                    images
-                                )
-
-                                images = self._prepare_render_assets(
-                                    images
-                                )
-
-                                images = self._apply_role_intelligence(
-
-                                    images
-                                )
-
-                                page_report = self._analyse_page(
-                                    page_data
-                                )
-
-                                # =====================================
-                                # DETECT PAGE LAYOUT
-                                # =====================================
-
-                                page_report["layout"] = (
-
-                                    self._detect_catalog_layout(
-
-                                        page_data
-                                    )
-                                )
-
-                                page_report["missing_products"] = (
-
-                                    self._detect_missing_products(
-
-                                        page_data,
-
-                                        page_report["layout"]
-                                    )
-                                )
-
-                                page_report["crop_plan"] = (
-
-                                    self._build_crop_plan(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                page_report["recovery_plan"] = (
-
-                                    self._plan_page_recovery(
-
-                                        page_data,
-
-                                        page_report
-                                    )
-                                )
-
-                                strategy = self._select_processing_strategy(
-
-                                    page_report
-                                )
-
-                                strategy["crop_plan"] = page_report.get(
-
-                                    "crop_plan",
-
-                                    {}
-                                )
-
-
-                                if strategy["strategy"] != "continue":
-
-                                    images = self._execute_strategy(
-
-                                        strategy["strategy"],
-
-                                        page_data,
-
-                                        images,
-
-                                        strategy
-                                    )
 
                             if (
                                 not text
@@ -2927,13 +2639,7 @@ class VendorImportJob(models.Model):
 
                                 "stock": stock,
 
-                                "images": images,
-
-                                "page_image": page_image,
-
-                                "page_width": page_width,
-
-                                "page_height": page_height
+                                "images": images
                             })
 
 
@@ -2955,37 +2661,13 @@ class VendorImportJob(models.Model):
 
                         all_page_images = []
 
-                        _logger.warning(
-                            f"[PAGE IMAGE DEBUG 1] "
-                            f"blocks={len(normalized_blocks)}"
-                        )
-
                         for block in normalized_blocks:
-                           
+
                             all_page_images.extend(
                                 block.get("images", [])
                             )
 
                             self._safe_commit_progress()
-
-                        _logger.warning(
-                            f"[PAGE IMAGE DEBUG 2] "
-                            f"images={len(all_page_images)}"
-                        )
-                        
-                        if all_page_images:
-
-                            first = all_page_images[0]
-
-                            _logger.warning(
-                                f"[PAGE IMAGE SAMPLE] "
-                                f"keys={list(first.keys()) if isinstance(first, dict) else type(first)} "
-                                f"lifestyle={first.get('is_lifestyle') if isinstance(first, dict) else 'NA'} "
-                                f"width={first.get('width') if isinstance(first, dict) else 'NA'} "
-                                f"height={first.get('height') if isinstance(first, dict) else 'NA'} "
-                                f"x={first.get('x') if isinstance(first, dict) else 'NA'} "
-                                f"y={first.get('y') if isinstance(first, dict) else 'NA'}"
-                            )
 
                         self.env[
                             'vendor.import.page'
@@ -3113,6 +2795,7 @@ class VendorImportJob(models.Model):
             _logger.warning(
                 "[PDF GC] COMPLETE"
             )
+
 
     #=========pdf validate_extraction_quality============== 
 
@@ -6426,8 +6109,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        #ACTOR_ID = "selectad~my-actor"
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
 
         # ===========================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
