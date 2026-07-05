@@ -9879,14 +9879,56 @@ class VendorImportJob(models.Model):
         if not images:
             return segmented_images
 
-        for img_b64 in images:
+      
+        for image_item in images:
 
             try:
 
-                img_data = base64.b64decode(img_b64)
+                #
+                # Backward compatibility
+                #
+                # Family A and Family B may supply either:
+                #
+                #   "...base64..."
+                #
+                # or
+                #
+                #   {
+                #       "image": "...base64...",
+                #       ...
+                #   }
+                #
+
+                if isinstance(image_item, dict):
+
+                    img_b64 = image_item.get("image")
+
+                    if not img_b64:
+
+                        _logger.warning(
+
+                            "[SEGMENT SKIP] "
+
+                            "Missing image field"
+
+                        )
+
+                        continue
+
+                else:
+
+                    img_b64 = image_item
+
+                img_data = base64.b64decode(
+
+                    img_b64
+
+                )
 
                 pil_image = Image.open(
+
                     BytesIO(img_data)
+
                 ).convert("RGB")
 
                 original_width, original_height = pil_image.size
