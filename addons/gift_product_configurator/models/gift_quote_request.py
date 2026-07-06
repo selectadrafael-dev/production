@@ -128,7 +128,7 @@ class GiftQuoteRequest(models.Model):
 
     website_id = fields.Many2one(
         "website",
-        default=lambda self: self.env.website,
+        string="Website",
     )
 
     website_language = fields.Char()
