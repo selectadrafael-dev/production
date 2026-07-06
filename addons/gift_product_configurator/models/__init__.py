@@ -7,5 +7,7 @@ from . import vendor_import_page
 from . import product_template
 from . import product_delete_override
 from . import product_mass_update_wizard
+from . import gift_quote_request
+from . import gift_quote_request_line
 
 

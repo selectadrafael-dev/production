@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <!-- ===================================================== -->
+    <!-- Website Quote Request Sequence                        -->
+    <!-- ===================================================== -->
+
+    <record id="seq_gift_quote_request" model="ir.sequence">
+
+        <field name="name">
+            Website Quote Request
+        </field>
+
+        <field name="code">
+            gift.quote.request
+        </field>
+
+        <field name="prefix">
+            GQ
+        </field>
+
+        <field name="padding">
+            5
+        </field>
+
+        <field name="number_next">
+            1
+        </field>
+
+        <field name="number_increment">
+            1
+        </field>
+
+        <field name="implementation">
+            standard
+        </field>
+
+    </record>
+
+</odoo>

@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ===================================================== -->
+    <!-- Tree View                                              -->
+    <!-- ===================================================== -->
+
+    <record id="gift_quote_request_tree" model="ir.ui.view">
+        <field name="name">gift.quote.request.tree</field>
+        <field name="model">gift.quote.request</field>
+
+        <field name="arch" type="xml">
+
+            <tree>
+
+                <field name="name"/>
+
+                <field name="customer_name"/>
+
+                <field name="company_name"/>
+
+                <field name="email"/>
+
+                <field name="quantity"/>
+
+                <field name="submitted_on"/>
+
+                <field name="state"/>
+
+            </tree>
+
+        </field>
+
+    </record>
+
+
+    <!-- ===================================================== -->
+    <!-- Form View                                              -->
+    <!-- ===================================================== -->
+
+    <record id="gift_quote_request_form" model="ir.ui.view">
+
+        <field name="name">
+            gift.quote.request.form
+        </field>
+
+        <field name="model">
+            gift.quote.request
+        </field>
+
+        <field name="arch" type="xml">
+
+            <form>
+
+                <header>
+
+                    <field name="state"
+                           widget="statusbar"
+                           statusbar_visible="draft,submitted,crm_created,quotation_created,won,cancelled"/>
+
+                </header>
+
+                <sheet>
+
+                    <div class="oe_title">
+
+                        <h1>
+
+                            <field name="name"
+                                   readonly="1"/>
+
+                        </h1>
+
+                    </div>
+
+                    <group>
+
+                        <group>
+
+                            <field name="partner_id"/>
+
+                            <field name="customer_name"
+                                   readonly="1"/>
+
+                            <field name="company_name"/>
+
+                            <field name="email"/>
+
+                            <field name="phone"/>
+
+                            <field name="postcode"/>
+
+                        </group>
+
+                        <group>
+
+                            <field name="required_date"/>
+
+                            <field name="need_visual"/>
+
+                            <field name="include_vat"/>
+
+                            <field name="submitted_on"
+                                   readonly="1"/>
+
+                        </group>
+
+                    </group>
+
+                    <notebook>
+
+                        <!-- ==================================== -->
+                        <!-- PRODUCTS                             -->
+                        <!-- ==================================== -->
+
+                        <page string="Products">
+
+                            <field name="line_ids">
+
+                                <tree editable="bottom">
+
+                                    <field name="product_id"/>
+
+                                    <field name="variant_name"/>
+
+                                    <field name="colour"/>
+
+                                    <field name="quantity"/>
+
+                                    <field name="unit_price"/>
+
+                                    <field name="discount"/>
+
+                                    <field name="subtotal"/>
+
+                                    <field name="print_method"/>
+
+                                    <field name="logo_colours"/>
+
+                                </tree>
+
+                            </field>
+
+                        </page>
+
+                        <!-- ==================================== -->
+                        <!-- NOTES                                -->
+                        <!-- ==================================== -->
+
+                        <page string="Notes">
+
+                            <field name="additional_information"
+                                   nolabel="1"/>
+
+                        </page>
+
+                        <!-- ==================================== -->
+                        <!-- SALES                                -->
+                        <!-- ==================================== -->
+
+                        <page string="Sales">
+
+                            <group>
+
+                                <field name="lead_id"
+                                       readonly="1"/>
+
+                                <field name="sale_order_id"
+                                       readonly="1"/>
+
+                            </group>
+
+                        </page>
+
+                    </notebook>
+
+                </sheet>
+
+                <chatter/>
+
+            </form>
+
+        </field>
+
+    </record>
+
+</odoo>

@@ -10,7 +10,9 @@
    'website',
    'website_sale',
    'sale_management',
-    "stock"
+   'stock',
+   'mail',
+   'crm',
 ],
 "data": [
     "views/product_page.xml",
@@ -32,6 +34,14 @@
     'views/product_mass_update_views.xml',
     'views/vendor_product_menu.xml',
     'views/vendor_family_sequence.xml'
+
+    'data/gift_quote_sequence.xml',
+
+    'data/crm_stage.xml',
+
+    'views/gift_quote_request_views.xml',
+
+    'views/gift_quote_request_menu.xml',
 ],
 "assets": {
     "web.assets_frontend": [
@@ -45,6 +55,8 @@
         "gift_product_configurator/static/src/scss/vendor_tool.scss",
         "gift_product_configurator/static/src/scss/portal.scss",
         "gift_product_configurator/static/src/js/configurator.js",
+        "gift_product_configurator/static/src/js/quote_submit.js",
+        "gift_product_configurator/static/src/js/quote_summary.js",
     ],
 },
  'installable': True,

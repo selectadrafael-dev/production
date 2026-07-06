@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- =============================================== -->
+    <!-- Action                                           -->
+    <!-- =============================================== -->
+
+    <record id="action_gift_quote_request"
+            model="ir.actions.act_window">
+
+        <field name="name">Website Quotations</field>
+
+        <field name="res_model">gift.quote.request</field>
+
+        <field name="view_mode">tree,form</field>
+
+        <field name="help" type="html">
+
+            <p class="o_view_nocontent_smiling_face">
+
+                Website quotation requests will appear here.
+
+            </p>
+
+        </field>
+
+    </record>
+
+
+    <!-- =============================================== -->
+    <!-- CRM MENU                                         -->
+    <!-- =============================================== -->
+
+    <menuitem
+        id="menu_gift_quote_request"
+
+        name="Website Quotations"
+
+        parent="crm.crm_menu_root"
+
+        action="action_gift_quote_request"
+
+        sequence="90"/>
+
+</odoo>
