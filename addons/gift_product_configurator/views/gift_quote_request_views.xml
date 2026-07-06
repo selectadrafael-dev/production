@@ -11,7 +11,7 @@
 
         <field name="arch" type="xml">
 
-            <tree>
+            <list>
 
                 <field name="name"/>
 
@@ -27,7 +27,7 @@
 
                 <field name="state"/>
 
-            </tree>
+            </list>
 
         </field>
 
@@ -110,10 +110,8 @@
                         <!-- ==================================== -->
 
                         <page string="Products">
-
                             <field name="line_ids">
-
-                                <tree editable="bottom">
+                                <list editable="bottom">
 
                                     <field name="product_id"/>
 
@@ -132,11 +130,8 @@
                                     <field name="print_method"/>
 
                                     <field name="logo_colours"/>
-
-                                </tree>
-
+                                </list>
                             </field>
-
                         </page>
 
                         <!-- ==================================== -->
@@ -144,10 +139,8 @@
                         <!-- ==================================== -->
 
                         <page string="Notes">
-
                             <field name="additional_information"
                                    nolabel="1"/>
-
                         </page>
 
                         <!-- ==================================== -->
@@ -155,29 +148,19 @@
                         <!-- ==================================== -->
 
                         <page string="Sales">
-
                             <group>
-
                                 <field name="lead_id"
                                        readonly="1"/>
 
                                 <field name="sale_order_id"
                                        readonly="1"/>
-
                             </group>
-
                         </page>
-
                     </notebook>
-
                 </sheet>
-
                 <chatter/>
-
             </form>
-
         </field>
-
     </record>
 
 </odoo>
