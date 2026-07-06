@@ -48,11 +48,33 @@
 
             <form>
 
-                <header>
+                <!-- <header>
 
                     <field name="state"
                            widget="statusbar"
                            statusbar_visible="draft,submitted,crm_created,quotation_created,won,cancelled"/>
+
+                </header> -->
+
+                <header>
+
+                    <button
+                        name="action_generate_sale_order"
+                        type="object"
+                        string="Generate Quotation"
+                        class="btn-primary"
+                        invisible="sale_order_id != False"/>
+
+                    <button
+                        name="action_generate_sale_order"
+                        type="object"
+                        string="Open Quotation"
+                        invisible="sale_order_id == False"/>
+
+                    <field
+                        name="state"
+                        widget="statusbar"
+                        statusbar_visible="draft,submitted,crm_created,quotation_created,won,cancelled"/>
 
                 </header>
 

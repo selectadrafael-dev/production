@@ -52,7 +52,7 @@
         "gift_product_configurator/static/src/scss/vendor_tool.scss",
         "gift_product_configurator/static/src/scss/portal.scss",
         "gift_product_configurator/static/src/js/configurator.js",
-        "gift_product_configurator/static/src/js/quote_submit.js",
+        "gift_product_configurator/static/src/js/quote_submission.js",
         "gift_product_configurator/static/src/js/quote_summary.js",
     ],
 },

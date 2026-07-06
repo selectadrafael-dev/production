@@ -103,4 +103,11 @@ class GiftQuoteRequestLine(models.Model):
         string="Website Configuration",
     )
 
+    product_image = fields.Char()
+
+
+
+
+
+   
     

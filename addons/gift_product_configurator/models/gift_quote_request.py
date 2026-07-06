@@ -377,3 +377,89 @@ class GiftQuoteRequest(models.Model):
 
     def _send_confirmation_email(self):
         pass
+
+
+    # ==========================================================
+    # GENERATE SALE ORDER
+    # ==========================================================
+
+    def action_generate_sale_order(self):
+
+        self.ensure_one()
+
+        if self.sale_order_id:
+            return {
+                "type": "ir.actions.act_window",
+                "res_model": "sale.order",
+                "view_mode": "form",
+                "res_id": self.sale_order_id.id,
+            }
+
+        partner = self.partner_id
+
+        if not partner:
+            partner = self._get_or_create_partner()
+            self.partner_id = partner.id
+
+        sale_order = self.env["sale.order"].create({
+
+            "partner_id": partner.id,
+
+            "origin": self.name,
+
+            "client_order_ref": self.name,
+
+        })
+
+        name = line.product_name or line.product_id.display_name
+
+        config = []
+
+        if line.print_method:
+            config.append(f"Print Method: {line.print_method}")
+
+        if line.logo_colours:
+            config.append(f"Logo Colours: {line.logo_colours}")
+
+        if line.tier_quantity:
+            config.append(f"Quantity Tier: {line.tier_quantity}")
+
+        if line.include_vat:
+            config.append("VAT Included")
+
+        if config:
+            name += "\n\n" + "\n".join(config)
+
+
+        for line in self.line_ids:
+
+            self.env["sale.order.line"].create({
+
+                "order_id": sale_order.id,
+
+                "product_id": line.product_id.id,
+
+                "name": name,
+
+                "product_uom_qty": line.quantity,
+
+                # Website snapshot price
+                "price_unit": line.unit_price,
+
+            })
+
+        self.sale_order_id = sale_order.id
+
+        self.state = "quotation_created"
+
+        return {
+
+            "type": "ir.actions.act_window",
+
+            "res_model": "sale.order",
+
+            "view_mode": "form",
+
+            "res_id": sale_order.id,
+
+        }

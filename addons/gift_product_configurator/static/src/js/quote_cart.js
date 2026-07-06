@@ -64,12 +64,24 @@
     save(cart);
   }
 
+  // window.QuoteCart = {
+  //   getCart: getCart,
+  //   add: add,
+  //   remove: remove,
+  //   exists: exists,
+  //   isEmpty: isEmpty
+  // };
+
   window.QuoteCart = {
-    getCart: getCart,
-    add: add,
-    remove: remove,
-    exists: exists,
-    isEmpty: isEmpty
+      getCart: getCart,
+      add: add,
+      remove: remove,
+      exists: exists,
+      isEmpty: isEmpty,
+
+      clear: function () {
+          save([]);
+      }
   };
 
 })();
