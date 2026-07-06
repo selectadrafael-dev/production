@@ -40,13 +40,9 @@
 
     <record id="gift_quote_request_form" model="ir.ui.view">
 
-        <field name="name">
-            gift.quote.request.form
-        </field>
+        <field name="name">gift.quote.request.form</field>
 
-        <field name="model">
-            gift.quote.request
-        </field>
+        <field name="model">gift.quote.request</field>
 
         <field name="arch" type="xml">
 
