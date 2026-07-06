@@ -48,9 +48,11 @@ class GiftQuoteRequest(models.Model):
 
     company_name = fields.Char()
 
-    first_name = fields.Char(required=True)
+    # first_name = fields.Char(required=True)
+    first_name = fields.Char()
 
-    last_name = fields.Char(required=True)
+    # last_name = fields.Char(required=True)
+    last_name = fields.Char()
 
     email = fields.Char(required=True)
 
