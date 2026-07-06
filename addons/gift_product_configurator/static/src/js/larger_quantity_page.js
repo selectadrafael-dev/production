@@ -285,6 +285,78 @@ function updateQuotePreview() {
 
 }
 
+/* =====================================================
+SUMMARY TOTALS
+===================================================== */
+
+function updateQuoteTotals() {
+
+    if (!window.QuoteCart) return;
+
+    const cart = QuoteCart.getCart();
+
+    if (!cart || !cart.length) return;
+
+    let subtotal = 0;
+    let discount = 0;
+
+    cart.forEach(item => {
+
+        subtotal += Number(item.subtotal || 0);
+
+        discount += Number(item.discount_amount || 0);
+
+    });
+
+    const estimatedTotal = subtotal;
+
+    //--------------------------------------------------
+    // Locate summary fields
+    //--------------------------------------------------
+
+    const subtotalEl =
+        document.querySelector(".quote-subtotal");
+
+    const discountEl =
+        document.querySelector(".quote-discount");
+
+    const estimatedEl =
+        document.querySelector(".quote-estimated-total");
+
+    //--------------------------------------------------
+    // Currency
+    //--------------------------------------------------
+
+    const currency =
+        cart[0].currency || "";
+
+    //--------------------------------------------------
+    // Update UI
+    //--------------------------------------------------
+
+    if (subtotalEl) {
+
+        subtotalEl.innerHTML =
+            `${currency}${subtotal.toFixed(2)}`;
+
+    }
+
+    if (discountEl) {
+
+        discountEl.innerHTML =
+            `${currency}${discount.toFixed(2)}`;
+
+    }
+
+    if (estimatedEl) {
+
+        estimatedEl.innerHTML =
+            `${currency}${estimatedTotal.toFixed(2)}`;
+
+    }
+
+}
+
 
 /* =====================================================
 LOGO SECTION CONTROL
@@ -669,7 +741,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (isLargeQtyPage()) {
 
+        // updateQuotePreview();
+
+        // toggleLogoSection();
+
         updateQuotePreview();
+
+        updateQuoteTotals();
 
         toggleLogoSection();
 
