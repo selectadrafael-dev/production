@@ -389,6 +389,7 @@ class GiftQuoteRequest(models.Model):
 
         self.ensure_one()
 
+        # Already generated?
         if self.sale_order_id:
             return {
                 "type": "ir.actions.act_window",
@@ -397,12 +398,14 @@ class GiftQuoteRequest(models.Model):
                 "res_id": self.sale_order_id.id,
             }
 
+        # Get/Create customer
         partner = self.partner_id
 
         if not partner:
             partner = self._get_or_create_partner()
             self.partner_id = partner.id
 
+        # Create quotation
         sale_order = self.env["sale.order"].create({
 
             "partner_id": partner.id,
@@ -413,27 +416,36 @@ class GiftQuoteRequest(models.Model):
 
         })
 
-        name = line.product_name or line.product_id.display_name
-
-        config = []
-
-        if line.print_method:
-            config.append(f"Print Method: {line.print_method}")
-
-        if line.logo_colours:
-            config.append(f"Logo Colours: {line.logo_colours}")
-
-        if line.tier_quantity:
-            config.append(f"Quantity Tier: {line.tier_quantity}")
-
-        if line.include_vat:
-            config.append("VAT Included")
-
-        if config:
-            name += "\n\n" + "\n".join(config)
-
+        # ------------------------------------------------------
+        # Create quotation lines
+        # ------------------------------------------------------
 
         for line in self.line_ids:
+
+            name = line.product_name or line.product_id.display_name
+
+            config = []
+
+            if line.print_method:
+                config.append(
+                    "Print Method: %s" % line.print_method
+                )
+
+            if line.logo_colours:
+                config.append(
+                    "Logo Colours: %s" % line.logo_colours
+                )
+
+            if line.tier_quantity:
+                config.append(
+                    "Quantity Tier: %s" % line.tier_quantity
+                )
+
+            if line.include_vat:
+                config.append("VAT Included")
+
+            if config:
+                name += "\n\n" + "\n".join(config)
 
             self.env["sale.order.line"].create({
 
@@ -445,11 +457,12 @@ class GiftQuoteRequest(models.Model):
 
                 "product_uom_qty": line.quantity,
 
-                # Website snapshot price
+                # Snapshot website price
                 "price_unit": line.unit_price,
 
             })
 
+        # Link quotation
         self.sale_order_id = sale_order.id
 
         self.state = "quotation_created"
