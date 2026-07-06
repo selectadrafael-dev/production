@@ -3,6 +3,37 @@
 <template id="larger_quantity_page" name="Larger Quantity Page">
 <t t-call="website.layout">
 <form id="large-quote-form" enctype="multipart/form-data">
+
+<input
+
+    type="hidden"
+
+    id="vat_rate"
+
+    t-att-value="vat_rate"
+
+/>
+
+<input
+    type="hidden"
+    name="csrf_token"
+    t-att-value="request.csrf_token()"/>
+
+    <input
+    type="hidden"
+    id="cart_json"
+    name="cart"/>
+
+    <input
+    type="hidden"
+    id="include_vat"
+    name="include_vat"/>
+
+    <input
+    type="hidden"
+    id="need_visual"
+    name="need_visual"/>
+
 <div class="container larger-quantity-page">
 
     <!-- Progress Bar -->
@@ -100,7 +131,7 @@
 
             <h5>Request a quote for</h5>
 
-            <div class="product-summary">
+            <!--div class="product-summary">
 
                 <div class="product-summary-list">
 
@@ -114,6 +145,84 @@
                             <p>1 colour print</p>
                         </div>
                     </div>
+
+                </div>
+
+            </div-->
+
+            <div class="product-summary">
+
+                <div class="product-summary-list"></div>
+
+                <!-- ========================= -->
+                <!-- QUOTE TOTALS -->
+                <!-- ========================= -->
+
+                <div class="quote-totals mt-4">
+
+                    <div class="quote-total-row">
+
+                        <span>Subtotal</span>
+
+                        <strong id="quote_subtotal">
+
+                            £0.00
+
+                        </strong>
+
+                    </div>
+
+                    <div class="quote-total-row">
+
+                        <span>Total Discount</span>
+
+                        <strong id="quote_discount">
+
+                            £0.00
+
+                        </strong>
+
+                    </div>
+
+                    <div class="quote-total-row">
+
+                        <span id="vat_label">VAT</span>
+
+                        <strong id="quote_vat">
+
+                            Calculated Later
+
+                        </strong>
+
+                    </div>
+
+                    <hr/>
+
+                    <div class="quote-total-row grand-total">
+
+                        <span>
+
+                            Estimated Total
+
+                        </span>
+
+                        <strong id="quote_total">
+
+                            £0.00
+
+                        </strong>
+
+                    </div>
+
+                    <small class="text-muted">
+
+                        Final quotation may change depending on
+                        artwork,
+                        delivery,
+                        branding method
+                        and VAT.
+
+                    </small>
 
                 </div>
 
@@ -166,7 +275,7 @@
                 Formats we accept .ai, .eps, .pdf, .png, .jpg
             </small>
 
-            <button type="button" class="btn lq-btn">
+            <button type="button" class="btn lq-btn" id="submit_quote_btn">
                 Get an express quote
             </button>
 

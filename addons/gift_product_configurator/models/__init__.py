@@ -9,5 +9,6 @@ from . import product_delete_override
 from . import product_mass_update_wizard
 from . import gift_quote_request
 from . import gift_quote_request_line
+from . import res_config_settings
 
 

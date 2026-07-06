@@ -23,11 +23,6 @@
 
     if (quoteBtn) {
 
-      const id = parseInt(quoteBtn.dataset.productId || 0);
-      const name = quoteBtn.dataset.productName || '';
-      const image = quoteBtn.dataset.productImage || '';
-      const price = parseFloat(quoteBtn.dataset.productPrice || 0);
-
       function updateText() {
         quoteBtn.textContent = QuoteCart.isEmpty()
           ? 'Create Quote'
@@ -39,20 +34,216 @@
       quoteBtn.addEventListener('click', function (e) {
         e.preventDefault();
 
-        if (!id) return;
+        const id =
+            parseInt(
+                quoteBtn.dataset.productId || 0
+            );
 
-        const exists = QuoteCart.exists(id);
-
-        /* add product only if not already present */
-        if (!exists) {
-          QuoteCart.add({
-            id: id,
-            name: name,
-            image: image,
-            price: price,
-            qty: 1
-          });
+        if (!id) {
+            return;
         }
+        const name = quoteBtn.dataset.productName || '';
+        const image = quoteBtn.dataset.productImage || '';
+        const price = parseFloat(quoteBtn.dataset.productPrice || 0);
+
+
+        //--------------------------------------------------
+        // Selected Quantity Tier
+        //--------------------------------------------------
+
+        const activeTier =
+            document.querySelector(
+                "#qty_tiers .qty_tiers_card.active"
+            );
+
+        const tierQty =
+            activeTier
+                ? parseInt(activeTier.dataset.qty || 1)
+                : 1;
+
+        const tierDiscount =
+            activeTier
+                ? parseFloat(activeTier.dataset.discount || 0)
+                : 0;
+
+        const tierName =
+            activeTier
+                ? activeTier.dataset.tier || ""
+                : "";
+
+        //--------------------------------------------------
+        // Manual Quantity
+        //--------------------------------------------------
+
+        const qtyInput =
+            document.querySelector(".custom-qty input");
+
+        const manualQty =
+            qtyInput
+                ? parseInt(qtyInput.value || tierQty)
+                : tierQty;
+
+        const finalQty =
+            manualQty > 0
+                ? manualQty
+                : tierQty;
+
+        //--------------------------------------------------
+        // Branding
+        //--------------------------------------------------
+
+        const printMethod =
+            document
+                .getElementById("print_method_select")
+                ?.value || "";
+
+        const logoColours =
+            document
+                .getElementById("logo_colours_select")
+                ?.value || "";
+
+        //--------------------------------------------------
+        // Current Price
+        //--------------------------------------------------
+
+        const displayedPrice =
+            parseFloat(
+
+                document
+                    .getElementById("dynamic_main_price")
+                    ?.innerText
+                    .replace(/[^\d.]/g, "")
+
+                    || price
+
+            );
+
+        //--------------------------------------------------
+        // Currency
+        //--------------------------------------------------
+
+        const currencyText =
+
+            document
+                .getElementById("dynamic_main_price")
+                ?.innerText
+                .replace(/[0-9.,\s]/g, "")
+                .trim()
+
+                || "";
+
+         const originalPrice =
+            tierDiscount > 0
+                ? Number(
+                    (
+                        displayedPrice /
+                        (1 - tierDiscount / 100)
+                    ).toFixed(2)
+                )
+                : displayedPrice;
+
+        const discountAmount =
+            Number(
+                (
+                    finalQty *
+                    (originalPrice - displayedPrice)
+                ).toFixed(2)
+            );
+
+        const productSnapshot = {
+
+        //--------------------------------------------------
+        // Identity
+        //--------------------------------------------------
+
+            id: id,
+
+            product_id: id,
+
+            product_name: name,
+
+            sku:
+                quoteBtn.dataset.productSku || "",
+
+            product_url:
+                quoteBtn.dataset.productUrl || window.location.href,
+
+            image: image,
+
+            //--------------------------------------------------
+            // Quantity
+            //--------------------------------------------------
+
+            quantity: finalQty,
+
+            tier_quantity: tierQty,
+
+            tier_name: tierName,
+
+            //--------------------------------------------------
+            // Pricing
+            //--------------------------------------------------
+
+            unit_price: displayedPrice,
+
+            original_price: originalPrice,
+              
+            discount: tierDiscount,
+
+            discount_amount: discountAmount,
+
+            subtotal:
+              Number(
+                  (displayedPrice * finalQty)
+                      .toFixed(2)
+              ),
+
+            currency:
+                currencyText.trim(),
+
+            include_vat: false,
+
+            //--------------------------------------------------
+            // Branding
+            //--------------------------------------------------
+
+            print_method:
+                printMethod,
+
+            logo_colours:
+                logoColours,
+
+            artwork_required: false,
+
+            //--------------------------------------------------
+            // Audit
+            //--------------------------------------------------
+
+            added_at:
+                new Date().toISOString(),
+
+            source:
+                "website",
+            fingerprint:
+
+            [
+                id,
+                printMethod,
+                logoColours,
+                tierQty,
+                finalQty
+            ].join("|"),
+
+        };
+            
+            
+        /* add product only if not already present */
+        if (!QuoteCart.exists(productSnapshot)) {
+
+            QuoteCart.add(productSnapshot);
+
+        }
+
 
         /* set drawer mode */
         QuoteDrawerMode.type = 'quote';
@@ -79,15 +270,70 @@
         if (!id) return;
 
         const product = {
-          id: id,
-          name: sampleBtn.dataset.productName || '',
-          image: sampleBtn.dataset.productImage || '',
-          price: parseFloat(sampleBtn.dataset.productPrice || 0),
-          qty: 1
-        };
 
+              id: id,
+
+              product_id: id,
+
+              product_name:
+                  sampleBtn.dataset.productName || "",
+
+              image:
+                  sampleBtn.dataset.productImage || "",
+
+              quantity: 1,
+
+              tier_quantity: 1,
+
+              tier_name: "Sample",
+
+              unit_price:
+                  parseFloat(
+                      sampleBtn.dataset.productPrice || 0
+                  ),
+
+              subtotal:
+                  parseFloat(
+                      sampleBtn.dataset.productPrice || 0
+                  ),
+
+              original_price:
+                  parseFloat(
+                      sampleBtn.dataset.productPrice || 0
+                  ),
+
+              discount: 0,
+
+              discount_amount: 0,
+
+              currency: "",
+
+              include_vat: false,
+
+              print_method: "",
+
+              logo_colours: "",
+
+              artwork_required: false,
+
+              source: "sample",
+
+              fingerprint:
+
+                  [
+                      id,
+                      "sample"
+                  ].join("|")
+
+          };
         /* clear cart and insert only sample product */
-        localStorage.setItem('quote_cart', JSON.stringify([product]));
+        //localStorage.setItem('quote_cart', JSON.stringify([product]));
+
+        /* clear existing quote cart */
+        QuoteCart.clear();
+
+        /* insert sample product */
+        QuoteCart.add(product);
 
         /* switch drawer mode */
         QuoteDrawerMode.type = 'sample';
