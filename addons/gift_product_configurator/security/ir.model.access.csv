@@ -12,3 +12,6 @@ access_product_mass_update_wizard_vendor,access_product_mass_update_wizard_vendo
 
 access_gift_quote_request_user,gift.quote.request.user,model_gift_quote_request,base.group_user,1,1,1,1
 access_gift_quote_request_manager,gift.quote.request.manager,model_gift_quote_request,sales_team.group_sale_manager,1,1,1,1
+
+access_gift_quote_request_line_user,gift.quote.request.line.user,model_gift_quote_request_line,base.group_user,1,1,1,1
+access_gift_quote_request_line_manager,gift.quote.request.line.manager,model_gift_quote_request_line,base.group_system,1,1,1,1
