@@ -146,6 +146,12 @@ class GiftQuoteRequest(models.Model):
         store=True,
     )
 
+    line_ids = fields.One2many(
+        "gift.quote.request.line",
+        "request_id",
+        string="Quote Lines",
+    )
+
     @api.depends("first_name", "last_name")
     def _compute_customer_name(self):
 
