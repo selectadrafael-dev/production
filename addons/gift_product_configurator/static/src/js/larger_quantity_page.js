@@ -508,11 +508,25 @@ function submitLargeQtyForm(){
         })
         .then(res => {
 
-            if (res.status === "success") {
 
-                showQuoteConfirmation();
+            if (res.success) {
+
+                showQuoteConfirmation(res);
+
                 activateStep3();
-                scrollToTop();   // 👈 scroll user to banner
+
+                scrollToTop();
+
+                QuoteCart.clear();
+
+            }
+            else{
+
+                showQuoteError(
+
+                    res.message || "Quote submission failed."
+
+                );
 
             }
 
@@ -556,7 +570,8 @@ function activateStep3(){
 QUOTE SUCCESS CONFIRMATION MESSAGE
 ===================================================== */
 
-function showQuoteConfirmation(){
+//function showQuoteConfirmation(){
+function showQuoteConfirmation(response){
 
     const container = document.querySelector(".larger-quantity-page");
 
@@ -566,12 +581,50 @@ function showQuoteConfirmation(){
 
     msg.className = "quote-success-message";
 
+    // msg.innerHTML = `
+    //     <div class="alert alert-success mt-4">
+    //         Your quote request has been submitted successfully.
+    //         Our team will contact you shortly.
+    //     </div>
+    // `;
+
     msg.innerHTML = `
+
         <div class="alert alert-success mt-4">
-            Your quote request has been submitted successfully.
-            Our team will contact you shortly.
+
+            <h4>
+
+                ✓ Quote Submitted Successfully
+
+            </h4>
+
+            <p>
+
+                Reference:
+
+                <strong>
+
+                    ${response.reference}
+
+                </strong>
+
+            </p>
+
+            <p>
+
+                Our sales team has received your quotation request.
+
+            </p>
+
+            <p>
+
+                You will be contacted shortly.
+
+            </p>
+
         </div>
-    `;
+
+        `;
 
     container.prepend(msg);
 
