@@ -36,11 +36,8 @@
     'views/vendor_family_sequence.xml',
 
     'data/gift_quote_sequence.xml',
-
     'data/crm_stage.xml',
-
     'views/gift_quote_request_views.xml',
-
     'views/gift_quote_request_menu.xml',
 ],
 "assets": {
