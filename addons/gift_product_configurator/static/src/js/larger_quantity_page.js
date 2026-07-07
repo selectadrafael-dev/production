@@ -673,7 +673,6 @@ function activateStep3(){
 QUOTE SUCCESS CONFIRMATION MESSAGE
 ===================================================== */
 
-//function showQuoteConfirmation(){
 function showQuoteConfirmation(response){
 
     const container = document.querySelector(".larger-quantity-page");
@@ -700,18 +699,6 @@ function showQuoteConfirmation(response){
                 ✓ Quote Submitted Successfully
 
             </h4>
-
-            <p>
-
-                Reference:
-
-                <strong>
-
-                    ${response.reference}
-
-                </strong>
-
-            </p>
 
             <p>
 
