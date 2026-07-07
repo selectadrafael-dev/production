@@ -33,7 +33,6 @@ class GiftQuoteRequestLine(models.Model):
     product_id = fields.Many2one(
         "product.product",
         string="Product",
-        required=True,
     )
 
     product_name = fields.Char()
@@ -41,6 +40,23 @@ class GiftQuoteRequestLine(models.Model):
     variant_name = fields.Char()
 
     colour = fields.Char()
+
+
+    # ==========================================================
+    # WEBSITE PRODUCT SNAPSHOT
+    # ==========================================================
+
+    sku = fields.Char(
+        string="SKU",
+    )
+
+    product_url = fields.Char(
+        string="Product URL",
+    )
+
+    tier_name = fields.Char(
+        string="Tier Name",
+    )
 
 
     # ==========================================================
@@ -58,7 +74,11 @@ class GiftQuoteRequestLine(models.Model):
 
     unit_price = fields.Float()
 
+    original_price = fields.Float()
+
     discount = fields.Float()
+
+    discount_amount = fields.Float()
 
     subtotal = fields.Float()
 
@@ -74,6 +94,14 @@ class GiftQuoteRequestLine(models.Model):
     logo_colours = fields.Char()
 
     include_vat = fields.Boolean()
+
+    artwork_required = fields.Boolean()
+
+    source = fields.Char()
+
+    fingerprint = fields.Char(
+        index=True,
+    )
 
     # ==========================================================
     # WEBSITE SNAPSHOT
@@ -103,7 +131,11 @@ class GiftQuoteRequestLine(models.Model):
         string="Website Configuration",
     )
 
-    product_image = fields.Char()
+
+    # ==========================================================
+    # AUDIT
+    # ==========================================================
+
 
 
 

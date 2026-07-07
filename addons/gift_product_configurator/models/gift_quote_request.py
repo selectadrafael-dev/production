@@ -74,6 +74,14 @@ class GiftQuoteRequest(models.Model):
     variant_name = fields.Char()
 
     colour = fields.Char()
+    
+    sku = fields.Char(
+        string="SKU",
+    )
+
+    product_url = fields.Char(
+        string="Product URL",
+    )
 
     quantity = fields.Float()
 
