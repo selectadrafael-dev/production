@@ -42,7 +42,7 @@ class WebsiteQuoteController(http.Controller):
     The controller simply validates and persists that data.
     """
 
-        # ==========================================================
+    # ==========================================================
     # JSON RESPONSE
     # ==========================================================
 
@@ -50,25 +50,10 @@ class WebsiteQuoteController(http.Controller):
         self,
         success,
         message,
-        **kwargs
+        **kwargs,
     ):
         """
-        Standard JSON response.
-
-        Example:
-
-            return self._json_response(
-                True,
-                "Quote submitted successfully.",
-                quote_id=15,
-            )
-
-        Example:
-
-            return self._json_response(
-                False,
-                "Customer email is required."
-            )
+        Standard JSON response for Odoo JSON routes.
         """
 
         response = {
@@ -81,10 +66,8 @@ class WebsiteQuoteController(http.Controller):
 
         response.update(kwargs)
 
-        return request.make_json_response(
-            response
-        )
-    
+        return response
+
     # ==========================================================
     # FIND / CREATE CUSTOMER
     # ==========================================================

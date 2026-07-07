@@ -169,11 +169,11 @@ function initProductPage() {
 LARGER QUANTITY PAGE - PRODUCT PREVIEW
 ===================================================== */
 
-function updateQuotePreview() {
+function updateQuotePreview(cart) {
 
     if (!window.QuoteCart) return;
 
-    const cart = QuoteCart.getCart();
+    //const cart = QuoteCart.getCart();
 
     if (!cart || !cart.length) return;
 
@@ -289,11 +289,11 @@ function updateQuotePreview() {
 SUMMARY TOTALS
 ===================================================== */
 
-function updateQuoteTotals() {
+function updateQuoteTotals(cart) {
 
     if (!window.QuoteCart) return;
 
-    const cart = QuoteCart.getCart();
+    //const cart = QuoteCart.getCart();
 
     if (!cart || !cart.length) return;
 
@@ -314,15 +314,17 @@ function updateQuoteTotals() {
     // Locate summary fields
     //--------------------------------------------------
 
-    const subtotalEl =
-        document.querySelector(".quote-subtotal");
+   const subtotalEl =
+    document.getElementById("quote_subtotal");
 
     const discountEl =
-        document.querySelector(".quote-discount");
+        document.getElementById("quote_discount");
+
+    const vatEl =
+        document.getElementById("quote_vat");
 
     const estimatedEl =
-        document.querySelector(".quote-estimated-total");
-
+        document.getElementById("quote_total");
     //--------------------------------------------------
     // Currency
     //--------------------------------------------------
@@ -336,25 +338,32 @@ function updateQuoteTotals() {
 
     if (subtotalEl) {
 
-        subtotalEl.innerHTML =
+        subtotalEl.textContent =
             `${currency}${subtotal.toFixed(2)}`;
 
     }
 
     if (discountEl) {
 
-        discountEl.innerHTML =
+        discountEl.textContent =
             `${currency}${discount.toFixed(2)}`;
+
+    }
+
+    if (vatEl) {
+
+        vatEl.textContent =
+            "Calculated Later";
 
     }
 
     if (estimatedEl) {
 
-        estimatedEl.innerHTML =
+        estimatedEl.textContent =
             `${currency}${estimatedTotal.toFixed(2)}`;
 
     }
-
+     
 }
 
 
@@ -580,8 +589,10 @@ function submitLargeQtyForm(){
         })
         .then(res => {
 
+            const result = res.result || {};
 
-            if (res.success) {
+            // if (res.success) {
+             if (result.success) {
 
                 showQuoteConfirmation(res);
 
@@ -745,9 +756,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // toggleLogoSection();
 
-        updateQuotePreview();
+        const cart = QuoteCart.getCart();
 
-        updateQuoteTotals();
+        updateQuotePreview(cart);
+
+        updateQuoteTotals(cart);
 
         toggleLogoSection();
 
