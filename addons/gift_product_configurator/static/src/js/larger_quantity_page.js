@@ -563,8 +563,11 @@ function submitLargeQtyForm(){
         }
 
 
-        /* SEND REQUEST */
+        console.log("========== SUBMITTING QUOTE ==========");
+        console.log("Payload:", data);
+        console.log("About to call fetch()");
 
+        /* SEND REQUEST */
        //fetch("/larger-quantity/submit", {
        fetch("/website/quote/submit", {
 
@@ -580,6 +583,7 @@ function submitLargeQtyForm(){
         })
         .then(response => {
 
+            console.log("HTTP Status:", response.status);
             if (!response.ok) {
                 throw new Error("Server error: " + response.status);
             }
@@ -587,7 +591,9 @@ function submitLargeQtyForm(){
             return response.json();
 
         })
-        .then(res => {
+        // .then(res => {
+            .then(res => {
+            console.log("Server Response:", res);
 
             const result = res.result || {};
 
@@ -614,12 +620,25 @@ function submitLargeQtyForm(){
             }
 
         })
+        // .catch(error => {
+
+        //     console.error("Quote submission error:", error);
+
+        //     showQuoteError();
+        //     scrollToTop();   // 👈 bring user to top
+
+        // });
+
+
         .catch(error => {
 
             console.error("Quote submission error:", error);
 
-            showQuoteError();
-            scrollToTop();   // 👈 bring user to top
+            alert(error.message);
+
+            showQuoteError(error.message);
+
+            scrollToTop();
 
         });
 
