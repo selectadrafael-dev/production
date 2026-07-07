@@ -595,10 +595,11 @@ function submitLargeQtyForm(){
             .then(res => {
             console.log("Server Response:", res);
 
-            const result = res.result || {};
-
+            //const result = res.result || {};
+            const result = res.result || res;
+            console.log("Actual Result:", result);
             // if (res.success) {
-             if (result.success) {
+            if (result.success) {
 
                 showQuoteConfirmation(res);
 

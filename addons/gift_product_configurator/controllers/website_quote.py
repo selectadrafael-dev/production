@@ -626,18 +626,32 @@ class WebsiteQuoteController(http.Controller):
 
             )
 
-        except Exception:
+        # except Exception:
+
+        #     _logger.exception(
+
+        #         "Website quote submission failed."
+
+        #     )
+
+        #     return self._json_response(
+
+        #         False,
+
+        #         "Unexpected server error."
+
+        #     )
+
+        except Exception as e:
 
             _logger.exception(
-
                 "Website quote submission failed."
-
             )
 
             return self._json_response(
 
                 False,
 
-                "Unexpected server error."
+                str(e),
 
             )
