@@ -42,49 +42,194 @@
 
 
   //product quantity price update
-   document.addEventListener('DOMContentLoaded', function () {
+  //==========================================================
+  // Dynamic Quantity Pricing - Odoo 18
+  //==========================================================
 
-    const tierCards = document.querySelectorAll('#qty_tiers .tier-card');
-    const mainPrice = document.querySelector('.price-display .price');
+  document.addEventListener("DOMContentLoaded", function () {
 
-    if (!tierCards.length || !mainPrice) return;
+      const tierCards = document.querySelectorAll("#qty_tiers .tier-card");
+      const mainPrice = document.querySelector(".price-display .price");
 
-    /* store original QWeb price */
-    const defaultPriceHTML = mainPrice.innerHTML;
-
-    tierCards.forEach(card => {
-
-      card.addEventListener('click', function () {
-
-        /* remove active state */
-        tierCards.forEach(c => c.classList.remove('active'));
-        this.classList.add('active');
-
-        /* detect if default tier */
-        const qwebPrice = this.querySelector('#actual_price');
-
-        if (qwebPrice) {
-
-          /* restore original QWeb price */
-          mainPrice.innerHTML = defaultPriceHTML;
+      if (!tierCards.length || !mainPrice) {
           return;
+      }
 
-        }
+      //--------------------------------------------------
+      // Store original Odoo price
+      //--------------------------------------------------
 
-        /* other tiers */
-        const priceElement = this.querySelector('.price');
-        if (!priceElement) return;
+      const defaultPriceHTML = mainPrice.innerHTML;
 
-        let priceText = priceElement.textContent
-          .replace('each', '')
-          .trim();
+      //--------------------------------------------------
+      // Get numeric base price
+      //--------------------------------------------------
 
-        mainPrice.textContent = priceText;
+      function getBasePrice() {
+
+          // First try data attribute
+          if (mainPrice.dataset.basePrice) {
+
+              const value = parseFloat(mainPrice.dataset.basePrice);
+
+              if (!isNaN(value)) {
+                  return value;
+              }
+
+          }
+
+          // Fallback: extract from displayed text
+          const text = mainPrice.textContent
+              .replace(/[^0-9.,]/g, "")
+              .replace(",", "");
+
+          const value = parseFloat(text);
+
+          return isNaN(value) ? 0 : value;
+
+      }
+
+      //--------------------------------------------------
+      // Detect currency symbol
+      //--------------------------------------------------
+
+      function getCurrencySymbol() {
+
+          const txt = mainPrice.textContent.trim();
+
+          const match = txt.match(/[^\d.,\s]+/);
+
+          return match ? match[0] : "$";
+
+      }
+
+      //--------------------------------------------------
+      // Build quantity prices
+      //--------------------------------------------------
+
+      function buildTierPrices() {
+
+          const basePrice = getBasePrice();
+
+          if (!basePrice) {
+              return;
+          }
+
+          const currency = getCurrencySymbol();
+
+          tierCards.forEach(card => {
+
+              const discount =
+                  parseFloat(card.dataset.discount || 0);
+
+              const newPrice =
+                  basePrice * (1 - discount / 100);
+
+              const priceSpan =
+                  card.querySelector(".price");
+
+              if (!priceSpan) {
+                  return;
+              }
+
+              priceSpan.textContent =
+                  currency +
+                  newPrice.toFixed(2);
+
+          });
+
+      }
+
+      //--------------------------------------------------
+      // Initial calculation
+      //--------------------------------------------------
+
+      buildTierPrices();
+
+      //--------------------------------------------------
+      // Click behaviour (same logic as original JS)
+      //--------------------------------------------------
+
+      tierCards.forEach(card => {
+
+          card.addEventListener("click", function () {
+
+              tierCards.forEach(c =>
+                  c.classList.remove("active")
+              );
+
+              this.classList.add("active");
+
+              // First/default tier restores original Odoo price
+              if (
+                  parseFloat(this.dataset.discount || 0) === 0
+              ) {
+
+                  mainPrice.innerHTML = defaultPriceHTML;
+                  return;
+
+              }
+
+              // Copy displayed price
+              const priceElement =
+                  this.querySelector(".price");
+
+              if (!priceElement) {
+                  return;
+              }
+
+              mainPrice.textContent =
+                  priceElement.textContent.trim();
+
+          });
 
       });
 
-    });
-
   });
+
+  //  document.addEventListener('DOMContentLoaded', function () {
+
+  //   const tierCards = document.querySelectorAll('#qty_tiers .tier-card');
+  //   const mainPrice = document.querySelector('.price-display .price');
+
+  //   if (!tierCards.length || !mainPrice) return;
+
+  //   /* store original QWeb price */
+  //   const defaultPriceHTML = mainPrice.innerHTML;
+
+  //   tierCards.forEach(card => {
+
+  //     card.addEventListener('click', function () {
+
+  //       /* remove active state */
+  //       tierCards.forEach(c => c.classList.remove('active'));
+  //       this.classList.add('active');
+
+  //       /* detect if default tier */
+  //       const qwebPrice = this.querySelector('#actual_price');
+
+  //       if (qwebPrice) {
+
+  //         /* restore original QWeb price */
+  //         mainPrice.innerHTML = defaultPriceHTML;
+  //         return;
+
+  //       }
+
+  //       /* other tiers */
+  //       const priceElement = this.querySelector('.price');
+  //       if (!priceElement) return;
+
+  //       let priceText = priceElement.textContent
+  //         .replace('each', '')
+  //         .trim();
+
+  //       mainPrice.textContent = priceText;
+
+  //     });
+
+  //   });
+
+  // });
     
 })();

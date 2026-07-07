@@ -23,7 +23,8 @@
                         <!-- PRINT METHOD -->
                         <div class="config-block">
                             <div class="config-header">Print Method</div>
-                            <select class="form-select" id="print_method_select">
+                            <!-- <select class="form-select" id="print_method_select"> -->
+                            <select class="form-select" id="print_method_select" name="print_method">
                                 <option value="branded" >Branded</option>
                                 <option value="non-branded">Non-Branded</option>
                             </select>
@@ -33,7 +34,8 @@
                          <!-- LOGO COLOURS -->
                             <div class="config-block">
                                 <div class="config-header">Logo Colours</div>
-                                <select class="form-select">
+                                <!-- <select class="form-select"> -->
+                                <select class="form-select" id="logo_colours_select" name="logo_colours">
                                     <option>1 colour</option>
                                     <option>2 colours</option>
                                     <option>Full colour</option>
@@ -47,7 +49,9 @@
 
                                 <div class="qty_wrapper d-flex">
                                     <div id="qty_tiers">
-                                            <div class="tier-card active qty_tiers_card">
+                                    
+
+                                            <div class="tier-card qty_tiers_card active" data-qty="1000" data-discount="0" data-tier="1000+">
                                                 <strong>1000+</strong>
                                                 <div id="actual_price">
                                                     <span class="price">
@@ -56,19 +60,20 @@
                                                 </div>
                                             </div>
 
-                                            <div class="tier-card popular qty_tiers_card">
+                                           
+                                          <div class="tier-card qty_tiers_card" data-qty="2000" data-discount="5" data-tier="2000+">
                                                 <strong>2000+</strong>
-                                                <span class="price">$5.40 each</span>
+                                                <span class="price"></span>
                                             </div>
 
-                                            <div class="tier-card qty_tiers_card">
+                                           <div class="tier-card qty_tiers_card" data-qty="3000" data-discount="10" data-tier="3000+">
                                                 <strong>3000+</strong>
-                                                <span class="price">$4.80 each</span>
+                                                <span class="price"></span>
                                             </div>
 
-                                            <div class="tier-card qty_tiers_card">
+                                         <div class="tier-card qty_tiers_card" data-qty="4000" data-discount="15" data-tier="4000+">
                                                 <strong>4000+</strong>
-                                                <span class="price">$4.10 each</span>
+                                                <span class="price"></span>
                                             </div>
 
                                             <!--larger qty-->
@@ -112,13 +117,29 @@
                     <div class="per-unit">per unit (exc. VAT)</div>
                 </div>
 
-                <button
+                <!-- <button
                 class="js-add-quote btn-quote"
                 t-att-data-product-id="product.product_variant_id.id"
                 t-att-data-product-name="product.name"
                 t-att-data-product-image="product.image_1920 and ('/web/image/product.product/' + str(product.product_variant_id.id) + '/image_1920')"
                 t-att-data-product-price="product.product_variant_id.lst_price"
-                >
+                > -->
+                <button
+                    class="js-add-quote btn-quote"
+
+                    t-att-data-product-id="product.product_variant_id.id"
+
+                    t-att-data-product-name="product.name"
+
+                    t-att-data-product-image="product.image_1920 and ('/web/image/product.product/' + str(product.product_variant_id.id) + '/image_1920')"
+
+                    t-att-data-product-price="product.product_variant_id.lst_price"
+
+                    t-att-data-product-sku="product.default_code or ''"
+
+                    t-att-data-product-url="request.httprequest.url"
+
+                    t-att-data-currency="'GBP'">
                 Create Quote
                 </button>
 

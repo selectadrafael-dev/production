@@ -169,61 +169,201 @@ function initProductPage() {
 LARGER QUANTITY PAGE - PRODUCT PREVIEW
 ===================================================== */
 
-function updateQuotePreview(){
+function updateQuotePreview(cart) {
 
-    if(!window.QuoteCart) return;
+    if (!window.QuoteCart) return;
 
-    const cart = QuoteCart.getCart();
+    //const cart = QuoteCart.getCart();
 
-    if(!cart || !cart.length) return;
+    if (!cart || !cart.length) return;
 
-    const container = document.querySelector(".product-summary-list");
+    const container =
+        document.querySelector(".product-summary-list");
 
-    if(!container) return;
-
-    const source = sessionStorage.getItem("quote_source");
+    if (!container) return;
 
     container.innerHTML = "";
 
-    /* SINGLE PRODUCT MODE */
+    cart.forEach(item => {
 
-    if(source === "single"){
+        container.innerHTML += `
 
-        const item = cart[cart.length - 1];
-
-        container.innerHTML = `
             <div class="product-summary-item">
+
                 <img src="${item.image}" />
+
                 <div>
-                    <strong>${item.name}</strong>
-                    <p>${item.qty || 1} × £${item.price}</p>
+
+                    <strong>${item.product_name}</strong>
+
+                    <div>
+
+                        Qty:
+                        ${item.quantity}
+
+                    </div>
+
+                    <div>
+
+                        Unit Price:
+                        ${item.currency}${item.unit_price.toFixed(2)}
+
+                    </div>
+
+                    ${
+                        item.discount > 0
+                        ?
+
+                        `<div>
+
+                            Discount:
+                            ${item.discount}%
+
+                        </div>`
+
+                        :
+
+                        ""
+
+                    }
+
+                    ${
+                        item.print_method
+                        ?
+
+                        `<div>
+
+                            Print:
+                            ${item.print_method}
+
+                        </div>`
+
+                        :
+
+                        ""
+
+                    }
+
+                    ${
+                        item.logo_colours
+                        ?
+
+                        `<div>
+
+                            Colours:
+                            ${item.logo_colours}
+
+                        </div>`
+
+                        :
+
+                        ""
+
+                    }
+
+                    <div>
+
+                        <strong>
+
+                            Estimated:
+
+                            ${item.currency}
+
+                            ${item.subtotal.toFixed(2)}
+
+                        </strong>
+
+                    </div>
+
                 </div>
+
             </div>
+
         `;
 
-        return;
+    });
+
+}
+
+/* =====================================================
+SUMMARY TOTALS
+===================================================== */
+
+function updateQuoteTotals(cart) {
+
+    if (!window.QuoteCart) return;
+
+    //const cart = QuoteCart.getCart();
+
+    if (!cart || !cart.length) return;
+
+    let subtotal = 0;
+    let discount = 0;
+
+    cart.forEach(item => {
+
+        subtotal += Number(item.subtotal || 0);
+
+        discount += Number(item.discount_amount || 0);
+
+    });
+
+    const estimatedTotal = subtotal;
+
+    //--------------------------------------------------
+    // Locate summary fields
+    //--------------------------------------------------
+
+   const subtotalEl =
+    document.getElementById("quote_subtotal");
+
+    const discountEl =
+        document.getElementById("quote_discount");
+
+    const vatEl =
+        document.getElementById("quote_vat");
+
+    const estimatedEl =
+        document.getElementById("quote_total");
+    //--------------------------------------------------
+    // Currency
+    //--------------------------------------------------
+
+    const currency =
+        cart[0].currency || "";
+
+    //--------------------------------------------------
+    // Update UI
+    //--------------------------------------------------
+
+    if (subtotalEl) {
+
+        subtotalEl.textContent =
+            `${currency}${subtotal.toFixed(2)}`;
+
     }
 
-    /* CART MODE */
+    if (discountEl) {
 
-    if(source === "drawer"){
-
-        cart.forEach(item => {
-
-            container.innerHTML += `
-                <div class="product-summary-item">
-                    <img src="${item.image}" />
-                    <div>
-                        <strong>${item.name}</strong>
-                        <p>${item.qty || 1} × £${item.price}</p>
-                    </div>
-                </div>
-            `;
-
-        });
+        discountEl.textContent =
+            `${currency}${discount.toFixed(2)}`;
 
     }
 
+    if (vatEl) {
+
+        vatEl.textContent =
+            "Calculated Later";
+
+    }
+
+    if (estimatedEl) {
+
+        estimatedEl.textContent =
+            `${currency}${estimatedTotal.toFixed(2)}`;
+
+    }
+     
 }
 
 
@@ -279,25 +419,78 @@ function initVisualToggle(){
 POPULATE PRODUCT DATA INTO FORM
 ===================================================== */
 
-function populateProductInfo(){
+function populateProductInfo() {
 
-    if(!window.QuoteCart) return;
+    if (!window.QuoteCart) return;
 
     const cart = QuoteCart.getCart();
 
-    if(!cart || !cart.length) return;
+    if (!cart || !cart.length) return;
 
-    const item = cart[cart.length-1];
+    /*
+    ----------------------------------------------------
+    We populate using the FIRST product.
 
-    const id = document.querySelector("#product_id");
-    const name = document.querySelector("#product_name");
-    const image = document.querySelector("#product_image");
-    const price = document.querySelector("#product_price");
+    The controller already receives the full cart.
 
-    if(id) id.value = item.id || "";
-    if(name) name.value = item.name || "";
-    if(image) image.value = item.image || "";
-    if(price) price.value = item.price || "";
+    Hidden fields are mainly for compatibility,
+    display and future enhancements.
+    ----------------------------------------------------
+    */
+
+    const primaryItem =cart[0];
+
+    const fields = {
+
+        product_id: primaryItem.product_id,
+
+        product_name: primaryItem.product_name,
+
+        product_image: primaryItem.image,
+
+        product_price: primaryItem.unit_price,
+
+        product_quantity: primaryItem.quantity,
+
+        print_method: primaryItem.print_method,
+
+        logo_colours: primaryItem.logo_colours,
+
+        tier_quantity: primaryItem.tier_quantity,
+
+        tier_name: primaryItem.tier_name,
+
+        currency: primaryItem.currency,
+
+        discount: primaryItem.discount,
+
+        discount_amount: primaryItem.discount_amount,
+
+        subtotal: primaryItem.subtotal,
+
+        product_url: primaryItem.product_url,
+
+        sku: primaryItem.sku,
+
+        include_vat: primaryItem.include_vat,
+
+        artwork_required: primaryItem.artwork_required
+
+    };
+
+    Object.keys(fields).forEach(function (name) {
+
+        const input = document.querySelector(
+            '[name="' + name + '"], #' + name
+        );
+
+        if (input) {
+
+            input.value = fields[name];
+
+        }
+
+    });
 
 }
 
@@ -313,6 +506,11 @@ function submitLargeQtyForm(){
 
     const btn = document.querySelector(".lq-btn");
     if (!btn) return;
+
+    const cart =
+    window.QuoteCart
+        ? QuoteCart.getCart()
+        : [];
 
     btn.addEventListener("click", function(){
 
@@ -335,8 +533,24 @@ function submitLargeQtyForm(){
             order_required_by: form.querySelector('[name="order_required_by"]')?.value,
 
            // product_name: document.querySelector(".product-summary strong")?.innerText
-            products: window.QuoteCart ? QuoteCart.getCart() : []
+            products: cart,
+            submitted_from:
+                "larger_quantity",
+
+            submitted_at:
+                new Date().toISOString(),
+
+            quote_source:
+                sessionStorage.getItem("quote_source") || "unknown",
         };
+
+        if (!cart.length) {
+
+            alert("Your quote cart is empty.");
+
+            return;
+
+        }
 
 
         /* VALIDATION */
@@ -349,14 +563,19 @@ function submitLargeQtyForm(){
         }
 
 
-        /* SEND REQUEST */
+        console.log("========== SUBMITTING QUOTE ==========");
+        console.log("Payload:", data);
+        console.log("About to call fetch()");
 
-        fetch("/larger-quantity/submit", {
+        /* SEND REQUEST */
+       //fetch("/larger-quantity/submit", {
+       fetch("/website/quote/submit", {
 
             method: "POST",
 
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "Accept": "application/json"
             },
 
             body: JSON.stringify(data)
@@ -364,6 +583,7 @@ function submitLargeQtyForm(){
         })
         .then(response => {
 
+            console.log("HTTP Status:", response.status);
             if (!response.ok) {
                 throw new Error("Server error: " + response.status);
             }
@@ -371,23 +591,55 @@ function submitLargeQtyForm(){
             return response.json();
 
         })
-        .then(res => {
+        // .then(res => {
+            .then(res => {
+            console.log("Server Response:", res);
 
-            if (res.status === "success") {
+            //const result = res.result || {};
+            const result = res.result || res;
+            console.log("Actual Result:", result);
+            // if (res.success) {
+            if (result.success) {
 
-                showQuoteConfirmation();
+                showQuoteConfirmation(res);
+
                 activateStep3();
-                scrollToTop();   // 👈 scroll user to banner
+
+                scrollToTop();
+
+                QuoteCart.clear();
+
+            }
+            else{
+
+                showQuoteError(
+
+                    res.message || "Quote submission failed."
+
+                );
 
             }
 
         })
+        // .catch(error => {
+
+        //     console.error("Quote submission error:", error);
+
+        //     showQuoteError();
+        //     scrollToTop();   // 👈 bring user to top
+
+        // });
+
+
         .catch(error => {
 
             console.error("Quote submission error:", error);
 
-            showQuoteError();
-            scrollToTop();   // 👈 bring user to top
+            alert(error.message);
+
+            showQuoteError(error.message);
+
+            scrollToTop();
 
         });
 
@@ -421,7 +673,7 @@ function activateStep3(){
 QUOTE SUCCESS CONFIRMATION MESSAGE
 ===================================================== */
 
-function showQuoteConfirmation(){
+function showQuoteConfirmation(response){
 
     const container = document.querySelector(".larger-quantity-page");
 
@@ -431,12 +683,38 @@ function showQuoteConfirmation(){
 
     msg.className = "quote-success-message";
 
+    // msg.innerHTML = `
+    //     <div class="alert alert-success mt-4">
+    //         Your quote request has been submitted successfully.
+    //         Our team will contact you shortly.
+    //     </div>
+    // `;
+
     msg.innerHTML = `
+
         <div class="alert alert-success mt-4">
-            Your quote request has been submitted successfully.
-            Our team will contact you shortly.
+
+            <h4>
+
+                ✓ Quote Submitted Successfully
+
+            </h4>
+
+            <p>
+
+                Our sales team has received your quotation request.
+
+            </p>
+
+            <p>
+
+                You will be contacted shortly.
+
+            </p>
+
         </div>
-    `;
+
+        `;
 
     container.prepend(msg);
 
@@ -481,7 +759,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (isLargeQtyPage()) {
 
-        updateQuotePreview();
+        // updateQuotePreview();
+
+        // toggleLogoSection();
+
+        const cart = QuoteCart.getCart();
+
+        updateQuotePreview(cart);
+
+        updateQuoteTotals(cart);
 
         toggleLogoSection();
 

@@ -35,11 +35,28 @@
 
       const image = item.image && item.image !== 'undefined'
         ? item.image
-        : '/web/static/img/placeholder.png';
+       : '/web/static/img/placeholder.png';
 
-      const qty = item.qty && item.qty > 0 ? item.qty : 1;
+      // const qty = item.qty && item.qty > 0 ? item.qty : 1;
 
-      const price = item.price ? item.price : 0;
+      // const price = item.price ? item.price : 0;
+
+      const qty =
+      item.quantity && item.quantity > 0
+          ? item.quantity
+          : 1;
+
+      const price =
+          Number(item.unit_price || 0);
+
+      const currency =
+          item.currency || "";
+
+      const name =
+          item.product_name || "";
+
+      const sku =
+          item.sku || "";
 
       return `
         <div class="quote-item">
@@ -82,7 +99,7 @@
                    min="1">
 
             <div class="quote-item__price">
-              £${price}
+              <span>$</span>${price}
               <span>per unit</span>
             </div>
 
