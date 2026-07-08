@@ -21239,41 +21239,21 @@ class VendorImportJob(models.Model):
 
     def _get_best_product_name(self, url_data, existing_name=""):
 
-        sku = str(
-            url_data.get("sku") or ""
-        ).strip()
-
-        if sku:
-            return sku
-
         title = str(
             url_data.get("title") or ""
         ).strip()
 
+        sku = str(
+            url_data.get("sku") or ""
+        ).strip()
+
         if title:
+
             return title
 
-        description = str(
-            url_data.get("description") or ""
-        ).strip()
+        if sku:
 
-        if description:
-
-            line = description.splitlines()[0].strip()
-
-            if line:
-                return line[:150]
-
-        text = str(
-            url_data.get("text") or ""
-        ).strip()
-
-        if text:
-
-            line = text.splitlines()[0].strip()
-
-            if line:
-                return line[:150]
+            return sku
 
         return existing_name
 
