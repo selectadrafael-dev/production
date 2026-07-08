@@ -20949,6 +20949,22 @@ class VendorImportJob(models.Model):
                     )
 
                     # ====================================
+                    # UPDATE INTERNAL REFERENCE
+                    # ====================================
+
+                    sku = str(
+                        url_data.get("sku") or ""
+                    ).strip()
+
+                    if sku:
+
+                        for product in family_products:
+
+                            if not product.default_code:
+
+                                product.default_code = sku
+
+                    # ====================================
                     # URL IMAGE ENRICHMENT
                     # ====================================
 
