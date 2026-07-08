@@ -22475,6 +22475,8 @@ class VendorImportJob(models.Model):
         Extract and organise ONLY:
 
         • subtitle
+        
+        • sku
 
         • description
 
@@ -22521,6 +22523,7 @@ class VendorImportJob(models.Model):
 
         {{
             "subtitle":"",
+            "sku":"",
             "description":"",
             "material":"",
             "capacity":"",
@@ -22648,6 +22651,8 @@ class VendorImportJob(models.Model):
                 "[URL ENRICHMENT TYPES] "
 
                 f"title={type(parsed.get('title')).__name__} | "
+               
+                f"title={type(parsed.get('sku')).__name__} | "
 
                 f"subtitle={type(parsed.get('subtitle')).__name__} | "
 
@@ -22663,6 +22668,12 @@ class VendorImportJob(models.Model):
 
                     clean(
                         parsed.get("title")
+                    ),
+
+                "sku":
+
+                    clean(
+                        parsed.get("sku")
                     ),
 
                 "subtitle":
@@ -25746,9 +25757,6 @@ class VendorImportJob(models.Model):
 
     ):
 
-        # if not hasattr(self, "_category_cache"):
-
-        #     self._category_cache = {}
 
         category_name = " ".join(
 
@@ -25759,10 +25767,6 @@ class VendorImportJob(models.Model):
         # ============================
         # CACHE
         # ============================
-
-        # if category_name in self._category_cache:
-
-        #     return self._category_cache[category_name]
 
         category_obj = self.env["product.category"]
 
@@ -25826,12 +25830,6 @@ class VendorImportJob(models.Model):
 
             )[0]
 
-            # self._category_cache[
-
-            #     category_name
-
-            # ] = category
-
             return category
 
         _logger.warning(
@@ -25851,12 +25849,6 @@ class VendorImportJob(models.Model):
             "parent_id": parent.id
 
         })
-
-        # self._category_cache[
-
-        #     category_name
-
-        # ] = category
 
         return category
 
