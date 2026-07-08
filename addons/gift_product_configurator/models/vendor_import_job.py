@@ -21251,7 +21251,7 @@ class VendorImportJob(models.Model):
 
         )
 
-    #==============Enrich url product name=======================
+    #==============Enrich excel url product name=======================
 
     def _get_best_product_name(self, url_data, existing_name=""):
 
@@ -21890,7 +21890,7 @@ class VendorImportJob(models.Model):
             )
     
     # ==============================================================
-    # URL AI PRODUCT EXTRACTOR
+    # URL AI PRODUCT EXTRACTOR (DEAD CODE)
     # =============================================================
 
     def _extract_url_product_data_ai(
@@ -25746,9 +25746,9 @@ class VendorImportJob(models.Model):
 
     ):
 
-        if not hasattr(self, "_category_cache"):
+        # if not hasattr(self, "_category_cache"):
 
-            self._category_cache = {}
+        #     self._category_cache = {}
 
         category_name = " ".join(
 
@@ -25760,9 +25760,9 @@ class VendorImportJob(models.Model):
         # CACHE
         # ============================
 
-        if category_name in self._category_cache:
+        # if category_name in self._category_cache:
 
-            return self._category_cache[category_name]
+        #     return self._category_cache[category_name]
 
         category_obj = self.env["product.category"]
 
@@ -25826,11 +25826,11 @@ class VendorImportJob(models.Model):
 
             )[0]
 
-            self._category_cache[
+            # self._category_cache[
 
-                category_name
+            #     category_name
 
-            ] = category
+            # ] = category
 
             return category
 
@@ -25852,11 +25852,11 @@ class VendorImportJob(models.Model):
 
         })
 
-        self._category_cache[
+        # self._category_cache[
 
-            category_name
+        #     category_name
 
-        ] = category
+        # ] = category
 
         return category
 
