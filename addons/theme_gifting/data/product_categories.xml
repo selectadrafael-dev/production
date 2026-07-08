@@ -77,7 +77,7 @@
 
     <record id="keyrings"
             model="product.public.category">
-      <field name="name">Keyrings</field>
+      <field name="name">Keyrings 2</field>
     </record>
 
     <record id="clothing"
