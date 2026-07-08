@@ -20757,7 +20757,7 @@ class VendorImportJob(models.Model):
 
                     html.append(
 
-                        f"<h3>{subtitle}</h3>"
+                        f"<p>{subtitle}</p>"
 
                     )
 
