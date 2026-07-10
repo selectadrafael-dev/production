@@ -68,18 +68,6 @@ class ProductTemplate(models.Model):
         index=True,
     )
 
-    tier_1_qty = fields.Integer(default=1000)
-    tier_1_discount = fields.Float(default=0)
-
-    tier_2_qty = fields.Integer(default=2000)
-    tier_2_discount = fields.Float(default=5)
-
-    tier_3_qty = fields.Integer(default=3000)
-    tier_3_discount = fields.Float(default=10)
-
-    tier_4_qty = fields.Integer(default=4000)
-    tier_4_discount = fields.Float(default=15)
-
 
     # =============================================
     # AUTO ASSIGN VENDOR DURING CREATE
