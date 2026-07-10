@@ -37,20 +37,38 @@
         ? item.image
        : '/web/static/img/placeholder.png';
 
-      // const qty = item.qty && item.qty > 0 ? item.qty : 1;
-
-      // const price = item.price ? item.price : 0;
-
       const qty =
       item.quantity && item.quantity > 0
           ? item.quantity
           : 1;
 
+      //--------------------------------------------------
+      // Pricing Snapshot
+      //--------------------------------------------------
+
+      const pricing =
+
+      PricingUtils.getPricing(item);
+
       const price =
-          Number(item.unit_price || 0);
+
+          Number(
+
+              pricing.price ||
+
+              item.unit_price ||
+
+              0
+
+          );
 
       const currency =
-          item.currency || "";
+
+          pricing.currency ||
+
+          item.currency ||
+
+          "AZN";
 
       const name =
           item.product_name || "";
@@ -63,7 +81,7 @@
 
           <!-- DELETE -->
           <button class="quote-remove"
-                  data-id="${item.id}">
+                  data-fingerprint="${item.fingerprint}"
             🗑
           </button>
 
@@ -76,11 +94,11 @@
             <div class="quote-item__info">
 
               <div class="quote-item__name">
-                ${item.name || ''}
+                ${name || ''}
               </div>
 
               <div class="quote-item__meta">
-                ${item.code || ''}
+                ${sku || ''}
               </div>
 
             </div>
@@ -98,10 +116,25 @@
                    value="${qty}"
                    min="1">
 
+
             <div class="quote-item__price">
-              <span>$</span>${price}
-              <span>per unit</span>
-            </div>
+
+                <span>
+
+                    ${currency}
+
+                </span>
+
+                ${price.toFixed(2)}
+
+                <span>
+
+                    per unit
+
+                </span>
+
+            </div> 
+            
 
           </div>
 

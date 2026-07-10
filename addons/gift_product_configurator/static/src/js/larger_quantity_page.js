@@ -168,12 +168,9 @@ function initProductPage() {
 /* =====================================================
 LARGER QUANTITY PAGE - PRODUCT PREVIEW
 ===================================================== */
-
 function updateQuotePreview(cart) {
 
     if (!window.QuoteCart) return;
-
-    //const cart = QuoteCart.getCart();
 
     if (!cart || !cart.length) return;
 
@@ -186,6 +183,61 @@ function updateQuotePreview(cart) {
 
     cart.forEach(item => {
 
+        //--------------------------------------------------
+        // Pricing Snapshot
+        //--------------------------------------------------
+
+        const pricing =
+
+        PricingUtils.getPricing(item);
+
+
+        const qty =
+
+            pricing.qty ||
+
+            item.quantity ||
+
+            1;
+
+        const unitPrice =
+
+            Number(
+
+                pricing.price ||
+
+                item.unit_price ||
+
+                0
+
+            );
+
+        const currency =
+
+            pricing.currency ||
+
+            item.currency ||
+
+            "AZN";
+
+        const discount =
+
+            pricing.discount ||
+
+            item.discount ||
+
+            0;
+
+        const subtotal =
+
+            Number(
+
+                item.subtotal ||
+
+                (unitPrice * qty)
+
+            );
+
         container.innerHTML += `
 
             <div class="product-summary-item">
@@ -194,30 +246,35 @@ function updateQuotePreview(cart) {
 
                 <div>
 
-                    <strong>${item.product_name}</strong>
+                    <strong>
+
+                        ${item.product_name}
+
+                    </strong>
 
                     <div>
 
                         Qty:
-                        ${item.quantity}
+                        ${qty}
 
                     </div>
 
                     <div>
 
                         Unit Price:
-                        ${item.currency}${item.unit_price.toFixed(2)}
+                        ${currency} ${unitPrice.toFixed(2)}
 
                     </div>
 
                     ${
-                        item.discount > 0
+                        discount > 0
+
                         ?
 
                         `<div>
 
                             Discount:
-                            ${item.discount}%
+                            ${discount}%
 
                         </div>`
 
@@ -229,6 +286,7 @@ function updateQuotePreview(cart) {
 
                     ${
                         item.print_method
+
                         ?
 
                         `<div>
@@ -246,6 +304,7 @@ function updateQuotePreview(cart) {
 
                     ${
                         item.logo_colours
+
                         ?
 
                         `<div>
@@ -267,9 +326,9 @@ function updateQuotePreview(cart) {
 
                             Estimated:
 
-                            ${item.currency}
+                            ${currency}
 
-                            ${item.subtotal.toFixed(2)}
+                            ${subtotal.toFixed(2)}
 
                         </strong>
 
@@ -285,6 +344,7 @@ function updateQuotePreview(cart) {
 
 }
 
+
 /* =====================================================
 SUMMARY TOTALS
 ===================================================== */
@@ -293,8 +353,6 @@ function updateQuoteTotals(cart) {
 
     if (!window.QuoteCart) return;
 
-    //const cart = QuoteCart.getCart();
-
     if (!cart || !cart.length) return;
 
     let subtotal = 0;
@@ -302,9 +360,13 @@ function updateQuoteTotals(cart) {
 
     cart.forEach(item => {
 
-        subtotal += Number(item.subtotal || 0);
+        subtotal += Number(
+            item.subtotal || 0
+        );
 
-        discount += Number(item.discount_amount || 0);
+        discount += Number(
+            item.discount_amount || 0
+        );
 
     });
 
@@ -314,8 +376,8 @@ function updateQuoteTotals(cart) {
     // Locate summary fields
     //--------------------------------------------------
 
-   const subtotalEl =
-    document.getElementById("quote_subtotal");
+    const subtotalEl =
+        document.getElementById("quote_subtotal");
 
     const discountEl =
         document.getElementById("quote_discount");
@@ -325,12 +387,22 @@ function updateQuoteTotals(cart) {
 
     const estimatedEl =
         document.getElementById("quote_total");
+
     //--------------------------------------------------
-    // Currency
+    // Currency (Pricing Engine First)
     //--------------------------------------------------
 
+    const pricing =
+
+        cart[0].pricing_snapshot || {};
+
     const currency =
-        cart[0].currency || "";
+
+        pricing.currency ||
+
+        cart[0].currency ||
+
+        "AZN";
 
     //--------------------------------------------------
     // Update UI
@@ -339,14 +411,14 @@ function updateQuoteTotals(cart) {
     if (subtotalEl) {
 
         subtotalEl.textContent =
-            `${currency}${subtotal.toFixed(2)}`;
+            `${currency} ${subtotal.toFixed(2)}`;
 
     }
 
     if (discountEl) {
 
         discountEl.textContent =
-            `${currency}${discount.toFixed(2)}`;
+            `${currency} ${discount.toFixed(2)}`;
 
     }
 
@@ -360,12 +432,11 @@ function updateQuoteTotals(cart) {
     if (estimatedEl) {
 
         estimatedEl.textContent =
-            `${currency}${estimatedTotal.toFixed(2)}`;
+            `${currency} ${estimatedTotal.toFixed(2)}`;
 
     }
-     
-}
 
+}
 
 /* =====================================================
 LOGO SECTION CONTROL
@@ -438,50 +509,111 @@ function populateProductInfo() {
     ----------------------------------------------------
     */
 
-    const primaryItem =cart[0];
+    const primaryItem = cart[0];
+
+    //--------------------------------------------------
+    // Pricing Snapshot
+    //--------------------------------------------------
+
+    const pricing =
+
+    PricingUtils.getPricing(primaryItem);
 
     const fields = {
 
-        product_id: primaryItem.product_id,
+        //--------------------------------------------------
+        // Product
+        //--------------------------------------------------
 
-        product_name: primaryItem.product_name,
+        product_id:
+            primaryItem.product_id,
 
-        product_image: primaryItem.image,
+        product_name:
+            primaryItem.product_name,
 
-        product_price: primaryItem.unit_price,
+        product_image:
+            primaryItem.image,
 
-        product_quantity: primaryItem.quantity,
+        product_url:
+            primaryItem.product_url,
 
-        print_method: primaryItem.print_method,
+        sku:
+            primaryItem.sku,
 
-        logo_colours: primaryItem.logo_colours,
+        //--------------------------------------------------
+        // Pricing
+        //--------------------------------------------------
 
-        tier_quantity: primaryItem.tier_quantity,
+        product_price:
 
-        tier_name: primaryItem.tier_name,
+            pricing.price ||
 
-        currency: primaryItem.currency,
+            primaryItem.unit_price,
 
-        discount: primaryItem.discount,
+        product_quantity:
 
-        discount_amount: primaryItem.discount_amount,
+            primaryItem.quantity,
 
-        subtotal: primaryItem.subtotal,
+        tier_quantity:
 
-        product_url: primaryItem.product_url,
+            pricing.qty ||
 
-        sku: primaryItem.sku,
+            primaryItem.tier_quantity,
 
-        include_vat: primaryItem.include_vat,
+        tier_name:
 
-        artwork_required: primaryItem.artwork_required
+            pricing.tier ||
+
+            primaryItem.tier_name,
+
+        currency:
+
+            pricing.currency ||
+
+            primaryItem.currency,
+
+        discount:
+
+            pricing.discount ||
+
+            primaryItem.discount,
+
+        discount_amount:
+
+            primaryItem.discount_amount,
+
+        subtotal:
+
+            primaryItem.subtotal,
+
+        //--------------------------------------------------
+        // Branding
+        //--------------------------------------------------
+
+        print_method:
+
+            primaryItem.print_method,
+
+        logo_colours:
+
+            primaryItem.logo_colours,
+
+        include_vat:
+
+            primaryItem.include_vat,
+
+        artwork_required:
+
+            primaryItem.artwork_required
 
     };
 
     Object.keys(fields).forEach(function (name) {
 
         const input = document.querySelector(
+
             '[name="' + name + '"], #' + name
+
         );
 
         if (input) {
@@ -493,7 +625,6 @@ function populateProductInfo() {
     });
 
 }
-
 
 /* =====================================================
 FORM SUBMISSION
@@ -507,12 +638,22 @@ function submitLargeQtyForm(){
     const btn = document.querySelector(".lq-btn");
     if (!btn) return;
 
+    let isSubmitting = false;
+
     const cart =
     window.QuoteCart
         ? QuoteCart.getCart()
         : [];
 
     btn.addEventListener("click", function(){
+
+        if (isSubmitting) {
+            return;
+        }
+
+        isSubmitting = true;
+
+        btn.disabled = true;
 
         const data = {
 
@@ -532,8 +673,14 @@ function submitLargeQtyForm(){
 
             order_required_by: form.querySelector('[name="order_required_by"]')?.value,
 
-           // product_name: document.querySelector(".product-summary strong")?.innerText
-            products: cart,
+            products:
+
+                JSON.parse(
+
+                    JSON.stringify(cart)
+
+                ),
+
             submitted_from:
                 "larger_quantity",
 
@@ -562,6 +709,22 @@ function submitLargeQtyForm(){
 
         }
 
+        const invalidItem = cart.find(item => !item.pricing_snapshot);
+
+        if (invalidItem) {
+
+            alert(
+
+                "One or more products are missing pricing information. Please refresh the product page and try again."
+
+            );
+
+            isSubmitting = false;
+            btn.disabled = false;
+
+            return;
+
+        }
 
         console.log("========== SUBMITTING QUOTE ==========");
         console.log("Payload:", data);
@@ -607,6 +770,9 @@ function submitLargeQtyForm(){
 
                 scrollToTop();
 
+                isSubmitting = false;
+                btn.disabled = false;
+
                 QuoteCart.clear();
 
             }
@@ -621,18 +787,10 @@ function submitLargeQtyForm(){
             }
 
         })
-        // .catch(error => {
-
-        //     console.error("Quote submission error:", error);
-
-        //     showQuoteError();
-        //     scrollToTop();   // 👈 bring user to top
-
-        // });
-
 
         .catch(error => {
-
+            isSubmitting = false;
+            btn.disabled = false;
             console.error("Quote submission error:", error);
 
             alert(error.message);
@@ -682,13 +840,6 @@ function showQuoteConfirmation(response){
     const msg = document.createElement("div");
 
     msg.className = "quote-success-message";
-
-    // msg.innerHTML = `
-    //     <div class="alert alert-success mt-4">
-    //         Your quote request has been submitted successfully.
-    //         Our team will contact you shortly.
-    //     </div>
-    // `;
 
     msg.innerHTML = `
 
@@ -758,10 +909,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (isLargeQtyPage()) {
-
-        // updateQuotePreview();
-
-        // toggleLogoSection();
 
         const cart = QuoteCart.getCart();
 

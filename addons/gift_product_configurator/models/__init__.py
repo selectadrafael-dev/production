@@ -10,5 +10,9 @@ from . import product_mass_update_wizard
 from . import gift_quote_request
 from . import gift_quote_request_line
 from . import res_config_settings
+from . import product_pricing_profile
+from . import product_pricing_profile_line
+from . import product_pricing_tier
+from . import product_pricing_engine
 
 

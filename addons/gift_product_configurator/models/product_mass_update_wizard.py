@@ -75,6 +75,117 @@ class ProductMassUpdateWizard( models.TransientModel):
 
     value = fields.Float()
 
+    # ==========================================================
+    # WEBSITE QUANTITY TIERS
+    # ==========================================================
+
+    update_quantity_tiers = fields.Boolean(
+        string="Update Quantity Pricing",
+    )
+
+    tier_1_qty = fields.Integer(
+        string="Tier 1 Quantity",
+    )
+
+    tier_1_discount = fields.Float(
+        string="Tier 1 Discount (%)",
+    )
+
+    tier_2_qty = fields.Integer(
+        string="Tier 2 Quantity",
+    )
+
+    tier_2_discount = fields.Float(
+        string="Tier 2 Discount (%)",
+    )
+
+    tier_3_qty = fields.Integer(
+        string="Tier 3 Quantity",
+    )
+
+    tier_3_discount = fields.Float(
+        string="Tier 3 Discount (%)",
+    )
+
+    tier_4_qty = fields.Integer(
+        string="Tier 4 Quantity",
+    )
+
+    tier_4_discount = fields.Float(
+        string="Tier 4 Discount (%)",
+    )
+
+    # ==========================================================
+    # PRICING PROFILE
+    # ==========================================================
+
+    use_pricing_profile = fields.Boolean(
+        string="Apply Pricing Profile",
+        default=True,
+    )
+
+    pricing_profile_id = fields.Many2one(
+        "product.pricing.profile",
+        string="Pricing Profile",
+    )
+
+    rebuild_pricing = fields.Boolean(
+        string="Rebuild Pricing",
+        default=True,
+    )
+
+    clear_existing_pricing = fields.Boolean(
+        string="Replace Existing Pricing",
+        default=True,
+    )
+
+    upgrade_latest_version = fields.Boolean(
+        string="Upgrade To Latest Version",
+    )
+
+    # ==========================================================
+    # PRICING ACTION
+    # ==========================================================
+
+    pricing_action = fields.Selection(
+        [
+            ("apply", "Apply Pricing Profile"),
+            ("rebuild", "Rebuild Existing Pricing"),
+            ("upgrade", "Upgrade To Latest Version"),
+            ("clear", "Clear Pricing"),
+        ],
+        string="Pricing Action",
+        default="apply",
+    )
+
+    pricing_profile_id = fields.Many2one(
+        "product.pricing.profile",
+        string="Pricing Profile",
+    )
+
+    replace_existing_pricing = fields.Boolean(
+        string="Replace Existing Pricing",
+        default=True,
+    )
+
+    selected_product_count = fields.Integer(
+        compute="_compute_selected_product_count",
+    )
+
+    pricing_tier_count = fields.Integer(
+        compute="_compute_pricing_tier_count",
+    )
+
+    preview_tier_ids = fields.Many2many(
+        "product.pricing.profile.line",
+        string="Pricing Preview",
+        compute="_compute_preview_tiers",
+    )
+
+    estimated_tier_records = fields.Integer(
+        compute="_compute_estimated_tier_records",
+    )
+
     # =========================
     # WEBSITE CATEGORY
     # =========================
@@ -219,6 +330,40 @@ class ProductMassUpdateWizard( models.TransientModel):
         ]
     )
 
+    # ==========================================================
+    # COMPUTE
+    # ==========================================================
+
+    @api.depends("product_ids")
+    def _compute_selected_product_count(self):
+
+        for wizard in self:
+
+            wizard.selected_product_count = len(
+                wizard.product_ids
+            )
+
+
+    @api.depends("pricing_profile_id")
+    def _compute_pricing_tier_count(self):
+
+        for wizard in self:
+
+            wizard.pricing_tier_count = len(
+                wizard.pricing_profile_id.tier_line_ids
+            )
+
+    @api.depends("pricing_profile_id")
+    def _compute_preview_tiers(self):
+
+        for wizard in self:
+
+            wizard.preview_tier_ids = (
+
+                wizard.pricing_profile_id.tier_line_ids
+
+            )
+
     # =========================
     # ACTION
     # =========================
@@ -267,6 +412,8 @@ class ProductMassUpdateWizard( models.TransientModel):
         inventory_updated_count = 0
 
         quantity_updated_count = 0
+
+        tier_updated_count = 0
 
         for product in products:
 
@@ -627,6 +774,96 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                 price_updated_count += 1
 
+            # =================================
+            # WEBSITE PRICING ENGINE
+            # =================================
+
+            if self.pricing_action == "apply":
+
+                if not self.pricing_profile_id:
+
+                    continue
+
+                #
+                # Assign Website Pricing Profile
+                #
+
+                product.set_website_pricing_profile(
+
+                    self.pricing_profile_id
+
+                )
+
+                #
+                # Build Product Pricing Tiers
+                #
+
+                product.sync_website_pricing()
+
+                tier_updated_count += 1
+
+                _logger.warning(
+
+                    "[PRICING PROFILE APPLIED] "
+
+                    "product=%s | "
+
+                    "profile=%s",
+
+                    product.name,
+
+                    self.pricing_profile_id.name,
+
+                )
+
+            elif self.pricing_action == "rebuild":
+
+                product.sync_website_pricing()
+
+                tier_updated_count += 1
+
+                _logger.warning(
+
+                    "[PRICING REBUILT] "
+
+                    "product=%s",
+
+                    product.name,
+
+                )
+
+            elif self.pricing_action == "clear":
+
+                product.clear_website_pricing()
+
+                tier_updated_count += 1
+
+                _logger.warning(
+
+                    "[PRICING CLEARED] "
+
+                    "product=%s",
+
+                    product.name,
+
+                )
+
+            elif self.pricing_action == "upgrade":
+
+                product.upgrade_pricing_profile()
+
+                tier_updated_count += 1
+
+                _logger.warning(
+
+                    "[PRICING UPGRADED] "
+
+                    "product=%s",
+
+                    product.name,
+
+                )
+
    
         return {
 
@@ -663,6 +900,9 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                     f"Stock Quantities Updated: "
                     f"{quantity_updated_count}"
+
+                    f"Website Pricing Updated: "
+                    f"{tier_updated_count}\n"
                 ),
 
                 "type":
@@ -678,3 +918,4 @@ class ProductMassUpdateWizard( models.TransientModel):
                 "ir.actions.act_window_close"
             }
         }
+    

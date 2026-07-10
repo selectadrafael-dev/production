@@ -68,6 +68,18 @@ class ProductTemplate(models.Model):
         index=True,
     )
 
+    tier_1_qty = fields.Integer(default=1000)
+    tier_1_discount = fields.Float(default=0)
+
+    tier_2_qty = fields.Integer(default=2000)
+    tier_2_discount = fields.Float(default=5)
+
+    tier_3_qty = fields.Integer(default=3000)
+    tier_3_discount = fields.Float(default=10)
+
+    tier_4_qty = fields.Integer(default=4000)
+    tier_4_discount = fields.Float(default=15)
+
 
     # =============================================
     # AUTO ASSIGN VENDOR DURING CREATE
@@ -5938,6 +5950,47 @@ class VendorImportJob(models.Model):
 
                                 ]
                
+
+                # =========================================
+                # GENERATE VARIANTS
+                # =========================================
+
+                product._create_variant_ids()
+
+                product.flush_recordset()
+
+                product.invalidate_recordset()
+
+                # =========================================
+                # FINALIZE PRODUCT
+                # =========================================
+
+                try:
+
+                    product.finalize_product()
+
+                    _logger.warning(
+
+                        "[PRODUCT FINALIZED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
+
+                except Exception:
+
+                    _logger.exception(
+
+                        "[PRODUCT FINALIZE FAILED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
+
                 created_count += 1
 
             except Exception as e:
@@ -17663,6 +17716,36 @@ class VendorImportJob(models.Model):
                                     f"{str(e)}"
                                 )
 
+                    # ==========================================================
+                    # FINALIZE PRODUCT
+                    # ==========================================================
+
+                    try:
+
+                        product.finalize_product()
+
+                        _logger.warning(
+
+                            "[PRODUCT FINALIZED] "
+
+                            "product=%s",
+
+                            product.display_name,
+
+                        )
+
+                    except Exception:
+
+                        _logger.exception(
+
+                            "[PRODUCT FINALIZE FAILED] "
+
+                            "product=%s",
+
+                            product.display_name,
+
+                        )
+
                 except Exception as e:
 
                     _logger.exception(
@@ -24010,6 +24093,36 @@ class VendorImportJob(models.Model):
                     stock_quant_obj,
                     stock_location
                 )
+
+                # ==========================================================
+                # FINALIZE PRODUCT
+                # ==========================================================
+
+                try:
+
+                    product.finalize_product()
+
+                    _logger.warning(
+
+                        "[PRODUCT FINALIZED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
+
+                except Exception:
+
+                    _logger.exception(
+
+                        "[PRODUCT FINALIZE FAILED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
 
                 # =================================================
                 # SAVE PROGRESS

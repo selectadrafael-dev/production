@@ -71,6 +71,11 @@
                 ? activeTier.dataset.tier || ""
                 : "";
 
+        const tierId =
+            activeTier
+                ? parseInt(activeTier.dataset.tierId || 0)
+                : 0;
+
         //--------------------------------------------------
         // Manual Quantity
         //--------------------------------------------------
@@ -121,34 +126,31 @@
         //--------------------------------------------------
         // Currency
         //--------------------------------------------------
-
         const currencyText =
+            activeTier
+                ? tier.currency
+                : (
+                    document
+                        .querySelector(
+                            "#qty_tiers .qty_tiers_card"
+                        )
+                        ?.dataset
+                        ?.currency || "AZN"
+                );
 
-            document
-                .getElementById("dynamic_main_price")
-                ?.innerText
-                .replace(/[0-9.,\s]/g, "")
-                .trim()
 
-                || "";
+        //--------------------------------------------------
+        // Pricing Snapshot
+        //--------------------------------------------------
 
-         const originalPrice =
-            tierDiscount > 0
-                ? Number(
-                    (
-                        displayedPrice /
-                        (1 - tierDiscount / 100)
-                    ).toFixed(2)
-                )
-                : displayedPrice;
+        const originalPrice = displayedPrice;
 
-        const discountAmount =
-            Number(
-                (
-                    finalQty *
-                    (originalPrice - displayedPrice)
-                ).toFixed(2)
-            );
+        const discountAmount = 0;
+
+        const tier =
+        JSON.parse(
+            activeTier.dataset.tier
+        );
 
         const productSnapshot = {
 
@@ -159,6 +161,8 @@
             id: id,
 
             product_id: id,
+
+            pricing_tier_id: tierId,
 
             product_name: name,
 
@@ -200,6 +204,8 @@
 
             currency:
                 currencyText.trim(),
+            
+            pricing_snapshot: tier,
 
             include_vat: false,
 

@@ -162,6 +162,30 @@ class GiftQuoteRequest(models.Model):
         string="Quote Lines",
     )
 
+    currency_id = fields.Many2one(
+    "res.currency",
+    default=lambda self:
+        self.env.company.currency_id,
+)
+
+    discount_total = fields.Monetary(
+        currency_field="currency_id",
+        compute="_compute_totals",
+        store=True,
+    )
+
+    vat_total = fields.Monetary(
+        currency_field="currency_id",
+        compute="_compute_totals",
+        store=True,
+    )
+
+    grand_total = fields.Monetary(
+        currency_field="currency_id",
+        compute="_compute_totals",
+        store=True,
+    )
+
     @api.depends("first_name", "last_name")
     def _compute_customer_name(self):
 

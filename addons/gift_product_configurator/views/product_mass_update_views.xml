@@ -55,6 +55,148 @@
                         </group>
 
                     </group>
+
+                    <!-- ===================================================== -->
+                    <!-- WEBSITE PRICING -->
+                    <!-- ===================================================== -->
+
+                    <group string="Website Pricing" colspan="4">
+
+                        <group>
+
+                            <field name="pricing_action"/>
+
+                            <field name="pricing_profile_id"
+                                attrs="{
+                                    'required':[('pricing_action','=','apply')],
+                                    'invisible':[('pricing_action','!=','apply')]
+                                }"/>
+
+                            <field name="replace_existing_pricing"
+                                attrs="{
+                                    'invisible':[('pricing_action','!=','apply')]
+                                }"/>
+
+                        </group>
+
+                        <group string="Summary">
+
+                            <label string="Products Selected"/>
+
+                            <div>
+
+                                <field name="selected_product_count"
+                                    readonly="1"
+                                    class="oe_inline"/>
+
+                            </div>
+
+                            <label string="Pricing Tiers"/>
+
+                            <div>
+
+                                <field name="pricing_tier_count"
+                                    readonly="1"
+                                    class="oe_inline"/>
+
+                            </div>
+
+                        </group>
+
+                    </group>
+
+
+                    <!-- ===================================================== -->
+                    <!-- PROFILE DESCRIPTION -->
+                    <!-- ===================================================== -->
+
+                    <!-- <group
+                        attrs="{
+                            'invisible':[('pricing_action','!=','apply')]
+                        }">
+
+                        <field
+                            name="pricing_profile_id"
+                            invisible="1"/>
+
+                        <div class="alert alert-info"
+                            colspan="4">
+
+                            <field
+                                name="pricing_profile_id"
+                                widget="many2one"
+                                invisible="1"/>
+
+                            <span>
+
+                                The selected pricing profile will be copied
+                                to all selected products.
+
+                            </span>
+
+                        </div>
+
+                    </group> -->
+
+                    <!-- ===================================================== -->
+                    PROFILE PREVIEW
+                    <!-- ===================================================== -->
+
+                    <!-- <group
+                        string="Pricing Profile Preview"
+                        attrs="{
+                            'invisible':[('pricing_action','!=','apply')]
+                        }">
+
+                        <field
+                            name="pricing_profile_id"
+                            invisible="1"/>
+
+                        <field
+                            name="pricing_profile_id"
+                            readonly="1">
+
+                            <tree>
+
+                                <field name="minimum_quantity"/>
+
+                                <field name="discount_percent"/>
+
+                            </tree>
+
+                        </field>
+
+                    </group> -->
+
+                    <group string="Pricing Profile Preview"
+                        attrs="{
+                            'invisible':[('pricing_action','!=','apply')]
+                        }">
+
+                        <field name="preview_tier_ids"
+                            nolabel="1"
+                            readonly="1">
+
+                            <tree
+                                create="0"
+                                delete="0"
+                                edit="0">
+
+                                <field name="sequence"
+                                    string="#"/>
+
+                                <field name="minimum_quantity"
+                                    string="Quantity"/>
+
+                                <field name="discount_percent"
+                                    string="Discount (%)"/>
+
+                            </tree>
+
+                        </field>
+
+                    </group>
+
                    
                     <group string="Website Categories">
 
