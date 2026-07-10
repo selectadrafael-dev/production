@@ -166,7 +166,7 @@ class GiftQuoteRequest(models.Model):
     "res.currency",
     default=lambda self:
         self.env.company.currency_id,
-)
+    )
 
     discount_total = fields.Monetary(
         currency_field="currency_id",
@@ -197,6 +197,45 @@ class GiftQuoteRequest(models.Model):
                 + (rec.last_name or "")
             ).strip()
 
+    # ==========================================================
+    # COMPUTE TOTALS
+    # ==========================================================
+
+    @api.depends(
+        "line_ids.subtotal",
+        "line_ids.discount_amount",
+        "include_vat",
+    )
+    def _compute_totals(self):
+
+        for request in self:
+
+            discount_total = sum(
+                request.line_ids.mapped(
+                    "discount_amount"
+                )
+            )
+
+            subtotal = sum(
+                request.line_ids.mapped(
+                    "subtotal"
+                )
+            )
+
+            vat_total = 0.0
+
+            if request.include_vat:
+
+                vat_total = subtotal * 0.18
+
+            request.discount_total = discount_total
+
+            request.vat_total = vat_total
+
+            request.grand_total = (
+                subtotal +
+                vat_total
+            )
     # ==========================================================
     # CREATE
     # ==========================================================
