@@ -298,17 +298,6 @@ class ProductMassUpdateWizard( models.TransientModel):
     # ==========================================================
     # COMPUTE
     # ==========================================================
-
-    @api.depends("product_ids")
-    def _compute_selected_product_count(self):
-
-        for wizard in self:
-
-            wizard.selected_product_count = len(
-                wizard.product_ids
-            )
-
-
     @api.depends("pricing_profile_id")
     def _compute_pricing_tier_count(self):
 
@@ -316,6 +305,20 @@ class ProductMassUpdateWizard( models.TransientModel):
 
             wizard.pricing_tier_count = len(
                 wizard.pricing_profile_id.tier_line_ids
+            )
+    
+
+    def _compute_selected_product_count(self):
+
+        for wizard in self:
+
+            wizard.selected_product_count = len(
+
+                wizard.env.context.get(
+                    "active_ids",
+                    []
+                )
+
             )
 
     # ==========================================================
