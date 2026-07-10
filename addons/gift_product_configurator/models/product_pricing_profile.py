@@ -95,6 +95,23 @@ class ProductPricingProfile(models.Model):
     )
 
     # ==========================================================
+    # OWNERSHIP
+    # ==========================================================
+
+    owner_partner_id = fields.Many2one(
+        "res.partner",
+        string="Owner",
+        index=True,
+        help="Vendor that owns this pricing profile.",
+    )
+
+    is_company_profile = fields.Boolean(
+        string="Company Profile",
+        default=False,
+        help="Shared profile available to all vendors.",
+    )
+
+    # ==========================================================
     # COMPUTE
     # ==========================================================
 
@@ -205,3 +222,59 @@ class ProductPricingProfile(models.Model):
         })
 
         return new_profile
+    
+    # ==========================================================
+    # CAN CURRENT USER EDIT
+    # ==========================================================
+
+    can_edit = fields.Boolean(
+        compute="_compute_can_edit",
+    )
+
+    @api.depends(
+        "owner_partner_id"
+    )
+    def _compute_can_edit(self):
+
+        for profile in self:
+
+            if self.env.user.has_group(
+                "base.group_system"
+            ):
+
+                profile.can_edit = True
+
+                continue
+
+            partner = self.env.user.partner_id
+
+            profile.can_edit = (
+
+                profile.owner_partner_id == partner
+
+            )
+    
+    # ==========================================================
+    # WRITE
+    # ==========================================================
+
+    def write(self, vals):
+
+        result = super().write(vals)
+
+        rebuild_fields = {
+
+            "name",
+
+        }
+
+        if rebuild_fields.intersection(
+
+            vals.keys()
+
+        ):
+
+            self.rebuild_products()
+
+        return result
+

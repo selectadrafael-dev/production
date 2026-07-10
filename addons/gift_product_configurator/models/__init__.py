@@ -14,5 +14,6 @@ from . import product_pricing_profile
 from . import product_pricing_profile_line
 from . import product_pricing_tier
 from . import product_pricing_engine
+from . import product_mass_update_pricing_line
 
 

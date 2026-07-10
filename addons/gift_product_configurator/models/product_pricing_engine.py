@@ -415,6 +415,42 @@ class ProductPricingEngine(models.AbstractModel):
             fields.Date.today(),
 
         )
+
+    # ==========================================================
+    # GET CURRENT EXCHANGE RATE
+    # ==========================================================
+
+    def get_exchange_rate(
+
+        self,
+
+        from_currency,
+
+        to_currency=None,
+
+    ):
+
+        if not to_currency:
+
+            to_currency = self.env.company.currency_id
+
+        if from_currency == to_currency:
+
+            return 1
+
+        company = self.env.company
+
+        return from_currency._get_conversion_rate(
+
+            from_currency,
+
+            to_currency,
+
+            company,
+
+            fields.Date.today(),
+
+        )
     
     # ==========================================================
     # GET BASE PRICE

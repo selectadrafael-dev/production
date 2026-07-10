@@ -6,6 +6,7 @@ from odoo import (
 
 from odoo.exceptions import UserError
 
+
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -76,74 +77,6 @@ class ProductMassUpdateWizard( models.TransientModel):
     value = fields.Float()
 
     # ==========================================================
-    # WEBSITE QUANTITY TIERS
-    # ==========================================================
-
-    update_quantity_tiers = fields.Boolean(
-        string="Update Quantity Pricing",
-    )
-
-    tier_1_qty = fields.Integer(
-        string="Tier 1 Quantity",
-    )
-
-    tier_1_discount = fields.Float(
-        string="Tier 1 Discount (%)",
-    )
-
-    tier_2_qty = fields.Integer(
-        string="Tier 2 Quantity",
-    )
-
-    tier_2_discount = fields.Float(
-        string="Tier 2 Discount (%)",
-    )
-
-    tier_3_qty = fields.Integer(
-        string="Tier 3 Quantity",
-    )
-
-    tier_3_discount = fields.Float(
-        string="Tier 3 Discount (%)",
-    )
-
-    tier_4_qty = fields.Integer(
-        string="Tier 4 Quantity",
-    )
-
-    tier_4_discount = fields.Float(
-        string="Tier 4 Discount (%)",
-    )
-
-    # ==========================================================
-    # PRICING PROFILE
-    # ==========================================================
-
-    use_pricing_profile = fields.Boolean(
-        string="Apply Pricing Profile",
-        default=True,
-    )
-
-    pricing_profile_id = fields.Many2one(
-        "product.pricing.profile",
-        string="Pricing Profile",
-    )
-
-    rebuild_pricing = fields.Boolean(
-        string="Rebuild Pricing",
-        default=True,
-    )
-
-    clear_existing_pricing = fields.Boolean(
-        string="Replace Existing Pricing",
-        default=True,
-    )
-
-    upgrade_latest_version = fields.Boolean(
-        string="Upgrade To Latest Version",
-    )
-
-    # ==========================================================
     # PRICING ACTION
     # ==========================================================
 
@@ -158,16 +91,6 @@ class ProductMassUpdateWizard( models.TransientModel):
         default="apply",
     )
 
-    pricing_profile_id = fields.Many2one(
-        "product.pricing.profile",
-        string="Pricing Profile",
-    )
-
-    replace_existing_pricing = fields.Boolean(
-        string="Replace Existing Pricing",
-        default=True,
-    )
-
     selected_product_count = fields.Integer(
         compute="_compute_selected_product_count",
     )
@@ -176,14 +99,56 @@ class ProductMassUpdateWizard( models.TransientModel):
         compute="_compute_pricing_tier_count",
     )
 
-    preview_tier_ids = fields.Many2many(
-        "product.pricing.profile.line",
-        string="Pricing Preview",
-        compute="_compute_preview_tiers",
-    )
-
     estimated_tier_records = fields.Integer(
         compute="_compute_estimated_tier_records",
+    )
+
+    # ==========================================================
+    # WEBSITE PRICING
+    # ==========================================================
+
+    pricing_mode = fields.Selection(
+
+        [
+
+            ("existing", "Use Existing Profile"),
+
+            ("create", "Create New Profile"),
+
+            ("edit", "Edit Existing Profile"),
+
+        ],
+
+        string="Pricing Mode",
+
+        default="existing",
+
+    )
+
+    pricing_profile_id = fields.Many2one(
+
+        "product.pricing.profile",
+
+        string="Pricing Profile",
+
+        domain=[],
+
+    )
+
+    new_profile_name = fields.Char(
+
+        string="New Profile Name",
+
+    )
+
+    pricing_line_ids = fields.One2many(
+
+        "product.mass.update.pricing.line",
+
+        "wizard_id",
+
+        string="Pricing Lines",
+
     )
 
     # =========================
@@ -353,16 +318,336 @@ class ProductMassUpdateWizard( models.TransientModel):
                 wizard.pricing_profile_id.tier_line_ids
             )
 
-    @api.depends("pricing_profile_id")
-    def _compute_preview_tiers(self):
+    # ==========================================================
+    # ONCHANGE
+    # ==========================================================
 
-        for wizard in self:
+    @api.onchange(
+        "pricing_mode"
+    )
+    def _onchange_pricing_mode(self):
 
-            wizard.preview_tier_ids = (
+        partner = self.env.user.partner_id
 
-                wizard.pricing_profile_id.tier_line_ids
+        return {
+
+            "domain": {
+
+                "pricing_profile_id": [
+
+                    "|",
+
+                    ("is_company_profile", "=", True),
+
+                    ("owner_partner_id", "=", partner.id),
+
+                ]
+
+            }
+
+        }
+    
+    @api.onchange(
+        "pricing_profile_id"
+    )
+    def _onchange_pricing_profile(self):
+
+        self.pricing_line_ids = [
+
+            (5, 0, 0)
+
+        ]
+
+        if (
+
+            not self.pricing_profile_id
+
+        ):
+
+            return
+
+        lines = []
+
+        for line in (
+
+            self.pricing_profile_id
+
+            .tier_line_ids
+
+            .sorted(
+
+                key=lambda l: l.sequence
 
             )
+
+        ):
+
+            lines.append(
+
+                (
+
+                    0,
+
+                    0,
+
+                    {
+
+                        "sequence":
+
+                            line.sequence,
+
+                        "minimum_quantity":
+
+                            line.minimum_quantity,
+
+                        "discount_percent":
+
+                            line.discount_percent,
+
+                        "notes":
+
+                            line.notes,
+
+                    }
+
+                )
+
+            )
+
+        self.pricing_line_ids = lines
+
+    
+    # ==========================================================
+    # CREATE PROFILE
+    # ==========================================================
+
+    def _create_pricing_profile(self):
+
+        self.ensure_one()
+
+        Profile = self.env[
+
+            "product.pricing.profile"
+
+        ]
+
+        profile = Profile.create({
+
+            "name":
+
+                self.new_profile_name,
+
+            "owner_partner_id":
+
+                self.env.user.partner_id.id,
+
+            "active":
+
+                True,
+
+        })
+
+        for line in self.pricing_line_ids:
+
+            self.env[
+
+                "product.pricing.profile.line"
+
+            ].create({
+
+                "pricing_profile_id":
+
+                    profile.id,
+
+                "sequence":
+
+                    line.sequence,
+
+                "minimum_quantity":
+
+                    line.minimum_quantity,
+
+                "discount_percent":
+
+                    line.discount_percent,
+
+                "notes":
+
+                    line.notes,
+
+            })
+
+        return profile
+    
+    # ==========================================================
+    # UPDATE PROFILE
+    # ==========================================================
+
+    def _update_pricing_profile(
+
+        self,
+
+        profile,
+
+    ):
+
+        profile.tier_line_ids.unlink()
+
+        for line in self.pricing_line_ids:
+
+            self.env[
+
+                "product.pricing.profile.line"
+
+            ].create({
+
+                "pricing_profile_id":
+
+                    profile.id,
+
+                "sequence":
+
+                    line.sequence,
+
+                "minimum_quantity":
+
+                    line.minimum_quantity,
+
+                "discount_percent":
+
+                    line.discount_percent,
+
+                "notes":
+
+                    line.notes,
+
+            })
+
+    # ==========================================================
+    # REBUILD PROFILE PRODUCTS
+    # ==========================================================
+
+    def _rebuild_profile_products(
+        self,
+        profile,
+     ):
+        """
+        Rebuild website pricing for every product
+        using this pricing profile.
+        """
+
+        if not profile:
+            return
+
+        products = self.env[
+            "product.template"
+        ].search([
+
+            (
+                "website_pricing_profile_id",
+                "=",
+                profile.id,
+            )
+
+        ])
+
+        PricingEngine = self.env[
+            "product.pricing.engine"
+        ]
+
+        for product in products:
+
+            try:
+
+                PricingEngine.apply_profile(
+
+                    product,
+
+                    profile,
+
+                )
+
+                product.sync_website_pricing()
+
+                _logger.info(
+
+                    "[PROFILE REBUILD] "
+
+                    "product=%s "
+
+                    "profile=%s",
+
+                    product.display_name,
+
+                    profile.name,
+
+                )
+
+            except Exception:
+
+                _logger.exception(
+
+                    "[PROFILE REBUILD FAILED] "
+
+                    "product=%s",
+
+                    product.display_name,
+
+                )
+
+    # ==========================================================
+    # REBUILD PRODUCTS
+    # ==========================================================
+
+    def rebuild_products(self):
+
+        PricingEngine = self.env[
+            "product.pricing.engine"
+        ]
+
+        for profile in self:
+
+            products = self.env[
+                "product.template"
+            ].search([
+
+                (
+
+                    "website_pricing_profile_id",
+
+                    "=",
+
+                    profile.id,
+
+                )
+
+            ])
+
+            for product in products:
+
+                try:
+
+                    PricingEngine.apply_profile(
+
+                        product,
+
+                        profile,
+
+                    )
+
+                    product.sync_website_pricing()
+
+                except Exception:
+
+                    _logger.exception(
+
+                        "[PROFILE REBUILD FAILED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
 
     # =========================
     # ACTION
@@ -778,91 +1063,153 @@ class ProductMassUpdateWizard( models.TransientModel):
             # WEBSITE PRICING ENGINE
             # =================================
 
-            if self.pricing_action == "apply":
+            if self.pricing_action:
 
-                if not self.pricing_profile_id:
+                profile = False
 
-                    continue
+                # ------------------------------------------
+                # USE EXISTING PROFILE
+                # ------------------------------------------
 
-                #
-                # Assign Website Pricing Profile
-                #
+                if (
 
-                product.set_website_pricing_profile(
+                    self.pricing_mode
+                    == "existing"
 
-                    self.pricing_profile_id
+                ):
 
-                )
+                    profile = self.pricing_profile_id
 
-                #
-                # Build Product Pricing Tiers
-                #
+                # ------------------------------------------
+                # CREATE NEW PROFILE
+                # ------------------------------------------
 
-                product.sync_website_pricing()
+                elif (
 
-                tier_updated_count += 1
+                    self.pricing_mode
+                    == "create"
 
-                _logger.warning(
+                ):
 
-                    "[PRICING PROFILE APPLIED] "
+                    profile = self._create_pricing_profile()
 
-                    "product=%s | "
+                # ------------------------------------------
+                # EDIT EXISTING PROFILE
+                # ------------------------------------------
 
-                    "profile=%s",
+                elif (
 
-                    product.name,
+                    self.pricing_mode
+                    == "edit"
 
-                    self.pricing_profile_id.name,
+                ):
 
-                )
+                    profile = self.pricing_profile_id
 
-            elif self.pricing_action == "rebuild":
+                    if profile:
 
-                product.sync_website_pricing()
+                        #
+                        # SECURITY
+                        #
 
-                tier_updated_count += 1
+                        if (
 
-                _logger.warning(
+                            not profile.is_company_profile
 
-                    "[PRICING REBUILT] "
+                            and
 
-                    "product=%s",
+                            profile.owner_partner_id
 
-                    product.name,
+                            !=
 
-                )
+                            self.env.user.partner_id
 
-            elif self.pricing_action == "clear":
+                            and
 
-                product.clear_website_pricing()
+                            not self.env.user.has_group(
+                                "base.group_system"
+                            )
 
-                tier_updated_count += 1
+                        ):
 
-                _logger.warning(
+                            raise UserError(
 
-                    "[PRICING CLEARED] "
+                                _(
 
-                    "product=%s",
+                                    "You can only edit "
 
-                    product.name,
+                                    "your own pricing profiles."
 
-                )
+                                )
 
-            elif self.pricing_action == "upgrade":
+                            )
 
-                product.upgrade_pricing_profile()
 
-                tier_updated_count += 1
+                        self._update_pricing_profile(
+                            profile
+                        )
 
-                _logger.warning(
+                        #
+                        # Rebuild every product
+                        #
 
-                    "[PRICING UPGRADED] "
+                        self._rebuild_profile_products(
+                            profile
+                        )
 
-                    "product=%s",
+                # ------------------------------------------
+                # APPLY PROFILE
+                # ------------------------------------------
 
-                    product.name,
+                if profile:
 
-                )
+                    PricingEngine = self.env[
+                        "product.pricing.engine"
+                    ]
+
+                    for product in products:
+
+                        #
+                        # Assign profile
+                        #
+
+                        product.website_pricing_profile_id = (
+
+                            profile.id
+
+                        )
+
+                        #
+                        # Build website pricing
+                        #
+
+                        PricingEngine.apply_profile(
+
+                            product,
+
+                            profile,
+
+                        )
+
+                        #
+                        # Synchronize website price
+                        #
+
+                        product.sync_website_pricing()
+
+                        _logger.info(
+
+                            "[PRICING PROFILE APPLIED] "
+
+                            "product=%s "
+
+                            "profile=%s",
+
+                            product.display_name,
+
+                            profile.name,
+
+                        )
 
    
         return {

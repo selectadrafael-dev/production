@@ -180,3 +180,19 @@ class ProductPricingProfileLine(models.Model):
                 seq += 10
 
         return records
+    
+    # ==========================================================
+    # WRITE
+    # ==========================================================
+
+    def write(self, vals):
+
+        result = super().write(vals)
+
+        self.mapped(
+
+            "pricing_profile_id"
+
+        ).rebuild_products()
+
+        return result
