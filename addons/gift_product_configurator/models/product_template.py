@@ -581,13 +581,20 @@ class ProductTemplate(models.Model):
 
         self.ensure_one()
 
-        result = []
+        product = self.sudo()
 
-        tiers = self.pricing_tier_ids.sorted(
-            key=lambda t: t.minimum_quantity
+        currency = (
+            product.currency_id
+            or self.env.company.currency_id
         )
 
-        for tier in tiers:
+        symbol = currency.symbol or ""
+
+        result = []
+
+        for tier in product.pricing_tier_ids.sorted(
+            key=lambda t: t.minimum_quantity
+        ):
 
             result.append({
 
@@ -604,15 +611,8 @@ class ProductTemplate(models.Model):
                     tier.unit_price,
 
                 "formatted_price":
-                    self.currency_id.symbol
-                    +
-                    (
-                        "%.2f"
-                        %
-                        tier.unit_price
-                    ),
+                    f"{symbol}{tier.unit_price:.2f}",
 
             })
 
         return result
-        
