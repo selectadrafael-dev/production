@@ -26,3 +26,7 @@ access_product_pricing_profile_line_user,product.pricing.profile.line user,model
 access_product_pricing_profile_vendor,product.pricing.profile vendor,model_product_pricing_profile,gift_product_configurator.group_product_vendor,1,1,1,1
 
 access_product_pricing_profile_line_vendor,product.pricing.profile.line vendor,model_product_pricing_profile_line,gift_product_configurator.group_product_vendor,1,1,1,1
+
+
+access_product_pricing_tier_user,product.pricing.tier user,model_product_pricing_tier,base.group_user,1,1,1,1
+access_product_pricing_tier_system,product.pricing.tier system,model_product_pricing_tier,base.group_system,1,1,1,1
