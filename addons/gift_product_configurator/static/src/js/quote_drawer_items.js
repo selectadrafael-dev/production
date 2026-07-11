@@ -45,29 +45,12 @@
       //--------------------------------------------------
       // Pricing Snapshot
       //--------------------------------------------------
-
-      const pricing =
-
-      PricingUtils.getPricing(item);
-
       const price =
-
-          Number(
-
-              pricing.price ||
-
-              item.unit_price ||
-
-              0
-
-          );
+        Number(item.unit_price || 0);
 
       const currency =
-
-          pricing.currency ||
-
+          item.currency_symbol ||
           item.currency ||
-
           "AZN";
 
       const name =
@@ -116,26 +99,14 @@
                    value="${qty}"
                    min="1">
 
-
             <div class="quote-item__price">
 
-                <span>
+                ${currency}${price.toFixed(2)}
 
-                    ${currency}
+                <span>per unit</span>
 
-                </span>
-
-                ${price.toFixed(2)}
-
-                <span>
-
-                    per unit
-
-                </span>
-
-            </div> 
+            </div>
             
-
           </div>
 
         </div>
@@ -156,19 +127,21 @@
   });
 
   /* Remove item */
-  document.addEventListener('click', function (e) {
+  document.addEventListener("click", function (e) {
 
-    const btn = e.target.closest('.quote-remove');
-    if (!btn) return;
+      const btn = e.target.closest(".quote-remove");
+      if (!btn) return;
 
-    if (typeof QuoteCart === 'undefined') return;
+      if (typeof QuoteCart === "undefined") return;
 
-    const id = parseInt(btn.dataset.id);
-    if (!id) return;
+      const fingerprint = btn.dataset.fingerprint;
+      if (!fingerprint) return;
 
-    QuoteCart.remove(id);
+      QuoteCart.remove(fingerprint);
 
-    document.dispatchEvent(new Event('quoteCartUpdated'));
+      document.dispatchEvent(
+          new Event("quoteCartUpdated")
+      );
 
   });
 
