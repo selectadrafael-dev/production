@@ -30,7 +30,6 @@ import imagehash
 import time
 
  
-
 _logger = logging.getLogger(__name__)
 
 class ProductTemplate(models.Model):

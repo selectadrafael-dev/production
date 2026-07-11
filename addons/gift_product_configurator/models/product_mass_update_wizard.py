@@ -528,132 +528,7 @@ class ProductMassUpdateWizard( models.TransientModel):
 
             })
 
-    # ==========================================================
-    # REBUILD PROFILE PRODUCTS
-    # ==========================================================
-
-    def _rebuild_profile_products(
-        self,
-        profile,
-     ):
-        """
-        Rebuild website pricing for every product
-        using this pricing profile.
-        """
-
-        if not profile:
-            return
-
-        products = self.env[
-            "product.template"
-        ].search([
-
-            (
-                "website_pricing_profile_id",
-                "=",
-                profile.id,
-            )
-
-        ])
-
-        PricingEngine = self.env[
-            "product.pricing.engine"
-        ]
-
-        for product in products:
-
-            try:
-
-                PricingEngine.apply_profile(
-
-                    product,
-
-                    profile,
-
-                )
-
-                product.sync_website_pricing()
-
-                _logger.info(
-
-                    "[PROFILE REBUILD] "
-
-                    "product=%s "
-
-                    "profile=%s",
-
-                    product.display_name,
-
-                    profile.name,
-
-                )
-
-            except Exception:
-
-                _logger.exception(
-
-                    "[PROFILE REBUILD FAILED] "
-
-                    "product=%s",
-
-                    product.display_name,
-
-                )
-
-    # ==========================================================
-    # REBUILD PRODUCTS
-    # ==========================================================
-
-    def rebuild_products(self):
-
-        PricingEngine = self.env[
-            "product.pricing.engine"
-        ]
-
-        for profile in self:
-
-            products = self.env[
-                "product.template"
-            ].search([
-
-                (
-
-                    "website_pricing_profile_id",
-
-                    "=",
-
-                    profile.id,
-
-                )
-
-            ])
-
-            for product in products:
-
-                try:
-
-                    PricingEngine.apply_profile(
-
-                        product,
-
-                        profile,
-
-                    )
-
-                    product.sync_website_pricing()
-
-                except Exception:
-
-                    _logger.exception(
-
-                        "[PROFILE REBUILD FAILED] "
-
-                        "product=%s",
-
-                        product.display_name,
-
-                    )
-
+  
     # =========================
     # ACTION
     # =========================
@@ -1154,13 +1029,6 @@ class ProductMassUpdateWizard( models.TransientModel):
                             profile
                         )
 
-                        #
-                        # Rebuild every product
-                        #
-
-                        self._rebuild_profile_products(
-                            profile
-                        )
 
                 # ------------------------------------------
                 # APPLY PROFILE

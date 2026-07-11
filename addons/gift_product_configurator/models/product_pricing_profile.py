@@ -2,6 +2,9 @@
 
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class ProductPricingProfile(models.Model):
@@ -271,4 +274,68 @@ class ProductPricingProfile(models.Model):
             self.rebuild_products()
 
         return result
+    
 
+    # ==========================================================
+    # REBUILD PRODUCTS
+    # ==========================================================
+
+    def rebuild_products(self):
+
+        PricingEngine = self.env[
+            "product.pricing.engine"
+        ]
+
+        Product = self.env[
+            "product.template"
+        ]
+
+        for profile in self:
+
+            products = Product.search([
+
+                (
+                    "website_pricing_profile_id",
+                    "=",
+                    profile.id,
+                )
+
+            ])
+
+            for product in products:
+
+                try:
+
+                    PricingEngine.apply_profile(
+
+                        product,
+
+                        profile,
+
+                    )
+
+                    product.sync_website_pricing()
+
+                    _logger.info(
+
+                        "[PROFILE REBUILD] "
+                        "product=%s profile=%s",
+
+                        product.display_name,
+
+                        profile.name,
+
+                    )
+
+                except Exception:
+
+                    _logger.exception(
+
+                        "[PROFILE REBUILD FAILED] "
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
+
+        return True
