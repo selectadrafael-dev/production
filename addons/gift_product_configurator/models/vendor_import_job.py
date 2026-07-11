@@ -21094,7 +21094,7 @@ class VendorImportJob(models.Model):
 
                         f"-> "
 
-                        f"{url_data.get('subtitle')}"
+                        f"{url_data.get('title')}"
                     )
 
                 else:
@@ -23452,6 +23452,18 @@ class VendorImportJob(models.Model):
                 # CREATE PARENT
                 # =================================================
 
+                catalogue_currency = self._resolve_catalogue_currency(
+
+                    extracted_currency=main_product.get(
+                        "currency"
+                    ),
+
+                    price_text=main_product.get(
+                        "price_text"
+                    ),
+
+                )
+
                 if is_new_product:
 
                     vals = {
@@ -23492,7 +23504,8 @@ class VendorImportJob(models.Model):
                             main_product.get("price")
                         ),
 
-                        'vendor_currency_id': self.env.company.currency_id.id,
+                        'vendor_currency_id':
+                                catalogue_currency.id,
 
                         'vendor_fingerprint': fingerprint,
 
@@ -25967,4 +25980,110 @@ class VendorImportJob(models.Model):
         })
 
         return category
+
+
+    # ==========================================================
+    # RESOLVE CATALOGUE CURRENCY
+    # ==========================================================
+
+    def _resolve_catalogue_currency(
+
+        self,
+
+        extracted_currency=None,
+
+        price_text=None,
+
+    ):
+
+        """
+        Resolve the source currency for the
+        imported catalogue.
+
+        Priority:
+
+            1. Explicit currency code
+
+            2. Currency symbol
+
+            3. Default USD
+        """
+
+        Currency = self.env["res.currency"]
+
+        #
+        # Explicit code
+        #
+
+        if extracted_currency:
+
+            currency = Currency.search(
+
+                [
+
+                    ("name", "=", extracted_currency.upper())
+
+                ],
+
+                limit=1,
+
+            )
+
+            if currency:
+
+                return currency
+
+        #
+        # Detect symbol
+        #
+
+        if price_text:
+
+            symbol_map = {
+
+                "$": "USD",
+
+                "€": "EUR",
+
+                "£": "GBP",
+
+                "₺": "TRY",
+
+                "¥": "JPY",
+
+                "AED": "AED",
+
+            }
+
+            for symbol, code in symbol_map.items():
+
+                if symbol in price_text:
+
+                    return Currency.search(
+
+                        [
+
+                            ("name", "=", code)
+
+                        ],
+
+                        limit=1,
+
+                    )
+
+        #
+        # Default
+        #
+
+        return Currency.search(
+
+            [
+
+                ("name", "=", "USD")
+
+            ],
+
+            limit=1,
+
+        )
 
