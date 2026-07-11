@@ -191,7 +191,7 @@ class ProductPricingProfileLine(models.Model):
 
         self.mapped(
 
-            "pricing_profile_id"
+            "profile_id"
 
         ).rebuild_products()
 
