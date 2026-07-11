@@ -429,11 +429,15 @@ class ProductTemplate(models.Model):
         completely built.
         """
 
+        PricingEngine = self.env[
+            "product.pricing.engine"
+        ]
+
         for product in self:
 
-            #
+            # --------------------------------------------------
             # Refresh website selling price
-            #
+            # --------------------------------------------------
 
             if (
                 product.vendor_price
@@ -443,16 +447,30 @@ class ProductTemplate(models.Model):
 
                 product._update_converted_price()
 
-            #
-            # Generate website pricing only once
-            #
+            # --------------------------------------------------
+            # Ensure a pricing profile exists
+            # --------------------------------------------------
+
+            if not product.website_pricing_profile_id:
+
+                PricingEngine.apply_default_profile(
+
+                    product,
+
+                    owner=product.vendor_id,
+
+                )
+
+            # --------------------------------------------------
+            # Generate website pricing tiers
+            # --------------------------------------------------
 
             if not product.pricing_tier_ids:
 
                 product.sync_website_pricing()
 
         return True
-    
+
     # ==========================================================
     # WRITE
     # ==========================================================
