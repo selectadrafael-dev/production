@@ -381,7 +381,7 @@ class ProductTemplate(models.Model):
             "[DEFAULT PRICING] Tier Count After Create = %s",
             len(product.pricing_tier_ids),
         )
-        
+
         return True
     
 
@@ -641,7 +641,17 @@ class ProductTemplate(models.Model):
                     tier.unit_price,
 
                 "formatted_price":
-                    f"{symbol}{tier.unit_price:.2f}",
+                    self.currency_id.symbol
+                    +
+                    ("%.2f" % tier.unit_price),
+
+                "currency":
+                    self.currency_id.name,
+
+                "currency_symbol":
+                    self.currency_id.symbol,
+
+                "currency_symbol": self.currency_id.symbol,
 
             })
 

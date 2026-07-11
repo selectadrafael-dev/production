@@ -154,16 +154,7 @@
         // Currency
         //--------------------------------------------------
         const currencyText =
-            activeTier
-                ? tier.currency
-                : (
-                    document
-                        .querySelector(
-                            "#qty_tiers .qty_tiers_card"
-                        )
-                        ?.dataset
-                        ?.currency || "AZN"
-                );
+            tier.currency_symbol || "AZN";
 
         const productSnapshot = {
 
@@ -216,7 +207,7 @@
               ),
 
             currency:
-                currencyText.trim(),
+                String(currencyText || "AZN").trim(),
             
             pricing_snapshot: tier,
 
