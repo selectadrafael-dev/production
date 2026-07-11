@@ -571,4 +571,48 @@ class ProductTemplate(models.Model):
             )
 
         ]
+    
+
+    # ==========================================================
+    # WEBSITE PRICING
+    # ==========================================================
+
+    def get_website_pricing(self):
+
+        self.ensure_one()
+
+        result = []
+
+        tiers = self.pricing_tier_ids.sorted(
+            key=lambda t: t.minimum_quantity
+        )
+
+        for tier in tiers:
+
+            result.append({
+
+                "sequence":
+                    tier.sequence,
+
+                "quantity":
+                    tier.minimum_quantity,
+
+                "discount":
+                    tier.discount_percent,
+
+                "price":
+                    tier.unit_price,
+
+                "formatted_price":
+                    self.currency_id.symbol
+                    +
+                    (
+                        "%.2f"
+                        %
+                        tier.unit_price
+                    ),
+
+            })
+
+        return result
         

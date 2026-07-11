@@ -50,25 +50,11 @@
                                 <div class="qty_wrapper d-flex">
                                     <div id="qty_tiers">
                                     
-                                            <t t-set="pricing_tiers"
-                                                t-value="product.pricing_tier_ids.sorted(key=lambda t: t.minimum_quantity)"/>
+                                           <t t-set="pricing_tiers"
+                                                t-value="product.get_website_pricing()"/>
 
                                                 <t t-foreach="pricing_tiers"
                                                 t-as="tier">                                                                                      
-
-                                                        <!-- <div t-attf-class="tier-card qty_tiers_card #{'active' if tier_index == 0 else ''}"
-
-                                                        t-att-data-tier-id="tier.id"
-
-                                                        t-att-data-qty="tier.minimum_quantity"
-
-                                                        t-att-data-discount="tier.discount_percent"
-
-                                                        t-att-data-price="tier.unit_price"
-
-                                                        t-att-data-currency="tier.currency_id.name if tier.currency_id else 'AZN'"
-
-                                                        t-att-data-tier="json.dumps(tier.get_website_json())"> -->
 
                                                         <div t-attf-class="tier-card qty_tiers_card #{'active' if tier_index == 0 else ''}"
 

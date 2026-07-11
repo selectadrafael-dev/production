@@ -223,11 +223,11 @@
     <!-- MENU -->
     <!-- ========================================================= -->
 
-    <!-- <menuitem
-        id="menu_product_pricing_profile"
-        name="Pricing Profiles"
-        parent="product.menu_catalog"
-        action="action_product_pricing_profile"
-        sequence="80"/> -->
-
+    <menuitem
+    id="menu_product_pricing_profile"
+    name="Pricing Profiles"
+    parent="stock.menu_stock_inventory_control"
+    action="action_product_pricing_profile"
+    sequence="80"/>
+   
 </odoo>
