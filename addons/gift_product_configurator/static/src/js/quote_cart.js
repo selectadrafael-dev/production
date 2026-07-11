@@ -120,15 +120,21 @@
 
 }
 
-  function remove(id) {
-    if (!id) return;
+ function remove(fingerprintValue) {
 
-    const cart = getCart().filter(function (p) {
-      return p.id !== id;
+    if (!fingerprintValue) {
+        return;
+    }
+
+    const cart = getCart().filter(function (product) {
+
+        return fingerprint(product) !== fingerprintValue;
+
     });
 
     save(cart);
-  }
+
+}
 
   window.QuoteCart = {
       getCart: getCart,
