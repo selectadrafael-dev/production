@@ -132,7 +132,7 @@
                         <!-- PRICING LINES -->
                         <!-- ========================================= -->
 
-                        <field
+                        <!--field
                             name="pricing_line_ids"
 
                             colspan="4"
@@ -151,6 +151,21 @@
                                 <field name="notes"/>
 
                             </tree>
+
+                        </field-->
+                        
+
+                        <field name="pricing_line_ids">
+
+                            <list editable="bottom">
+
+                                <field name="minimum_quantity"/>
+
+                                <field name="discount_percent"/>
+
+                                <field name="notes"/>
+
+                            </list>
 
                         </field>
 

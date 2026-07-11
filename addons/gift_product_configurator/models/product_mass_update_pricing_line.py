@@ -56,3 +56,13 @@ class ProductMassUpdatePricingLine(
         string="Estimated Price",
         compute="_compute_preview_price",
     )
+
+    # ==========================================================
+    # COMPUTE PREVIEW PRICE
+    # ==========================================================
+
+    def _compute_preview_price(self):
+
+        for line in self:
+
+            line.preview_price = 0.0

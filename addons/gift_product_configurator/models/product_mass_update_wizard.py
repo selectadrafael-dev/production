@@ -151,6 +151,8 @@ class ProductMassUpdateWizard( models.TransientModel):
 
     )
 
+    
+
     # =========================
     # WEBSITE CATEGORY
     # =========================
