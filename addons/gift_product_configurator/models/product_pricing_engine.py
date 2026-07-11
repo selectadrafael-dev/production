@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from odoo import api, fields, models
+import logging
 
 
 class ProductPricingEngine(models.AbstractModel):
@@ -291,6 +292,12 @@ class ProductPricingEngine(models.AbstractModel):
             product
         )
 
+        _logger.warning(
+            "[DEFAULT PRICING] Product=%s Base Price=%s",
+            product.display_name,
+            base_price,
+        )
+
         currency = (
             product.currency_id
             or self.env.company.currency_id
@@ -312,6 +319,12 @@ class ProductPricingEngine(models.AbstractModel):
         sequence = 10
 
         for qty in default_quantities:
+
+            _logger.warning(
+                "[DEFAULT PRICING] Creating tier Qty=%s Price=%s",
+                qty,
+                base_price,
+            )
 
             Tier.create({
 
@@ -349,6 +362,12 @@ class ProductPricingEngine(models.AbstractModel):
 
             sequence += 10
 
+        _logger.warning(
+            "[DEFAULT PRICING] Creating tier Qty=%s Price=%s",
+            qty,
+            base_price,
+        )
+        
         return True
 
     # ==========================================================
