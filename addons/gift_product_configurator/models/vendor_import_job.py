@@ -20866,6 +20866,21 @@ class VendorImportJob(models.Model):
                             f"<p>{description}</p>"
 
                         )
+                
+
+                # ========= SKU =========
+
+                sku = str(
+                    url_data.get("sku") or ""
+                ).strip()
+
+                if sku:
+
+                    html.append(
+
+                        f"<p><strong>SKU:</strong> {sku}</p>"
+
+                    )
 
                 # ========= Technical Details =========
 
@@ -21034,7 +21049,10 @@ class VendorImportJob(models.Model):
 
                                 product.default_code = sku
 
-                    # ====================================
+
+                    family_products.write(vals)
+
+                     # ====================================
                     # URL IMAGE ENRICHMENT
                     # ====================================
 
@@ -21067,8 +21085,6 @@ class VendorImportJob(models.Model):
                     # ====================================
                     # URL IMAGE ENRICHMENT
                     # ====================================
-
-                    family_products.write(vals)
 
                     _logger.warning(
 
