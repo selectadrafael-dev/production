@@ -147,6 +147,20 @@
 
         const discountAmount = 0;
 
+        if (!activeTier) {
+
+            console.error(
+                "[QUOTE] No active pricing tier selected."
+            );
+
+            alert(
+                "Please select a quantity tier."
+            );
+
+            return;
+
+        }
+
         const tier =
         JSON.parse(
             activeTier.dataset.tier

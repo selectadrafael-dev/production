@@ -50,29 +50,30 @@
                                 <div class="qty_wrapper d-flex">
                                     <div id="qty_tiers">
                                     
-                                           <t t-set="pricing_tiers"
+
+                                            <t t-set="pricing_tiers"
                                                 t-value="product.get_website_pricing()"/>
 
                                                 <t t-foreach="pricing_tiers"
-                                                t-as="tier">                                                                                      
+                                                t-as="tier"
+                                                t-key="tier['sequence']">
 
-                                                        <div t-attf-class="tier-card qty_tiers_card #{'active' if tier_index == 0 else ''}"
-
-                                                        t-att-data-tier="json.dumps(tier.get_website_json())">
+                                                    <div
+                                                        t-attf-class="tier-card qty_tiers_card #{'active' if tier_index == 0 else ''}"
+                                                        t-att-data-tier="json.dumps(tier)">
 
                                                         <strong>
 
-                                                            <t t-esc="tier.minimum_quantity"/>+
+                                                            <t t-esc="tier['quantity']"/>+
 
                                                         </strong>
 
-                                                        <div t-att-id="'actual_price' if tier_index == 0 else None">
+                                                        <div
+                                                            t-att-id="'actual_price' if tier_index == 0 else None">
 
                                                             <span class="price">
 
-                                                                <t t-esc="tier.currency_id.symbol"/>
-
-                                                                <t t-esc="'{:,.2f}'.format(tier.unit_price)"/>
+                                                                <t t-esc="tier['formatted_price']"/>
 
                                                             </span>
 
@@ -86,7 +87,7 @@
 
                                                     </div>
 
-                                                </t>
+                                                </t>    
 
                                             <!--larger qty-->
                                             <div class="qty_tiers_card">
