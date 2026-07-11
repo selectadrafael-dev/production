@@ -37,20 +37,21 @@
         ? item.image
        : '/web/static/img/placeholder.png';
 
-      // const qty = item.qty && item.qty > 0 ? item.qty : 1;
-
-      // const price = item.price ? item.price : 0;
-
       const qty =
       item.quantity && item.quantity > 0
           ? item.quantity
           : 1;
 
+      //--------------------------------------------------
+      // Pricing Snapshot
+      //--------------------------------------------------
       const price =
-          Number(item.unit_price || 0);
+        Number(item.unit_price || 0);
 
       const currency =
-          item.currency || "";
+          item.currency_symbol ||
+          item.currency ||
+          "AZN";
 
       const name =
           item.product_name || "";
@@ -63,7 +64,7 @@
 
           <!-- DELETE -->
           <button class="quote-remove"
-                  data-id="${item.id}">
+                  data-fingerprint="${item.fingerprint}">
             🗑
           </button>
 
@@ -76,11 +77,11 @@
             <div class="quote-item__info">
 
               <div class="quote-item__name">
-                ${item.name || ''}
+                ${name || ''}
               </div>
 
               <div class="quote-item__meta">
-                ${item.code || ''}
+                ${sku || ''}
               </div>
 
             </div>
@@ -99,10 +100,13 @@
                    min="1">
 
             <div class="quote-item__price">
-              <span>$</span>${price}
-              <span>per unit</span>
-            </div>
 
+                ${currency}${price.toFixed(2)}
+
+                <span>per unit</span>
+
+            </div>
+            
           </div>
 
         </div>
@@ -123,19 +127,21 @@
   });
 
   /* Remove item */
-  document.addEventListener('click', function (e) {
+  document.addEventListener("click", function (e) {
 
-    const btn = e.target.closest('.quote-remove');
-    if (!btn) return;
+      const btn = e.target.closest(".quote-remove");
+      if (!btn) return;
 
-    if (typeof QuoteCart === 'undefined') return;
+      if (typeof QuoteCart === "undefined") return;
 
-    const id = parseInt(btn.dataset.id);
-    if (!id) return;
+      const fingerprint = btn.dataset.fingerprint;
+      if (!fingerprint) return;
 
-    QuoteCart.remove(id);
+      QuoteCart.remove(fingerprint);
 
-    document.dispatchEvent(new Event('quoteCartUpdated'));
+      document.dispatchEvent(
+          new Event("quoteCartUpdated")
+      );
 
   });
 

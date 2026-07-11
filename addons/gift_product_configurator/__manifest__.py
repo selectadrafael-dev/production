@@ -29,6 +29,7 @@
     'views/portal_vendor_button.xml',
     'security/security.xml',
     'security/product_vendor_rule.xml',
+    "security/pricing_profile_security.xml",
     'security/ir.model.access.csv',
     'views/product_template_views.xml',
     'views/product_mass_update_views.xml',
@@ -39,6 +40,7 @@
     'data/crm_stage.xml',
     'views/gift_quote_request_views.xml',
     'views/gift_quote_request_menu.xml',
+    'views/product_pricing_profile_views.xml',
 ],
 "assets": {
     "web.assets_frontend": [

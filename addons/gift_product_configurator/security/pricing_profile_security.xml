@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ===================================================== -->
+    <!-- ADMINISTRATORS -->
+    <!-- ===================================================== -->
+
+    <record id="product_pricing_profile_rule_admin"
+            model="ir.rule">
+
+        <field name="name">
+            Pricing Profile - Administrator
+        </field>
+
+        <field name="model_id"
+               ref="model_product_pricing_profile"/>
+
+        <field name="groups"
+               eval="[(4, ref('base.group_system'))]"/>
+
+        <field name="domain_force">
+
+            [(1, '=', 1)]
+
+        </field>
+
+    </record>
+
+
+    <!-- ===================================================== -->
+    <!-- VENDORS -->
+    <!-- ===================================================== -->
+
+    <record id="product_pricing_profile_rule_vendor"
+            model="ir.rule">
+
+        <field name="name">
+            Pricing Profile - Vendor
+        </field>
+
+        <field name="model_id"
+               ref="model_product_pricing_profile"/>
+
+        <field name="groups"
+               eval="[(4, ref('gift_product_configurator.group_product_vendor'))]"/>
+
+        <field name="domain_force">
+
+            [
+                '|',
+
+                ('owner_partner_id', '=', False),
+
+                ('owner_partner_id', '=', user.partner_id.id)
+
+            ]
+
+        </field>
+
+    </record>
+
+</odoo>

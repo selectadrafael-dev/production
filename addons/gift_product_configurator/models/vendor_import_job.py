@@ -30,7 +30,6 @@ import imagehash
 import time
 
  
-
 _logger = logging.getLogger(__name__)
 
 class ProductTemplate(models.Model):
@@ -5494,35 +5493,7 @@ class VendorImportJob(models.Model):
 
         MAX_PRODUCTS_PER_RUN = 5
 
-        CATEGORY_MAPPING = {
-            "t-shirt": "Apparel",
-            "shirt": "Apparel",
-            "polo": "Apparel",
-            "bag": "Bags",
-            "backpack": "Bags",
-            "cap": "Headwear",
-            "hat": "Headwear",
-            "bottle": "Drinkware",
-            "cup": "Drinkware",
-            "drinkware": "Drinkware",
-            "pen": "Stationery",
-            "notebook": "Stationery",
-            "powerbank": "Electronics",
-            "charger": "Electronics",
-            "laptop": "Electronics",
-            "football": "Football Fever",
-            "Wristband": "Football Fever",
-            "sports t-shirt": "Football Fever",
-            "sports towel": "Football Fever",
-            "Sports Bottles": "Football Fever"
-        }
-
-        parent_category = category_obj.search([('name', '=', "All Products")], limit=1)
-        #vendor_id = self.partner_id.id if self.partner_id else False
         vendor_id =  self.partner_id.id if self.partner_id else self.env.user.partner_id.id
-
-        if not parent_category:
-            parent_category = category_obj.create({'name': "All Products"})
 
         end_index = min(start_index + MAX_PRODUCTS_PER_RUN, TOTAL_PRODUCTS)
 
@@ -5538,25 +5509,21 @@ class VendorImportJob(models.Model):
                 continue
 
             description = product_data.get("description", "")
-            raw_category = (product_data.get("category") or "").lower()
+            raw_category = str(
+
+                product_data.get("category") or ""
+
+            ).lower()
 
             # ================= CATEGORY =================
-            mapped_category = "General"
-            for key, val in CATEGORY_MAPPING.items():
-                if key in raw_category:
-                    mapped_category = val
-                    break
+            mapped_category = self._map_product_category(
+                raw_category
+            )
 
-            category = category_obj.search([
-                ('name', '=ilike', mapped_category),
-                ('parent_id', '=', parent_category.id)
-            ], limit=1)
-
-            if not category:
-                category = category_obj.create({
-                    'name': mapped_category,
-                    'parent_id': parent_category.id
-                })
+            category = self._get_or_create_product_category(
+                mapped_category,
+                source="url"
+            )
 
             # ================= FINGERPRINT=================
 
@@ -5605,6 +5572,25 @@ class VendorImportJob(models.Model):
 
                 continue
 
+
+            currency = self._resolve_catalogue_currency(
+
+                extracted_currency=
+                    product_data.get(
+                        "currency"
+                    ),
+
+                price_text=
+                    str(
+                        product_data.get(
+                            "price",
+                            ""
+                        )
+                    ),
+
+            )
+
+
             vals = {
                 'name': name.strip(),
                 'description_sale': description,
@@ -5614,6 +5600,7 @@ class VendorImportJob(models.Model):
                 'website_published': False,
                 'vendor_id': vendor_id,
                 'vendor_fingerprint': vendor_fingerprint,
+                "vendor_currency_id": currency.id,
                 'vendor_import_job_id': self.id,
             }
 
@@ -5667,7 +5654,11 @@ class VendorImportJob(models.Model):
                     tracking_disable=True
                 ).create(vals)
 
+                #========apply translation==============
                 self._apply_product_translation(product)
+
+                #====apply currency conversion================
+                product._update_converted_price()
 
                 # =========================================
                 # URL VARIANTS
@@ -5970,6 +5961,47 @@ class VendorImportJob(models.Model):
 
                                 ]
                
+
+                # =========================================
+                # GENERATE VARIANTS
+                # =========================================
+
+                product._create_variant_ids()
+
+                product.flush_recordset()
+
+                product.invalidate_recordset()
+
+                # =========================================
+                # FINALIZE PRODUCT
+                # =========================================
+
+                try:
+
+                    product.finalize_product()
+
+                    _logger.warning(
+
+                        "[PRODUCT FINALIZED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
+
+                except Exception:
+
+                    _logger.exception(
+
+                        "[PRODUCT FINALIZE FAILED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
+
                 created_count += 1
 
             except Exception as e:
@@ -16955,43 +16987,7 @@ class VendorImportJob(models.Model):
                 f"name={warehouse.name} "
                 f"location={warehouse.lot_stock_id.complete_name}"
             )
-
-        CATEGORY_MAPPING = {
-
-            "t-shirt": "Apparel",
-            "shirt": "Apparel",
-            "polo": "Apparel",
-
-            "bag": "Bags",
-            "backpack": "Bags",
-
-            "cap": "Headwear",
-            "hat": "Headwear",
-
-            "bottle": "Drinkware",
-            "drinkware": "Drinkware",
-
-            "pen": "Stationery",
-            "notebook": "Stationery",
-
-            "powerbank": "Electronics",
-            "charger": "Electronics",
-            "laptop": "Electronics",
-        }
-
-        parent_category = category_obj.search([
-
-            ('name', '=', "All Products")
-
-        ], limit=1)
-
-        if not parent_category:
-
-            parent_category = category_obj.create({
-
-                'name': "All Products"
-
-            })
+    
 
         vendor_id = (
 
@@ -17231,6 +17227,12 @@ class VendorImportJob(models.Model):
 
                     ).lower()
 
+                    mapped_category = self._map_product_category(
+
+                        raw_category
+
+                    )
+
                     variants = product_data.get(
                         "variants",
                         []
@@ -17275,17 +17277,12 @@ class VendorImportJob(models.Model):
                         variant_group
                     ).strip().upper()
 
-                    category = (
-                        self._get_or_create_pdf_category(
+                    category = self._get_or_create_product_category(
 
-                            raw_category,
+                        mapped_category,
 
-                            category_obj,
+                        source="pdf"
 
-                            parent_category,
-
-                            CATEGORY_MAPPING
-                        )
                     )
 
                     vendor_fingerprint = (
@@ -17730,6 +17727,36 @@ class VendorImportJob(models.Model):
                                     f"{str(e)}"
                                 )
 
+                    # ==========================================================
+                    # FINALIZE PRODUCT
+                    # ==========================================================
+
+                    try:
+
+                        product.finalize_product()
+
+                        _logger.warning(
+
+                            "[PRODUCT FINALIZED] "
+
+                            "product=%s",
+
+                            product.display_name,
+
+                        )
+
+                    except Exception:
+
+                        _logger.exception(
+
+                            "[PRODUCT FINALIZE FAILED] "
+
+                            "product=%s",
+
+                            product.display_name,
+
+                        )
+
                 except Exception as e:
 
                     _logger.exception(
@@ -17949,6 +17976,23 @@ class VendorImportJob(models.Model):
             product_data
         )
 
+        currency = self._resolve_catalogue_currency(
+
+            extracted_currency=
+                product_data.get(
+                    "currency"
+                ),
+
+            price_text=
+                str(
+                    product_data.get(
+                        "price",
+                        ""
+                    )
+                ),
+
+        )
+
         vals = {
 
             'name': clean_title,
@@ -17988,7 +18032,8 @@ class VendorImportJob(models.Model):
                 product_data.get("price")
             ),
 
-           'vendor_currency_id': self.env.company.currency_id.id,
+            "vendor_currency_id":
+                currency.id,
         }
 
         hero_index = product_data.get(
@@ -20452,7 +20497,6 @@ class VendorImportJob(models.Model):
     #===========Excel Url Data Main Update Method==============
     #==========================================================
 
-
     def process_excel_url_queue(self):
 
         import json
@@ -20825,7 +20869,7 @@ class VendorImportJob(models.Model):
 
                     html.append(
 
-                        f"<h3>{subtitle}</h3>"
+                        f"<p>{subtitle}</p>"
 
                     )
 
@@ -20864,6 +20908,21 @@ class VendorImportJob(models.Model):
                             f"<p>{description}</p>"
 
                         )
+                
+
+                # ========= SKU =========
+
+                sku = str(
+                    url_data.get("sku") or ""
+                ).strip()
+
+                if sku:
+
+                    html.append(
+
+                        f"<p><strong>SKU:</strong> {sku}</p>"
+
+                    )
 
                 # ========= Technical Details =========
 
@@ -21016,7 +21075,58 @@ class VendorImportJob(models.Model):
 
                     )
 
+                    # ====================================
+                    # UPDATE INTERNAL REFERENCE
+                    # ====================================
+
+                    sku = str(
+                        url_data.get("sku") or ""
+                    ).strip()
+
+                    if sku:
+
+                        for product in family_products:
+
+                            if not product.default_code:
+
+                                product.default_code = sku
+
+
                     family_products.write(vals)
+
+                     # ====================================
+                    # URL IMAGE ENRICHMENT
+                    # ====================================
+
+                    image_url = str(
+
+                        url_data.get("image") or ""
+
+                    ).strip()
+
+                    if image_url:
+
+                        image_data = self._download_product_image(
+
+                            image_url
+
+                        )
+
+                        if image_data:
+
+                            for product in family_products:
+
+                                self._add_url_image_to_product(
+
+                                    product,
+
+                                    image_data
+
+                                )
+
+                    # ====================================
+                    # URL IMAGE ENRICHMENT
+                    # ====================================
 
                     _logger.warning(
 
@@ -21026,7 +21136,7 @@ class VendorImportJob(models.Model):
 
                         f"-> "
 
-                        f"{url_data.get('subtitle')}"
+                        f"{url_data.get('title')}"
                     )
 
                 else:
@@ -21094,46 +21204,200 @@ class VendorImportJob(models.Model):
 
             self._safe_commit_progress()
 
+    #=========Update excel url gallery/image 1=================
+    # ADD IMAGE TO PRODUCT GALLERY
+    # =========================================================
+    def _download_product_image(
+        self,
+        image_url
+     ):
 
-    #==============Enrich url product name=======================
+        import base64
+        import requests
+
+        if not image_url:
+
+            return False
+
+        try:
+
+            response = requests.get(
+
+                image_url,
+
+                timeout=30
+
+            )
+
+            response.raise_for_status()
+
+            content_type = response.headers.get(
+                "Content-Type",
+                ""
+            )
+
+            if "image" not in content_type.lower():
+
+                _logger.warning(
+
+                    "[URL IMAGE] Invalid content type %s",
+
+                    content_type
+
+                )
+
+                return False
+
+            return base64.b64encode(
+                response.content
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+
+                "[URL IMAGE DOWNLOAD FAILED] %s",
+
+                str(e)
+
+            )
+
+            return False
+
+    #=========Update excel url gallery/image 2=================
+    # ADD IMAGE TO PRODUCT GALLERY
+    # =========================================================
+    def _add_url_image_to_product(
+
+        self,
+
+        product,
+
+        image_data
+
+     ):
+
+        import hashlib
+
+        if not image_data:
+
+            return
+
+        # =====================================
+        # Existing Gallery Images
+        # =====================================
+
+        existing_gallery = self.env[
+            "product.image"
+        ].search([
+
+            ("product_tmpl_id", "=", product.id)
+
+        ])
+
+        image_hash = hashlib.md5(
+
+            image_data.encode("utf-8")
+
+        ).hexdigest()
+
+        existing_hashes = set()
+
+        for gallery in existing_gallery:
+
+            if gallery.image_1920:
+
+                existing_hashes.add(
+
+                    hashlib.md5(
+
+                        gallery.image_1920.encode("utf-8")
+
+                    ).hexdigest()
+
+                )
+
+        # =====================================
+        # Assign Main Image
+        # =====================================
+
+        if not product.image_1920:
+
+            product.image_1920 = image_data
+
+            _logger.warning(
+
+                "[URL MAIN IMAGE] "
+
+                f"{product.name}"
+
+            )
+
+        # =====================================
+        # Skip Duplicate Gallery Image
+        # =====================================
+
+        if image_hash in existing_hashes:
+
+            _logger.warning(
+
+                "[URL GALLERY DUPLICATE] "
+
+                f"{product.name}"
+
+            )
+
+            return
+
+        # =====================================
+        # Create Gallery Image
+        # =====================================
+
+        self.env[
+            "product.image"
+        ].create({
+
+            "name":
+
+                f"{product.name} URL",
+
+            "product_tmpl_id":
+
+                product.id,
+
+            "image_1920":
+
+                image_data
+
+        })
+
+        _logger.warning(
+
+            "[URL GALLERY ADDED] "
+
+            f"{product.name}"
+
+        )
+
+    #==============Enrich excel url product name=======================
 
     def _get_best_product_name(self, url_data, existing_name=""):
-
-        sku = str(
-            url_data.get("sku") or ""
-        ).strip()
-
-        if sku:
-            return sku
 
         title = str(
             url_data.get("title") or ""
         ).strip()
 
+        sku = str(
+            url_data.get("sku") or ""
+        ).strip()
+
         if title:
+
             return title
 
-        description = str(
-            url_data.get("description") or ""
-        ).strip()
+        if sku:
 
-        if description:
-
-            line = description.splitlines()[0].strip()
-
-            if line:
-                return line[:150]
-
-        text = str(
-            url_data.get("text") or ""
-        ).strip()
-
-        if text:
-
-            line = text.splitlines()[0].strip()
-
-            if line:
-                return line[:150]
+            return sku
 
         return existing_name
 
@@ -21753,9 +22017,9 @@ class VendorImportJob(models.Model):
 
             )
     
-    # ======================================================
-    # URL AI PRODUCT EXTRACTOR
-    # ======================================================
+    # ==============================================================
+    # URL AI PRODUCT EXTRACTOR (DEAD CODE)
+    # =============================================================
 
     def _extract_url_product_data_ai(
         self,
@@ -22339,6 +22603,8 @@ class VendorImportJob(models.Model):
         Extract and organise ONLY:
 
         • subtitle
+        
+        • sku
 
         • description
 
@@ -22385,6 +22651,7 @@ class VendorImportJob(models.Model):
 
         {{
             "subtitle":"",
+            "sku":"",
             "description":"",
             "material":"",
             "capacity":"",
@@ -22512,6 +22779,8 @@ class VendorImportJob(models.Model):
                 "[URL ENRICHMENT TYPES] "
 
                 f"title={type(parsed.get('title')).__name__} | "
+               
+                f"title={type(parsed.get('sku')).__name__} | "
 
                 f"subtitle={type(parsed.get('subtitle')).__name__} | "
 
@@ -22527,6 +22796,12 @@ class VendorImportJob(models.Model):
 
                     clean(
                         parsed.get("title")
+                    ),
+
+                "sku":
+
+                    clean(
+                        parsed.get("sku")
                     ),
 
                 "subtitle":
@@ -22734,36 +23009,36 @@ class VendorImportJob(models.Model):
         ], limit=1)
 
 
-        if not parent_category:
+        # if not parent_category:
 
-            parent_category = category_obj.create({
+        #     parent_category = category_obj.create({
 
-                'name': "All Products"
+        #         'name': "All Products"
 
-            })
+        #     })
 
 
-        # =====================================================
-        # CATEGORY MAP
-        # =====================================================
+        # # =====================================================
+        # # CATEGORY MAP
+        # # =====================================================
 
-        CATEGORY_MAPPING = {
+        # CATEGORY_MAPPING = {
 
-            "t-shirt": "Apparel",
-            "shirt": "Apparel",
-            "polo": "Apparel",
-            "bag": "Bags",
-            "backpack": "Bags",
-            "cap": "Headwear",
-            "hat": "Headwear",
-            "bottle": "Drinkware",
-            "drinkware": "Drinkware",
-            "pen": "Stationery",
-            "notebook": "Stationery",
-            "powerbank": "Electronics",
-            "charger": "Electronics",
-            "laptop": "Electronics",
-        }
+        #     "t-shirt": "Apparel",
+        #     "shirt": "Apparel",
+        #     "polo": "Apparel",
+        #     "bag": "Bags",
+        #     "backpack": "Bags",
+        #     "cap": "Headwear",
+        #     "hat": "Headwear",
+        #     "bottle": "Drinkware",
+        #     "drinkware": "Drinkware",
+        #     "pen": "Stationery",
+        #     "notebook": "Stationery",
+        #     "powerbank": "Electronics",
+        #     "charger": "Electronics",
+        #     "laptop": "Electronics",
+        # }
 
 
         # =====================================================
@@ -23096,7 +23371,6 @@ class VendorImportJob(models.Model):
                     ) or ""
                 )
 
-
                 raw_category = (
 
                     main_product.get(
@@ -23105,48 +23379,19 @@ class VendorImportJob(models.Model):
 
                 ).lower()
 
+                mapped_category = self._map_product_category(
 
-                mapped_category = (
-                    "General"
+                    raw_category
+
                 )
 
+                category = self._get_or_create_product_category(
 
-                for key, val in CATEGORY_MAPPING.items():
+                    mapped_category,
 
-                    if key in raw_category:
+                    source="excel"
 
-                        mapped_category = val
-
-                        break
-
-
-                category = category_obj.search([
-
-                    (
-                        'name',
-                        '=',
-                        mapped_category
-                    ),
-
-                    (
-                        'parent_id',
-                        '=',
-                        parent_category.id
-                    )
-
-                ], limit=1)
-
-
-                if not category:
-
-                    category = category_obj.create({
-
-                        'name':
-                            mapped_category,
-
-                        'parent_id':
-                            parent_category.id
-                    })
+                )
 
 
                 # ================================================
@@ -23249,6 +23494,18 @@ class VendorImportJob(models.Model):
                 # CREATE PARENT
                 # =================================================
 
+                catalogue_currency = self._resolve_catalogue_currency(
+
+                    extracted_currency=main_product.get(
+                        "currency"
+                    ),
+
+                    price_text=main_product.get(
+                        "price_text"
+                    ),
+
+                )
+
                 if is_new_product:
 
                     vals = {
@@ -23289,7 +23546,8 @@ class VendorImportJob(models.Model):
                             main_product.get("price")
                         ),
 
-                        'vendor_currency_id': self.env.company.currency_id.id,
+                        'vendor_currency_id':
+                                catalogue_currency.id,
 
                         'vendor_fingerprint': fingerprint,
 
@@ -23893,6 +24151,36 @@ class VendorImportJob(models.Model):
                     stock_quant_obj,
                     stock_location
                 )
+
+                # ==========================================================
+                # FINALIZE PRODUCT
+                # ==========================================================
+
+                try:
+
+                    product.finalize_product()
+
+                    _logger.warning(
+
+                        "[PRODUCT FINALIZED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
+
+                except Exception:
+
+                    _logger.exception(
+
+                        "[PRODUCT FINALIZE FAILED] "
+
+                        "product=%s",
+
+                        product.display_name,
+
+                    )
 
                 # =================================================
                 # SAVE PROGRESS
@@ -25570,3 +25858,276 @@ class VendorImportJob(models.Model):
 
         return family_id
     
+    # =====================================================
+    # CATEGORY NORMALIZER
+    # =====================================================
+
+    def _map_product_category(
+
+        self,
+
+        raw_category
+
+    ):
+
+        CATEGORY_MAPPING = {
+
+            "t-shirt": "Apparel",
+            "shirt": "Apparel",
+            "polo": "Apparel",
+
+            "bag": "Bags",
+            "backpack": "Bags",
+
+            "cap": "Headwear",
+            "hat": "Headwear",
+
+            "bottle": "Drinkware",
+            "drinkware": "Drinkware",
+            "sports bottle": "Drinkware",
+
+            "pen": "Stationery",
+            "notebook": "Stationery",
+
+            "powerbank": "Electronics",
+            "charger": "Electronics",
+            "laptop": "Electronics",
+
+            "football": "Football Fever",
+            "wristband": "Football Fever",
+            "sports towel": "Football Fever",
+            "sports t-shirt": "Football Fever",
+
+        }
+
+        raw = " ".join(
+
+            str(raw_category or "").lower().split()
+
+        )
+
+        for key, value in CATEGORY_MAPPING.items():
+
+            if key in raw:
+
+                return value
+
+        return "General"
+
+    # =====================================================
+    # CATEGORY MANAGER
+    # =====================================================
+
+    def _get_or_create_product_category(
+
+        self,
+
+        category_name,
+
+        source="unknown"
+
+    ):
+
+
+        category_name = " ".join(
+
+            str(category_name).split()
+
+        ).strip()
+
+        # ============================
+        # CACHE
+        # ============================
+
+        category_obj = self.env["product.category"]
+
+        # ============================
+        # ROOT
+        # ============================
+
+        parent = category_obj.search([
+
+            ("name", "=", "All Products"),
+
+            ("parent_id", "=", False)
+
+        ], limit=1)
+
+        if not parent:
+
+            _logger.warning(
+
+                "[CATEGORY ROOT CREATE]"
+
+            )
+
+            parent = category_obj.create({
+
+                "name": "All Products"
+
+            })
+
+        # ============================
+        # SEARCH ALL
+        # ============================
+
+        matches = category_obj.search([
+
+            ("parent_id", "=", parent.id),
+
+            ("name", "=ilike", category_name)
+
+        ])
+
+        if matches:
+
+            if len(matches) > 1:
+
+                _logger.warning(
+
+                    "[CATEGORY DUPLICATE] "
+
+                    f"source={source} "
+
+                    f"name={category_name} "
+
+                    f"ids={matches.ids}"
+
+                )
+
+            category = matches.sorted(
+
+                "id"
+
+            )[0]
+
+            return category
+
+        _logger.warning(
+
+            "[CATEGORY CREATE] "
+
+            f"source={source} "
+
+            f"name={category_name}"
+
+        )
+
+        category = category_obj.create({
+
+            "name": category_name,
+
+            "parent_id": parent.id
+
+        })
+
+        return category
+
+
+    # ==========================================================
+    # RESOLVE CATALOGUE CURRENCY
+    # ==========================================================
+
+    def _resolve_catalogue_currency(
+
+        self,
+
+        extracted_currency=None,
+
+        price_text=None,
+
+    ):
+
+        """
+        Resolve the source currency for the
+        imported catalogue.
+
+        Priority:
+
+            1. Explicit currency code
+
+            2. Currency symbol
+
+            3. Default USD
+        """
+
+        Currency = self.env["res.currency"]
+
+        default_currency = Currency.search(
+
+            [
+
+                ("name", "=", "USD")
+
+            ],
+
+            limit=1,
+
+        )
+
+        #
+        # Explicit code
+        #
+
+        if extracted_currency:
+
+            currency = Currency.search(
+
+                [
+
+                    ("name", "=", extracted_currency.upper())
+
+                ],
+
+                limit=1,
+
+            )
+
+            if currency:
+
+                return currency
+
+        #
+        # Detect symbol
+        #
+
+        if price_text:
+
+            symbol_map = {
+
+                "$": "USD",
+
+                "€": "EUR",
+
+                "£": "GBP",
+
+                "₺": "TRY",
+
+                "¥": "JPY",
+
+                "AED": "AED",
+
+            }
+
+            for symbol, code in symbol_map.items():
+
+                if symbol in price_text:
+
+                    return Currency.search(
+
+                        [
+
+                            ("name", "=", code)
+
+                        ],
+
+                        limit=1,
+
+                    )
+
+        #
+        # Default
+        #
+
+        return default_currency
+

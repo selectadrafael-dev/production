@@ -55,7 +55,103 @@
                         </group>
 
                     </group>
-                   
+
+                    <!-- ===================================================== -->
+                    <!-- WEBSITE PRICING -->
+                    <!-- ===================================================== -->
+
+                    <group string="Website Pricing">
+
+                        <field name="pricing_action"/>
+
+                        <group
+                            invisible="pricing_action != 'apply'"
+                        >
+
+                            <field name="pricing_mode"/>
+
+                        </group>
+
+                        <!-- ========================================= -->
+                        <!-- EXISTING PROFILE -->
+                        <!-- ========================================= -->
+
+                        <group
+                            invisible="
+                                pricing_action != 'apply'
+                                or
+                                pricing_mode != 'existing'
+                            "
+                        >
+
+                            <field
+                                name="pricing_profile_id"
+                                options="{'no_create': True}"
+                            />
+
+                        </group>
+
+                        <!-- ========================================= -->
+                        <!-- CREATE PROFILE -->
+                        <!-- ========================================= -->
+
+                        <group
+                            invisible="
+                                pricing_action != 'apply'
+                                or
+                                pricing_mode != 'create'
+                            "
+                        >
+
+                            <field
+                                name="new_profile_name"
+                            />
+
+                        </group>
+
+                        <!-- ========================================= -->
+                        <!-- EDIT PROFILE -->
+                        <!-- ========================================= -->
+
+                        <group
+                            invisible="
+                                pricing_action != 'apply'
+                                or
+                                pricing_mode != 'edit'
+                            "
+                        >
+
+                            <field
+                                name="pricing_profile_id"
+                                options="{'no_create': True}"
+                            />
+
+                        </group>
+
+                        <!-- ========================================= -->
+                        <!-- PRICING LINES -->
+                        <!-- ========================================= -->
+
+                        <field
+                            name="pricing_line_ids"
+                            colspan="4"
+                            invisible="pricing_action != 'apply'"
+                        >
+
+                            <list editable="bottom">
+
+                                <field name="minimum_quantity"/>
+
+                                <field name="discount_percent"/>
+
+                                <field name="notes"/>
+
+                            </list>
+
+                        </field>
+
+                    </group>
+
                     <group string="Website Categories">
 
                         <group>

@@ -315,6 +315,22 @@ class WebsiteQuoteController(http.Controller):
 
         product_record = False
 
+        # --------------------------------------------------
+        # Pricing Snapshot
+        # --------------------------------------------------
+
+        pricing = (
+
+            product.get(
+
+                "pricing_snapshot"
+
+            )
+
+            or {}
+
+        )
+
         if product_id:
 
             product_record = Product.browse(
@@ -377,25 +393,108 @@ class WebsiteQuoteController(http.Controller):
             # ----------------------------------------------
 
             "tier_name":
-                product.get("tier_name"),
+
+                pricing.get(
+
+                    "tier"
+
+                )
+
+                or
+
+                product.get(
+
+                    "tier_name"
+
+                ),
+
 
             "tier_quantity":
-                product.get("tier_quantity"),
+
+                pricing.get(
+
+                    "qty"
+
+                )
+
+                or
+
+                product.get(
+
+                    "tier_quantity"
+
+                ),
+            
+            "pricing_tier_id":
+                product.get(
+
+                    "pricing_tier_id"
+
+                ),
 
             "quantity":
                 product.get("quantity") or 1,
 
-            "currency":
-                product.get("currency"),
+           "currency":
 
-            "unit_price":
-                product.get("unit_price") or 0,
+                pricing.get(
+
+                    "currency"
+
+                )
+
+                or
+
+                product.get(
+
+                    "currency"
+
+                ),
+
+           "unit_price":
+
+                    pricing.get(
+
+                        "price"
+
+                    )
+
+                    or
+
+                    product.get(
+
+                        "unit_price"
+
+                    )
+
+                    or
+
+                    0,
 
             "original_price":
                 product.get("original_price") or 0,
 
-            "discount":
-                product.get("discount") or 0,
+           "discount":
+
+                pricing.get(
+
+                    "discount"
+
+                )
+
+                or
+
+                product.get(
+
+                    "discount"
+
+                )
+
+                or
+
+                0,
+            
+          "pricing_snapshot": pricing,
 
             "discount_amount":
                 product.get("discount_amount") or 0,

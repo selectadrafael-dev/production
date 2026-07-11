@@ -78,53 +78,63 @@
   }
 
 
-
-  // function add(product) {
-  //   if (!product || !product.id) return;
-
-  //   const cart = getCart();
-
-  //   if (!exists(product.id)) {
-  //     cart.push(product);
-  //     save(cart);
-  //   }
-  // }
-
   function add(product) {
 
-      if (!product || !product.product_id) {
-          return;
-      }
+    if (!product || !product.product_id) {
+        return;
+    }
 
-      const cart = getCart();
+    //--------------------------------------------------
+    // Ensure Pricing Snapshot Exists
+    //--------------------------------------------------
 
-      if (!exists(product)) {
+    if (!product.pricing_snapshot) {
 
-          cart.push(product);
+        product.pricing_snapshot = {
 
-          save(cart);
+            id: product.pricing_tier_id || 0,
 
-      }
+            qty: product.tier_quantity || product.quantity,
 
-  }
+            discount: product.discount || 0,
 
-  function remove(id) {
-    if (!id) return;
+            price: product.unit_price || 0,
 
-    const cart = getCart().filter(function (p) {
-      return p.id !== id;
+            currency: product.currency || "AZN",
+
+            tier: product.tier_name || ""
+
+        };
+
+    }
+
+    const cart = getCart();
+
+    if (!exists(product)) {
+
+        cart.push(product);
+
+        save(cart);
+
+    }
+
+}
+
+ function remove(fingerprintValue) {
+
+    if (!fingerprintValue) {
+        return;
+    }
+
+    const cart = getCart().filter(function (product) {
+
+        return fingerprint(product) !== fingerprintValue;
+
     });
 
     save(cart);
-  }
 
-  // window.QuoteCart = {
-  //   getCart: getCart,
-  //   add: add,
-  //   remove: remove,
-  //   exists: exists,
-  //   isEmpty: isEmpty
-  // };
+}
 
   window.QuoteCart = {
       getCart: getCart,

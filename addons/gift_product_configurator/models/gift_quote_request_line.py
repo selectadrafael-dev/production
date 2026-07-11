@@ -103,9 +103,20 @@ class GiftQuoteRequestLine(models.Model):
         index=True,
     )
 
+
     # ==========================================================
-    # WEBSITE SNAPSHOT
+    # WEBSITE PRICING SNAPSHOT
     # ==========================================================
+
+    pricing_tier_id = fields.Many2one(
+        "product.pricing.tier",
+        string="Pricing Tier",
+        ondelete="set null",
+    )
+
+    pricing_snapshot = fields.Json(
+        string="Pricing Snapshot",
+    )
 
     product_image = fields.Char(
         string="Product Image URL",
@@ -115,21 +126,11 @@ class GiftQuoteRequestLine(models.Model):
         string="Selected Tier",
     )
 
-    variant_attributes = fields.Text(
-        string="Variant Attributes",
-    )
+    variant_attributes = fields.Text()
 
-    vat_amount = fields.Float(
-        string="VAT Amount",
-    )
+    vat_amount = fields.Float()
 
-    total_price = fields.Float(
-        string="Total Price",
-    )
-
-    configuration_json = fields.Json(
-        string="Website Configuration",
-    )
+    total_price = fields.Float()
 
 
     # ==========================================================

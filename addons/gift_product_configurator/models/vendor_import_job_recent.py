@@ -9977,6 +9977,9 @@ class VendorImportJob(models.Model):
 
             self.env.invalidate_all()
 
+    #=======Update excel url gallery/image====================
+    # DOWNLOAD IMAGE FROM URL 1
+    # ========================================================
 
     #==========create excel product===========================
     def create_products_excel(self):

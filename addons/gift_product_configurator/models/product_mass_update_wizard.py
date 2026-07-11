@@ -6,6 +6,7 @@ from odoo import (
 
 from odoo.exceptions import UserError
 
+
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -74,6 +75,83 @@ class ProductMassUpdateWizard( models.TransientModel):
     )
 
     value = fields.Float()
+
+    # ==========================================================
+    # PRICING ACTION
+    # ==========================================================
+
+    pricing_action = fields.Selection(
+        [
+            ("apply", "Apply Pricing Profile"),
+            ("rebuild", "Rebuild Existing Pricing"),
+            ("upgrade", "Upgrade To Latest Version"),
+            ("clear", "Clear Pricing"),
+        ],
+        string="Pricing Action",
+        default="apply",
+    )
+
+    selected_product_count = fields.Integer(
+        compute="_compute_selected_product_count",
+    )
+
+    pricing_tier_count = fields.Integer(
+        compute="_compute_pricing_tier_count",
+    )
+
+    estimated_tier_records = fields.Integer(
+        compute="_compute_estimated_tier_records",
+    )
+
+    # ==========================================================
+    # WEBSITE PRICING
+    # ==========================================================
+
+    pricing_mode = fields.Selection(
+
+        [
+
+            ("existing", "Use Existing Profile"),
+
+            ("create", "Create New Profile"),
+
+            ("edit", "Edit Existing Profile"),
+
+        ],
+
+        string="Pricing Mode",
+
+        default="existing",
+
+    )
+
+    pricing_profile_id = fields.Many2one(
+
+        "product.pricing.profile",
+
+        string="Pricing Profile",
+
+        domain=[],
+
+    )
+
+    new_profile_name = fields.Char(
+
+        string="New Profile Name",
+
+    )
+
+    pricing_line_ids = fields.One2many(
+
+        "product.mass.update.pricing.line",
+
+        "wizard_id",
+
+        string="Pricing Lines",
+
+    )
+
+    
 
     # =========================
     # WEBSITE CATEGORY
@@ -219,6 +297,238 @@ class ProductMassUpdateWizard( models.TransientModel):
         ]
     )
 
+    # ==========================================================
+    # COMPUTE
+    # ==========================================================
+    @api.depends("pricing_profile_id")
+    def _compute_pricing_tier_count(self):
+
+        for wizard in self:
+
+            wizard.pricing_tier_count = len(
+                wizard.pricing_profile_id.tier_line_ids
+            )
+    
+
+    def _compute_selected_product_count(self):
+
+        for wizard in self:
+
+            wizard.selected_product_count = len(
+
+                wizard.env.context.get(
+                    "active_ids",
+                    []
+                )
+
+            )
+
+    # ==========================================================
+    # ONCHANGE
+    # ==========================================================
+
+    @api.onchange(
+        "pricing_mode"
+    )
+    def _onchange_pricing_mode(self):
+
+        partner = self.env.user.partner_id
+
+        return {
+
+            "domain": {
+
+                "pricing_profile_id": [
+
+                    "|",
+
+                    ("is_company_profile", "=", True),
+
+                    ("owner_partner_id", "=", partner.id),
+
+                ]
+
+            }
+
+        }
+    
+    @api.onchange(
+        "pricing_profile_id"
+    )
+    def _onchange_pricing_profile(self):
+
+        self.pricing_line_ids = [
+
+            (5, 0, 0)
+
+        ]
+
+        if (
+
+            not self.pricing_profile_id
+
+        ):
+
+            return
+
+        lines = []
+
+        for line in (
+
+            self.pricing_profile_id
+
+            .tier_line_ids
+
+            .sorted(
+
+                key=lambda l: l.sequence
+
+            )
+
+        ):
+
+            lines.append(
+
+                (
+
+                    0,
+
+                    0,
+
+                    {
+
+                        "sequence":
+
+                            line.sequence,
+
+                        "minimum_quantity":
+
+                            line.minimum_quantity,
+
+                        "discount_percent":
+
+                            line.discount_percent,
+
+                        "notes":
+
+                            line.notes,
+
+                    }
+
+                )
+
+            )
+
+        self.pricing_line_ids = lines
+
+    
+    # ==========================================================
+    # CREATE PROFILE
+    # ==========================================================
+
+    def _create_pricing_profile(self):
+
+        self.ensure_one()
+
+        Profile = self.env[
+
+            "product.pricing.profile"
+
+        ]
+
+        profile = Profile.create({
+
+            "name":
+
+                self.new_profile_name,
+
+            "owner_partner_id":
+
+                self.env.user.partner_id.id,
+
+            "active":
+
+                True,
+
+        })
+
+        for line in self.pricing_line_ids:
+
+            self.env[
+
+                "product.pricing.profile.line"
+
+            ].create({
+
+                "profile_id":
+
+                    profile.id,
+
+                "sequence":
+
+                    line.sequence,
+
+                "minimum_quantity":
+
+                    line.minimum_quantity,
+
+                "discount_percent":
+
+                    line.discount_percent,
+
+                "notes":
+
+                    line.notes,
+
+            })
+
+        return profile
+    
+    # ==========================================================
+    # UPDATE PROFILE
+    # ==========================================================
+
+    def _update_pricing_profile(
+
+        self,
+
+        profile,
+
+    ):
+
+        profile.tier_line_ids.unlink()
+
+        for line in self.pricing_line_ids:
+
+            self.env[
+
+                "product.pricing.profile.line"
+
+            ].create({
+
+                "pricing_profile_id":
+
+                    profile.id,
+
+                "sequence":
+
+                    line.sequence,
+
+                "minimum_quantity":
+
+                    line.minimum_quantity,
+
+                "discount_percent":
+
+                    line.discount_percent,
+
+                "notes":
+
+                    line.notes,
+
+            })
+
+  
     # =========================
     # ACTION
     # =========================
@@ -267,6 +577,8 @@ class ProductMassUpdateWizard( models.TransientModel):
         inventory_updated_count = 0
 
         quantity_updated_count = 0
+
+        tier_updated_count = 0
 
         for product in products:
 
@@ -627,6 +939,151 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                 price_updated_count += 1
 
+            # =================================
+            # WEBSITE PRICING ENGINE
+            # =================================
+
+            if self.pricing_action:
+
+                profile = False
+
+                # ------------------------------------------
+                # USE EXISTING PROFILE
+                # ------------------------------------------
+
+                if (
+
+                    self.pricing_mode
+                    == "existing"
+
+                ):
+
+                    profile = self.pricing_profile_id
+
+                # ------------------------------------------
+                # CREATE NEW PROFILE
+                # ------------------------------------------
+
+                elif (
+
+                    self.pricing_mode
+                    == "create"
+
+                ):
+
+                    profile = self._create_pricing_profile()
+
+                # ------------------------------------------
+                # EDIT EXISTING PROFILE
+                # ------------------------------------------
+
+                elif (
+
+                    self.pricing_mode
+                    == "edit"
+
+                ):
+
+                    profile = self.pricing_profile_id
+
+                    if profile:
+
+                        #
+                        # SECURITY
+                        #
+
+                        if (
+
+                            not profile.is_company_profile
+
+                            and
+
+                            profile.owner_partner_id
+
+                            !=
+
+                            self.env.user.partner_id
+
+                            and
+
+                            not self.env.user.has_group(
+                                "base.group_system"
+                            )
+
+                        ):
+
+                            raise UserError(
+
+                                _(
+
+                                    "You can only edit "
+
+                                    "your own pricing profiles."
+
+                                )
+
+                            )
+
+
+                        self._update_pricing_profile(
+                            profile
+                        )
+
+
+                # ------------------------------------------
+                # APPLY PROFILE
+                # ------------------------------------------
+
+                if profile:
+
+                    PricingEngine = self.env[
+                        "product.pricing.engine"
+                    ]
+
+                    for product in products:
+
+                        #
+                        # Assign profile
+                        #
+
+                        product.website_pricing_profile_id = (
+
+                            profile.id
+
+                        )
+
+                        #
+                        # Build website pricing
+                        #
+
+                        PricingEngine.apply_profile(
+
+                            product,
+
+                            profile,
+
+                        )
+
+                        #
+                        # Synchronize website price
+                        #
+
+                        product.sync_website_pricing()
+
+                        _logger.info(
+
+                            "[PRICING PROFILE APPLIED] "
+
+                            "product=%s "
+
+                            "profile=%s",
+
+                            product.display_name,
+
+                            profile.name,
+
+                        )
+
    
         return {
 
@@ -663,6 +1120,9 @@ class ProductMassUpdateWizard( models.TransientModel):
 
                     f"Stock Quantities Updated: "
                     f"{quantity_updated_count}"
+
+                    f"Website Pricing Updated: "
+                    f"{tier_updated_count}\n"
                 ),
 
                 "type":
@@ -678,3 +1138,4 @@ class ProductMassUpdateWizard( models.TransientModel):
                 "ir.actions.act_window_close"
             }
         }
+    

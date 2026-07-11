@@ -51,31 +51,46 @@
                                     <div id="qty_tiers">
                                     
 
-                                            <div class="tier-card qty_tiers_card active" data-qty="1000" data-discount="0" data-tier="1000+">
-                                                <strong>1000+</strong>
-                                                <div id="actual_price">
-                                                    <span class="price">
-                                                    <t t-call="website_sale.product_price" />
-                                                    </span> each
-                                                </div>
-                                            </div>
+                                            <t t-set="pricing_tiers"
+                                                t-value="product.get_website_pricing()"/>
 
-                                           
-                                          <div class="tier-card qty_tiers_card" data-qty="2000" data-discount="5" data-tier="2000+">
-                                                <strong>2000+</strong>
-                                                <span class="price"></span>
-                                            </div>
+                                                <t t-foreach="pricing_tiers"
+                                                t-as="tier"
+                                                t-key="tier['sequence']">
 
-                                           <div class="tier-card qty_tiers_card" data-qty="3000" data-discount="10" data-tier="3000+">
-                                                <strong>3000+</strong>
-                                                <span class="price"></span>
-                                            </div>
+                                                    <div
+                                                        t-attf-class="tier-card qty_tiers_card #{'active' if tier_index == 0 else ''}"
+                                                        t-att-data-tier="json.dumps(tier)">
 
-                                         <div class="tier-card qty_tiers_card" data-qty="4000" data-discount="15" data-tier="4000+">
-                                                <strong>4000+</strong>
-                                                <span class="price"></span>
-                                            </div>
+                                                        <strong>
 
+                                                            <t t-esc="tier['quantity']"/>+
+
+                                                        </strong>
+
+                                                        <div
+                                                            t-att-id="'actual_price' if tier_index == 0 else None">
+
+                                                            <span class="price">
+
+                                                                <t t-esc="tier['formatted_price']"/>
+
+                                                            </span>
+
+                                                            <t t-if="tier_index == 0">
+
+                                                                each
+
+                                                            </t>
+
+                                                        </div>
+
+                                                    </div>
+
+                                                </t>    
+
+                                            
+                                            
                                             <!--larger qty-->
                                             <div class="qty_tiers_card">
                                             <a href="/larger-quantity">

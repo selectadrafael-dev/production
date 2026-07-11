@@ -10,8 +10,23 @@ access_product_mass_update_wizard_user,access_product_mass_update_wizard_user,mo
 
 access_product_mass_update_wizard_vendor,access_product_mass_update_wizard_vendor,model_product_mass_update_wizard,gift_product_configurator.group_product_vendor,1,1,1,1
 
+access_product_mass_update_pricing_line_user,access_product_mass_update_pricing_line_user,model_product_mass_update_pricing_line,base.group_user,1,1,1,1
+
 access_gift_quote_request_user,gift.quote.request.user,model_gift_quote_request,base.group_user,1,1,1,1
 access_gift_quote_request_manager,gift.quote.request.manager,model_gift_quote_request,sales_team.group_sale_manager,1,1,1,1
 
 access_gift_quote_request_line_user,gift.quote.request.line.user,model_gift_quote_request_line,base.group_user,1,1,1,1
 access_gift_quote_request_line_manager,gift.quote.request.line.manager,model_gift_quote_request_line,base.group_system,1,1,1,1
+
+
+access_product_pricing_profile_user,product.pricing.profile user,model_product_pricing_profile,base.group_user,1,1,1,1
+
+access_product_pricing_profile_line_user,product.pricing.profile.line user,model_product_pricing_profile_line,base.group_user,1,1,1,1
+
+access_product_pricing_profile_vendor,product.pricing.profile vendor,model_product_pricing_profile,gift_product_configurator.group_product_vendor,1,1,1,1
+
+access_product_pricing_profile_line_vendor,product.pricing.profile.line vendor,model_product_pricing_profile_line,gift_product_configurator.group_product_vendor,1,1,1,1
+
+
+access_product_pricing_tier_user,product.pricing.tier user,model_product_pricing_tier,base.group_user,1,1,1,1
+access_product_pricing_tier_system,product.pricing.tier system,model_product_pricing_tier,base.group_system,1,1,1,1
