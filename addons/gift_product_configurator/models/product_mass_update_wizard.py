@@ -460,7 +460,7 @@ class ProductMassUpdateWizard( models.TransientModel):
 
             ].create({
 
-                "pricing_profile_id":
+                "profile_id":
 
                     profile.id,
 
