@@ -109,34 +109,19 @@
 
       function buildTierPrices() {
 
-          const basePrice = getBasePrice();
+            tierCards.forEach(card => {
 
-          if (!basePrice) {
-              return;
-          }
+                const priceSpan = card.querySelector(".price");
 
-          const currency = getCurrencySymbol();
+                if (!priceSpan) {
+                    return;
+                }
 
-          tierCards.forEach(card => {
+                const tier = JSON.parse(card.dataset.tier);
 
-              const discount =
-                  parseFloat(card.dataset.discount || 0);
+                priceSpan.textContent = tier.formatted_price;
 
-              const newPrice =
-                  basePrice * (1 - discount / 100);
-
-              const priceSpan =
-                  card.querySelector(".price");
-
-              if (!priceSpan) {
-                  return;
-              }
-
-              priceSpan.textContent =
-                  currency +
-                  newPrice.toFixed(2);
-
-          });
+            });
 
       }
 
@@ -150,86 +135,39 @@
       // Click behaviour (same logic as original JS)
       //--------------------------------------------------
 
-      tierCards.forEach(card => {
 
-          card.addEventListener("click", function () {
+        tierCards.forEach(card => {
 
-              tierCards.forEach(c =>
-                  c.classList.remove("active")
-              );
+            card.addEventListener("click", function () {
 
-              this.classList.add("active");
+                tierCards.forEach(c =>
+                    c.classList.remove("active")
+                );
 
-              // First/default tier restores original Odoo price
-              if (
-                  parseFloat(this.dataset.discount || 0) === 0
-              ) {
+                this.classList.add("active");
 
-                  mainPrice.innerHTML = defaultPriceHTML;
-                  return;
+                const tierData = this.dataset.tier;
 
-              }
+                if (!tierData) {
+                    return;
+                }
 
-              // Copy displayed price
-              const priceElement =
-                  this.querySelector(".price");
+                const tier = JSON.parse(tierData);
 
-              if (!priceElement) {
-                  return;
-              }
+                if (tier.discount === 0) {
 
-              mainPrice.textContent =
-                  priceElement.textContent.trim();
+                    mainPrice.innerHTML = defaultPriceHTML;
 
-          });
+                    return;
 
-      });
+                }
 
-  });
+                mainPrice.textContent = tier.formatted_price;
 
-  //  document.addEventListener('DOMContentLoaded', function () {
+            });
 
-  //   const tierCards = document.querySelectorAll('#qty_tiers .tier-card');
-  //   const mainPrice = document.querySelector('.price-display .price');
+        });
 
-  //   if (!tierCards.length || !mainPrice) return;
+   });
 
-  //   /* store original QWeb price */
-  //   const defaultPriceHTML = mainPrice.innerHTML;
-
-  //   tierCards.forEach(card => {
-
-  //     card.addEventListener('click', function () {
-
-  //       /* remove active state */
-  //       tierCards.forEach(c => c.classList.remove('active'));
-  //       this.classList.add('active');
-
-  //       /* detect if default tier */
-  //       const qwebPrice = this.querySelector('#actual_price');
-
-  //       if (qwebPrice) {
-
-  //         /* restore original QWeb price */
-  //         mainPrice.innerHTML = defaultPriceHTML;
-  //         return;
-
-  //       }
-
-  //       /* other tiers */
-  //       const priceElement = this.querySelector('.price');
-  //       if (!priceElement) return;
-
-  //       let priceText = priceElement.textContent
-  //         .replace('each', '')
-  //         .trim();
-
-  //       mainPrice.textContent = priceText;
-
-  //     });
-
-  //   });
-
-  // });
-    
 })();

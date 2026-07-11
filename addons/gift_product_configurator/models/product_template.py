@@ -656,3 +656,5 @@ class ProductTemplate(models.Model):
             })
 
         return result
+    
+    
