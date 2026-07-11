@@ -5,50 +5,24 @@
     <!-- SEARCH VIEW -->
     <!-- ========================================================= -->
 
-    <record id="view_product_pricing_profile_search"
-            model="ir.ui.view">
+        <record id="view_product_pricing_profile_search"
+                model="ir.ui.view">
 
-        <field name="name">product.pricing.profile.search</field>
+            <field name="name">product.pricing.profile.search</field>
 
-        <field name="model">product.pricing.profile</field>
+            <field name="model">product.pricing.profile</field>
 
-        <field name="arch" type="xml">
+            <field name="arch" type="xml">
 
-            <search>
+                <search>
 
-                <field name="name"/>
+                    <field name="name"/>
 
-                <field name="owner_partner_id"/>
+                </search>
 
-                <field name="usage"/>
+            </field>
 
-                <filter
-                    string="Active"
-                    name="active"
-                    domain="[('active','=',True)]"/>
-
-                <filter
-                    string="Default"
-                    name="default_profile"
-                    domain="[('is_default','=',True)]"/>
-
-                <group expand="0" string="Group By">
-
-                    <filter
-                        string="Owner"
-                        context="{'group_by':'owner_partner_id'}"/>
-
-                    <filter
-                        string="Usage"
-                        context="{'group_by':'usage'}"/>
-
-                </group>
-
-            </search>
-
-        </field>
-
-    </record>
+        </record>
 
 
     <!-- ========================================================= -->
@@ -64,7 +38,7 @@
 
         <field name="arch" type="xml">
 
-            <tree>
+            <list>
 
                 <field name="name"/>
 
@@ -80,7 +54,7 @@
 
                 <field name="active"/>
 
-            </tree>
+            </list>
 
         </field>
 
@@ -168,7 +142,7 @@
 
                             <field name="tier_line_ids">
 
-                                <tree editable="bottom">
+                                <list editable="bottom">
 
                                     <field
                                         name="sequence"
@@ -186,7 +160,7 @@
                                     <field
                                         name="active"/>
 
-                                </tree>
+                                </list>
 
                             </field>
 

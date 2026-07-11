@@ -61,12 +61,6 @@ class ProductPricingProfile(models.Model):
     # OWNERSHIP
     # ==========================================================
 
-    owner_partner_id = fields.Many2one(
-        "res.partner",
-        string="Owner",
-        tracking=True,
-    )
-
     company_id = fields.Many2one(
         "res.company",
         string="Company",
