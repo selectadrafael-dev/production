@@ -125,13 +125,14 @@ class ProductPricingTier(models.Model):
     # ==========================================================
 
     source = fields.Selection(
-        [
+    [
+            ("default", "Default"),
             ("profile", "Pricing Profile"),
             ("manual", "Manual"),
             ("import", "Importer"),
             ("mass_update", "Mass Update"),
         ],
-        default="profile",
+        default="default",
         required=True,
     )
 
