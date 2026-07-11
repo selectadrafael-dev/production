@@ -375,6 +375,13 @@ class ProductTemplate(models.Model):
 
             product.pricing_tier_ids.unlink()
 
+        product.invalidate_recordset()
+
+        _logger.warning(
+            "[DEFAULT PRICING] Tier Count After Create = %s",
+            len(product.pricing_tier_ids),
+        )
+        
         return True
     
 
@@ -383,21 +390,18 @@ class ProductTemplate(models.Model):
     # ==========================================================
 
     def sync_website_pricing(self):
-        """
-        Synchronize website pricing using the Pricing Engine.
-
-        If a pricing profile is already assigned to the product,
-        it is used.
-
-        Otherwise the engine automatically resolves the Vendor
-        Default or Company Default profile.
-        """
 
         Engine = self.env[
             "product.pricing.engine"
         ]
 
         for product in self:
+
+            #
+            # Always refresh relationship cache
+            #
+
+            product.invalidate_recordset()
 
             if product.website_pricing_profile_id:
 
@@ -415,10 +419,18 @@ class ProductTemplate(models.Model):
 
                     product,
 
+                    owner=product.vendor_id,
+
                 )
 
+            #
+            # Refresh newly-created tiers
+            #
+
+            product.invalidate_recordset()
+
         return True
-    
+
     # ==========================================================
     # FINALIZE PRODUCT
     # ==========================================================
