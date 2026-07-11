@@ -54,6 +54,14 @@
                                             <t t-set="pricing_tiers"
                                                 t-value="product.get_website_pricing()"/>
 
+                                                <div style="background:#ffffcc;padding:10px;border:1px solid #999;">
+
+                                                    Pricing Tier Count:
+
+                                                    <t t-esc="len(pricing_tiers)"/>
+
+                                                </div>
+
                                                 <t t-foreach="pricing_tiers"
                                                 t-as="tier"
                                                 t-key="tier['sequence']">
@@ -89,6 +97,8 @@
 
                                                 </t>    
 
+                                            
+                                            
                                             <!--larger qty-->
                                             <div class="qty_tiers_card">
                                             <a href="/larger-quantity">
