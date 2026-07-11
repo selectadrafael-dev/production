@@ -124,22 +124,6 @@
             );
 
         //--------------------------------------------------
-        // Currency
-        //--------------------------------------------------
-        const currencyText =
-            activeTier
-                ? tier.currency
-                : (
-                    document
-                        .querySelector(
-                            "#qty_tiers .qty_tiers_card"
-                        )
-                        ?.dataset
-                        ?.currency || "AZN"
-                );
-
-
-        //--------------------------------------------------
         // Pricing Snapshot
         //--------------------------------------------------
 
@@ -165,6 +149,21 @@
         JSON.parse(
             activeTier.dataset.tier
         );
+
+         //--------------------------------------------------
+        // Currency
+        //--------------------------------------------------
+        const currencyText =
+            activeTier
+                ? tier.currency
+                : (
+                    document
+                        .querySelector(
+                            "#qty_tiers .qty_tiers_card"
+                        )
+                        ?.dataset
+                        ?.currency || "AZN"
+                );
 
         const productSnapshot = {
 

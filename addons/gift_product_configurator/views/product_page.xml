@@ -54,22 +54,6 @@
                                             <t t-set="pricing_tiers"
                                                 t-value="product.get_website_pricing()"/>
 
-                                                <div style="background:#ffffcc;padding:10px;border:1px solid #999;">
-
-                                                    Pricing Tier Count:
-
-                                                    <t t-esc="len(pricing_tiers)"/>
-
-                                                </div>
-
-                                                <div style="background:#dff0d8;padding:8px;">
-
-                                                    Product ID:
-
-                                                    <t t-esc="product.id"/>
-
-                                                </div>
-
                                                 <t t-foreach="pricing_tiers"
                                                 t-as="tier"
                                                 t-key="tier['sequence']">
