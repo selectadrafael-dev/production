@@ -64,7 +64,7 @@
 
           <!-- DELETE -->
           <button class="quote-remove"
-                  data-fingerprint="${item.fingerprint}"
+                  data-fingerprint="${item.fingerprint}">
             🗑
           </button>
 
