@@ -3,6 +3,8 @@
 from odoo import api, fields, models
 import logging
 
+_logger = logging.getLogger(__name__)
+
 
 class ProductPricingEngine(models.AbstractModel):
     _name = "product.pricing.engine"
@@ -367,7 +369,7 @@ class ProductPricingEngine(models.AbstractModel):
             qty,
             base_price,
         )
-        
+
         return True
 
     # ==========================================================
