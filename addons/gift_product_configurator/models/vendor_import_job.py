@@ -5572,6 +5572,25 @@ class VendorImportJob(models.Model):
 
                 continue
 
+
+            currency = self._resolve_catalogue_currency(
+
+                extracted_currency=
+                    product_data.get(
+                        "currency"
+                    ),
+
+                price_text=
+                    str(
+                        product_data.get(
+                            "price",
+                            ""
+                        )
+                    ),
+
+            )
+
+
             vals = {
                 'name': name.strip(),
                 'description_sale': description,
@@ -5581,6 +5600,7 @@ class VendorImportJob(models.Model):
                 'website_published': False,
                 'vendor_id': vendor_id,
                 'vendor_fingerprint': vendor_fingerprint,
+                "vendor_currency_id": currency.id,
                 'vendor_import_job_id': self.id,
             }
 
@@ -5634,7 +5654,11 @@ class VendorImportJob(models.Model):
                     tracking_disable=True
                 ).create(vals)
 
+                #========apply translation==============
                 self._apply_product_translation(product)
+
+                #====apply currency conversion================
+                product._update_converted_price()
 
                 # =========================================
                 # URL VARIANTS
@@ -6117,8 +6141,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        #ACTOR_ID = "selectad~my-actor"
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
 
         # ====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -17952,6 +17976,23 @@ class VendorImportJob(models.Model):
             product_data
         )
 
+        currency = self._resolve_catalogue_currency(
+
+            extracted_currency=
+                product_data.get(
+                    "currency"
+                ),
+
+            price_text=
+                str(
+                    product_data.get(
+                        "price",
+                        ""
+                    )
+                ),
+
+        )
+
         vals = {
 
             'name': clean_title,
@@ -17991,7 +18032,8 @@ class VendorImportJob(models.Model):
                 product_data.get("price")
             ),
 
-           'vendor_currency_id': self.env.company.currency_id.id,
+            "vendor_currency_id":
+                currency.id,
         }
 
         hero_index = product_data.get(
@@ -26011,6 +26053,18 @@ class VendorImportJob(models.Model):
 
         Currency = self.env["res.currency"]
 
+        default_currency = Currency.search(
+
+            [
+
+                ("name", "=", "USD")
+
+            ],
+
+            limit=1,
+
+        )
+
         #
         # Explicit code
         #
@@ -26075,15 +26129,5 @@ class VendorImportJob(models.Model):
         # Default
         #
 
-        return Currency.search(
-
-            [
-
-                ("name", "=", "USD")
-
-            ],
-
-            limit=1,
-
-        )
+        return default_currency
 
