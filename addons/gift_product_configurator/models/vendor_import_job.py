@@ -9985,7 +9985,7 @@ class VendorImportJob(models.Model):
 
                 _, thresh = cv2.threshold(
                     gray,
-                    245,
+                    232,
                     255,
                     cv2.THRESH_BINARY_INV
                 )
@@ -10046,7 +10046,12 @@ class VendorImportJob(models.Model):
 
                     filtered_contours.append(contour)
 
-                contours = filtered_contours[:40]
+                contours = sorted(
+                    filtered_contours,
+                    key=cv2.contourArea,
+                    reverse=True
+                )[:40]
+
                 _logger.warning(
                     f"[CONTOUR SUMMARY] "
                     f"raw={len(filtered_contours)} "
@@ -10125,8 +10130,24 @@ class VendorImportJob(models.Model):
                         f"size={crop.size[0]}x{crop.size[1]}"
                     )
 
+                    _logger.warning(
+
+                        "[BEFORE TRIM] "
+
+                        f"{crop.size}"
+
+                    )
+
                     crop = self._trim_catalog_whitespace(
                         crop
+                    )
+
+                    _logger.warning(
+
+                        "[AFTER TRIM] "
+
+                        f"{crop.size if crop else None}"
+
                     )
 
                     if not crop:
@@ -10162,11 +10183,20 @@ class VendorImportJob(models.Model):
                         f"x={x} y={y} w={w} h={h}"
                     )
 
+                   
                     if not valid_crop:
 
                         _logger.warning(
-                            f"[SEGMENT REJECT INVALID] "
-                            f"x={x} y={y} w={w} h={h}"
+                             f"[SEGMENT REJECT INVALID] "
+                             f"x={x} y={y} w={w} h={h}"
+                        )
+
+                        _logger.warning(
+
+                            "[VALIDATION REJECTED] "
+
+                            f"{crop.size}"
+
                         )
 
                         continue
