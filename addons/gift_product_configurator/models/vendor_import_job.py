@@ -7457,6 +7457,22 @@ class VendorImportJob(models.Model):
                     f"lifestyle={asset.get('is_lifestyle')}"
                 )
 
+            for asset in sorted_page_images[:MAX_IMAGES]:
+
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "AI_INPUT"
+                )
+            self._log_asset_pool(
+
+                "AI INPUT",
+
+                sorted_page_images[:MAX_IMAGES]
+
+            )
+
             for idx, asset in enumerate(
                 sorted_page_images[:MAX_IMAGES]
             ):
@@ -7815,6 +7831,14 @@ class VendorImportJob(models.Model):
                         p.get("page")
                     ] = p
 
+
+                self._log_asset_pool(
+
+                    "AI OUTPUT",
+
+                    page_images
+
+                )
 
                 existing_map[
                     next_record.page_number
