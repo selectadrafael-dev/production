@@ -10513,6 +10513,82 @@ class VendorImportJob(models.Model):
                         f"lifestyle={is_lifestyle}"
                     )
 
+                    #
+                    # Asset Classification
+                    #
+
+                    classification = "REAL_PRODUCT"
+                    asset_role = "variant"
+                    priority = 1000
+                    rejection_reason = None
+
+                    # ------------------------------------
+                    # Catalog / Marketing Panels
+                    # ------------------------------------
+
+                    if (
+
+                        is_collage
+
+                        and
+
+                        skin_ratio > 0.08
+
+                        and
+
+                        background_ratio < 0.35
+
+                    ):
+                        classification = "CATALOG_PANEL"
+                        asset_role = "reject"
+                        priority = 0
+                        rejection_reason = "catalog_panel"
+
+                    # ------------------------------------
+                    # Human / Lifestyle
+                    # ------------------------------------
+
+                    elif is_lifestyle:
+
+                        classification = "LIFESTYLE"
+
+                        asset_role = "gallery"
+
+                        priority = 250
+
+                    # ------------------------------------
+                    # Product Detail
+                    # ------------------------------------
+
+                    elif (
+
+                        coverage_ratio < 0.04
+
+                        and
+
+                        not centered_object
+
+                        and
+
+                        crop_area < 60000
+
+                    ):
+                        classification = "PRODUCT_DETAIL"
+                        asset_role = "gallery"
+                        priority = 700
+
+                    # ------------------------------------
+                    # Clean Product
+                    # ------------------------------------
+
+                    else:
+
+                        classification = "REAL_PRODUCT"
+
+                        asset_role = "variant"
+
+                        priority = 1000
+
                    
                     candidate_crops.append({
 
@@ -10542,7 +10618,15 @@ class VendorImportJob(models.Model):
 
                         "coverage_ratio": coverage_ratio,
 
-                        "is_lifestyle": is_lifestyle
+                        "is_lifestyle": is_lifestyle,
+
+                        "classification": classification,
+
+                        "asset_role": asset_role,
+
+                        "priority": priority,
+
+                        "rejection_reason": rejection_reason,
                     })
 
                     _logger.warning(
@@ -10626,7 +10710,37 @@ class VendorImportJob(models.Model):
 
                         "score": 10,
 
-                        "is_collage": False
+                        "hero_score": 0,
+
+                        "gallery_score": 0,
+
+                        "is_collage": False,
+
+                        "centered_object": False,
+
+                        "background_ratio": 0,
+
+                        "width": original_width,
+
+                        "height": original_height,
+
+                        "x": 0,
+
+                        "y": 0,
+
+                        "crop_area": original_width * original_height,
+
+                        "coverage_ratio": 1.0,
+
+                        "is_lifestyle": False,
+
+                        "classification": "UNKNOWN",
+
+                        "asset_role": "reference",
+
+                        "priority": 100,
+
+                        "rejection_reason": "fallback"
                     })
 
                 segmented_images.extend(
@@ -10674,6 +10788,16 @@ class VendorImportJob(models.Model):
         _logger.warning(
         f"[PRE-DEDUPE COUNT] total={len(segmented_images)}"
         )
+
+        segmented_images = [
+
+            asset
+
+            for asset in segmented_images
+
+            if asset.get("asset_role") != "reject"
+
+        ]
         
         for asset in segmented_images:
 
@@ -10831,83 +10955,47 @@ class VendorImportJob(models.Model):
 
         for asset in deduped:
 
-            priority = 0
+            priority = asset.get("priority", 0)
 
-            #
-            # Highest priority:
-            # isolated clean ecommerce renders
-            #
+            priority += asset.get("hero_score", 0)
 
-            if not asset.get("is_lifestyle", False):
+            priority += asset.get("gallery_score", 0)
 
-                priority += 1000
-
-            #
-            # Prefer hero quality
-            #
-
-            priority += asset.get(
-
-                "hero_score",
-
-                0
-
-            )
-
-            #
-            # Then gallery quality
-            #
-
-            priority += asset.get(
-
-                "gallery_score",
-
-                0
-
-            )
-
-            #
-            # Slight preference for centered objects
-            #
-
-            if asset.get(
-
-                "centered_object",
-
-                False
-
-            ):
-
+            if asset.get("centered_object", False):
                 priority += 25
 
-            #
-            # Penalize collages slightly
-            #
-
-            if asset.get(
-
-                "is_collage",
-
-                False
-
-            ):
-
-                priority -= 15
-
-            asset["_priority"] = priority
+            asset["priority"] = priority
 
 
         deduped.sort(
 
             key=lambda a: (
 
-                -a["_priority"],
+                -a["priority"],
 
                 -a.get("score", 0)
 
             )
 
         )
+
+        for idx, asset in enumerate(deduped):
+
+            _logger.warning(
+
+                "[ASSET QUALIFIER] "
+
+                f"{idx+1} "
+
+                f"class={asset.get('classification')} "
+
+                f"role={asset.get('asset_role')} "
+
+                f"priority={asset.get('priority')} "
+
+                f"reject={asset.get('rejection_reason')}"
+
+            )
 
         _logger.warning(
 
@@ -10925,7 +11013,7 @@ class VendorImportJob(models.Model):
 
                 f"{idx+1} "
 
-                f"priority={asset.get('_priority')} "
+                f"priority={asset.get('priority')} "
 
                 f"lifestyle={asset.get('is_lifestyle')} "
 
