@@ -12826,10 +12826,23 @@ class VendorImportJob(models.Model):
             for asset in images:
 
 
+                # if asset.get("recovered_by_extractor"):
+
+                #     asset["asset_group"] = "recovery_candidate"
+                #     asset["asset_role"] = "recovery_candidate"
+
                 if asset.get("recovered_by_extractor"):
 
-                    asset["asset_group"] = "recovery_candidate"
-                    asset["asset_role"] = "recovery_candidate"
+                    _logger.warning(
+
+                        "[RECOVERY PASSIVE] "
+
+                        f"clean={asset.get('clean_index')}"
+
+                    )
+
+                    # Do NOT modify asset_group
+                    # Do NOT modify asset_role
 
                     _logger.warning(
 
@@ -12979,22 +12992,35 @@ class VendorImportJob(models.Model):
                 # KEEP PROMOTED RECOVERY ASSETS
                 # =====================================
 
-                if asset.get(
+                if asset.get("promotion_source") == "recovery":
 
-                    "promotion_source"
+                    _logger.warning(
 
-                ) == "recovery":
+                        "[RECOVERY PROMOTION DISABLED]"
 
-                    group = "real"
+                    )
 
-                    probability = {
+                    probability = self._calculate_asset_probability(asset)
 
-                        "real":100,
+                    winner = max(probability, key=probability.get)
 
-                        "demo":0,
+                    mapping = {
 
-                        "lifestyle":0
+                        "real": "real",
+
+                        "demo": "product_demo",
+
+                        "lifestyle": "lifestyle"
+
                     }
+
+                    group = mapping.get(
+
+                        winner,
+
+                        "marketing"
+
+                    )
 
                 else:
 
@@ -13033,7 +13059,7 @@ class VendorImportJob(models.Model):
 
                         ):
 
-                            probability["real"] += 12
+                            # probability["real"] += 12
 
                             _logger.warning(
 
