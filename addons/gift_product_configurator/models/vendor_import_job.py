@@ -11196,12 +11196,12 @@ class VendorImportJob(models.Model):
 
         for asset in deduped:
 
-        asset.setdefault(
-            "audit",
-            []
-        ).append(
-            "SEGMENT_RETURN"
-        )
+            asset.setdefault(
+                "audit",
+                []
+            ).append(
+                "SEGMENT_RETURN"
+            )
 
         return deduped
 
