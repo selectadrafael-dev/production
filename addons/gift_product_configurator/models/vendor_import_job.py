@@ -10552,13 +10552,13 @@ class VendorImportJob(models.Model):
                         f"size={crop_width}x{crop_height}"
                     )
 
-                    is_lifestyle = (
+                    is_lifestyle = bool(
 
                         skin_ratio > 0.18
 
                         and
 
-                        background_ratio < 0.40
+                        background_ratio < 0.25
 
                         and
 
