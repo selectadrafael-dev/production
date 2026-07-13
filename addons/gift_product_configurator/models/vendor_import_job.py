@@ -8157,7 +8157,7 @@ class VendorImportJob(models.Model):
     # =====================================================
     # REMOVE TEXT AREAS
     # =====================================================
-
+      
     def _trim_catalog_whitespace(self, pil_image):
         
         original_image = pil_image
@@ -8246,7 +8246,7 @@ class VendorImportJob(models.Model):
                 pil_image.height < 60
             ):
 
-                return original_image
+                return None
 
             return pil_image
 
@@ -8259,6 +8259,8 @@ class VendorImportJob(models.Model):
 
             return original_image
 
+
+    
     # =====================================================
     # VARIANTS IMAGES CONTROLLER/DETECTOR
     # =====================================================
@@ -8553,8 +8555,9 @@ class VendorImportJob(models.Model):
 
 
     # =====================================================
-    # VALIDATE CROPPED IMAGE
+    # VALIDATE CROPPED IMAGE _is_valid_product_crop
     # =====================================================
+
 
     def _is_valid_product_crop(self, pil_image):
 
@@ -8574,8 +8577,8 @@ class VendorImportJob(models.Model):
                 return False
 
             # reject ultra-thin strips
-            # if width < 40 or height < 40:
-            #     return False
+            if width < 40 or height < 40:
+                return False
 
             gray = pil_image.convert("L")
 
@@ -8601,22 +8604,7 @@ class VendorImportJob(models.Model):
 
             pixel_std = np.std(arr)
 
-            if (
-                pixel_std < 3
-                and
-                dark_pixels > 0.995
-            ):
-
-                _logger.warning(
-
-                    "[VALIDATION FAIL] "
-
-                    "reason=low_texture "
-
-                    f"std={pixel_std:.2f}"
-
-                )
-
+            if pixel_std < 5:
                 return False
 
             return True
@@ -10099,25 +10087,28 @@ class VendorImportJob(models.Model):
                         )
                         continue
 
+                    #
+                    # Reject full-page contours only on large images.
+                    # Do not reject already-isolated product crops.
+                    #
 
-                    # reject huge full page
                     if (
-                        w > original_width * 0.95
+
+                        original_width > 600
+
                         and
+
+                        original_height > 600
+
+                        and
+
+                        w > original_width * 0.95
+
+                        and
+
                         h > original_height * 0.95
+
                     ):
-
-                        _logger.warning(
-
-                            "[LARGE CONTOUR REJECT] "
-
-                            f"w={w} "
-
-                            f"h={h} "
-
-                            f"page={original_width}x{original_height}"
-
-                        )
 
                         continue
 
