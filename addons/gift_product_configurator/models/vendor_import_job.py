@@ -10650,6 +10650,23 @@ class VendorImportJob(models.Model):
 
                         priority = 1000
 
+                    
+                    image_hash = hashlib.md5(
+
+                        buffer.getvalue()
+
+                    ).hexdigest()[:10]
+
+
+                    crop_identity = hashlib.md5(
+
+                        (
+                            f"{x}_{y}_{w}_{h}".encode()
+                            +
+                            buffer.getvalue()
+                        )
+
+                    ).hexdigest()[:10]
                    
                     candidate_crops.append({
 
@@ -10688,6 +10705,14 @@ class VendorImportJob(models.Model):
                         "priority": priority,
 
                         "rejection_reason": rejection_reason,
+
+                        "asset_id": crop_identity,
+
+                        "image_hash": image_hash,
+
+                        "audit": [
+                            "SEGMENT_CREATED"
+                        ],
                     })
 
                     _logger.warning(
@@ -10827,6 +10852,14 @@ class VendorImportJob(models.Model):
                     f"added={len(candidate_crops)} "
 
                     f"running_total={len(segmented_images)}"
+                )
+
+                self._log_asset_pool(
+
+                    "PAGE COMPLETE",
+
+                    candidate_crops
+
                 )
 
             except Exception as e:
@@ -10988,7 +11021,15 @@ class VendorImportJob(models.Model):
                         f"gallery={asset.get('gallery_score')}"
                     )
 
+                    asset.setdefault(
+                        "audit",
+                        []
+                    ).append(
+                        "VISUAL_DEDUPE_REJECT"
+                    )
+
                     continue
+
 
                 visual_hashes.append(
                     current_hash
@@ -11010,6 +11051,14 @@ class VendorImportJob(models.Model):
 
                     f"size={asset.get('width')}x{asset.get('height')}"
                 )
+
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "VISUAL_DEDUPE_KEEP"
+                )
+
                 deduped.append(asset)
 
             except Exception as e:
@@ -11018,6 +11067,13 @@ class VendorImportJob(models.Model):
 
                     f"[VISUAL DEDUPE FAILED] "
                     f"{str(e)}"
+                )
+
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "VISUAL_DEDUPE_ERROR"
                 )
 
                 deduped.append(asset)
@@ -11130,7 +11186,88 @@ class VendorImportJob(models.Model):
             )
 
 
+        self._log_asset_pool(
+
+            "SEGMENT FINAL",
+
+            deduped
+
+        )
+
+        for asset in deduped:
+
+        asset.setdefault(
+            "audit",
+            []
+        ).append(
+            "SEGMENT_RETURN"
+        )
+
         return deduped
+
+    # =====================================================
+    # ASSET AUDIT LOGGER
+    # =====================================================
+
+    def _log_asset_pool(
+        self,
+        stage,
+        assets
+    ):
+
+        _logger.warning("=" * 80)
+        _logger.warning(f"[ASSET AUDIT] {stage}")
+
+        seen = {}
+
+        for idx, asset in enumerate(assets):
+
+            image_hash = asset.get(
+                "image_hash",
+                "NO_HASH"
+            )
+
+            _logger.warning(
+
+                f"idx={idx} "
+
+                f"id={asset.get('asset_id')} "
+
+                f"hash={image_hash} "
+
+                f"class={asset.get('classification')} "
+
+                f"role={asset.get('asset_role')} "
+
+                f"life={asset.get('is_lifestyle')} "
+
+                f"priority={asset.get('priority')} "
+
+                f"audit={asset.get('audit')}"
+
+            )
+
+            if image_hash in seen:
+
+                _logger.error(
+
+                    "[DUPLICATE IMAGE] "
+
+                    f"id={seen[image_hash]} "
+
+                    f"and "
+
+                    f"id={asset.get('asset_id')} "
+
+                    f"share hash={image_hash}"
+
+                )
+
+            else:
+
+                seen[image_hash] = asset.get("asset_id")
+
+        _logger.warning("=" * 80)
 
     # ============================================
     # ADVANCED DOMINANT COLOR DETECTION
