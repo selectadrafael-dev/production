@@ -8246,7 +8246,7 @@ class VendorImportJob(models.Model):
                 pil_image.height < 60
             ):
 
-                return None
+                return original_image
 
             return pil_image
 
@@ -8574,8 +8574,8 @@ class VendorImportJob(models.Model):
                 return False
 
             # reject ultra-thin strips
-            if width < 40 or height < 40:
-                return False
+            # if width < 40 or height < 40:
+            #     return False
 
             gray = pil_image.convert("L")
 
@@ -8601,7 +8601,22 @@ class VendorImportJob(models.Model):
 
             pixel_std = np.std(arr)
 
-            if pixel_std < 5:
+            if (
+                pixel_std < 3
+                and
+                dark_pixels > 0.995
+            ):
+
+                _logger.warning(
+
+                    "[VALIDATION FAIL] "
+
+                    "reason=low_texture "
+
+                    f"std={pixel_std:.2f}"
+
+                )
+
                 return False
 
             return True
