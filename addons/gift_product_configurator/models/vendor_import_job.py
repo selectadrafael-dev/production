@@ -6281,6 +6281,7 @@ class VendorImportJob(models.Model):
 
 
     # =========== PDF OPENAI BACKUP ================================
+    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -8154,6 +8155,7 @@ class VendorImportJob(models.Model):
 
         return
    
+
     # =====================================================
     # REMOVE TEXT AREAS
     # =====================================================
@@ -8246,7 +8248,7 @@ class VendorImportJob(models.Model):
                 pil_image.height < 60
             ):
 
-                return None
+                return original_image
 
             return pil_image
 
@@ -8551,11 +8553,10 @@ class VendorImportJob(models.Model):
 
             return []
 
-
     # =====================================================
     # VALIDATE CROPPED IMAGE
     # =====================================================
-
+        
     def _is_valid_product_crop(self, pil_image):
 
         try:
@@ -8574,8 +8575,8 @@ class VendorImportJob(models.Model):
                 return False
 
             # reject ultra-thin strips
-            if width < 40 or height < 40:
-                return False
+            # if width < 40 or height < 40:
+            #     return False
 
             gray = pil_image.convert("L")
 
@@ -8601,7 +8602,22 @@ class VendorImportJob(models.Model):
 
             pixel_std = np.std(arr)
 
-            if pixel_std < 5:
+            if (
+                pixel_std < 3
+                and
+                dark_pixels > 0.995
+            ):
+
+                _logger.warning(
+
+                    "[VALIDATION FAIL] "
+
+                    "reason=low_texture "
+
+                    f"std={pixel_std:.2f}"
+
+                )
+
                 return False
 
             return True
@@ -8610,7 +8626,7 @@ class VendorImportJob(models.Model):
 
             return False
 
-
+    
     #=========VALIDATE AI IMAGE====================================
     def _is_valid_ai_image(self, image_data):
         
@@ -9465,6 +9481,7 @@ class VendorImportJob(models.Model):
             return asset_pool
 
     #=================Centralized Rusable Image=======================
+      
     def _prepare_asset_pool(self, images):
 
         prepared = []
@@ -9548,11 +9565,13 @@ class VendorImportJob(models.Model):
 
                     continue
 
-                image_hash = hashlib.md5(
+                image_hash = asset.get("image_hash")
 
-                    img.encode('utf-8')
+                if not image_hash:
 
-                ).hexdigest()
+                    image_hash = hashlib.md5(
+                        img.encode("utf-8")
+                    ).hexdigest()
 
                 # =====================================
                 # SAFE COLOR DETECTION
@@ -9707,6 +9726,13 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "POOL_BUILD"
+                )
+
                 prepared.append({
 
                     "image": img,
@@ -9774,7 +9800,21 @@ class VendorImportJob(models.Model):
                     "background_ratio": background_ratio,
 
                     "centered_object": centered_object,
-                    
+
+                    "asset_id": asset.get("asset_id"),
+
+                    "image_hash": asset.get("image_hash"),
+
+                    "audit": list(
+                        asset.get("audit", [])
+                    ),
+
+                    "classification": asset.get("classification"),
+
+                    "asset_role": asset.get("asset_role"),
+
+                    "priority": asset.get("priority", 0),
+
                 })
 
 
@@ -9833,20 +9873,15 @@ class VendorImportJob(models.Model):
 
             key=lambda x: (
 
-                x.get(
-                    "gallery_score",
-                    x.get("score", 0)
-                ),
+                x.get("priority", 0),
 
-                x.get(
-                    "hero_score",
-                    0
-                ),
+                x.get("hero_score", 0),
 
-                not x.get(
-                    "is_collage",
-                    False
-                ),
+                x.get("gallery_score", 0),
+
+                not x.get("is_lifestyle", False),
+
+                not x.get("is_collage", False),
 
                 -x.get("y", 0),
 
@@ -9985,7 +10020,7 @@ class VendorImportJob(models.Model):
 
                 _, thresh = cv2.threshold(
                     gray,
-                    245,
+                    232,
                     255,
                     cv2.THRESH_BINARY_INV
                 )
@@ -10046,7 +10081,12 @@ class VendorImportJob(models.Model):
 
                     filtered_contours.append(contour)
 
-                contours = filtered_contours[:40]
+                contours = sorted(
+                    filtered_contours,
+                    key=cv2.contourArea,
+                    reverse=True
+                )[:40]
+
                 _logger.warning(
                     f"[CONTOUR SUMMARY] "
                     f"raw={len(filtered_contours)} "
@@ -10079,12 +10119,29 @@ class VendorImportJob(models.Model):
                         )
                         continue
 
-                    # reject huge full page
+                    #
+                    # Reject full-page contours only on large images.
+                    # Do not reject already-isolated product crops.
+                    #
+
                     if (
-                        w > original_width * 0.95
+
+                        original_width > 600
+
                         and
+
+                        original_height > 600
+
+                        and
+
+                        w > original_width * 0.95
+
+                        and
+
                         h > original_height * 0.95
+
                     ):
+
                         continue
 
                     area = w * h
@@ -10125,8 +10182,24 @@ class VendorImportJob(models.Model):
                         f"size={crop.size[0]}x{crop.size[1]}"
                     )
 
+                    _logger.warning(
+
+                        "[BEFORE TRIM] "
+
+                        f"{crop.size}"
+
+                    )
+
                     crop = self._trim_catalog_whitespace(
                         crop
+                    )
+
+                    _logger.warning(
+
+                        "[AFTER TRIM] "
+
+                        f"{crop.size if crop else None}"
+
                     )
 
                     if not crop:
@@ -10162,11 +10235,20 @@ class VendorImportJob(models.Model):
                         f"x={x} y={y} w={w} h={h}"
                     )
 
+                   
                     if not valid_crop:
 
                         _logger.warning(
-                            f"[SEGMENT REJECT INVALID] "
-                            f"x={x} y={y} w={w} h={h}"
+                             f"[SEGMENT REJECT INVALID] "
+                             f"x={x} y={y} w={w} h={h}"
+                        )
+
+                        _logger.warning(
+
+                            "[VALIDATION REJECTED] "
+
+                            f"{crop.size}"
+
                         )
 
                         continue
@@ -10491,28 +10573,121 @@ class VendorImportJob(models.Model):
                         f"size={crop_width}x{crop_height}"
                     )
 
-                    is_lifestyle = False
+                    is_lifestyle = bool(
 
-                    if skin_ratio > 0.12:
+                        skin_ratio > 0.18
 
-                        is_lifestyle = True
-
-                    elif (
-                        coverage_ratio > 0.18
                         and
-                        background_ratio < 0.30
-                    ):
 
-                        is_lifestyle = True
+                        background_ratio < 0.25
+
+                        and
+
+                        coverage_ratio > 0.80
+
+                    )
 
                     _logger.warning(
                         f"[LIFESTYLE CHECK] "
                         f"skin={skin_ratio:.3f} "
                         f"coverage={coverage_ratio:.3f} "
                         f"bg={background_ratio:.3f} "
-                        f"lifestyle={is_lifestyle}"
+                        f"decision={'LIFESTYLE' if is_lifestyle else 'PRODUCT'}"
                     )
 
+                    #
+                    # Asset Classification
+                    #
+
+                    classification = "REAL_PRODUCT"
+                    asset_role = "variant"
+                    priority = 1000
+                    rejection_reason = None
+
+                    # ------------------------------------
+                    # Catalog / Marketing Panels
+                    # ------------------------------------
+
+                    if (
+
+                        is_collage
+
+                        and
+
+                        skin_ratio > 0.08
+
+                        and
+
+                        background_ratio < 0.35
+
+                    ):
+                        classification = "CATALOG_PANEL"
+                        asset_role = "reject"
+                        priority = 0
+                        rejection_reason = "catalog_panel"
+
+                    # ------------------------------------
+                    # Human / Lifestyle
+                    # ------------------------------------
+
+                    elif is_lifestyle:
+
+                        classification = "LIFESTYLE"
+
+                        asset_role = "gallery"
+
+                        priority = 250
+
+                    # ------------------------------------
+                    # Product Detail
+                    # ------------------------------------
+
+                    elif (
+
+                        coverage_ratio < 0.04
+
+                        and
+
+                        not centered_object
+
+                        and
+
+                        crop_area < 60000
+
+                    ):
+                        classification = "PRODUCT_DETAIL"
+                        asset_role = "gallery"
+                        priority = 700
+
+                    # ------------------------------------
+                    # Clean Product
+                    # ------------------------------------
+
+                    else:
+
+                        classification = "REAL_PRODUCT"
+
+                        asset_role = "variant"
+
+                        priority = 1000
+
+                    
+                    image_hash = hashlib.md5(
+
+                        buffer.getvalue()
+
+                    ).hexdigest()[:10]
+
+
+                    crop_identity = hashlib.md5(
+
+                        (
+                            f"{x}_{y}_{w}_{h}".encode()
+                            +
+                            buffer.getvalue()
+                        )
+
+                    ).hexdigest()[:10]
                    
                     candidate_crops.append({
 
@@ -10542,7 +10717,23 @@ class VendorImportJob(models.Model):
 
                         "coverage_ratio": coverage_ratio,
 
-                        "is_lifestyle": is_lifestyle
+                        "is_lifestyle": is_lifestyle,
+
+                        "classification": classification,
+
+                        "asset_role": asset_role,
+
+                        "priority": priority,
+
+                        "rejection_reason": rejection_reason,
+
+                        "asset_id": crop_identity,
+
+                        "image_hash": image_hash,
+
+                        "audit": [
+                            "SEGMENT_CREATED"
+                        ],
                     })
 
                     _logger.warning(
@@ -10603,31 +10794,73 @@ class VendorImportJob(models.Model):
                     f"contours={len(contours)}"
                 )
 
+                # if not candidate_crops:
+
+                #     _logger.warning(
+                #         "[SEGMENT FALLBACK TRIGGERED]"
+                #     )
+
+                #     buffer = BytesIO()
+
+                #     pil_image.save(
+                #         buffer,
+                #         format="JPEG"
+                #     )
+
+                #     encoded = base64.b64encode(
+                #         buffer.getvalue()
+                #     ).decode("utf-8")
+
+                #     candidate_crops.append({
+
+                #         "image": encoded,
+
+                #         "score": 10,
+
+                #         "hero_score": 0,
+
+                #         "gallery_score": 0,
+
+                #         "is_collage": False,
+
+                #         "centered_object": False,
+
+                #         "background_ratio": 0,
+
+                #         "width": original_width,
+
+                #         "height": original_height,
+
+                #         "x": 0,
+
+                #         "y": 0,
+
+                #         "crop_area": original_width * original_height,
+
+                #         "coverage_ratio": 1.0,
+
+                #         "is_lifestyle": False,
+
+                #         "classification": "UNKNOWN",
+
+                #         "asset_role": "reference",
+
+                #         "priority": 100,
+
+                #         "rejection_reason": "fallback"
+                #     })
+
                 if not candidate_crops:
 
                     _logger.warning(
-                        "[SEGMENT FALLBACK TRIGGERED]"
+
+                        "[NO VALID CROPS] "
+
+                        "Skipping fallback"
+
                     )
 
-                    buffer = BytesIO()
-
-                    pil_image.save(
-                        buffer,
-                        format="JPEG"
-                    )
-
-                    encoded = base64.b64encode(
-                        buffer.getvalue()
-                    ).decode("utf-8")
-
-                    candidate_crops.append({
-
-                        "image": encoded,
-
-                        "score": 10,
-
-                        "is_collage": False
-                    })
+                    continue
 
                 segmented_images.extend(
                     candidate_crops
@@ -10640,6 +10873,14 @@ class VendorImportJob(models.Model):
                     f"added={len(candidate_crops)} "
 
                     f"running_total={len(segmented_images)}"
+                )
+
+                self._log_asset_pool(
+
+                    "PAGE COMPLETE",
+
+                    candidate_crops
+
                 )
 
             except Exception as e:
@@ -10674,6 +10915,16 @@ class VendorImportJob(models.Model):
         _logger.warning(
         f"[PRE-DEDUPE COUNT] total={len(segmented_images)}"
         )
+
+        segmented_images = [
+
+            asset
+
+            for asset in segmented_images
+
+            if asset.get("asset_role") != "reject"
+
+        ]
         
         for asset in segmented_images:
 
@@ -10791,7 +11042,15 @@ class VendorImportJob(models.Model):
                         f"gallery={asset.get('gallery_score')}"
                     )
 
+                    asset.setdefault(
+                        "audit",
+                        []
+                    ).append(
+                        "VISUAL_DEDUPE_REJECT"
+                    )
+
                     continue
+
 
                 visual_hashes.append(
                     current_hash
@@ -10813,6 +11072,14 @@ class VendorImportJob(models.Model):
 
                     f"size={asset.get('width')}x{asset.get('height')}"
                 )
+
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "VISUAL_DEDUPE_KEEP"
+                )
+
                 deduped.append(asset)
 
             except Exception as e:
@@ -10823,6 +11090,13 @@ class VendorImportJob(models.Model):
                     f"{str(e)}"
                 )
 
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "VISUAL_DEDUPE_ERROR"
+                )
+
                 deduped.append(asset)
 
                 #
@@ -10831,83 +11105,47 @@ class VendorImportJob(models.Model):
 
         for asset in deduped:
 
-            priority = 0
+            priority = asset.get("priority", 0)
 
-            #
-            # Highest priority:
-            # isolated clean ecommerce renders
-            #
+            priority += asset.get("hero_score", 0)
 
-            if not asset.get("is_lifestyle", False):
+            priority += asset.get("gallery_score", 0)
 
-                priority += 1000
-
-            #
-            # Prefer hero quality
-            #
-
-            priority += asset.get(
-
-                "hero_score",
-
-                0
-
-            )
-
-            #
-            # Then gallery quality
-            #
-
-            priority += asset.get(
-
-                "gallery_score",
-
-                0
-
-            )
-
-            #
-            # Slight preference for centered objects
-            #
-
-            if asset.get(
-
-                "centered_object",
-
-                False
-
-            ):
-
+            if asset.get("centered_object", False):
                 priority += 25
 
-            #
-            # Penalize collages slightly
-            #
-
-            if asset.get(
-
-                "is_collage",
-
-                False
-
-            ):
-
-                priority -= 15
-
-            asset["_priority"] = priority
+            asset["priority"] = priority
 
 
         deduped.sort(
 
             key=lambda a: (
 
-                -a["_priority"],
+                -a["priority"],
 
                 -a.get("score", 0)
 
             )
 
         )
+
+        for idx, asset in enumerate(deduped):
+
+            _logger.warning(
+
+                "[ASSET QUALIFIER] "
+
+                f"{idx+1} "
+
+                f"class={asset.get('classification')} "
+
+                f"role={asset.get('asset_role')} "
+
+                f"priority={asset.get('priority')} "
+
+                f"reject={asset.get('rejection_reason')}"
+
+            )
 
         _logger.warning(
 
@@ -10925,7 +11163,7 @@ class VendorImportJob(models.Model):
 
                 f"{idx+1} "
 
-                f"priority={asset.get('_priority')} "
+                f"priority={asset.get('priority')} "
 
                 f"lifestyle={asset.get('is_lifestyle')} "
 
@@ -10943,7 +11181,7 @@ class VendorImportJob(models.Model):
         for asset in deduped:
 
             _logger.warning(
-                f"[PRE-DEDUPE ASSET] "
+                f"[POST-DEDUPE ASSET] "
                 f"hero={asset.get('hero_score')} "
                 f"gallery={asset.get('gallery_score')}"
             )
@@ -10969,7 +11207,88 @@ class VendorImportJob(models.Model):
             )
 
 
+        for asset in deduped:
+
+            asset.setdefault(
+                "audit",
+                []
+            ).append(
+                "SEGMENT_RETURN"
+            )
+
+        self._log_asset_pool(
+
+            "SEGMENT FINAL",
+
+            deduped
+
+        )
+
         return deduped
+
+    # ======================================================
+    # ASSET AUDIT LOGGER
+    # ======================================================
+
+    def _log_asset_pool(
+        self,
+        stage,
+        assets
+    ):
+
+        _logger.warning("=" * 80)
+        _logger.warning(f"[ASSET AUDIT] {stage}")
+
+        seen = {}
+
+        for idx, asset in enumerate(assets):
+
+            image_hash = asset.get(
+                "image_hash",
+                "NO_HASH"
+            )
+
+            _logger.warning(
+
+                f"idx={idx} "
+
+                f"id={asset.get('asset_id')} "
+
+                f"hash={image_hash} "
+
+                f"class={asset.get('classification')} "
+
+                f"role={asset.get('asset_role')} "
+
+                f"life={asset.get('is_lifestyle')} "
+
+                f"priority={asset.get('priority')} "
+
+                f"audit={asset.get('audit')}"
+
+            )
+
+            if image_hash in seen:
+
+                _logger.error(
+
+                    "[DUPLICATE IMAGE] "
+
+                    f"id={seen[image_hash]} "
+
+                    f"and "
+
+                    f"id={asset.get('asset_id')} "
+
+                    f"share hash={image_hash}"
+
+                )
+
+            else:
+
+                seen[image_hash] = asset.get("asset_id")
+
+        _logger.warning("=" * 80)
 
     # ============================================
     # ADVANCED DOMINANT COLOR DETECTION
@@ -12516,6 +12835,7 @@ class VendorImportJob(models.Model):
 
             return False
 
+
     #=================Centralized Rusable Image resolver==============
 
     def _resolve_asset_image(
@@ -12738,10 +13058,23 @@ class VendorImportJob(models.Model):
             for asset in images:
 
 
+                # if asset.get("recovered_by_extractor"):
+
+                #     asset["asset_group"] = "recovery_candidate"
+                #     asset["asset_role"] = "recovery_candidate"
+
                 if asset.get("recovered_by_extractor"):
 
-                    asset["asset_group"] = "recovery_candidate"
-                    asset["asset_role"] = "recovery_candidate"
+                    _logger.warning(
+
+                        "[RECOVERY PASSIVE] "
+
+                        f"clean={asset.get('clean_index')}"
+
+                    )
+
+                    # Do NOT modify asset_group
+                    # Do NOT modify asset_role
 
                     _logger.warning(
 
@@ -12891,22 +13224,35 @@ class VendorImportJob(models.Model):
                 # KEEP PROMOTED RECOVERY ASSETS
                 # =====================================
 
-                if asset.get(
+                if asset.get("promotion_source") == "recovery":
 
-                    "promotion_source"
+                    _logger.warning(
 
-                ) == "recovery":
+                        "[RECOVERY PROMOTION DISABLED]"
 
-                    group = "real"
+                    )
 
-                    probability = {
+                    probability = self._calculate_asset_probability(asset)
 
-                        "real":100,
+                    winner = max(probability, key=probability.get)
 
-                        "demo":0,
+                    mapping = {
 
-                        "lifestyle":0
+                        "real": "real",
+
+                        "demo": "product_demo",
+
+                        "lifestyle": "lifestyle"
+
                     }
+
+                    group = mapping.get(
+
+                        winner,
+
+                        "marketing"
+
+                    )
 
                 else:
 
@@ -12945,7 +13291,7 @@ class VendorImportJob(models.Model):
 
                         ):
 
-                            probability["real"] += 12
+                            # probability["real"] += 12
 
                             _logger.warning(
 
@@ -17622,41 +17968,79 @@ class VendorImportJob(models.Model):
                                     f"image_index={variant.get('image_index')}"
                                 )
 
-                                matched_asset = self._match_variant_image(
+                                ai_image_index = variant.get("image_index")
 
-                                    variant,
+                                matched_asset = None
 
-                                    asset_pool,
+                                if ai_image_index is not None:
 
-                                    used_asset_indexes
-                                )
+                                    matched_asset = next(
 
-                                clean_index = matched_asset.get(
+                                        (
 
-                                    "clean_index"
-                                )
+                                            a
 
-                                if clean_index in page_validation["used_indexes"]:
+                                            for a in asset_pool
+
+                                            if a.get("clean_index") == ai_image_index
+
+                                        ),
+
+                                        None
+
+                                    )
+
+                                    if matched_asset:
+
+                                        _logger.warning(
+
+                                            f"[AI IMAGE USED] "
+
+                                            f"color={variant.get('attributes', {}).get('Color')} "
+
+                                            f"clean_index={ai_image_index}"
+
+                                        )
+
+
+                                if not matched_asset:
+
+                                    matched_asset = self._match_variant_image(
+
+                                        variant,
+
+                                        asset_pool,
+
+                                        used_asset_indexes
+
+                                    )
+
+                                    clean_index = matched_asset.get(
+
+                                        "clean_index"
+                                    )
+
+                                    if clean_index in page_validation["used_indexes"]:
+
+                                        page_validation[
+
+                                            "duplicate_indexes"
+
+                                        ].append(clean_index)
+
+                                    else:
+
+                                        page_validation[
+
+                                            "used_indexes"
+
+                                        ].add(clean_index)
 
                                     page_validation[
 
-                                        "duplicate_indexes"
+                                        "variant_indexes"
 
                                     ].append(clean_index)
-
-                                else:
-
-                                    page_validation[
-
-                                        "used_indexes"
-
-                                    ].add(clean_index)
-
-                                page_validation[
-
-                                    "variant_indexes"
-
-                                ].append(clean_index)
 
                                 # =====================================
                                 # APPLY
