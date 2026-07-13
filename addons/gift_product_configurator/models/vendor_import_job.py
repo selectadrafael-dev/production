@@ -11184,7 +11184,7 @@ class VendorImportJob(models.Model):
         for asset in deduped:
 
             _logger.warning(
-                f"[PRE-DEDUPE ASSET] "
+                f"[POST-DEDUPE ASSET] "
                 f"hero={asset.get('hero_score')} "
                 f"gallery={asset.get('gallery_score')}"
             )
@@ -11210,14 +11210,6 @@ class VendorImportJob(models.Model):
             )
 
 
-        self._log_asset_pool(
-
-            "SEGMENT FINAL",
-
-            deduped
-
-        )
-
         for asset in deduped:
 
             asset.setdefault(
@@ -11226,6 +11218,14 @@ class VendorImportJob(models.Model):
             ).append(
                 "SEGMENT_RETURN"
             )
+
+        self._log_asset_pool(
+
+            "SEGMENT FINAL",
+
+            deduped
+
+        )
 
         return deduped
 
