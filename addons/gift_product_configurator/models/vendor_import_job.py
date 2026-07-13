@@ -10552,26 +10552,26 @@ class VendorImportJob(models.Model):
                         f"size={crop_width}x{crop_height}"
                     )
 
-                    is_lifestyle = False
+                    is_lifestyle = (
 
-                    if skin_ratio > 0.12:
+                        skin_ratio > 0.18
 
-                        is_lifestyle = True
-
-                    elif (
-                        coverage_ratio > 0.18
                         and
-                        background_ratio < 0.30
-                    ):
 
-                        is_lifestyle = True
+                        background_ratio < 0.40
+
+                        and
+
+                        coverage_ratio > 0.80
+
+                    )
 
                     _logger.warning(
                         f"[LIFESTYLE CHECK] "
                         f"skin={skin_ratio:.3f} "
                         f"coverage={coverage_ratio:.3f} "
                         f"bg={background_ratio:.3f} "
-                        f"lifestyle={is_lifestyle}"
+                        f"decision={'LIFESTYLE' if is_lifestyle else 'PRODUCT'}"
                     )
 
                     #
