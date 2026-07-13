@@ -10084,12 +10084,26 @@ class VendorImportJob(models.Model):
                         )
                         continue
 
+
                     # reject huge full page
                     if (
                         w > original_width * 0.95
                         and
                         h > original_height * 0.95
                     ):
+
+                        _logger.warning(
+
+                            "[LARGE CONTOUR REJECT] "
+
+                            f"w={w} "
+
+                            f"h={h} "
+
+                            f"page={original_width}x{original_height}"
+
+                        )
+
                         continue
 
                     area = w * h
@@ -10717,61 +10731,73 @@ class VendorImportJob(models.Model):
                     f"contours={len(contours)}"
                 )
 
+                # if not candidate_crops:
+
+                #     _logger.warning(
+                #         "[SEGMENT FALLBACK TRIGGERED]"
+                #     )
+
+                #     buffer = BytesIO()
+
+                #     pil_image.save(
+                #         buffer,
+                #         format="JPEG"
+                #     )
+
+                #     encoded = base64.b64encode(
+                #         buffer.getvalue()
+                #     ).decode("utf-8")
+
+                #     candidate_crops.append({
+
+                #         "image": encoded,
+
+                #         "score": 10,
+
+                #         "hero_score": 0,
+
+                #         "gallery_score": 0,
+
+                #         "is_collage": False,
+
+                #         "centered_object": False,
+
+                #         "background_ratio": 0,
+
+                #         "width": original_width,
+
+                #         "height": original_height,
+
+                #         "x": 0,
+
+                #         "y": 0,
+
+                #         "crop_area": original_width * original_height,
+
+                #         "coverage_ratio": 1.0,
+
+                #         "is_lifestyle": False,
+
+                #         "classification": "UNKNOWN",
+
+                #         "asset_role": "reference",
+
+                #         "priority": 100,
+
+                #         "rejection_reason": "fallback"
+                #     })
+
                 if not candidate_crops:
 
                     _logger.warning(
-                        "[SEGMENT FALLBACK TRIGGERED]"
+
+                        "[NO VALID CROPS] "
+
+                        "Skipping fallback"
+
                     )
 
-                    buffer = BytesIO()
-
-                    pil_image.save(
-                        buffer,
-                        format="JPEG"
-                    )
-
-                    encoded = base64.b64encode(
-                        buffer.getvalue()
-                    ).decode("utf-8")
-
-                    candidate_crops.append({
-
-                        "image": encoded,
-
-                        "score": 10,
-
-                        "hero_score": 0,
-
-                        "gallery_score": 0,
-
-                        "is_collage": False,
-
-                        "centered_object": False,
-
-                        "background_ratio": 0,
-
-                        "width": original_width,
-
-                        "height": original_height,
-
-                        "x": 0,
-
-                        "y": 0,
-
-                        "crop_area": original_width * original_height,
-
-                        "coverage_ratio": 1.0,
-
-                        "is_lifestyle": False,
-
-                        "classification": "UNKNOWN",
-
-                        "asset_role": "reference",
-
-                        "priority": 100,
-
-                        "rejection_reason": "fallback"
-                    })
+                    continue
 
                 segmented_images.extend(
                     candidate_crops
