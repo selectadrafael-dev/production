@@ -2579,6 +2579,45 @@ class VendorImportJob(models.Model):
                                 images
                             )
 
+                            # ============================
+                            # SEGMENT PIPELINE SUMMARY
+                            # ============================
+
+                            real = 0
+                            life = 0
+                            gallery = 0
+                            reject = 0
+
+                            for asset in images:
+
+                                if asset.get("is_lifestyle"):
+                                    life += 1
+                                else:
+                                    real += 1
+
+                                if asset.get("asset_role") == "gallery":
+                                    gallery += 1
+
+                                if asset.get("asset_role") == "reject":
+                                    reject += 1
+
+                            _logger.warning(
+
+                                "[SEGMENT PIPELINE] "
+
+                                f"total={len(images)} "
+
+                                f"real={real} "
+
+                                f"life={life} "
+
+                                f"gallery={gallery} "
+
+                                f"reject={reject}"
+
+                            )
+
+
 
                             if (
                                 not text
@@ -6141,8 +6180,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # ====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -10587,12 +10626,25 @@ class VendorImportJob(models.Model):
 
                     )
 
+
                     _logger.warning(
+
                         f"[LIFESTYLE CHECK] "
+
                         f"skin={skin_ratio:.3f} "
+
                         f"coverage={coverage_ratio:.3f} "
+
                         f"bg={background_ratio:.3f} "
+
+                        f"skin_ok={skin_ratio > 0.18} "
+
+                        f"bg_ok={background_ratio < 0.25} "
+
+                        f"coverage_ok={coverage_ratio > 0.80} "
+
                         f"decision={'LIFESTYLE' if is_lifestyle else 'PRODUCT'}"
+
                     )
 
                     #
