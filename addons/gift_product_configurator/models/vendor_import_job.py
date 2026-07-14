@@ -9973,15 +9973,30 @@ class VendorImportJob(models.Model):
     # =======================================================
 
     def _segment_catalog_images(self, images):
-       
 
         _logger.warning(
             f"[SEGMENT START] "
             f"incoming={len(images or [])}"
         )
 
+        for idx, asset in enumerate(images):
 
-        for asset in images:
+            if not isinstance(asset, dict):
+                continue
+
+            if not asset.get("asset_id"):
+
+                image_bytes = base64.b64decode(
+                    asset["image"]
+                )
+
+                asset["asset_id"] = idx
+
+                asset["image_hash"] = hashlib.md5(
+                    image_bytes
+                ).hexdigest()[:10]
+
+                asset["audit"] = ["EXTRACTOR"]
 
             _logger.warning(
 
@@ -10001,6 +10016,7 @@ class VendorImportJob(models.Model):
 
       
         for image_item in images:
+            asset = image_item
 
             try:
 
@@ -10754,6 +10770,16 @@ class VendorImportJob(models.Model):
                         )
 
                     ).hexdigest()[:10]
+
+                    source_asset_id = asset.get("asset_id")
+
+                    source_hash = asset.get("image_hash")
+
+                    audit = list(
+                        asset.get("audit", [])
+                    )
+                    audit.append("SEGMENT_CREATED")
+
                    
                     candidate_crops.append({
 
@@ -10797,9 +10823,11 @@ class VendorImportJob(models.Model):
 
                         "image_hash": image_hash,
 
-                        "audit": [
-                            "SEGMENT_CREATED"
-                        ],
+                        "source_asset_id": source_asset_id,
+
+                        "source_hash": source_hash,
+
+                        "audit": audit,
                     })
 
                     _logger.warning(
@@ -10896,7 +10924,6 @@ class VendorImportJob(models.Model):
                     "PAGE COMPLETE",
 
                     candidate_crops
-
                 )
 
             except Exception as e:
@@ -11153,6 +11180,10 @@ class VendorImportJob(models.Model):
 
                 f"{idx+1} "
 
+                f"source={asset.get('source_asset_id')} "
+
+                f"clean={asset.get('clean_index')} "
+
                 f"class={asset.get('classification')} "
 
                 f"role={asset.get('asset_role')} "
@@ -11264,13 +11295,16 @@ class VendorImportJob(models.Model):
                 "NO_HASH"
             )
 
-            _logger.warning(
 
-                f"idx={idx} "
+            _logger.warning(
 
                 f"id={asset.get('asset_id')} "
 
-                f"hash={image_hash} "
+                f"source={asset.get('source_asset_id')} "
+
+                f"hash={asset.get('image_hash')} "
+
+                f"source_hash={asset.get('source_hash')} "
 
                 f"class={asset.get('classification')} "
 
