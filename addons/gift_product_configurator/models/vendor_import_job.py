@@ -6067,7 +6067,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-    #-----URL API FLOW-------------------------------------------
+    #==============URL API FLOW====================================
 
     def scrape_with_playwright(self):
 
@@ -6164,7 +6164,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     
-    #======apify url fetch/scrapp products=====================
+    #======apify url fetch/scrapp products=========================
     
     def _run_apify_actor(self, url):
 
@@ -6180,8 +6180,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        #ACTOR_ID = "selectad~my-actor"
-        ACTOR_ID = "princ_adex~my-actor"
+        ACTOR_ID = "selectad~my-actor"
+        #ACTOR_ID = "princ_adex~my-actor"
 
         # ====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
