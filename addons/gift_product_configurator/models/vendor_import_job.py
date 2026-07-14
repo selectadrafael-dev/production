@@ -10787,6 +10787,8 @@ class VendorImportJob(models.Model):
                     )
                     audit.append("SEGMENT_CREATED")
 
+                    
+
                    
                     candidate_crops.append({
 
@@ -10833,6 +10835,14 @@ class VendorImportJob(models.Model):
                         "source_asset_id": source_asset_id,
 
                         "source_hash": source_hash,
+
+                        "extractor_rank": asset.get(
+                            "extractor_rank"
+                        ),
+
+                        "extractor_score": asset.get(
+                            "extractor_score"
+                        ),
 
                         "audit": audit,
                     })
