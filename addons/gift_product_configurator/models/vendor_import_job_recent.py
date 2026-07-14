@@ -92796,3 +92796,1331 @@ class VendorImportJob(models.Model):
         except Exception:
 
             return 1.0
+
+    # =======================================================
+    # SEGMENT CATALOG PAGE INTO CLEAN PRODUCT ASSETS = BACKUP
+    # =======================================================
+
+    def _segment_catalog_images(self, images):
+
+        _logger.warning(
+            f"[SEGMENT START] "
+            f"incoming={len(images or [])}"
+        )
+
+        for idx, asset in enumerate(images):
+
+            if not isinstance(asset, dict):
+                continue
+
+            if not asset.get("asset_id"):
+
+                image_bytes = base64.b64decode(
+                    asset["image"]
+                )
+
+                asset["asset_id"] = idx
+
+                asset["image_hash"] = hashlib.md5(
+                    image_bytes
+                ).hexdigest()[:10]
+
+                asset["audit"] = ["EXTRACTOR"]
+
+            _logger.warning(
+
+                "[SEGMENT INPUT] "
+
+                f"asset_id={asset.get('asset_id')} "
+
+                f"hash={asset.get('image_hash')}"
+
+            )
+
+        segmented_images = []
+
+        if not images:
+            return segmented_images
+
+      
+        for image_item in images:
+            asset = image_item
+
+            try:
+
+                #
+                # Backward compatibility
+                #
+                # Family A and Family B may supply either:
+                #
+                #   "...base64..."
+                #
+                # or
+                #
+                #   {
+                #       "image": "...base64...",
+                #       ...
+                #   }
+                #
+
+                if isinstance(image_item, dict):
+
+                    img_b64 = image_item.get("image")
+
+                    if not img_b64:
+
+                        _logger.warning(
+
+                            "[SEGMENT SKIP] "
+
+                            "Missing image field"
+
+                        )
+
+                        continue
+
+                else:
+
+                    img_b64 = image_item
+
+                img_data = base64.b64decode(
+
+                    img_b64
+
+                )
+
+                pil_image = Image.open(
+
+                    BytesIO(img_data)
+
+                ).convert("RGB")
+
+                _logger.warning(
+
+                    "[SEGMENT INPUT] "
+
+                    f"asset_id={asset.get('asset_id')} "
+
+                    f"hash={asset.get('image_hash')} "
+
+                    f"size={pil_image.width}x{pil_image.height}"
+
+                )
+
+
+                original_width, original_height = pil_image.size
+
+                # =========================================
+                # CONVERT TO OPENCV
+                # =========================================
+
+                cv_image = cv2.cvtColor(
+                    np.array(pil_image),
+                    cv2.COLOR_RGB2BGR
+                )
+
+                gray = cv2.cvtColor(
+                    cv_image,
+                    cv2.COLOR_BGR2GRAY
+                )
+
+                # =========================================
+                # THRESHOLD
+                # =========================================
+
+                _, thresh = cv2.threshold(
+                    gray,
+                    232,
+                    255,
+                    cv2.THRESH_BINARY_INV
+                )
+
+                # =========================================
+                # DILATION
+                # =========================================
+
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_RECT,
+                    (9, 9)
+                )
+
+                dilated = cv2.dilate(
+                    thresh,
+                    kernel,
+                    iterations=1
+                )
+
+                # =========================================
+                # FIND CONTOURS
+                # =========================================
+
+                contours, _ = cv2.findContours(
+                    dilated,
+                    cv2.RETR_EXTERNAL,
+                    cv2.CHAIN_APPROX_SIMPLE
+                )
+
+                filtered_contours = []
+
+                for contour in contours:
+
+                    area = cv2.contourArea(contour)
+
+                    if area < 2500:
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"tiny crop area={area}"
+                        )
+                        continue
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # reject ultra-thin text columns
+                    if w < 65 or h < 65:
+                        continue
+
+                    ratio = w / float(h)
+
+                    # reject long text strips
+                    if ratio > 4.5 or ratio < 0.22:
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"bad ratio={ratio:.2f}"
+                        )
+                        continue
+
+                    filtered_contours.append(contour)
+
+                contours = sorted(
+                    filtered_contours,
+                    key=cv2.contourArea,
+                    reverse=True
+                )[:40]
+
+                _logger.warning(
+                    f"[CONTOUR SUMMARY] "
+                    f"raw={len(filtered_contours)} "
+                    f"used={len(contours)}"
+                )
+
+                candidate_crops = []
+
+                for contour in contours:
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    _logger.warning(
+                        f"[CONTOUR FOUND] "
+                        f"x={x} "
+                        f"y={y} "
+                        f"w={w} "
+                        f"h={h}"
+                    )
+
+                    x, y, w, h = cv2.boundingRect(contour)
+
+                    # =====================================
+                    # SIZE FILTERS
+                    # =====================================
+
+                    if w < 80 or h < 80:
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"tiny contour={w}x{h}"
+                        )
+                        continue
+
+                    #
+                    # Reject full-page contours only on large images.
+                    # Do not reject already-isolated product crops.
+                    #
+
+                    if (
+
+                        original_width > 600
+
+                        and
+
+                        original_height > 600
+
+                        and
+
+                        w > original_width * 0.95
+
+                        and
+
+                        h > original_height * 0.95
+
+                    ):
+
+                        continue
+
+                    area = w * h
+
+                    # reject tiny fragments
+                    if area < 12000:
+                       
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"small area={area}"
+                        )
+
+                        continue
+
+                    # =====================================
+                    # CROP
+                    # =====================================
+
+                    pad = 12
+
+                    x1 = max(x - pad, 0)
+                    y1 = max(y - pad, 0)
+                    x2 = min(x + w + pad, original_width)
+                    y2 = min(y + h + pad, original_height)
+
+
+                    _logger.warning(
+                        f"[BEFORE CROP] "
+                        f"x1={x1} y1={y1} x2={x2} y2={y2}"
+                    )
+
+                    crop = pil_image.crop(
+                        (x1, y1, x2, y2)
+                    )
+
+                    _logger.warning(
+                        f"[AFTER CROP] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
+
+                    _logger.warning(
+
+                        "[BEFORE TRIM] "
+
+                        f"{crop.size}"
+
+                    )
+
+                    crop = self._trim_catalog_whitespace(
+                        crop
+                    )
+
+                    _logger.warning(
+
+                        "[AFTER TRIM] "
+
+                        f"{crop.size if crop else None}"
+
+                    )
+
+                    if not crop:
+
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"trim returned None "
+                            f"x={x} y={y} w={w} h={h}"
+                        )
+
+                        continue
+
+                    _logger.warning(
+                        f"[TRIM RESULT] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
+
+                    _logger.warning(
+                        f"[POST TRIM] "
+                        f"size={crop.size[0]}x{crop.size[1]}"
+                    )
+
+                  
+                    # =====================================
+                    # VALIDATE
+                    # =====================================
+
+                    valid_crop = self._is_valid_product_crop(crop)
+
+                    _logger.warning(
+                        f"[VALIDATION RESULT] "
+                        f"valid={valid_crop} "
+                        f"x={x} y={y} w={w} h={h}"
+                    )
+
+                   
+                    if not valid_crop:
+
+                        _logger.warning(
+                             f"[SEGMENT REJECT INVALID] "
+                             f"x={x} y={y} w={w} h={h}"
+                        )
+
+                        _logger.warning(
+
+                            "[VALIDATION REJECTED] "
+
+                            f"{crop.size}"
+
+                        )
+
+                        continue
+
+                    # =====================================
+                    # OCR-LIKE TEXT REJECTION
+                    # =====================================
+
+                    crop_gray = crop.convert("L")
+
+                    crop_arr = np.array(crop_gray)
+
+                    dark_pixels = np.mean(
+                        crop_arr < 90
+                    )
+
+                    bright_pixels = np.mean(
+                        crop_arr > 220
+                    )
+
+                    # Reject only truly blank crops
+
+                    if (
+                        dark_pixels < 0.002
+                        and
+                        bright_pixels > 0.995
+                    ):
+                        _logger.warning(
+                            f"[SEGMENT REJECT] "
+                            f"low dark pixels={dark_pixels:.5f}"
+                        )
+
+                        continue
+
+                    # =====================================
+                    # IMAGE ANALYSIS
+                    # =====================================
+
+                    crop_width, crop_height = crop.size
+
+                    crop_area = crop_width * crop_height
+
+                    page_area = (
+                        original_width * original_height
+                    )
+
+                    coverage_ratio = (
+                        crop_area / float(page_area)
+                    )
+
+                    # =====================================
+                    # SMALL VARIANT BOOST
+                    # =====================================
+
+                    small_variant_candidate = False
+
+                    if (
+                        0.015 < coverage_ratio < 0.12
+                        and
+                        crop_height > 90
+                        and
+                        crop_width > 90
+                    ):
+                        small_variant_candidate = True
+
+                    # =====================================
+                    # COLLAGE DETECTION
+                    # =====================================
+
+                    is_collage = False
+
+                    if (
+                        len(filtered_contours) >= 12
+                        and
+                        coverage_ratio < 0.18
+                    ):
+                        is_collage = True
+
+                    # =====================================
+                    # CENTER DETECTION
+                    # =====================================
+
+                    centered_object = False
+
+                    crop_center_x = x + (w / 2.0)
+                    crop_center_y = y + (h / 2.0)
+
+                    page_center_x = (
+                        original_width / 2.0
+                    )
+
+                    page_center_y = (
+                        original_height / 2.0
+                    )
+
+                    distance_x = abs(
+                        crop_center_x - page_center_x
+                    )
+
+                    distance_y = abs(
+                        crop_center_y - page_center_y
+                    )
+
+                    if (
+
+                        distance_x < original_width * 0.18
+
+                        and
+
+                        distance_y < original_height * 0.18
+                    ):
+
+                        centered_object = True
+                   
+                    # =====================================
+                    # HERO SCORE
+                    # =====================================
+
+                    human_penalty = 0
+
+                    hero_score = 0
+                    gallery_score = 0
+
+                    # =====================================
+                    # HERO IMAGE PRIORITY
+                    # =====================================
+
+                    # big clean product bonus
+                    hero_score += int(
+                        coverage_ratio * 140
+                    )
+
+                    # centered ecommerce product
+                    if centered_object:
+                        hero_score += 55
+
+                    # portrait product bonus
+                    if crop_height > crop_width:
+                        hero_score += 18
+
+                    # =====================================
+                    # EDGE DENSITY
+                    # =====================================
+
+                    edge_density = cv2.Canny(
+                        crop_arr,
+                        80,
+                        160
+                    ).mean()
+
+                    # =====================================
+                    # BACKGROUND ANALYSIS
+                    # =====================================
+
+                    background_ratio = np.mean(
+                        crop_arr > 235
+                    )
+
+                    # =====================================
+                    # CLEAN HERO DETECTION
+                    # =====================================
+
+                    # strong ecommerce isolated render
+                    if (
+                        centered_object
+                        and
+                        background_ratio > 0.45
+                        and
+                        not is_collage
+                    ):
+                        hero_score += 120
+
+                    # medium clean product
+                    elif (
+                        background_ratio > 0.30
+                        and
+                        not is_collage
+                    ):
+                        hero_score += 60
+
+                    # dark/lifestyle penalty
+
+                    if background_ratio < 0.08:
+                        hero_score -= 25
+
+                    # excessive visual noise
+                    if edge_density > 85:
+                        hero_score -= 12
+
+                    # =====================================
+                    # HUMAN / LIFESTYLE DETECTION
+                    # =====================================
+
+                    rgb_arr = np.array(crop)
+
+                    r = rgb_arr[:, :, 0]
+                    g = rgb_arr[:, :, 1]
+                    b = rgb_arr[:, :, 2]
+
+                    skin_mask = (
+
+                        (r > 95)
+
+                        &
+
+                        (g > 40)
+
+                        &
+
+                        (b > 20)
+
+                        &
+
+                        (r > g)
+
+                        &
+
+                        (r > b)
+
+                        &
+
+                        (np.abs(r - g) > 15)
+                    )
+
+                    skin_ratio = np.mean(skin_mask)
+
+                    if skin_ratio > 0.28:
+
+                        human_penalty = 40
+
+                    hero_score -= human_penalty
+
+                    # balanced edge density
+                    if 8 < edge_density < 35:
+                        hero_score += 25
+
+                    # =====================================
+                    # GALLERY SCORE
+                    # =====================================
+
+                    gallery_score = 0
+
+                    # gallery accepts collages/grids
+                    if is_collage:
+                        gallery_score += 45
+
+                    # preserve useful thumbnails
+                    gallery_score += int(
+                        coverage_ratio * 90
+                    )
+
+                    # =====================================
+                    # SMALL VARIANT BOOST
+                    # =====================================
+
+                    if small_variant_candidate:
+                        gallery_score += 55
+
+                    # clean product bonus
+                    if background_ratio > 0.18:
+                        gallery_score += 35
+
+                    # acceptable noise
+                    if edge_density < 75:
+                        gallery_score += 20
+
+                    # retain portrait products
+                    if crop_height > crop_width:
+                        gallery_score += 12
+
+                    # moderate penalty only
+                    if skin_ratio > 0.38:
+                        gallery_score -= 20
+
+                    # avoid total garbage
+                    if background_ratio < 0.05:
+                        gallery_score -= 40
+
+                    # =====================================
+                    # FINAL SCORE
+                    # =====================================
+                    score = max(
+                        hero_score,
+                        gallery_score
+                    )
+
+                    # =====================================
+                    # SAVE
+                    # =====================================
+
+                    buffer = BytesIO()
+
+                    crop.save(
+                        buffer,
+                        format="JPEG",
+                        quality=92
+                    )
+
+                    encoded = base64.b64encode(
+                        buffer.getvalue()
+                    ).decode("utf-8")
+
+                    _logger.warning(
+                        f"[SEGMENT ACCEPT] "
+                        f"w={w} "
+                        f"h={h} "
+                        f"area={area} "
+                        f"ratio={ratio:.2f}"
+                    )
+
+                    # =====================================
+                    # LIFESTYLE DETECTION
+                    # =====================================
+
+                    _logger.warning(
+                        f"[LIFESTYLE INPUT] "
+                        f"skin={skin_ratio:.3f} "
+                        f"coverage={coverage_ratio:.3f} "
+                        f"bg={background_ratio:.3f} "
+                        f"hero={hero_score} "
+                        f"gallery={gallery_score} "
+                        f"size={crop_width}x{crop_height}"
+                    )
+
+                    is_lifestyle = bool(
+
+                        skin_ratio > 0.18
+
+                        and
+
+                        background_ratio < 0.25
+
+                        and
+
+                        coverage_ratio > 0.80
+
+                    )
+
+
+                    _logger.warning(
+
+                        f"[LIFESTYLE CHECK] "
+
+                        f"skin={skin_ratio:.3f} "
+
+                        f"coverage={coverage_ratio:.3f} "
+
+                        f"bg={background_ratio:.3f} "
+
+                        f"skin_ok={skin_ratio > 0.18} "
+
+                        f"bg_ok={background_ratio < 0.25} "
+
+                        f"coverage_ok={coverage_ratio > 0.80} "
+
+                        f"decision={'LIFESTYLE' if is_lifestyle else 'PRODUCT'}"
+
+                    )
+
+                    #
+                    # Asset Classification
+                    #
+
+                    classification = "REAL_PRODUCT"
+                    asset_role = "variant"
+                    priority = 1000
+                    rejection_reason = None
+
+                    # ------------------------------------
+                    # Catalog / Marketing Panels
+                    # ------------------------------------
+
+                    if (
+
+                        is_collage
+
+                        and
+
+                        skin_ratio > 0.08
+
+                        and
+
+                        background_ratio < 0.35
+
+                    ):
+                        classification = "CATALOG_PANEL"
+                        asset_role = "reject"
+                        priority = 0
+                        rejection_reason = "catalog_panel"
+
+                    # ------------------------------------
+                    # Human / Lifestyle
+                    # ------------------------------------
+
+                    elif is_lifestyle:
+
+                        classification = "LIFESTYLE"
+
+                        asset_role = "gallery"
+
+                        priority = 250
+
+                    # ------------------------------------
+                    # Product Detail
+                    # ------------------------------------
+
+                    elif (
+
+                        coverage_ratio < 0.04
+
+                        and
+
+                        not centered_object
+
+                        and
+
+                        crop_area < 60000
+
+                    ):
+                        classification = "PRODUCT_DETAIL"
+                        asset_role = "gallery"
+                        priority = 700
+
+                    # ------------------------------------
+                    # Clean Product
+                    # ------------------------------------
+
+                    else:
+
+                        classification = "REAL_PRODUCT"
+
+                        asset_role = "variant"
+
+                        priority = 1000
+
+                    
+                    image_hash = hashlib.md5(
+
+                        buffer.getvalue()
+
+                    ).hexdigest()[:10]
+
+
+                    crop_identity = hashlib.md5(
+
+                        (
+                            f"{x}_{y}_{w}_{h}".encode()
+                            +
+                            buffer.getvalue()
+                        )
+
+                    ).hexdigest()[:10]
+
+                    source_asset_id = asset.get("asset_id")
+
+                    source_hash = asset.get("image_hash")
+
+                    audit = list(
+                        asset.get("audit", [])
+                    )
+                    audit.append("SEGMENT_CREATED")
+
+                    
+
+                   
+                    candidate_crops.append({
+
+                        "image": encoded,
+
+                        "score": score,
+
+                        "hero_score": hero_score,
+
+                        "gallery_score": gallery_score,
+
+                        "is_collage": is_collage,
+
+                        "centered_object": centered_object,
+
+                        "background_ratio": background_ratio,
+
+                        "width": crop_width,
+
+                        "height": crop_height,
+
+                        "x": x,
+
+                        "y": y,
+
+                        "crop_area": crop_area,
+
+                        "coverage_ratio": coverage_ratio,
+
+                        "is_lifestyle": is_lifestyle,
+
+                        "classification": classification,
+
+                        "asset_role": asset_role,
+
+                        "priority": priority,
+
+                        "rejection_reason": rejection_reason,
+
+                        "asset_id": crop_identity,
+
+                        "image_hash": image_hash,
+
+                        "source_asset_id": source_asset_id,
+
+                        "source_hash": source_hash,
+
+                        "extractor_rank": asset.get(
+                            "extractor_rank"
+                        ),
+
+                        "extractor_score": asset.get(
+                            "extractor_score"
+                        ),
+
+                        "audit": audit,
+                    })
+
+                    _logger.warning(
+
+                        f"[CROP SAVED] "
+
+                        f"count={len(candidate_crops)} "
+
+                        f"hero={hero_score} "
+
+                        f"gallery={gallery_score} "
+
+                        f"size={crop_width}x{crop_height}"
+                    )
+
+                    _logger.warning(
+
+                        f"[SEGMENT COLOR DEBUG] "
+
+                        f"size={crop_width}x{crop_height} "
+
+                        f"bg={background_ratio:.2f} "
+
+                        f"hero={hero_score} "
+
+                        f"gallery={gallery_score}"
+                    )
+
+                    _logger.warning(
+                        f"[SEGMENT ADD] "
+                        f"hero={hero_score} "
+                        f"gallery={gallery_score} "
+                        f"collage={is_collage} "
+                        f"bg={background_ratio:.2f} "
+                        f"centered={centered_object} "
+                        f"size={crop_width}x{crop_height}"
+                    )
+
+                    _logger.warning(
+
+                        f"[CROP DETECTED] "
+
+                        f"{w}x{h} "
+
+                        f"| hero={hero_score} "
+
+                        f"| gallery={gallery_score} "
+
+                        f"| collage={is_collage}"
+                    )
+
+                # =========================================
+                # FALLBACK
+                # =========================================
+                _logger.warning(
+                    f"[SEGMENT SUMMARY BEFORE FALLBACK] "
+                    f"candidate_crops={len(candidate_crops)} "
+                    f"contours={len(contours)}"
+                )
+
+                if not candidate_crops:
+
+                    _logger.warning(
+
+                        "[NO VALID CROPS] "
+
+                        f"asset_id={asset.get('asset_id')} "
+
+                        f"hash={asset.get('image_hash')} "
+
+                        f"size={asset.get('width')}x{asset.get('height')} "
+
+                        f"audit={asset.get('audit')}"
+
+                    )
+
+                    continue
+
+                segmented_images.extend(
+                    candidate_crops
+                )
+
+                _logger.warning(
+
+                    f"[PAGE CROPS ADDED] "
+
+                    f"added={len(candidate_crops)} "
+
+                    f"running_total={len(segmented_images)}"
+                )
+
+                self._log_asset_pool(
+
+                    "PAGE COMPLETE",
+
+                    candidate_crops
+                )
+
+            except Exception as e:
+
+                _logger.warning(
+                    f"[SEGMENTATION FAILED] {str(e)}"
+                )
+
+        # =============================================
+        # PROFESSIONAL VISUAL DEDUPE
+        # =============================================
+
+        deduped = []
+
+        visual_hashes = []
+
+        for idx, asset in enumerate(segmented_images):
+
+            _logger.warning(
+
+                f"[PRE-DEDUPE ASSET] "
+
+                f"idx={idx} "
+
+                f"score={asset.get('score')} "
+
+                f"hero={asset.get('hero_score')} "
+
+                f"gallery={asset.get('gallery_score')}"
+            )
+
+        _logger.warning(
+        f"[PRE-DEDUPE COUNT] total={len(segmented_images)}"
+        )
+
+        segmented_images = [
+
+            asset
+
+            for asset in segmented_images
+
+            if asset.get("asset_role") != "reject"
+
+        ]
+        
+        for asset in segmented_images:
+
+            try:
+
+                img_b64 = asset.get("image")
+
+                if not img_b64:
+                    continue
+
+                image_data = base64.b64decode(
+                    img_b64
+                )
+
+                pil_image = Image.open(
+
+                    BytesIO(image_data)
+
+                ).convert("RGB")
+
+                # =====================================
+                # SMALL STANDARDIZED SIZE
+                # =====================================
+
+                pil_image.thumbnail((256, 256))
+
+                # =====================================
+                # PERCEPTUAL HASH
+                # =====================================
+
+                current_hash = imagehash.phash(
+                    pil_image
+                )
+
+                is_duplicate = False
+                hash_distance = -1
+
+               
+                # =====================================
+                # COMPARE AGAINST EXISTING
+                # =====================================
+
+                for existing_idx, existing_hash in enumerate(visual_hashes):
+
+                    hash_distance = (
+                        current_hash - existing_hash
+                    )
+
+                    _logger.warning(
+
+                        f"[DEDUPE CHECK] "
+
+                        f"candidate={len(deduped)} "
+
+                        f"existing={existing_idx} "
+
+                        f"distance={hash_distance}"
+                    )
+
+
+                    if hash_distance == 0:
+
+                        _logger.warning(
+                            f"[EXACT DUPLICATE]"
+                            f" candidate_x={asset.get('x')}"
+                            f" candidate_y={asset.get('y')}"
+                            f" candidate_w={asset.get('width')}"
+                            f" candidate_h={asset.get('height')}"
+                        )
+
+                        _logger.warning(
+
+                            f"[DUPLICATE MATCH] "
+
+                            f"candidate={len(deduped)} "
+
+                            f"existing={existing_idx} "
+
+                            f"distance={hash_distance} "
+
+                            f"x={asset.get('x')} "
+
+                            f"y={asset.get('y')} "
+
+                            f"w={asset.get('width')} "
+
+                            f"h={asset.get('height')}"
+                        )
+
+                        is_duplicate = True
+
+                        break
+
+
+                if is_duplicate:
+
+                    _logger.warning(
+
+                        f"[VISUAL DUPLICATE SKIPPED] "
+
+                        f"x={asset.get('x')} "
+
+                        f"y={asset.get('y')} "
+
+                        f"w={asset.get('width')} "
+
+                        f"h={asset.get('height')} "
+
+                        f"distance={hash_distance} "
+
+                        f"score={asset.get('score')} "
+
+                        f"hero={asset.get('hero_score')} "
+
+                        f"gallery={asset.get('gallery_score')}"
+                    )
+
+                    asset.setdefault(
+                        "audit",
+                        []
+                    ).append(
+                        "VISUAL_DEDUPE_REJECT"
+                    )
+
+                    continue
+
+
+                visual_hashes.append(
+                    current_hash
+                )
+
+                _logger.warning(
+
+                    f"[DEDUPE KEPT] "
+
+                    f"x={asset.get('x')} "
+
+                    f"y={asset.get('y')} "
+
+                    f"score={asset.get('score')} "
+
+                    f"hero={asset.get('hero_score')} "
+
+                    f"gallery={asset.get('gallery_score')} "
+
+                    f"size={asset.get('width')}x{asset.get('height')}"
+                )
+
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "VISUAL_DEDUPE_KEEP"
+                )
+
+                deduped.append(asset)
+
+            except Exception as e:
+
+                _logger.warning(
+
+                    f"[VISUAL DEDUPE FAILED] "
+                    f"{str(e)}"
+                )
+
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "VISUAL_DEDUPE_ERROR"
+                )
+
+                deduped.append(asset)
+
+                #
+        # PRIORITIZE CLEAN PRODUCT IMAGES
+        #
+
+        for asset in deduped:
+
+            priority = asset.get("priority", 0)
+
+            priority += asset.get("hero_score", 0)
+
+            priority += asset.get("gallery_score", 0)
+
+            if asset.get("centered_object", False):
+                priority += 25
+
+            asset["priority"] = priority
+
+
+        deduped.sort(
+
+            key=lambda a: (
+
+                -a["priority"],
+
+                -a.get("score", 0)
+
+            )
+
+        )
+
+        for idx, asset in enumerate(deduped):
+
+            _logger.warning(
+
+                "[ASSET QUALIFIER] "
+
+                f"{idx+1} "
+
+                f"source={asset.get('source_asset_id')} "
+
+                f"clean={asset.get('clean_index')} "
+
+                f"class={asset.get('classification')} "
+
+                f"role={asset.get('asset_role')} "
+
+                f"priority={asset.get('priority')} "
+
+                f"reject={asset.get('rejection_reason')}"
+
+            )
+
+        _logger.warning(
+
+            "[IMAGE PRIORITY] "
+
+            f"sorted={len(deduped)}"
+
+        )
+
+        for idx, asset in enumerate(deduped):
+
+            _logger.warning(
+
+                "[IMAGE ORDER] "
+
+                f"{idx+1} "
+
+                f"priority={asset.get('priority')} "
+
+                f"lifestyle={asset.get('is_lifestyle')} "
+
+                f"hero={asset.get('hero_score')} "
+
+                f"gallery={asset.get('gallery_score')}"
+
+            )
+
+        _logger.warning(
+            f"[POST-DEDUPE COUNT] total={len(deduped)}"
+        )
+
+        
+        for asset in deduped:
+
+            _logger.warning(
+                f"[POST-DEDUPE ASSET] "
+                f"hero={asset.get('hero_score')} "
+                f"gallery={asset.get('gallery_score')}"
+            )
+
+        if deduped:
+
+            sample = deduped[0]
+
+            _logger.warning(
+                f"[SEGMENT RETURN SAMPLE] "
+                f"keys={list(sample.keys())}"
+            )
+
+            _logger.warning(
+                f"[SEGMENT RETURN VALUES] "
+                f"hero={sample.get('hero_score')} "
+                f"gallery={sample.get('gallery_score')} "
+                f"lifestyle={sample.get('is_lifestyle')} "
+                f"width={sample.get('width')} "
+                f"height={sample.get('height')} "
+                f"x={sample.get('x')} "
+                f"y={sample.get('y')}"
+            )
+
+
+        for asset in deduped:
+
+            asset.setdefault(
+                "audit",
+                []
+            ).append(
+                "SEGMENT_RETURN"
+            )
+
+        self._log_asset_pool(
+
+            "SEGMENT FINAL",
+
+            deduped
+
+        )
+
+        return deduped
+

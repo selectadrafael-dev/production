@@ -10101,9 +10101,9 @@ class VendorImportJob(models.Model):
 
                 _, thresh = cv2.threshold(
                     gray,
-                    232,
+                    0,
                     255,
-                    cv2.THRESH_BINARY_INV
+                    cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU
                 )
 
                 # =========================================
