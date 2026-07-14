@@ -9980,6 +9980,12 @@ class VendorImportJob(models.Model):
             f"incoming={len(images or [])}"
         )
 
+        _logger.warning(
+            "[SEGMENT INPUT] "
+            f"asset_id={asset.get('asset_id')} "
+            f"hash={asset.get('image_hash')}"
+        )
+
         segmented_images = []
 
         if not images:
@@ -10846,69 +10852,19 @@ class VendorImportJob(models.Model):
                     f"contours={len(contours)}"
                 )
 
-                # if not candidate_crops:
-
-                #     _logger.warning(
-                #         "[SEGMENT FALLBACK TRIGGERED]"
-                #     )
-
-                #     buffer = BytesIO()
-
-                #     pil_image.save(
-                #         buffer,
-                #         format="JPEG"
-                #     )
-
-                #     encoded = base64.b64encode(
-                #         buffer.getvalue()
-                #     ).decode("utf-8")
-
-                #     candidate_crops.append({
-
-                #         "image": encoded,
-
-                #         "score": 10,
-
-                #         "hero_score": 0,
-
-                #         "gallery_score": 0,
-
-                #         "is_collage": False,
-
-                #         "centered_object": False,
-
-                #         "background_ratio": 0,
-
-                #         "width": original_width,
-
-                #         "height": original_height,
-
-                #         "x": 0,
-
-                #         "y": 0,
-
-                #         "crop_area": original_width * original_height,
-
-                #         "coverage_ratio": 1.0,
-
-                #         "is_lifestyle": False,
-
-                #         "classification": "UNKNOWN",
-
-                #         "asset_role": "reference",
-
-                #         "priority": 100,
-
-                #         "rejection_reason": "fallback"
-                #     })
-
                 if not candidate_crops:
 
                     _logger.warning(
 
                         "[NO VALID CROPS] "
 
-                        "Skipping fallback"
+                        f"asset_id={asset.get('asset_id')} "
+
+                        f"hash={asset.get('image_hash')} "
+
+                        f"size={asset.get('width')}x{asset.get('height')} "
+
+                        f"audit={asset.get('audit')}"
 
                     )
 
