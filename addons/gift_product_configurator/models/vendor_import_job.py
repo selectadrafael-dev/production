@@ -6281,6 +6281,7 @@ class VendorImportJob(models.Model):
 
 
     # =========== PDF OPENAI BACKUP ================================
+    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -7457,22 +7458,6 @@ class VendorImportJob(models.Model):
                     f"lifestyle={asset.get('is_lifestyle')}"
                 )
 
-            for asset in sorted_page_images[:MAX_IMAGES]:
-
-                asset.setdefault(
-                    "audit",
-                    []
-                ).append(
-                    "AI_INPUT"
-                )
-            self._log_asset_pool(
-
-                "AI INPUT",
-
-                sorted_page_images[:MAX_IMAGES]
-
-            )
-
             for idx, asset in enumerate(
                 sorted_page_images[:MAX_IMAGES]
             ):
@@ -7510,34 +7495,6 @@ class VendorImportJob(models.Model):
 
                     if not image_data:
                         continue
-
-                    _logger.warning(
-
-                        f"[AI SEND] "
-
-                        f"send_index={len(image_inputs)} "
-
-                        f"clean_index={asset.get('clean_index')} "
-
-                        f"asset_id={asset.get('asset_id')}"
-
-                    )
-
-                    _logger.warning(
-
-                        f"[AI SEND IMAGE] "
-
-                        f"send_index={len(image_inputs)} "
-
-                        f"asset_id={asset.get('asset_id')} "
-
-                        f"clean_index={asset.get('clean_index')} "
-
-                        f"priority={asset.get('priority')} "
-
-                        f"lifestyle={asset.get('is_lifestyle')}"
-
-                    )
 
                     image_inputs.append({
 
@@ -7859,14 +7816,6 @@ class VendorImportJob(models.Model):
                         p.get("page")
                     ] = p
 
-
-                self._log_asset_pool(
-
-                    "AI OUTPUT",
-
-                    page_images
-
-                )
 
                 existing_map[
                     next_record.page_number
@@ -8206,6 +8155,7 @@ class VendorImportJob(models.Model):
 
         return
    
+
     # =====================================================
     # REMOVE TEXT AREAS
     # =====================================================
@@ -9615,11 +9565,13 @@ class VendorImportJob(models.Model):
 
                     continue
 
-                image_hash = hashlib.md5(
+                image_hash = asset.get("image_hash")
 
-                    img.encode('utf-8')
+                if not image_hash:
 
-                ).hexdigest()
+                    image_hash = hashlib.md5(
+                        img.encode("utf-8")
+                    ).hexdigest()
 
                 # =====================================
                 # SAFE COLOR DETECTION
@@ -9774,6 +9726,13 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                asset.setdefault(
+                    "audit",
+                    []
+                ).append(
+                    "POOL_BUILD"
+                )
+
                 prepared.append({
 
                     "image": img,
@@ -9841,7 +9800,21 @@ class VendorImportJob(models.Model):
                     "background_ratio": background_ratio,
 
                     "centered_object": centered_object,
-                    
+
+                    "asset_id": asset.get("asset_id"),
+
+                    "image_hash": asset.get("image_hash"),
+
+                    "audit": list(
+                        asset.get("audit", [])
+                    ),
+
+                    "classification": asset.get("classification"),
+
+                    "asset_role": asset.get("asset_role"),
+
+                    "priority": asset.get("priority", 0),
+
                 })
 
 
@@ -9900,20 +9873,15 @@ class VendorImportJob(models.Model):
 
             key=lambda x: (
 
-                x.get(
-                    "gallery_score",
-                    x.get("score", 0)
-                ),
+                x.get("priority", 0),
 
-                x.get(
-                    "hero_score",
-                    0
-                ),
+                x.get("hero_score", 0),
 
-                not x.get(
-                    "is_collage",
-                    False
-                ),
+                x.get("gallery_score", 0),
+
+                not x.get("is_lifestyle", False),
+
+                not x.get("is_collage", False),
 
                 -x.get("y", 0),
 

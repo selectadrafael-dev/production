@@ -8163,6 +8163,7 @@ class VendorImportJob(models.Model):
 
         return
    
+   
     # =====================================================
     # REMOVE TEXT AREAS
     # =====================================================
@@ -9474,7 +9475,7 @@ class VendorImportJob(models.Model):
             return asset_pool
 
     #=================Centralized Rusable Image=======================
-    
+
     def _prepare_asset_pool(self, images):
 
         prepared = []
