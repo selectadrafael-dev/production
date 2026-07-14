@@ -9474,6 +9474,7 @@ class VendorImportJob(models.Model):
             return asset_pool
 
     #=================Centralized Rusable Image=======================
+    
     def _prepare_asset_pool(self, images):
 
         prepared = []
@@ -25877,7 +25878,7 @@ class VendorImportJob(models.Model):
 
         raw_category
 
-    ):
+      ):
 
         CATEGORY_MAPPING = {
 

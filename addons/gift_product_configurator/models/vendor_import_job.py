@@ -9531,6 +9531,7 @@ class VendorImportJob(models.Model):
             return asset_pool
 
     #=================Centralized Rusable Image=======================
+      
     def _prepare_asset_pool(self, images):
 
         prepared = []
@@ -9614,13 +9615,11 @@ class VendorImportJob(models.Model):
 
                     continue
 
-                image_hash = asset.get("image_hash")
+                image_hash = hashlib.md5(
 
-                if not image_hash:
+                    img.encode('utf-8')
 
-                    image_hash = hashlib.md5(
-                        img.encode("utf-8")
-                    ).hexdigest()
+                ).hexdigest()
 
                 # =====================================
                 # SAFE COLOR DETECTION
@@ -9775,13 +9774,6 @@ class VendorImportJob(models.Model):
 
                     continue
 
-                asset.setdefault(
-                    "audit",
-                    []
-                ).append(
-                    "POOL_BUILD"
-                )
-
                 prepared.append({
 
                     "image": img,
@@ -9849,21 +9841,7 @@ class VendorImportJob(models.Model):
                     "background_ratio": background_ratio,
 
                     "centered_object": centered_object,
-
-                    "asset_id": asset.get("asset_id"),
-
-                    "image_hash": asset.get("image_hash"),
-
-                    "audit": list(
-                        asset.get("audit", [])
-                    ),
-
-                    "classification": asset.get("classification"),
-
-                    "asset_role": asset.get("asset_role"),
-
-                    "priority": asset.get("priority", 0),
-
+                    
                 })
 
 
@@ -9922,15 +9900,20 @@ class VendorImportJob(models.Model):
 
             key=lambda x: (
 
-                x.get("priority", 0),
+                x.get(
+                    "gallery_score",
+                    x.get("score", 0)
+                ),
 
-                x.get("hero_score", 0),
+                x.get(
+                    "hero_score",
+                    0
+                ),
 
-                x.get("gallery_score", 0),
-
-                not x.get("is_lifestyle", False),
-
-                not x.get("is_collage", False),
+                not x.get(
+                    "is_collage",
+                    False
+                ),
 
                 -x.get("y", 0),
 
