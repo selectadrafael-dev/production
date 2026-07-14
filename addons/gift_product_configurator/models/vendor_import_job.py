@@ -2579,6 +2579,45 @@ class VendorImportJob(models.Model):
                                 images
                             )
 
+                            # ============================
+                            # SEGMENT PIPELINE SUMMARY
+                            # ============================
+
+                            real = 0
+                            life = 0
+                            gallery = 0
+                            reject = 0
+
+                            for asset in images:
+
+                                if asset.get("is_lifestyle"):
+                                    life += 1
+                                else:
+                                    real += 1
+
+                                if asset.get("asset_role") == "gallery":
+                                    gallery += 1
+
+                                if asset.get("asset_role") == "reject":
+                                    reject += 1
+
+                            _logger.warning(
+
+                                "[SEGMENT PIPELINE] "
+
+                                f"total={len(images)} "
+
+                                f"real={real} "
+
+                                f"life={life} "
+
+                                f"gallery={gallery} "
+
+                                f"reject={reject}"
+
+                            )
+
+
 
                             if (
                                 not text
@@ -6028,7 +6067,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
-    #-----URL API FLOW-------------------------------------------
+    #==============URL API FLOW====================================
 
     def scrape_with_playwright(self):
 
@@ -6125,7 +6164,7 @@ class VendorImportJob(models.Model):
         _logger.warning(f"PLAYWRIGHT DONE → {len(products)} PRODUCTS")
 
     
-    #======apify url fetch/scrapp products=====================
+    #======apify url fetch/scrapp products=========================
     
     def _run_apify_actor(self, url):
 
@@ -9934,12 +9973,40 @@ class VendorImportJob(models.Model):
     # =======================================================
 
     def _segment_catalog_images(self, images):
-       
 
         _logger.warning(
             f"[SEGMENT START] "
             f"incoming={len(images or [])}"
         )
+
+        for idx, asset in enumerate(images):
+
+            if not isinstance(asset, dict):
+                continue
+
+            if not asset.get("asset_id"):
+
+                image_bytes = base64.b64decode(
+                    asset["image"]
+                )
+
+                asset["asset_id"] = idx
+
+                asset["image_hash"] = hashlib.md5(
+                    image_bytes
+                ).hexdigest()[:10]
+
+                asset["audit"] = ["EXTRACTOR"]
+
+            _logger.warning(
+
+                "[SEGMENT INPUT] "
+
+                f"asset_id={asset.get('asset_id')} "
+
+                f"hash={asset.get('image_hash')}"
+
+            )
 
         segmented_images = []
 
@@ -9948,6 +10015,7 @@ class VendorImportJob(models.Model):
 
       
         for image_item in images:
+            asset = image_item
 
             try:
 
@@ -9998,6 +10066,19 @@ class VendorImportJob(models.Model):
 
                 ).convert("RGB")
 
+                _logger.warning(
+
+                    "[SEGMENT INPUT] "
+
+                    f"asset_id={asset.get('asset_id')} "
+
+                    f"hash={asset.get('image_hash')} "
+
+                    f"size={pil_image.width}x{pil_image.height}"
+
+                )
+
+
                 original_width, original_height = pil_image.size
 
                 # =========================================
@@ -10020,9 +10101,9 @@ class VendorImportJob(models.Model):
 
                 _, thresh = cv2.threshold(
                     gray,
-                    232,
+                    0,
                     255,
-                    cv2.THRESH_BINARY_INV
+                    cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU
                 )
 
                 # =========================================
@@ -10587,12 +10668,25 @@ class VendorImportJob(models.Model):
 
                     )
 
+
                     _logger.warning(
+
                         f"[LIFESTYLE CHECK] "
+
                         f"skin={skin_ratio:.3f} "
+
                         f"coverage={coverage_ratio:.3f} "
+
                         f"bg={background_ratio:.3f} "
+
+                        f"skin_ok={skin_ratio > 0.18} "
+
+                        f"bg_ok={background_ratio < 0.25} "
+
+                        f"coverage_ok={coverage_ratio > 0.80} "
+
                         f"decision={'LIFESTYLE' if is_lifestyle else 'PRODUCT'}"
+
                     )
 
                     #
@@ -10688,6 +10782,18 @@ class VendorImportJob(models.Model):
                         )
 
                     ).hexdigest()[:10]
+
+                    source_asset_id = asset.get("asset_id")
+
+                    source_hash = asset.get("image_hash")
+
+                    audit = list(
+                        asset.get("audit", [])
+                    )
+                    audit.append("SEGMENT_CREATED")
+
+                    
+
                    
                     candidate_crops.append({
 
@@ -10731,9 +10837,19 @@ class VendorImportJob(models.Model):
 
                         "image_hash": image_hash,
 
-                        "audit": [
-                            "SEGMENT_CREATED"
-                        ],
+                        "source_asset_id": source_asset_id,
+
+                        "source_hash": source_hash,
+
+                        "extractor_rank": asset.get(
+                            "extractor_rank"
+                        ),
+
+                        "extractor_score": asset.get(
+                            "extractor_score"
+                        ),
+
+                        "audit": audit,
                     })
 
                     _logger.warning(
@@ -10794,69 +10910,19 @@ class VendorImportJob(models.Model):
                     f"contours={len(contours)}"
                 )
 
-                # if not candidate_crops:
-
-                #     _logger.warning(
-                #         "[SEGMENT FALLBACK TRIGGERED]"
-                #     )
-
-                #     buffer = BytesIO()
-
-                #     pil_image.save(
-                #         buffer,
-                #         format="JPEG"
-                #     )
-
-                #     encoded = base64.b64encode(
-                #         buffer.getvalue()
-                #     ).decode("utf-8")
-
-                #     candidate_crops.append({
-
-                #         "image": encoded,
-
-                #         "score": 10,
-
-                #         "hero_score": 0,
-
-                #         "gallery_score": 0,
-
-                #         "is_collage": False,
-
-                #         "centered_object": False,
-
-                #         "background_ratio": 0,
-
-                #         "width": original_width,
-
-                #         "height": original_height,
-
-                #         "x": 0,
-
-                #         "y": 0,
-
-                #         "crop_area": original_width * original_height,
-
-                #         "coverage_ratio": 1.0,
-
-                #         "is_lifestyle": False,
-
-                #         "classification": "UNKNOWN",
-
-                #         "asset_role": "reference",
-
-                #         "priority": 100,
-
-                #         "rejection_reason": "fallback"
-                #     })
-
                 if not candidate_crops:
 
                     _logger.warning(
 
                         "[NO VALID CROPS] "
 
-                        "Skipping fallback"
+                        f"asset_id={asset.get('asset_id')} "
+
+                        f"hash={asset.get('image_hash')} "
+
+                        f"size={asset.get('width')}x{asset.get('height')} "
+
+                        f"audit={asset.get('audit')}"
 
                     )
 
@@ -10880,7 +10946,6 @@ class VendorImportJob(models.Model):
                     "PAGE COMPLETE",
 
                     candidate_crops
-
                 )
 
             except Exception as e:
@@ -11137,6 +11202,10 @@ class VendorImportJob(models.Model):
 
                 f"{idx+1} "
 
+                f"source={asset.get('source_asset_id')} "
+
+                f"clean={asset.get('clean_index')} "
+
                 f"class={asset.get('classification')} "
 
                 f"role={asset.get('asset_role')} "
@@ -11248,13 +11317,16 @@ class VendorImportJob(models.Model):
                 "NO_HASH"
             )
 
-            _logger.warning(
 
-                f"idx={idx} "
+            _logger.warning(
 
                 f"id={asset.get('asset_id')} "
 
-                f"hash={image_hash} "
+                f"source={asset.get('source_asset_id')} "
+
+                f"hash={asset.get('image_hash')} "
+
+                f"source_hash={asset.get('source_hash')} "
 
                 f"class={asset.get('classification')} "
 
