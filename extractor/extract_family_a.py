@@ -1138,9 +1138,11 @@ def extract_pdf(
 
         image_list = []
 
-        for item in candidate_images[
-            :MAX_IMAGES_PER_PAGE
-        ]:
+        # for item in candidate_images[
+        #     :MAX_IMAGES_PER_PAGE
+        # ]:
+
+        for rank, item in enumerate(candidate_images[:MAX_IMAGES_PER_PAGE]):
         
 
             try:
@@ -1170,6 +1172,7 @@ def extract_pdf(
 
                 ).decode("utf-8")
 
+               
                 image_list.append({
 
                     "image": image_base64,
@@ -1178,6 +1181,10 @@ def extract_pdf(
 
                     "x": item.get("x", 0),
                     "y": item.get("y", 0),
+
+                    "extractor_rank": rank,
+                    
+                    "extractor_score": item["score"],
 
                     "width": item.get("width", 0),
                     "height": item.get("height", 0),
