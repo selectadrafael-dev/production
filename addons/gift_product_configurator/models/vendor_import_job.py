@@ -12835,6 +12835,7 @@ class VendorImportJob(models.Model):
 
             return False
 
+
     #=================Centralized Rusable Image resolver==============
 
     def _resolve_asset_image(
@@ -17967,41 +17968,79 @@ class VendorImportJob(models.Model):
                                     f"image_index={variant.get('image_index')}"
                                 )
 
-                                matched_asset = self._match_variant_image(
+                                ai_image_index = variant.get("image_index")
 
-                                    variant,
+                                matched_asset = None
 
-                                    asset_pool,
+                                if ai_image_index is not None:
 
-                                    used_asset_indexes
-                                )
+                                    matched_asset = next(
 
-                                clean_index = matched_asset.get(
+                                        (
 
-                                    "clean_index"
-                                )
+                                            a
 
-                                if clean_index in page_validation["used_indexes"]:
+                                            for a in asset_pool
+
+                                            if a.get("clean_index") == ai_image_index
+
+                                        ),
+
+                                        None
+
+                                    )
+
+                                    if matched_asset:
+
+                                        _logger.warning(
+
+                                            f"[AI IMAGE USED] "
+
+                                            f"color={variant.get('attributes', {}).get('Color')} "
+
+                                            f"clean_index={ai_image_index}"
+
+                                        )
+
+
+                                if not matched_asset:
+
+                                    matched_asset = self._match_variant_image(
+
+                                        variant,
+
+                                        asset_pool,
+
+                                        used_asset_indexes
+
+                                    )
+
+                                    clean_index = matched_asset.get(
+
+                                        "clean_index"
+                                    )
+
+                                    if clean_index in page_validation["used_indexes"]:
+
+                                        page_validation[
+
+                                            "duplicate_indexes"
+
+                                        ].append(clean_index)
+
+                                    else:
+
+                                        page_validation[
+
+                                            "used_indexes"
+
+                                        ].add(clean_index)
 
                                     page_validation[
 
-                                        "duplicate_indexes"
+                                        "variant_indexes"
 
                                     ].append(clean_index)
-
-                                else:
-
-                                    page_validation[
-
-                                        "used_indexes"
-
-                                    ].add(clean_index)
-
-                                page_validation[
-
-                                    "variant_indexes"
-
-                                ].append(clean_index)
 
                                 # =====================================
                                 # APPLY
