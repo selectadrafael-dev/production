@@ -10008,6 +10008,13 @@ class VendorImportJob(models.Model):
 
             )
 
+            _logger.warning(
+                "[SEGMENT INPUT] "
+                f"asset_id={asset.get('asset_id')} "
+                f"hash={asset.get('image_hash')} "
+                f"size={pil_image.width}x{pil_image.height}"
+            )
+
 
         segmented_images = []
 
