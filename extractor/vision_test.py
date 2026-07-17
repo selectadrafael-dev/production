@@ -1,9 +1,26 @@
 import fitz
+import cv2
+import numpy as np
 import logging
+import os
 
 from flask import jsonify
 
 _logger = logging.getLogger(__name__)
+
+# ============================================================
+# Vision Debug Folder
+# ============================================================
+
+DEBUG_FOLDER = "vision_debug"
+
+os.makedirs(
+
+    DEBUG_FOLDER,
+
+    exist_ok=True
+
+)
 
 
 def process_catalog(file):
@@ -52,29 +69,136 @@ def process_catalog(file):
 
         )
 
+        # =====================================================
+        # Render Page Image
+        # =====================================================
+
+        page_image = pix.tobytes("png")
+
+        # =====================================================
+        # Decode page image
+        # =====================================================
+
+        image = np.frombuffer(
+
+            page_image,
+
+            np.uint8
+
+        )
+
+        image = cv2.imdecode(
+
+            image,
+
+            cv2.IMREAD_COLOR
+
+        )
+
+        # ============================================================
+        # Save Original Page
+        # ============================================================
+
+        original_filename = os.path.join(
+
+            DEBUG_FOLDER,
+
+            f"page_{page_index+1:03d}_original.png"
+
+        )
+
+        cv2.imwrite(
+
+            original_filename,
+
+            image
+        )
+
+        # =====================================================
+        # Visual Saliency
+        # =====================================================
+
+        saliency = cv2.saliency.StaticSaliencyFineGrained_create()
+
+        success, saliency_map = saliency.computeSaliency(image)
+
+        if success:
+
+            saliency_map = (
+
+                saliency_map * 255
+
+            ).astype("uint8")
+
+            average_saliency = float(
+
+                np.mean(
+
+                    saliency_map
+
+                )
+
+            )
+
+        else:
+
+            average_saliency = 0.0
+
         page_info = {
 
             "page": page_index + 1,
 
-            "width": pix.width,
+            "pdf": {
 
-            "height": pix.height,
+                "width": pix.width,
 
-            "text_length": len(
+                "height": pix.height,
 
-                page.get_text()
+                "image_count": len(
 
-            ),
+                    page.get_images(
 
-            "image_count": len(
+                        full=True
 
-                page.get_images(
-
-                    full=True
+                    )
 
                 )
-            )
 
+            },
+
+            "vision": {
+
+                "page_image_bytes": len(page_image),
+
+                "orientation":
+
+                    "landscape"
+
+                    if pix.width > pix.height
+
+                    else "portrait",
+
+                "average_saliency": round(
+
+                    average_saliency,
+
+                    2
+
+                )
+
+            },
+
+            "diagnostics":[
+
+                {
+
+                    "original_page":
+
+                        original_filename
+
+                }
+
+            ]
         }
 
         pages.append(
