@@ -6180,8 +6180,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # ====================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -17784,6 +17784,28 @@ class VendorImportJob(models.Model):
 
                         }]
 
+
+                    _logger.warning("=" * 80)
+                    _logger.warning("[AI VARIANTS RECEIVED]")
+
+                    for idx, variant in enumerate(variants):
+
+                        attrs = variant.get("attributes", {})
+
+                        _logger.warning(
+
+                            f"{idx:02d} "
+
+                            f"Color={attrs.get('Color')} "
+
+                            f"Size={attrs.get('Size')} "
+
+                            f"image_index={variant.get('image_index')}"
+
+                        )
+
+                    _logger.warning("=" * 80)
+
                     # =======================================
                     # PASS 1:
                     # BUILD ALL ATTRIBUTE LINES FIRST
@@ -17889,6 +17911,29 @@ class VendorImportJob(models.Model):
                     # =======================================
 
                     product._create_variant_ids()
+
+                    _logger.warning("=" * 80)
+                    _logger.warning("[ODOO VARIANTS CREATED]")
+
+                    for pv in product.product_variant_ids:
+
+                        combo = [
+
+                            value.name
+
+                            for value in pv.product_template_variant_value_ids
+
+                        ]
+
+                        _logger.warning(
+
+                            f"variant={pv.display_name} "
+
+                            f"attributes={combo}"
+
+                        )
+
+                    _logger.warning("=" * 80)
 
                     # =====================================
                     # APPLY REAL INVENTORY STOCK
