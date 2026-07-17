@@ -22,6 +22,61 @@ os.makedirs(
 
 )
 
+# ==========================================================
+# Stage 1
+# Render Page
+# ==========================================================
+
+def _render_page(page):
+
+    pix = page.get_pixmap(
+
+        dpi=200
+
+    )
+
+    page_image = pix.tobytes("png")
+
+    return pix, page_image
+
+# ==========================================================
+# Stage 2
+# Observe Page
+# ==========================================================
+
+def _observe_page(
+
+    pix,
+
+    page_image
+
+):
+
+    return {
+
+        "pdf": {
+
+            "width": pix.width,
+
+            "height": pix.height
+
+        },
+
+        "vision": {
+
+            "orientation":
+
+                "landscape"
+
+                if pix.width > pix.height
+
+                else "portrait"
+
+        },
+
+        "diagnostics": []
+
+    }
 
 def process_catalog(file):
 
@@ -63,10 +118,9 @@ def process_catalog(file):
 
         )
 
-        pix = page.get_pixmap(
+        pix, page_image = _render_page(
 
-            dpi=200
-
+            page
         )
 
         # =====================================================
@@ -144,62 +198,21 @@ def process_catalog(file):
 
             average_saliency = 0.0
 
-        page_info = {
+        page_info = _observe_page(
 
-            "page": page_index + 1,
+            pix,
 
-            "pdf": {
+            page_image
 
-                "width": pix.width,
+        ),
 
-                "height": pix.height,
+        page_info["page"] = page_index + 1
 
-                "image_count": len(
-
-                    page.get_images(
-
-                        full=True
-
-                    )
-
-                )
-
-            },
-
-            "vision": {
-
-                "page_image_bytes": len(page_image),
-
-                "orientation":
-
-                    "landscape"
-
-                    if pix.width > pix.height
-
-                    else "portrait",
-
-                "average_saliency": round(
-
-                    average_saliency,
-
-                    2
-
-                )
-
-            },
-
-            "diagnostics":[
-
-                {
-
-                    "original_page":
-
-                        original_filename
-
-                }
-
-            ]
-        }
+        page_info["pdf"]["image_count"] = len(
+            page.get_images(
+                full=True
+            )
+        )
 
         pages.append(
 
