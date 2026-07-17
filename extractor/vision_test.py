@@ -124,12 +124,6 @@ def process_catalog(file):
         )
 
         # =====================================================
-        # Render Page Image
-        # =====================================================
-
-        page_image = pix.tobytes("png")
-
-        # =====================================================
         # Decode page image
         # =====================================================
 
@@ -148,6 +142,9 @@ def process_catalog(file):
             cv2.IMREAD_COLOR
 
         )
+
+        if image is None:
+            raise RuntimeError("Failed to decode rendered page image.")
 
         # ============================================================
         # Save Original Page
@@ -172,7 +169,12 @@ def process_catalog(file):
         # Visual Saliency
         # =====================================================
 
+        #saliency = cv2.saliency.StaticSaliencyFineGrained_create()
+        _logger.warning("Before Saliency")
+
         saliency = cv2.saliency.StaticSaliencyFineGrained_create()
+
+        _logger.warning("After Saliency")
 
         success, saliency_map = saliency.computeSaliency(image)
 
@@ -204,7 +206,7 @@ def process_catalog(file):
 
             page_image
 
-        ),
+        )
 
         page_info["page"] = page_index + 1
 
