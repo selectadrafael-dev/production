@@ -5,6 +5,7 @@ import os
 from extractor_dispatcher import extract_pdf
 from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
+import vision_test
 
 app = Flask(__name__)
 
@@ -157,6 +158,34 @@ def test_catalog():
 
     return recovery_v2.process_catalog(file)
 
+#=================VISION TEST====================
+
+@app.route(
+
+    "/test_vision",
+
+    methods=["POST"]
+
+)
+
+def test_vision():
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "No PDF uploaded"
+
+        }), 400
+
+    file = request.files["file"]
+
+    return vision_test.process_catalog(
+
+        file
+    )
     
 # ================= START APP =================
 if __name__ == "__main__":
