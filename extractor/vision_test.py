@@ -146,9 +146,9 @@ def process_catalog(file):
         if image is None:
             raise RuntimeError("Failed to decode rendered page image.")
 
-        # ============================================================
+        # ==========================================================
         # Save Original Page
-        # ============================================================
+        # ==========================================================
 
         original_filename = os.path.join(
 
@@ -165,40 +165,6 @@ def process_catalog(file):
             image
         )
 
-        # =====================================================
-        # Visual Saliency
-        # =====================================================
-
-        #saliency = cv2.saliency.StaticSaliencyFineGrained_create()
-        _logger.warning("Before Saliency")
-
-        saliency = cv2.saliency.StaticSaliencyFineGrained_create()
-
-        _logger.warning("After Saliency")
-
-        success, saliency_map = saliency.computeSaliency(image)
-
-        if success:
-
-            saliency_map = (
-
-                saliency_map * 255
-
-            ).astype("uint8")
-
-            average_saliency = float(
-
-                np.mean(
-
-                    saliency_map
-
-                )
-
-            )
-
-        else:
-
-            average_saliency = 0.0
 
         page_info = _observe_page(
 
