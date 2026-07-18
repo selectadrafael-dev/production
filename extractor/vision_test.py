@@ -30,10 +30,68 @@ _logger.warning(
     f"[VISION TEST] Debug folder: {DEBUG_FOLDER}"
 )
 
-# ==========================================================
-# Stage 1
-# Render Page
-# ==========================================================
+# ============================================================
+# Vision Pipeline
+# ============================================================
+
+class VisionPipeline:
+
+    def __init__(self):
+
+        self.page = None
+
+        self.pipeline = {
+
+            "render": {},
+
+            "observation": {},
+
+            "regions": {
+
+                "count": 0,
+
+                "items": []
+
+            },
+
+            "classification": {
+
+                "items": []
+
+            },
+
+            "products": {
+
+                "count": 0,
+
+                "items": []
+
+            },
+
+            "validation": {},
+
+            "logs": []
+
+        }
+
+    def log(self, message):
+
+        self.pipeline["logs"].append(message)
+
+        _logger.warning(
+            f"[VISION TEST] {message}"
+        )
+
+    def to_dict(self):
+
+        return {
+
+            "page": self.page,
+
+            "pipeline": self.pipeline
+
+        }
+
 
 def _render_page(page):
 
@@ -48,43 +106,48 @@ def _render_page(page):
     return pix, page_image
 
 # ==========================================================
-# Stage 2
-# Observe Page
+# Stage 3
+# Discover Visual Regions
 # ==========================================================
 
-def _observe_page(
+def _discover_regions(image):
 
-    pix,
+    gray = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY
+    )
 
-    page_image
+    _, thresh = cv2.threshold(
+        gray,
+        245,
+        255,
+        cv2.THRESH_BINARY_INV
+    )
 
-):
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+        thresh,
+        connectivity=8
+    )
 
-    return {
+    regions = []
 
-        "pdf": {
+    for label in range(1, num_labels):
 
-            "width": pix.width,
+        x = int(stats[label, cv2.CC_STAT_LEFT])
+        y = int(stats[label, cv2.CC_STAT_TOP])
+        w = int(stats[label, cv2.CC_STAT_WIDTH])
+        h = int(stats[label, cv2.CC_STAT_HEIGHT])
+        area = int(stats[label, cv2.CC_STAT_AREA])
 
-            "height": pix.height
+        if area < 5000:
+            continue
 
-        },
+        regions.append({
+            "bbox": [x, y, x + w, y + h],
+            "area": area
+        })
 
-        "vision": {
-
-            "orientation":
-
-                "landscape"
-
-                if pix.width > pix.height
-
-                else "portrait"
-
-        },
-
-        "diagnostics": []
-
-    }
+    return regions
 
 def process_catalog(file):
 
@@ -151,6 +214,13 @@ def process_catalog(file):
 
         )
 
+        pipeline = VisionPipeline()
+
+        regions = _discover_regions(image)
+        pipeline.pipeline["regions"]["count"] = len(regions)
+
+        pipeline.pipeline["regions"]["items"] = regions
+
         if image is None:
             raise RuntimeError("Failed to decode rendered page image.")
 
@@ -171,40 +241,40 @@ def process_catalog(file):
             image
         )
 
-        _logger.warning(
-            f"[VISION TEST] Image saved={saved}"
-        )
+        pipeline.log(f"Image saved={saved}")
 
-        _logger.warning(
-            f"[VISION TEST] Saved to: {original_filename}"
-        )
+        pipeline.log(f"Saved to: {original_filename}")
 
 
-        page_info = _observe_page(
+        pipeline.page = page_index + 1
 
-            pix,
+        pipeline.pipeline["observation"] = {
 
-            page_image
+            "orientation":
 
-        )
+                "landscape"
 
-        page_info["page"] = page_index + 1
+                if pix.width > pix.height
 
-        page_info["pdf"]["image_count"] = len(
-            page.get_images(
-                full=True
+                else "portrait",
+
+            "embedded_images": len(
+                page.get_images(full=True)
             )
-        )
+        }
+
+        pipeline.pipeline["render"] = {
+            "width": pix.width,
+            "height": pix.height,
+            "dpi": 200,
+            "debug_image": {
+                "saved": saved,
+                "path": original_filename
+            }
+        }
 
         pages.append(
-
-            page_info
-        )
-
-        _logger.warning(
-
-            f"[VISION TEST] {page_info}"
-
+            pipeline.to_dict()
         )
 
     document.close()
