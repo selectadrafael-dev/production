@@ -12,14 +12,22 @@ _logger = logging.getLogger(__name__)
 # Vision Debug Folder
 # ============================================================
 
-DEBUG_FOLDER = "vision_debug"
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
+
+DEBUG_FOLDER = os.path.join(
+    BASE_DIR,
+    "vision_debug"
+)
 
 os.makedirs(
-
     DEBUG_FOLDER,
-
     exist_ok=True
+)
 
+_logger.warning(
+    f"[VISION TEST] Debug folder: {DEBUG_FOLDER}"
 )
 
 # ==========================================================
@@ -158,11 +166,17 @@ def process_catalog(file):
 
         )
 
-        cv2.imwrite(
-
+        saved = cv2.imwrite(
             original_filename,
-
             image
+        )
+
+        _logger.warning(
+            f"[VISION TEST] Image saved={saved}"
+        )
+
+        _logger.warning(
+            f"[VISION TEST] Saved to: {original_filename}"
         )
 
 
