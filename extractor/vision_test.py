@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import logging
 import os
+import base64
 
 from flask import jsonify
 
@@ -126,6 +127,100 @@ def _draw_region_overlay(image, regions):
         )
 
     return overlay
+
+# ==========================================================
+# Encode Image
+# ==========================================================
+
+def _encode_image(image):
+
+    success, buffer = cv2.imencode(
+        ".png",
+        image
+    )
+
+    if not success:
+        return None
+
+    return (
+        "data:image/png;base64,"
+        + base64.b64encode(buffer).decode("utf-8")
+    )
+
+# ==========================================================
+# Region Crop Generator
+# ==========================================================
+
+def _generate_region_previews(
+    image,
+    regions
+):
+
+    updated_regions = []
+
+    for region in regions:
+
+        x1, y1, x2, y2 = region["bbox"]
+
+        crop = image[
+            y1:y2,
+            x1:x2
+        ]
+
+        preview = _encode_image(crop)
+
+        updated = dict(region)
+
+        updated["preview"] = preview
+
+        updated_regions.append(updated)
+
+    return updated_regions
+
+# ==========================================================
+# Stage 5
+# Analyze Regions
+# ==========================================================
+
+def _analyze_regions(
+    regions,
+    page_width,
+    page_height
+):
+
+    page_area = page_width * page_height
+
+    analyzed = []
+
+    refinement_required = False
+
+    for idx, region in enumerate(regions, start=1):
+
+        coverage = round(
+            region["area"] / page_area,
+            4
+        )
+
+        needs_refinement = coverage > 0.60
+
+        if needs_refinement:
+            refinement_required = True
+
+        analyzed.append({
+
+            "id": idx,
+
+            "bbox": region["bbox"],
+
+            "area": region["area"],
+
+            "coverage": coverage,
+
+            "needs_refinement": needs_refinement
+
+        })
+
+    return analyzed, refinement_required
 
 def _render_page(page):
 
@@ -251,6 +346,12 @@ def process_catalog(file):
         pipeline = VisionPipeline()
 
         regions = _discover_regions(image)
+
+        regions = _generate_region_previews(
+            image,
+            regions
+        )
+
         pipeline.pipeline["regions"]["count"] = len(regions)
 
         pipeline.pipeline["regions"]["items"] = regions
@@ -269,18 +370,14 @@ def process_catalog(file):
             f"page_{page_index+1:03d}_overlay.png"
         )
 
-        overlay_saved = cv2.imwrite(
-            overlay_filename,
+        overlay_preview = _encode_image(
             overlay
-        )
-
-        pipeline.log(
-            f"Overlay saved={overlay_saved}"
         )
 
         pipeline.log(
             "Generated region overlay"
         )
+
 
         if image is None:
             raise RuntimeError("Failed to decode rendered page image.")
@@ -340,11 +437,9 @@ def process_catalog(file):
 
             },
 
-            "overlay_image": {
+            "overlay": {
 
-                "saved": overlay_saved,
-
-                "path": overlay_filename
+                "preview": overlay_preview
 
             }
 
