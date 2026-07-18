@@ -93,6 +93,40 @@ class VisionPipeline:
         }
 
 
+# ==========================================================
+# Stage 4
+# Draw Region Overlay
+# ==========================================================
+
+def _draw_region_overlay(image, regions):
+
+    overlay = image.copy()
+
+    for idx, region in enumerate(regions, start=1):
+
+        x1, y1, x2, y2 = region["bbox"]
+
+        cv2.rectangle(
+            overlay,
+            (x1, y1),
+            (x2, y2),
+            (0, 255, 0),
+            3
+        )
+
+        cv2.putText(
+            overlay,
+            f"R{idx}",
+            (x1, max(y1 - 10, 30)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA
+        )
+
+    return overlay
+
 def _render_page(page):
 
     pix = page.get_pixmap(
@@ -221,6 +255,33 @@ def process_catalog(file):
 
         pipeline.pipeline["regions"]["items"] = regions
 
+        pipeline.log(
+            f"Detected {len(regions)} regions"
+        )
+
+        overlay = _draw_region_overlay(
+            image,
+            regions
+        )
+
+        overlay_filename = os.path.join(
+            DEBUG_FOLDER,
+            f"page_{page_index+1:03d}_overlay.png"
+        )
+
+        overlay_saved = cv2.imwrite(
+            overlay_filename,
+            overlay
+        )
+
+        pipeline.log(
+            f"Overlay saved={overlay_saved}"
+        )
+
+        pipeline.log(
+            "Generated region overlay"
+        )
+
         if image is None:
             raise RuntimeError("Failed to decode rendered page image.")
 
@@ -264,13 +325,29 @@ def process_catalog(file):
         }
 
         pipeline.pipeline["render"] = {
+
             "width": pix.width,
+
             "height": pix.height,
+
             "dpi": 200,
+
             "debug_image": {
+
                 "saved": saved,
+
                 "path": original_filename
+
+            },
+
+            "overlay_image": {
+
+                "saved": overlay_saved,
+
+                "path": overlay_filename
+
             }
+
         }
 
         pages.append(
