@@ -94,6 +94,21 @@ class VisionPipeline:
         }
 
 
+def _filter_regions(
+    regions,
+    min_score=30
+):
+
+    return [
+
+        region
+
+        for region in regions
+
+        if region["analysis"]["candidate_score"] >= min_score
+
+    ]
+
 # ==========================================================
 # Region Inspector
 # ==========================================================
@@ -296,6 +311,66 @@ def _render_page(page):
     return pix, page_image
 
 # ==========================================================
+# Candidate Scorer
+# ==========================================================
+
+def _score_regions(
+    regions,
+    page_width,
+    page_height
+):
+
+    scored = []
+
+    page_area = page_width * page_height
+
+    for region in regions:
+
+        geom = region["geometry"]
+
+        area = geom["area"]
+        width = geom["width"]
+        height = geom["height"]
+
+        score = 0
+
+        # Larger regions are generally more interesting
+        coverage = area / page_area
+
+        if coverage > 0.01:
+            score += 30
+
+        if coverage > 0.03:
+            score += 20
+
+        # Ignore very thin regions
+        aspect = region["analysis"]["aspect_ratio"]
+
+        if 0.3 < aspect < 3.5:
+            score += 20
+
+        # Regions touching every page edge are probably background
+        edge_hits = sum([
+            region["analysis"]["touches_left"],
+            region["analysis"]["touches_right"],
+            region["analysis"]["touches_top"],
+            region["analysis"]["touches_bottom"]
+        ])
+
+        if edge_hits == 4:
+            score -= 100
+
+        region["analysis"]["candidate_score"] = score
+
+        scored.append(region)
+
+    return sorted(
+        scored,
+        key=lambda r: r["analysis"]["candidate_score"],
+        reverse=True
+    )
+
+# ==========================================================
 # Stage 3
 # Discover Visual Regions
 # ==========================================================
@@ -460,9 +535,23 @@ def process_catalog(file):
 
         raw_regions = _discover_regions(image)
 
+        filtered_overlay_regions = [
+
+            {
+                "bbox": region["geometry"]["bbox"]
+            }
+
+            for region in filtered_regions
+
+        ]
+
         overlay = _draw_region_overlay(
             image,
-            raw_regions
+            filtered_overlay_regions
+        )
+
+        filtered_overlay_preview = _encode_image(
+            overlay
         )
 
         preview_regions = _generate_region_previews(
@@ -476,10 +565,30 @@ def process_catalog(file):
             pix.height
         )
 
+        inspected_regions = _score_regions(
+            inspected_regions,
+            pix.width,
+            pix.height
+        )
+
+        filtered_regions = _filter_regions(
+            inspected_regions,
+            min_score=30
+        )
+
         pipeline.pipeline["regions"]["count"] = len(inspected_regions)
 
         pipeline.pipeline["regions"]["items"] = inspected_regions
 
+
+        pipeline.pipeline["candidates"] = {
+
+            "count": len(filtered_regions),
+
+            "items": filtered_regions
+
+        }
+        
         overlay_filename = os.path.join(
             DEBUG_FOLDER,
             f"page_{page_index+1:03d}_overlay.png"
@@ -557,6 +666,13 @@ def process_catalog(file):
                 "preview": overlay_preview
 
             }
+        }
+
+        pipeline.pipeline["render"]["candidate_overlay"] = {
+
+            "preview": filtered_overlay_preview,
+
+            "candidate_count": len(filtered_regions)
 
         }
 
