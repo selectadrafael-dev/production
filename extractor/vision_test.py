@@ -500,64 +500,54 @@ def process_catalog(file):
 
     for page_index in range(len(document)):
 
-        page = document.load_page(
+        page = document.load_page(page_index)
 
-            page_index
-
-        )
-
-        pix, page_image = _render_page(
-
-            page
-        )
+        pix, page_image = _render_page(page)
 
         # =====================================================
         # Decode page image
         # =====================================================
 
         image = np.frombuffer(
-
             page_image,
-
             np.uint8
-
         )
 
         image = cv2.imdecode(
-
             image,
-
             cv2.IMREAD_COLOR
-
         )
+
+        if image is None:
+            raise RuntimeError(
+                "Failed to decode rendered page image."
+            )
 
         pipeline = VisionPipeline()
 
+        # =====================================================
+        # Region Discovery
+        # =====================================================
+
         raw_regions = _discover_regions(image)
-
-        filtered_overlay_regions = [
-
-            {
-                "bbox": region["geometry"]["bbox"]
-            }
-
-            for region in filtered_regions
-
-        ]
-
-        overlay = _draw_region_overlay(
-            image,
-            filtered_overlay_regions
-        )
-
-        filtered_overlay_preview = _encode_image(
-            overlay
-        )
 
         preview_regions = _generate_region_previews(
             image,
             raw_regions
         )
+
+        raw_overlay = _draw_region_overlay(
+            image,
+            raw_regions
+        )
+
+        raw_overlay_preview = _encode_image(
+            raw_overlay
+        )
+
+        # =====================================================
+        # Inspection / Scoring
+        # =====================================================
 
         inspected_regions = _inspect_regions(
             preview_regions,
@@ -576,10 +566,32 @@ def process_catalog(file):
             min_score=30
         )
 
+        filtered_overlay_regions = [
+
+            {
+                "bbox": region["geometry"]["bbox"]
+            }
+
+            for region in filtered_regions
+
+        ]
+
+        candidate_overlay = _draw_region_overlay(
+            image,
+            filtered_overlay_regions
+        )
+
+        candidate_overlay_preview = _encode_image(
+            candidate_overlay
+        )
+
+        # =====================================================
+        # Pipeline
+        # =====================================================
+
         pipeline.pipeline["regions"]["count"] = len(inspected_regions)
 
         pipeline.pipeline["regions"]["items"] = inspected_regions
-
 
         pipeline.pipeline["candidates"] = {
 
@@ -588,27 +600,14 @@ def process_catalog(file):
             "items": filtered_regions
 
         }
-        
-        overlay_filename = os.path.join(
-            DEBUG_FOLDER,
-            f"page_{page_index+1:03d}_overlay.png"
-        )
-
-        overlay_preview = _encode_image(
-            overlay
-        )
 
         pipeline.log(
             "Generated region overlay"
         )
 
-
-        if image is None:
-            raise RuntimeError("Failed to decode rendered page image.")
-
-        # ==========================================================
+        # =====================================================
         # Save Original Page
-        # ==========================================================
+        # =====================================================
 
         original_filename = os.path.join(
 
@@ -627,7 +626,6 @@ def process_catalog(file):
 
         pipeline.log(f"Saved to: {original_filename}")
 
-
         pipeline.page = page_index + 1
 
         pipeline.pipeline["observation"] = {
@@ -643,6 +641,7 @@ def process_catalog(file):
             "embedded_images": len(
                 page.get_images(full=True)
             )
+
         }
 
         pipeline.pipeline["render"] = {
@@ -663,14 +662,15 @@ def process_catalog(file):
 
             "overlay": {
 
-                "preview": overlay_preview
+                "preview": raw_overlay_preview
 
             }
+
         }
 
         pipeline.pipeline["render"]["candidate_overlay"] = {
 
-            "preview": filtered_overlay_preview,
+            "preview": candidate_overlay_preview,
 
             "candidate_count": len(filtered_regions)
 
