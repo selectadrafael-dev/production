@@ -438,31 +438,27 @@ def process_catalog(file):
 
         pipeline = VisionPipeline()
 
-        regions = _discover_regions(image)
+        raw_regions = _discover_regions(image)
 
-        regions = _generate_region_previews(
+        overlay = _draw_region_overlay(
             image,
-            regions
+            raw_regions
         )
 
-        regions = _inspect_regions(
-            regions,
+        preview_regions = _generate_region_previews(
+            image,
+            raw_regions
+        )
+
+        inspected_regions = _inspect_regions(
+            preview_regions,
             pix.width,
             pix.height
         )
 
-        pipeline.pipeline["regions"]["count"] = len(regions)
+        pipeline.pipeline["regions"]["count"] = len(inspected_regions)
 
-        pipeline.pipeline["regions"]["items"] = regions
-
-        pipeline.log(
-            f"Detected {len(regions)} regions"
-        )
-
-        overlay = _draw_region_overlay(
-            image,
-            regions
-        )
+        pipeline.pipeline["regions"]["items"] = inspected_regions
 
         overlay_filename = os.path.join(
             DEBUG_FOLDER,
