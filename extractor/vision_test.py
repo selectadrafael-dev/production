@@ -95,6 +95,97 @@ class VisionPipeline:
 
 
 # ==========================================================
+# Region Inspector
+# ==========================================================
+
+def _inspect_regions(
+    regions,
+    page_width,
+    page_height
+):
+
+    page_area = page_width * page_height
+
+    inspected = []
+
+    for idx, region in enumerate(regions, start=1):
+
+        x1, y1, x2, y2 = region["bbox"]
+
+        width = x2 - x1
+        height = y2 - y1
+
+        coverage = round(
+            region["area"] / page_area,
+            4
+        )
+
+        inspected.append({
+
+            "id": idx,
+
+            "geometry": {
+
+                "bbox": region["bbox"],
+
+                "width": width,
+
+                "height": height,
+
+                "area": region["area"],
+
+                "coverage": coverage
+
+            },
+
+            "analysis": {
+
+                "touches_left": x1 <= 0,
+
+                "touches_top": y1 <= 0,
+
+                "touches_right": x2 >= page_width,
+
+                "touches_bottom": y2 >= page_height,
+
+                "aspect_ratio": round(
+                    width / max(height, 1),
+                    3
+                ),
+
+                "is_large_region": coverage > 0.60
+
+            },
+
+            "debug": {
+
+                "preview": region["preview"]
+
+            }
+
+        })
+
+    return inspected
+
+def _merge_regions(
+    regions,
+    page_width,
+    page_height
+):
+    """
+    Temporary implementation.
+
+    Returns regions unchanged.
+
+    Future versions will:
+        - merge overlapping regions
+        - split oversized regions
+        - remove duplicate detections
+        - normalize ordering
+    """
+    return regions
+
+# ==========================================================
 # Stage 4
 # Draw Region Overlay
 # ==========================================================
@@ -146,36 +237,6 @@ def _encode_image(image):
         "data:image/png;base64,"
         + base64.b64encode(buffer).decode("utf-8")
     )
-
-# ==========================================================
-# Region Crop Generator
-# ==========================================================
-
-def _generate_region_previews(
-    image,
-    regions
-):
-
-    updated_regions = []
-
-    for region in regions:
-
-        x1, y1, x2, y2 = region["bbox"]
-
-        crop = image[
-            y1:y2,
-            x1:x2
-        ]
-
-        preview = _encode_image(crop)
-
-        updated = dict(region)
-
-        updated["preview"] = preview
-
-        updated_regions.append(updated)
-
-    return updated_regions
 
 # ==========================================================
 # Stage 5
@@ -278,6 +339,38 @@ def _discover_regions(image):
 
     return regions
 
+# ==========================================================
+# Region Crop Generator
+# ==========================================================
+
+def _generate_region_previews(
+    image,
+    regions
+):
+
+    updated_regions = []
+
+    for region in regions:
+
+        x1, y1, x2, y2 = region["bbox"]
+
+        crop = image[
+            y1:y2,
+            x1:x2
+        ]
+
+        preview = _encode_image(crop)
+
+        updated = dict(region)
+
+        updated["preview"] = preview
+
+        updated_regions.append(updated)
+
+    return updated_regions
+
+
+
 def process_catalog(file):
 
     """
@@ -350,6 +443,12 @@ def process_catalog(file):
         regions = _generate_region_previews(
             image,
             regions
+        )
+
+        regions = _inspect_regions(
+            regions,
+            pix.width,
+            pix.height
         )
 
         pipeline.pipeline["regions"]["count"] = len(regions)
