@@ -307,35 +307,55 @@ def _discover_regions(image):
         cv2.COLOR_BGR2GRAY
     )
 
-    _, thresh = cv2.threshold(
+    blurred = cv2.GaussianBlur(
         gray,
-        245,
-        255,
-        cv2.THRESH_BINARY_INV
+        (5, 5),
+        0
     )
 
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
-        thresh,
-        connectivity=8
+    edges = cv2.Canny(
+        blurred,
+        50,
+        150
+    )
+
+    kernel = np.ones((5, 5), np.uint8)
+
+    edges = cv2.dilate(
+        edges,
+        kernel,
+        iterations=2
+    )
+
+    contours, _ = cv2.findContours(
+        edges,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
     )
 
     regions = []
 
-    for label in range(1, num_labels):
+    for contour in contours:
 
-        x = int(stats[label, cv2.CC_STAT_LEFT])
-        y = int(stats[label, cv2.CC_STAT_TOP])
-        w = int(stats[label, cv2.CC_STAT_WIDTH])
-        h = int(stats[label, cv2.CC_STAT_HEIGHT])
-        area = int(stats[label, cv2.CC_STAT_AREA])
+        x, y, w, h = cv2.boundingRect(contour)
+
+        area = w * h
 
         if area < 5000:
             continue
 
         regions.append({
+
             "bbox": [x, y, x + w, y + h],
+
             "area": area
+
         })
+
+    regions.sort(
+        key=lambda r: r["area"],
+        reverse=True
+    )
 
     return regions
 
