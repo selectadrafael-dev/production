@@ -112,12 +112,25 @@ def _filter_regions(
 # ==========================================================
 # Candidate Classification
 # ==========================================================
-
-def _classify_regions(regions):
+def _classify_regions(
+    image,
+    regions
+):
 
     classified = []
 
     for region in regions:
+
+        statistics = _calculate_region_statistics(
+            image,
+            region
+        )
+
+        region["features"] = {
+
+            "statistics": statistics
+
+        }
 
         region["classification"] = {
 
@@ -130,6 +143,39 @@ def _classify_regions(regions):
         classified.append(region)
 
     return classified
+
+# ==========================================================
+# Region Statistics
+# ==========================================================
+
+def _calculate_region_statistics(image, region):
+
+    x1, y1, x2, y2 = region["geometry"]["bbox"]
+
+    crop = image[y1:y2, x1:x2]
+
+    gray = cv2.cvtColor(
+        crop,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    statistics = {
+
+        "width": crop.shape[1],
+
+        "height": crop.shape[0],
+
+        "mean_brightness": float(
+            np.mean(gray)
+        ),
+
+        "std_brightness": float(
+            np.std(gray)
+        )
+
+    }
+
+    return statistics
 
 # ==========================================================
 # Candidate Validation
@@ -625,6 +671,7 @@ def process_catalog(file):
         )
 
         classified_regions = _classify_regions(
+            image,
             filtered_regions
         )
 
