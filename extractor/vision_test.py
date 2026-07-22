@@ -110,6 +110,28 @@ def _filter_regions(
     ]
 
 # ==========================================================
+# Candidate Classification
+# ==========================================================
+
+def _classify_regions(regions):
+
+    classified = []
+
+    for region in regions:
+
+        region["classification"] = {
+
+            "type": "unknown",
+
+            "confidence": 0.0
+
+        }
+
+        classified.append(region)
+
+    return classified
+
+# ==========================================================
 # Region Inspector
 # ==========================================================
 
@@ -566,6 +588,10 @@ def process_catalog(file):
             min_score=30
         )
 
+        classified_regions = _classify_regions(
+            filtered_regions
+        )
+
         filtered_overlay_regions = [
 
             {
@@ -595,9 +621,9 @@ def process_catalog(file):
 
         pipeline.pipeline["candidates"] = {
 
-            "count": len(filtered_regions),
+            "count": len(classified_regions),
 
-            "items": filtered_regions
+            "items": classified_regions
 
         }
 
