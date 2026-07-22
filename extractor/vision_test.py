@@ -132,6 +132,42 @@ def _classify_regions(regions):
     return classified
 
 # ==========================================================
+# Candidate Validation
+# ==========================================================
+
+def _validate_regions(regions):
+
+    validated = []
+
+    for region in regions:
+
+        validation = {
+
+            "accepted": False,
+
+            "reason": "Rejected"
+
+        }
+
+        if region["classification"]["type"] == "unknown":
+
+            validation["accepted"] = False
+
+            validation["reason"] = "Unknown classification"
+
+        elif region["analysis"]["candidate_score"] >= 30:
+
+            validation["accepted"] = True
+
+            validation["reason"] = "Candidate accepted"
+
+        region["validation"] = validation
+
+        validated.append(region)
+
+    return validated
+
+# ==========================================================
 # Region Inspector
 # ==========================================================
 
@@ -592,6 +628,10 @@ def process_catalog(file):
             filtered_regions
         )
 
+        validated_regions = _validate_regions(
+            classified_regions
+        )
+
         filtered_overlay_regions = [
 
             {
@@ -619,11 +659,12 @@ def process_catalog(file):
 
         pipeline.pipeline["regions"]["items"] = inspected_regions
 
+ 
         pipeline.pipeline["candidates"] = {
 
-            "count": len(classified_regions),
+            "count": len(validated_regions),
 
-            "items": classified_regions
+            "items": validated_regions
 
         }
 
