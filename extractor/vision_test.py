@@ -4,6 +4,7 @@ import numpy as np
 import logging
 import os
 import base64
+import json
 
 from flask import jsonify
 
@@ -789,6 +790,13 @@ def process_catalog(file):
             "candidate_count": len(filtered_regions)
 
         }
+
+        print(
+            json.dumps(
+                validated_regions[0],
+                indent=4
+            )
+        )
 
         pages.append(
             pipeline.to_dict()
