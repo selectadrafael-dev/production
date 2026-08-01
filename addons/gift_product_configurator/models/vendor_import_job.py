@@ -24883,6 +24883,28 @@ class VendorImportJob(models.Model):
             'excel_url_enrichment'
         ]
 
+        STALL_STATES = {
+
+            "pdf_extracting": "PDF extraction stalled",
+
+            "pdf_ai": "PDF AI stalled",
+
+            "pdf_creating": "PDF creation stalled",
+
+            "excel_ai": "Excel AI stalled",
+
+            "excel_creating": "Excel creation stalled",
+
+            "excel_url_enrichment": "Excel URL enrichment stalled",
+
+            "url_scraping": "URL scraping stalled",
+
+            "url_ai": "URL AI stalled",
+
+            "url_creating": "URL creation stalled",
+
+        }
+
 
         # =================================================
         # LOAD JOBS
@@ -25432,6 +25454,24 @@ class VendorImportJob(models.Model):
 
                         progress_detected = True
 
+                        # ===============================
+                        # RESET STALL COUNTER
+                        # ===============================
+
+                        if job.stage_retry_count:
+
+                            _logger.warning(
+
+                                "[STALL RESET] "
+
+                                f"job={job.id} "
+
+                                f"{job.stage_retry_count} -> 0"
+
+                            )
+
+                            job.stage_retry_count = 0
+
                         _logger.warning(
 
                             f"[PROGRESS] PDF "
@@ -25681,10 +25721,25 @@ class VendorImportJob(models.Model):
 
                         _logger.warning(
 
-                            "[CHAIN STOP] "
+                            "[CHAIN STOP] NO PROGRESS DETECTED"
 
-                            "NO PROGRESS DETECTED"
                         )
+
+                        # ==========================================
+                        # PDF EXTRACTION STALL
+                        # ==========================================
+
+                        if job.state in STALL_STATES:
+
+                            job._handle_stalled_stage(
+
+                                stage_name=job.state,
+
+                                max_retries=8,
+
+                                failure_reason=STALL_STATES[job.state]
+
+                            )
 
                         break
 
@@ -25810,8 +25865,81 @@ class VendorImportJob(models.Model):
 
             break
 
+    # =================================================
+    # STALLED STAGE HANDLER
+    # =================================================
 
-   #=============flask setup/installation=================== 
+    def _handle_stalled_stage(
+
+        self,
+
+        stage_name,
+
+        max_retries=8,
+
+        failure_reason=None
+
+    ):
+
+        self.ensure_one()
+
+        failure_reason = (
+
+            failure_reason
+
+            or
+
+            f"{stage_name} stalled"
+
+        )
+
+        self.stage_retry_count += 1
+
+        _logger.warning(
+
+            "[STALL DETECTED] "
+
+            f"job={self.id} "
+
+            f"stage={stage_name} "
+
+            f"retry={self.stage_retry_count}/{max_retries}"
+
+        )
+
+        self.last_error = failure_reason
+
+        # ==========================================
+        # TERMINATE
+        # ==========================================
+
+        if self.stage_retry_count >= max_retries:
+
+            _logger.error(
+
+                "[STALL TERMINATED] "
+
+                f"job={self.id} "
+
+                f"stage={stage_name}"
+
+            )
+
+            self.failed_at = fields.Datetime.now()
+
+            self.state = "failed"
+
+            self._safe_commit_progress()
+
+            return
+
+        # ==========================================
+        # WAIT FOR NEXT CRON
+        # ==========================================
+
+        self._safe_commit_progress()
+
+    #=============flask setup/installation=================== 
     def ping_flask_server(self):
       
         try:
