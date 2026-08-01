@@ -282,7 +282,7 @@ class VendorImportJob(models.Model):
     ], default='draft')
 
 
-     #============================= MAIN FLOW (process steps) =====================
+    #============================= MAIN FLOW (process steps) =====================
 
     def process_import(self):
 
@@ -597,7 +597,7 @@ class VendorImportJob(models.Model):
 
             retry_count = (
 
-                self.retry_count
+                self.stage_retry_count
 
                 or
 
@@ -606,15 +606,15 @@ class VendorImportJob(models.Model):
 
             full_error = f"""
 
-    Stage:
-    {stage}
+            Stage:
+            {stage}
 
-    Retries:
-    {retry_count}
+            Retries:
+            {retry_count}
 
-    Error:
-    {error_message or 'Unknown processing failure'}
-    """
+            Error:
+            {error_message or 'Unknown processing failure'}
+            """
 
             _logger.warning(
 
@@ -2253,7 +2253,6 @@ class VendorImportJob(models.Model):
 
         return attribute, value
 
-
     #===============etxract pdf=============================
  
     def extract_pdf(self):
@@ -2833,7 +2832,6 @@ class VendorImportJob(models.Model):
             _logger.warning(
                 "[PDF GC] COMPLETE"
             )
-
 
     #=========pdf validate_extraction_quality============== 
 
@@ -24857,8 +24855,6 @@ class VendorImportJob(models.Model):
     # =====================================================
     def run_pending_jobs(self):
 
-        from odoo import fields
-
         _logger.warning(
             "🔥 CRON HEARTBEAT → RUNNING"
         )
@@ -25454,6 +25450,8 @@ class VendorImportJob(models.Model):
 
                         progress_detected = True
 
+                        job._reset_stage_retry()
+
                         # ===============================
                         # RESET STALL COUNTER
                         # ===============================
@@ -25498,6 +25496,8 @@ class VendorImportJob(models.Model):
 
                         progress_detected = True
 
+                        job._reset_stage_retry()
+
                         _logger.warning(
 
                             f"[PROGRESS] PDF AI "
@@ -25524,6 +25524,8 @@ class VendorImportJob(models.Model):
 
                         progress_detected = True
 
+                        job._reset_stage_retry()
+
                         _logger.warning(
 
                             f"[PROGRESS] PDF CREATE "
@@ -25541,6 +25543,8 @@ class VendorImportJob(models.Model):
                     elif job.state == 'pdf_creating':
 
                         progress_detected = True
+
+                        job._reset_stage_retry()
 
                         _logger.warning(
 
@@ -25561,6 +25565,8 @@ class VendorImportJob(models.Model):
                     ):
 
                         progress_detected = True
+
+                        job._reset_stage_retry()
 
                         _logger.warning(
 
@@ -25588,6 +25594,8 @@ class VendorImportJob(models.Model):
 
                         progress_detected = True
 
+                        job._reset_stage_retry()
+
                         _logger.warning(
 
                             f"[PROGRESS] EXCEL CREATE "
@@ -25612,6 +25620,8 @@ class VendorImportJob(models.Model):
                     ):
 
                         progress_detected = True
+
+                        job._reset_stage_retry()
 
                         _logger.warning(
 
@@ -25639,6 +25649,8 @@ class VendorImportJob(models.Model):
                     ):
 
                         progress_detected = True
+
+                        job._reset_stage_retry()
 
                         _logger.warning(
 
@@ -25668,6 +25680,8 @@ class VendorImportJob(models.Model):
 
                         progress_detected = True
 
+                        job._reset_stage_retry()
+
                         _logger.warning(
 
                             f"[PROGRESS] URL CREATE "
@@ -25686,7 +25700,7 @@ class VendorImportJob(models.Model):
 
                     if job.state == 'url_scraping':
 
-                        progress_detected = True
+                        job._reset_stage_retry()
 
                         _logger.warning(
 
@@ -25700,6 +25714,8 @@ class VendorImportJob(models.Model):
                     if previous_state != job.state:
 
                         progress_detected = True
+
+                        job._reset_stage_retry()
 
                         _logger.warning(
 
@@ -25875,7 +25891,7 @@ class VendorImportJob(models.Model):
 
         stage_name,
 
-        max_retries=8,
+        max_retries=10,
 
         failure_reason=None
 
@@ -25925,11 +25941,38 @@ class VendorImportJob(models.Model):
 
             )
 
+            # Preserve the stage that actually failed
+            self.last_known_state = stage_name
+
+            self.last_error = failure_reason
+
             self.failed_at = fields.Datetime.now()
 
             self.state = "failed"
 
             self._safe_commit_progress()
+
+            # ==========================================
+            # EMAIL VENDOR
+            # ==========================================
+
+            try:
+
+                self._send_failed_processing_email(
+
+                    error_message=failure_reason
+
+                )
+
+            except Exception as e:
+
+                _logger.exception(
+
+                    f"[STALL EMAIL FAILED] "
+
+                    f"{str(e)}"
+
+                )
 
             return
 
@@ -25938,6 +25981,27 @@ class VendorImportJob(models.Model):
         # ==========================================
 
         self._safe_commit_progress()
+
+    
+    # =================================================
+    # STALLED STAGE HANDLER reset
+    # =================================================
+    def _reset_stage_retry(self):
+
+        if not self.stage_retry_count:
+            return
+
+        _logger.warning(
+
+            "[STALL RESET] "
+
+            f"job={self.id} "
+
+            f"{self.stage_retry_count} -> 0"
+
+        )
+
+        self.stage_retry_count = 0
 
     #=============flask setup/installation=================== 
     def ping_flask_server(self):
