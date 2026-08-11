@@ -1,58 +1,87 @@
 import os
 import logging
+import base64
 
 from azure.core.credentials import AzureKeyCredential
-from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.ai.documentintelligence.models import AnalyzeOutputOption
+from azure.ai.documentintelligence import (
+    DocumentIntelligenceClient
+)
+from azure.ai.documentintelligence.models import (
+    AnalyzeOutputOption,
+    AnalyzeDocumentRequest
+)
 
 
 _logger = logging.getLogger(__name__)
 
 
-AZURE_ENDPOINT = os.environ.get(
+AZURE_ENDPOINT = os.environ[
     "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT"
-)
+]
 
-AZURE_KEY = os.environ.get(
+AZURE_KEY = os.environ[
     "AZURE_DOCUMENT_INTELLIGENCE_KEY"
-)
+]
 
 
 if not AZURE_ENDPOINT:
     raise RuntimeError(
-        "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT is not configured"
+        "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT "
+        "is not configured"
     )
 
 if not AZURE_KEY:
     raise RuntimeError(
-        "AZURE_DOCUMENT_INTELLIGENCE_KEY is not configured"
+        "AZURE_DOCUMENT_INTELLIGENCE_KEY "
+        "is not configured"
     )
 
 
 client = DocumentIntelligenceClient(
     endpoint=AZURE_ENDPOINT,
-    credential=AzureKeyCredential(AZURE_KEY)
+    credential=AzureKeyCredential(
+        AZURE_KEY
+    )
 )
 
 
 def analyze_pdf(file_stream):
 
-    """
-    Send a PDF to Azure Document Intelligence Layout
-    and return the raw structured analysis required
-    for our product-association pipeline.
-    """
-
     _logger.warning(
         "[AZURE LAYOUT] Starting document analysis"
     )
 
+    document_bytes = file_stream.read()
+
+    if not document_bytes:
+
+        raise ValueError(
+            "Uploaded PDF is empty"
+        )
+
+    _logger.warning(
+        "[AZURE LAYOUT] Received %s bytes",
+        len(document_bytes)
+    )
+
+    request = AnalyzeDocumentRequest(
+        bytes_source=document_bytes
+    )
+
     poller = client.begin_analyze_document(
-        "prebuilt-layout",
-        body=file_stream,
+
+        model_id="prebuilt-layout",
+
+        body=request,
+
         output=[
             AnalyzeOutputOption.FIGURES
         ]
+
+    )
+
+    _logger.warning(
+        "[AZURE LAYOUT] Waiting for analysis..."
     )
 
     result = poller.result()
@@ -62,6 +91,7 @@ def analyze_pdf(file_stream):
     )
 
     return result
+
 
 def _polygon_to_list(polygon):
 

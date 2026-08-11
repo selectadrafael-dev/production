@@ -222,10 +222,6 @@ def test_azure_layout():
             file.stream
         )
 
-        data = serialize_result(
-            result
-        )
-
         return jsonify({
 
             "success": True,
@@ -236,7 +232,8 @@ def test_azure_layout():
             "api_version":
                 "2024-11-30",
 
-            "data": data
+            "data":
+                result.as_dict()
 
         })
 
@@ -253,7 +250,7 @@ def test_azure_layout():
             "error": str(e)
 
         }), 500
-    
+
 # ================= START APP =================
 if __name__ == "__main__":
 
