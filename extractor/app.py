@@ -7,10 +7,7 @@ from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
 import vision_test
 
-from azure_layout import (
-    analyze_pdf,
-    serialize_result
-)
+from azure_layout import analyze_pdf
 
 app = Flask(__name__)
 
@@ -191,6 +188,8 @@ def test_vision():
 
         file
     )
+
+# ================= AZURE LAYOUT TEST =================
 
 # ================= AZURE LAYOUT TEST =================
 
