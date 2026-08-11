@@ -155,8 +155,9 @@ def analyze_pdf(file_stream):
     """
     Analyze a PDF using Azure Document Intelligence Layout.
 
-    This is deliberately independent from the existing /extract
-    pipeline.
+    The incoming Flask FileStorage object is immediately converted
+    to raw PDF bytes so that no Flask request object can leak into
+    the Azure result or JSON response.
     """
 
     if not AZURE_ENDPOINT:
@@ -171,16 +172,35 @@ def analyze_pdf(file_stream):
             "is not configured."
         )
 
-    client = DocumentIntelligenceClient(
-        endpoint=AZURE_ENDPOINT,
-        credential=AzureKeyCredential(AZURE_KEY),
-    )
+    # ==========================================================
+    # CONVERT UPLOADED FILE TO RAW BYTES
+    # ==========================================================
 
-    # Make sure we are reading from the beginning.
     try:
         file_stream.seek(0)
     except Exception:
         pass
+
+    pdf_bytes = file_stream.read()
+
+    if not pdf_bytes:
+        raise RuntimeError(
+            "Uploaded PDF is empty."
+        )
+
+    _logger.info(
+        "[AZURE] PDF bytes received: %s",
+        len(pdf_bytes)
+    )
+
+    # ==========================================================
+    # AZURE CLIENT
+    # ==========================================================
+
+    client = DocumentIntelligenceClient(
+        endpoint=AZURE_ENDPOINT,
+        credential=AzureKeyCredential(AZURE_KEY),
+    )
 
     _logger.info(
         "[AZURE] Starting Layout analysis..."
@@ -188,7 +208,7 @@ def analyze_pdf(file_stream):
 
     poller = client.begin_analyze_document(
         "prebuilt-layout",
-        body=file_stream,
+        body=pdf_bytes,
         output=[AnalyzeOutputOption.FIGURES],
     )
 
@@ -200,15 +220,32 @@ def analyze_pdf(file_stream):
 
     _logger.info(
         "[AZURE] Analysis complete. operation_id=%s",
-        operation_id,
+        operation_id
     )
 
+    # ==========================================================
+    # BASE EVIDENCE
+    # ==========================================================
+
     evidence = {
-        "model_id": getattr(result, "model_id", None),
+        "model_id": getattr(
+            result,
+            "model_id",
+            None
+        ),
+
         "operation_id": operation_id,
-        "content": getattr(result, "content", None),
+
+        "content": getattr(
+            result,
+            "content",
+            None
+        ),
+
         "pages": [],
+
         "figures": [],
+
         "paragraphs": [],
     }
 
@@ -222,66 +259,102 @@ def analyze_pdf(file_stream):
 
             page_data = {
                 "page_number": page.page_number,
+
                 "width": page.width,
+
                 "height": page.height,
+
                 "unit": page.unit,
+
                 "lines": [],
+
                 "words": [],
             }
+
+            # --------------------------------------------------
+            # LINES
+            # --------------------------------------------------
 
             if page.lines:
 
                 for line in page.lines:
 
+                    polygon = (
+                        list(line.polygon)
+                        if line.polygon
+                        else []
+                    )
+
                     page_data["lines"].append({
-                        "content": line.content,
-                        "polygon": (
-                            list(line.polygon)
-                            if line.polygon
-                            else []
-                        ),
-                        "bbox": _polygon_to_bbox(
-                            list(line.polygon)
-                            if line.polygon
-                            else None
-                        ),
-                        "spans": _serialize_spans(
-                            line.spans
-                        ),
+
+                        "content":
+                            line.content,
+
+                        "polygon":
+                            polygon,
+
+                        "bbox":
+                            _polygon_to_bbox(
+                                polygon
+                            ),
+
+                        "spans":
+                            _serialize_spans(
+                                line.spans
+                            ),
                     })
+
+            # --------------------------------------------------
+            # WORDS
+            # --------------------------------------------------
 
             if page.words:
 
                 for word in page.words:
 
+                    polygon = (
+                        list(word.polygon)
+                        if word.polygon
+                        else []
+                    )
+
                     page_data["words"].append({
-                        "content": word.content,
-                        "confidence": word.confidence,
-                        "polygon": (
-                            list(word.polygon)
-                            if word.polygon
-                            else []
-                        ),
-                        "bbox": _polygon_to_bbox(
-                            list(word.polygon)
-                            if word.polygon
-                            else None
-                        ),
+
+                        "content":
+                            word.content,
+
+                        "confidence":
+                            word.confidence,
+
+                        "polygon":
+                            polygon,
+
+                        "bbox":
+                            _polygon_to_bbox(
+                                polygon
+                            ),
+
                         "span": {
-                            "offset": (
-                                word.span.offset
-                                if word.span
-                                else None
-                            ),
-                            "length": (
-                                word.span.length
-                                if word.span
-                                else None
-                            ),
+
+                            "offset":
+                                (
+                                    word.span.offset
+                                    if word.span
+                                    else None
+                                ),
+
+                            "length":
+                                (
+                                    word.span.length
+                                    if word.span
+                                    else None
+                                ),
                         },
                     })
 
-            evidence["pages"].append(page_data)
+            evidence["pages"].append(
+                page_data
+            )
 
     # ==========================================================
     # PARAGRAPHS
@@ -292,16 +365,22 @@ def analyze_pdf(file_stream):
         for paragraph in result.paragraphs:
 
             evidence["paragraphs"].append({
-                "content": paragraph.content,
-                "role": getattr(
-                    paragraph,
-                    "role",
-                    None,
-                ),
+
+                "content":
+                    paragraph.content,
+
+                "role":
+                    getattr(
+                        paragraph,
+                        "role",
+                        None
+                    ),
+
                 "bounding_regions":
                     _serialize_bounding_regions(
                         paragraph.bounding_regions
                     ),
+
                 "spans":
                     _serialize_spans(
                         paragraph.spans
@@ -316,7 +395,7 @@ def analyze_pdf(file_stream):
 
         _logger.info(
             "[AZURE] Figures detected: %s",
-            len(result.figures),
+            len(result.figures)
         )
 
         for figure in result.figures:
@@ -324,21 +403,30 @@ def analyze_pdf(file_stream):
             figure_id = figure.id
 
             figure_data = {
-                "figure_id": figure_id,
+
+                "figure_id":
+                    figure_id,
+
                 "bounding_regions":
                     _serialize_bounding_regions(
                         figure.bounding_regions
                     ),
+
                 "spans":
                     _serialize_spans(
                         figure.spans
                     ),
+
                 "elements":
                     _serialize_elements(
                         figure.elements
                     ),
-                "caption": None,
-                "image_base64": None,
+
+                "caption":
+                    None,
+
+                "image_base64":
+                    None,
             }
 
             # --------------------------------------------------
@@ -348,15 +436,20 @@ def analyze_pdf(file_stream):
             if figure.caption:
 
                 figure_data["caption"] = {
-                    "content": figure.caption.content,
+
+                    "content":
+                        figure.caption.content,
+
                     "bounding_regions":
                         _serialize_bounding_regions(
                             figure.caption.bounding_regions
                         ),
+
                     "spans":
                         _serialize_spans(
                             figure.caption.spans
                         ),
+
                     "elements":
                         _serialize_elements(
                             figure.caption.elements
@@ -392,18 +485,18 @@ def analyze_pdf(file_stream):
                     _logger.info(
                         "[AZURE] Retrieved figure %s (%s bytes)",
                         figure_id,
-                        len(image_bytes),
+                        len(image_bytes)
                     )
 
                 except Exception:
 
                     _logger.exception(
                         "[AZURE] Failed retrieving figure %s",
-                        figure_id,
+                        figure_id
                     )
 
             evidence["figures"].append(
                 figure_data
             )
 
-    return _json_safe(evidence)
+    return evidence
