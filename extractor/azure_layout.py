@@ -1,6 +1,7 @@
 import os
 import base64
 import logging
+import fitz
 
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
@@ -193,6 +194,12 @@ def analyze_pdf(file_stream):
         len(pdf_bytes)
     )
 
+    original_page_images = (
+        _extract_original_page_images(
+            pdf_bytes
+        )
+    )
+
     # ==========================================================
     # AZURE CLIENT
     # ==========================================================
@@ -247,6 +254,9 @@ def analyze_pdf(file_stream):
         "figures": [],
 
         "paragraphs": [],
+
+        "original_page_images":
+            original_page_images,
     }
 
     # ==========================================================
@@ -500,3 +510,77 @@ def analyze_pdf(file_stream):
             )
 
     return evidence
+
+def _extract_original_page_images(pdf_bytes):
+    """
+    Render every original PDF page to PNG.
+
+    These are complete catalogue page images, not Azure
+    figure crops. They are preserved so the OpenAI visual
+    mapper can understand the complete page layout.
+    """
+
+    document = fitz.open(
+        stream=pdf_bytes,
+        filetype="pdf"
+    )
+
+    pages = []
+
+    try:
+
+        for page_index in range(
+            len(document)
+        ):
+
+            page = document[
+                page_index
+            ]
+
+            # 2x rendering gives OpenAI a reasonably
+            # detailed page image without unnecessarily
+            # producing huge images.
+            matrix = fitz.Matrix(
+                2,
+                2
+            )
+
+            pixmap = page.get_pixmap(
+                matrix=matrix,
+                alpha=False
+            )
+
+            image_bytes = (
+                pixmap.tobytes(
+                    "png"
+                )
+            )
+
+            pages.append({
+
+                "page_number":
+                    page_index + 1,
+
+                "image_base64":
+                    base64.b64encode(
+                        image_bytes
+                    ).decode(
+                        "utf-8"
+                    ),
+
+                "mime_type":
+                    "image/png",
+
+                "width":
+                    pixmap.width,
+
+                "height":
+                    pixmap.height,
+
+            })
+
+    finally:
+
+        document.close()
+
+    return pages

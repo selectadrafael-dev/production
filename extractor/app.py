@@ -12,6 +12,7 @@ import vision_test
 
 from azure_layout import analyze_pdf
 from azure_product_evidence import build_product_evidence
+from azure_openai_product_mapper import map_products_with_openai
 
 app = Flask(__name__)
 
@@ -438,6 +439,70 @@ def test_azure_figure():
 
         }), 500
 
+
+# ==========================================================
+# AZURE + OPENAI PRODUCT MAPPING TEST
+# ==========================================================
+
+@app.route(
+    "/test_azure_openai_mapping",
+    methods=["POST"]
+)
+def test_azure_openai_mapping():
+
+    _logger.warning(
+        "========== AZURE + OPENAI MAPPING TEST =========="
+    )
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                "No PDF uploaded"
+
+        }), 400
+
+    file = request.files["file"]
+
+    try:
+
+        # ==================================================
+        # 1. AZURE ANALYSIS
+        # ==================================================
+
+        evidence = analyze_pdf(
+            file
+        )
+
+        # ==================================================
+        # 2. OPENAI SEMANTIC MAPPING
+        # ==================================================
+
+        result = map_products_with_openai(
+            evidence
+        )
+
+        return jsonify(
+            result
+        )
+
+    except Exception as e:
+
+        _logger.exception(
+            "[AZURE + OPENAI MAPPING FAILED]"
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                str(e)
+
+        }), 500
 # ================= START APP =================
 if __name__ == "__main__":
 
