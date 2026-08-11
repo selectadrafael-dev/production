@@ -103,6 +103,54 @@ def _serialize_elements(elements):
     return list(elements)
 
 
+def _json_safe(value):
+    """
+    Convert unexpected SDK/Python objects into JSON-safe values.
+
+    This is a safety layer for the diagnostic endpoint.
+    It prevents Flask jsonify() from receiving objects such
+    as FileStorage, enums, or SDK model instances.
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, (
+        str,
+        int,
+        float,
+        bool
+    )):
+        return value
+
+    if isinstance(value, dict):
+
+        return {
+            str(key): _json_safe(val)
+            for key, val in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+
+        return [
+            _json_safe(item)
+            for item in value
+        ]
+
+    # Handle objects that expose a dictionary
+    # representation.
+    if hasattr(value, "as_dict"):
+
+        try:
+            return _json_safe(
+                value.as_dict()
+            )
+        except Exception:
+            pass
+
+    # Final diagnostic fallback.
+    return str(value)
+
 def analyze_pdf(file_stream):
     """
     Analyze a PDF using Azure Document Intelligence Layout.
@@ -113,12 +161,14 @@ def analyze_pdf(file_stream):
 
     if not AZURE_ENDPOINT:
         raise RuntimeError(
-            "DOCUMENTINTELLIGENCE_ENDPOINT is not configured."
+            "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT "
+            "is not configured."
         )
 
     if not AZURE_KEY:
         raise RuntimeError(
-            "DOCUMENTINTELLIGENCE_API_KEY is not configured."
+            "AZURE_DOCUMENT_INTELLIGENCE_KEY "
+            "is not configured."
         )
 
     client = DocumentIntelligenceClient(
@@ -356,4 +406,4 @@ def analyze_pdf(file_stream):
                 figure_data
             )
 
-    return evidence
+    return _json_safe(evidence)
