@@ -529,6 +529,10 @@ def test_azure_openai_mapping():
 # AZURE + PRODUCT MAPPER + ASSET MAPPER TEST
 # ============================================================
 
+# ============================================================
+# AZURE + PRODUCT MAPPER + ASSET MAPPER DIAGNOSTIC
+# ============================================================
+
 @app.route(
     "/test_azure_asset_mapping",
     methods=["POST"]
@@ -555,9 +559,9 @@ def test_azure_asset_mapping():
 
     try:
 
-        # ==============================================
+        # ==================================================
         # STAGE 1 — AZURE
-        # ==============================================
+        # ==================================================
 
         _logger.warning(
             "[ASSET TEST] Starting Azure analysis..."
@@ -569,9 +573,9 @@ def test_azure_asset_mapping():
             "[ASSET TEST] Azure analysis completed."
         )
 
-        # ==============================================
+        # ==================================================
         # STAGE 2 — PRODUCT MAPPER
-        # ==============================================
+        # ==================================================
 
         _logger.warning(
             "[ASSET TEST] Starting product mapper..."
@@ -587,56 +591,93 @@ def test_azure_asset_mapping():
             "[ASSET TEST] Product mapper completed."
         )
 
-        # ==============================================
-        # STAGE 3 — ASSET MAPPER
-        # ==============================================
+        # ==================================================
+        # STAGE 3 — DIAGNOSTIC
+        # ==================================================
 
-        _logger.warning(
-            "[ASSET TEST] Starting asset mapper..."
+        figures = evidence.get(
+            "figures",
+            []
         )
 
-        asset_mapping = (
-            map_assets_with_openai(
-                evidence,
-                product_mapping
+        figure_summary = []
+
+        total_image_chars = 0
+
+        for figure in figures:
+
+            image_base64 = (
+                figure.get(
+                    "image_base64"
+                )
+                or ""
             )
-        )
 
-        _logger.warning(
-            "[ASSET TEST] Asset mapper completed."
-        )
+            image_chars = len(
+                image_base64
+            )
 
-        # ==============================================
-        # RETURN
-        # ==============================================
+            total_image_chars += image_chars
+
+            figure_summary.append({
+
+                "figure_id":
+                    figure.get(
+                        "figure_id"
+                    ),
+
+                "image_base64_chars":
+                    image_chars,
+
+                "has_image":
+                    bool(image_base64),
+
+                "width":
+                    figure.get(
+                        "width"
+                    ),
+
+                "height":
+                    figure.get(
+                        "height"
+                    )
+
+            })
+
+        # ==================================================
+        # IMPORTANT:
+        # DO NOT CALL ASSET MAPPER YET
+        # ==================================================
 
         return jsonify({
 
             "success": True,
 
             "stage":
-                "asset_mapping_completed",
+                "ready_for_asset_mapper",
 
             "azure_figure_count":
-                len(
-                    evidence.get(
-                        "figures",
-                        []
-                    )
-                ),
+                len(figures),
 
-            "product_mapping":
-                product_mapping,
+            "figure_summary":
+                figure_summary,
 
-            "asset_mapping":
-                asset_mapping
+            "total_image_base64_chars":
+                total_image_chars,
+
+            "product_mapping_available":
+                bool(product_mapping),
+
+            "message":
+                "Azure and product mapper completed. "
+                "Asset mapper was intentionally NOT called."
 
         })
 
     except Exception as e:
 
         _logger.exception(
-            "[AZURE ASSET MAPPING TEST FAILED]"
+            "[AZURE ASSET MAPPING DIAGNOSTIC FAILED]"
         )
 
         return jsonify({
@@ -650,7 +691,7 @@ def test_azure_asset_mapping():
                 str(e)
 
         }), 500
-
+    
 # ================= START APP =================
 if __name__ == "__main__":
 
