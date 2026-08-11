@@ -529,8 +529,9 @@ def test_azure_asset_mapping():
 
             "success": False,
 
-            "error":
-                "No PDF uploaded"
+            "stage": "request",
+
+            "error": "No PDF uploaded"
 
         }), 400
 
@@ -538,39 +539,30 @@ def test_azure_asset_mapping():
 
     try:
 
-        # ----------------------------------------------------
-        # STEP 1 — Azure evidence
-        # ----------------------------------------------------
+        # ==============================================
+        # STAGE 1 — AZURE
+        # ==============================================
 
-        evidence = analyze_pdf(
-            file
+        _logger.warning(
+            "[ASSET TEST] Starting Azure analysis..."
         )
 
-        # ----------------------------------------------------
-        # STEP 2 — Existing product mapper
-        # ----------------------------------------------------
+        evidence = analyze_pdf(file)
 
-        product_mapping = (
-            map_products_with_openai(
-                evidence
-            )
+        _logger.warning(
+            "[ASSET TEST] Azure analysis completed."
         )
 
-        # ----------------------------------------------------
-        # STEP 3 — Individual asset mapper
-        # ----------------------------------------------------
-
-        asset_mapping = (
-            map_assets_with_openai(
-                evidence,
-                product_mapping
-            )
-        )
+        # ==============================================
+        # STAGE 2 — DO NOT CALL PRODUCT MAPPER YET
+        # ==============================================
 
         return jsonify({
 
-            "success":
-                True,
+            "success": True,
+
+            "stage":
+                "azure_completed",
 
             "azure_figure_count":
                 len(
@@ -580,11 +572,8 @@ def test_azure_asset_mapping():
                     )
                 ),
 
-            "product_mapping":
-                product_mapping,
-
-            "asset_mapping":
-                asset_mapping,
+            "message":
+                "Azure completed. Product mapper and asset mapper were intentionally skipped."
 
         })
 
@@ -596,14 +585,16 @@ def test_azure_asset_mapping():
 
         return jsonify({
 
-            "success":
-                False,
+            "success": False,
+
+            "stage":
+                "azure",
 
             "error":
                 str(e)
 
         }), 500
-    
+
 # ================= START APP =================
 if __name__ == "__main__":
 
