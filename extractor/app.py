@@ -7,7 +7,7 @@ from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
 import vision_test
 
-from azure_layout import analyze_pdf
+from azure_layout import analyze_pdf, get_figure
 
 app = Flask(__name__)
 
@@ -217,7 +217,7 @@ def test_azure_layout():
 
     try:
 
-        result = analyze_pdf(
+        result, operation_id = analyze_pdf(
             file.stream
         )
 
@@ -231,6 +231,9 @@ def test_azure_layout():
             "api_version":
                 "2024-11-30",
 
+            "operation_id":
+                operation_id,
+
             "data":
                 result.as_dict()
 
@@ -240,6 +243,83 @@ def test_azure_layout():
 
         _logger.exception(
             "[AZURE LAYOUT FAILED]"
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error": str(e)
+
+        }), 500
+
+
+@app.route(
+    "/test_azure_figure",
+    methods=["POST"]
+)
+def test_azure_figure():
+
+    _logger.warning(
+        "========== AZURE FIGURE TEST =========="
+    )
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "No PDF uploaded"
+
+        }), 400
+
+    figure_id = request.form.get(
+        "figure_id"
+    )
+
+    if not figure_id:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "figure_id is required"
+
+        }), 400
+
+    file = request.files["file"]
+
+    try:
+
+        result, operation_id = analyze_pdf(
+            file.stream
+        )
+
+        image_bytes = get_figure(
+            result,
+            operation_id,
+            figure_id
+        )
+
+        from io import BytesIO
+
+        return send_file(
+
+            BytesIO(image_bytes),
+
+            mimetype="image/png",
+
+            download_name=(
+                f"azure_figure_{figure_id.replace('.', '_')}.png"
+            )
+
+        )
+
+    except Exception as e:
+
+        _logger.exception(
+            "[AZURE FIGURE FAILED]"
         )
 
         return jsonify({

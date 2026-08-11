@@ -85,8 +85,47 @@ def analyze_pdf(file_stream):
 
     result = poller.result()
 
+    operation_id = poller.details.get(
+        "operation_id"
+    )
+
     _logger.warning(
         "[AZURE LAYOUT] Analysis completed"
     )
 
-    return result
+    _logger.warning(
+        "[AZURE LAYOUT] Operation ID: %s",
+        operation_id
+    )
+
+    return result, operation_id
+
+
+def get_figure(
+    result,
+    operation_id,
+    figure_id
+):
+
+    if not operation_id:
+        raise RuntimeError(
+            "Azure operation ID is missing"
+        )
+
+    if not figure_id:
+        raise ValueError(
+            "Figure ID is required"
+        )
+
+    _logger.warning(
+        "[AZURE FIGURE] Retrieving figure %s",
+        figure_id
+    )
+
+    response = client.get_analyze_result_figure(
+        model_id=result.model_id,
+        result_id=operation_id,
+        figure_id=figure_id
+    )
+
+    return b"".join(response)
