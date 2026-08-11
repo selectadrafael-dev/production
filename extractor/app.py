@@ -254,81 +254,44 @@ def test_azure_layout():
         }), 500
 
 
-@app.route(
-    "/test_azure_figure",
-    methods=["POST"]
-)
-def test_azure_figure():
+# ================= AZURE LAYOUT EVIDENCE TEST =================
+
+@app.route("/test_azure_layout", methods=["POST"])
+def test_azure_layout():
 
     _logger.warning(
-        "========== AZURE FIGURE TEST =========="
+        "========== AZURE LAYOUT TEST =========="
     )
 
     if "file" not in request.files:
 
         return jsonify({
-
             "success": False,
-
             "error": "No PDF uploaded"
-
-        }), 400
-
-    figure_id = request.form.get(
-        "figure_id"
-    )
-
-    if not figure_id:
-
-        return jsonify({
-
-            "success": False,
-
-            "error": "figure_id is required"
-
         }), 400
 
     file = request.files["file"]
 
     try:
 
-        result, operation_id = analyze_pdf(
-            file.stream
-        )
+        evidence = analyze_pdf(file)
 
-        image_bytes = get_figure(
-            result,
-            operation_id,
-            figure_id
-        )
-
-        from io import BytesIO
-
-        return send_file(
-
-            BytesIO(image_bytes),
-
-            mimetype="image/png",
-
-            download_name=(
-                f"azure_figure_{figure_id.replace('.', '_')}.png"
-            )
-
-        )
+        return jsonify({
+            "success": True,
+            "evidence": evidence
+        })
 
     except Exception as e:
 
         _logger.exception(
-            "[AZURE FIGURE FAILED]"
+            "[AZURE LAYOUT TEST FAILED]"
         )
 
         return jsonify({
-
             "success": False,
-
             "error": str(e)
-
         }), 500
+
 
 # ================= START APP =================
 if __name__ == "__main__":
