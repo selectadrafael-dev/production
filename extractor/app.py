@@ -525,10 +525,18 @@ def test_azure_openai_mapping():
     "/test_azure_asset_mapping",
     methods=["POST"]
 )
+# ============================================================
+# AZURE + PRODUCT MAPPER + ASSET MAPPER TEST
+# ============================================================
+
+@app.route(
+    "/test_azure_asset_mapping",
+    methods=["POST"]
+)
 def test_azure_asset_mapping():
 
     _logger.warning(
-        "========== AZURE PRODUCT MAPPER TEST =========="
+        "========== AZURE ASSET MAPPING TEST =========="
     )
 
     if "file" not in request.files:
@@ -562,12 +570,11 @@ def test_azure_asset_mapping():
         )
 
         # ==============================================
-        # STAGE 2 — EXISTING PRODUCT MAPPER
+        # STAGE 2 — PRODUCT MAPPER
         # ==============================================
 
         _logger.warning(
-            "[ASSET TEST] Starting existing "
-            "OpenAI product mapper..."
+            "[ASSET TEST] Starting product mapper..."
         )
 
         product_mapping = (
@@ -577,8 +584,26 @@ def test_azure_asset_mapping():
         )
 
         _logger.warning(
-            "[ASSET TEST] Existing product mapper "
-            "completed."
+            "[ASSET TEST] Product mapper completed."
+        )
+
+        # ==============================================
+        # STAGE 3 — ASSET MAPPER
+        # ==============================================
+
+        _logger.warning(
+            "[ASSET TEST] Starting asset mapper..."
+        )
+
+        asset_mapping = (
+            map_assets_with_openai(
+                evidence,
+                product_mapping
+            )
+        )
+
+        _logger.warning(
+            "[ASSET TEST] Asset mapper completed."
         )
 
         # ==============================================
@@ -590,7 +615,7 @@ def test_azure_asset_mapping():
             "success": True,
 
             "stage":
-                "product_mapping_completed",
+                "asset_mapping_completed",
 
             "azure_figure_count":
                 len(
@@ -601,14 +626,17 @@ def test_azure_asset_mapping():
                 ),
 
             "product_mapping":
-                product_mapping
+                product_mapping,
+
+            "asset_mapping":
+                asset_mapping
 
         })
 
     except Exception as e:
 
         _logger.exception(
-            "[AZURE PRODUCT MAPPER TEST FAILED]"
+            "[AZURE ASSET MAPPING TEST FAILED]"
         )
 
         return jsonify({
