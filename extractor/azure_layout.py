@@ -10,8 +10,13 @@ from azure.ai.documentintelligence.models import AnalyzeOutputOption
 _logger = logging.getLogger(__name__)
 
 
-AZURE_ENDPOINT = os.environ.get("DOCUMENTINTELLIGENCE_ENDPOINT")
-AZURE_KEY = os.environ.get("DOCUMENTINTELLIGENCE_API_KEY")
+AZURE_ENDPOINT = os.environ.get(
+    "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT"
+)
+
+AZURE_KEY = os.environ.get(
+    "AZURE_DOCUMENT_INTELLIGENCE_KEY"
+)
 
 
 def _polygon_to_bbox(polygon):
