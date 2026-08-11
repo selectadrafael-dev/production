@@ -11,6 +11,7 @@ from recovery_v2 import recovery_v2
 import vision_test
 
 from azure_layout import analyze_pdf
+from azure_product_evidence import build_product_evidence
 
 app = Flask(__name__)
 
@@ -230,6 +231,77 @@ def test_azure_layout():
             "error": str(e)
         }), 500
 
+
+# ==========================================================
+# AZURE PRODUCT EVIDENCE TEST
+# ==========================================================
+
+@app.route(
+    "/test_azure_product_evidence",
+    methods=["POST"]
+)
+def test_azure_product_evidence():
+
+    _logger.warning(
+        "========== AZURE PRODUCT EVIDENCE TEST =========="
+    )
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                "No PDF uploaded"
+
+        }), 400
+
+    file = request.files["file"]
+
+    try:
+
+        # ==================================================
+        # ONE AZURE ANALYSIS ONLY
+        # ==================================================
+
+        evidence = analyze_pdf(
+            file
+        )
+
+        # ==================================================
+        # BUILD SPATIAL PRODUCT EVIDENCE
+        # ==================================================
+
+        product_evidence = (
+            build_product_evidence(
+                evidence
+            )
+        )
+
+        return jsonify({
+
+            "success": True,
+
+            "evidence":
+                product_evidence
+
+        })
+
+    except Exception as e:
+
+        _logger.exception(
+            "[AZURE PRODUCT EVIDENCE TEST FAILED]"
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                str(e)
+
+        }), 500
 
 #========== AZURE FIGURE TEST ==========
 @app.route(
