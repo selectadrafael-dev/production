@@ -517,10 +517,18 @@ def test_azure_openai_mapping():
     "/test_azure_asset_mapping",
     methods=["POST"]
 )
+# ============================================================
+# AZURE + OPENAI PRODUCT MAPPER TEST
+# ============================================================
+
+@app.route(
+    "/test_azure_asset_mapping",
+    methods=["POST"]
+)
 def test_azure_asset_mapping():
 
     _logger.warning(
-        "========== AZURE ASSET MAPPING TEST =========="
+        "========== AZURE PRODUCT MAPPER TEST =========="
     )
 
     if "file" not in request.files:
@@ -554,7 +562,27 @@ def test_azure_asset_mapping():
         )
 
         # ==============================================
-        # STAGE 2 — DO NOT CALL PRODUCT MAPPER YET
+        # STAGE 2 — EXISTING PRODUCT MAPPER
+        # ==============================================
+
+        _logger.warning(
+            "[ASSET TEST] Starting existing "
+            "OpenAI product mapper..."
+        )
+
+        product_mapping = (
+            map_products_with_openai(
+                evidence
+            )
+        )
+
+        _logger.warning(
+            "[ASSET TEST] Existing product mapper "
+            "completed."
+        )
+
+        # ==============================================
+        # RETURN
         # ==============================================
 
         return jsonify({
@@ -562,7 +590,7 @@ def test_azure_asset_mapping():
             "success": True,
 
             "stage":
-                "azure_completed",
+                "product_mapping_completed",
 
             "azure_figure_count":
                 len(
@@ -572,15 +600,15 @@ def test_azure_asset_mapping():
                     )
                 ),
 
-            "message":
-                "Azure completed. Product mapper and asset mapper were intentionally skipped."
+            "product_mapping":
+                product_mapping
 
         })
 
     except Exception as e:
 
         _logger.exception(
-            "[AZURE ASSET MAPPING TEST FAILED]"
+            "[AZURE PRODUCT MAPPER TEST FAILED]"
         )
 
         return jsonify({
@@ -588,7 +616,7 @@ def test_azure_asset_mapping():
             "success": False,
 
             "stage":
-                "azure",
+                "exception",
 
             "error":
                 str(e)
