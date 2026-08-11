@@ -7,6 +7,11 @@ from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
 import vision_test
 
+from azure_layout import (
+    analyze_pdf,
+    serialize_result
+)
+
 app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)
@@ -186,6 +191,68 @@ def test_vision():
 
         file
     )
+
+# ================= AZURE LAYOUT TEST =================
+
+@app.route(
+    "/test_azure_layout",
+    methods=["POST"]
+)
+def test_azure_layout():
+
+    _logger.warning(
+        "========== AZURE LAYOUT TEST =========="
+    )
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "No PDF uploaded"
+
+        }), 400
+
+    file = request.files["file"]
+
+    try:
+
+        result = analyze_pdf(
+            file.stream
+        )
+
+        data = serialize_result(
+            result
+        )
+
+        return jsonify({
+
+            "success": True,
+
+            "source":
+                "azure_document_intelligence",
+
+            "api_version":
+                "2024-11-30",
+
+            "data": data
+
+        })
+
+    except Exception as e:
+
+        _logger.exception(
+            "[AZURE LAYOUT FAILED]"
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error": str(e)
+
+        }), 500
     
 # ================= START APP =================
 if __name__ == "__main__":
