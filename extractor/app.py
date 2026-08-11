@@ -2,12 +2,15 @@ from flask import Flask, request, jsonify, send_file
 import logging
 import os
 
+import base64
+from io import BytesIO
+
 from extractor_dispatcher import extract_pdf
 from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
 import vision_test
 
-from azure_layout import analyze_pdf, get_figure
+from azure_layout import analyze_pdf
 
 app = Flask(__name__)
 
@@ -189,71 +192,6 @@ def test_vision():
         file
     )
 
-# ================= AZURE LAYOUT TEST =================
-
-# ================= AZURE LAYOUT TEST =================
-
-@app.route(
-    "/test_azure_layout",
-    methods=["POST"]
-)
-def test_azure_layout():
-
-    _logger.warning(
-        "========== AZURE LAYOUT TEST =========="
-    )
-
-    if "file" not in request.files:
-
-        return jsonify({
-
-            "success": False,
-
-            "error": "No PDF uploaded"
-
-        }), 400
-
-    file = request.files["file"]
-
-    try:
-
-        result, operation_id = analyze_pdf(
-            file.stream
-        )
-
-        return jsonify({
-
-            "success": True,
-
-            "source":
-                "azure_document_intelligence",
-
-            "api_version":
-                "2024-11-30",
-
-            "operation_id":
-                operation_id,
-
-            "data":
-                result.as_dict()
-
-        })
-
-    except Exception as e:
-
-        _logger.exception(
-            "[AZURE LAYOUT FAILED]"
-        )
-
-        return jsonify({
-
-            "success": False,
-
-            "error": str(e)
-
-        }), 500
-
-
 # ================= AZURE LAYOUT EVIDENCE TEST =================
 
 @app.route("/test_azure_layout", methods=["POST"])
@@ -292,6 +230,141 @@ def test_azure_layout():
             "error": str(e)
         }), 500
 
+
+#========== AZURE FIGURE TEST ==========
+@app.route(
+    "/test_azure_figure",
+    methods=["POST"]
+)
+def test_azure_figure():
+
+    _logger.warning(
+        "========== AZURE FIGURE TEST =========="
+    )
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "No PDF uploaded"
+
+        }), 400
+
+    figure_id = request.form.get(
+        "figure_id"
+    )
+
+    if not figure_id:
+
+        return jsonify({
+
+            "success": False,
+
+            "error": "figure_id is required"
+
+        }), 400
+
+    file = request.files["file"]
+
+    try:
+
+        evidence = analyze_pdf(
+            file
+        )
+
+        figures = evidence.get(
+            "figures",
+            []
+        )
+
+        _logger.warning(
+            "[AZURE FIGURE TEST] "
+            "Figures detected: %s",
+            len(figures)
+        )
+
+        target_figure = None
+
+        for figure in figures:
+
+            if str(
+                figure.get("figure_id")
+            ) == str(figure_id):
+
+                target_figure = figure
+
+                break
+
+        if not target_figure:
+
+            return jsonify({
+
+                "success": False,
+
+                "error":
+                    f"Figure {figure_id} "
+                    "was not found",
+
+                "available_figures": [
+
+                    figure.get(
+                        "figure_id"
+                    )
+
+                    for figure in figures
+
+                ]
+
+            }), 404
+
+        image_base64 = target_figure.get(
+            "image_base64"
+        )
+
+        if not image_base64:
+
+            return jsonify({
+
+                "success": False,
+
+                "error":
+                    f"Figure {figure_id} "
+                    "has no image data"
+
+            }), 404
+
+        image_bytes = base64.b64decode(
+            image_base64
+        )
+
+        return send_file(
+
+            BytesIO(image_bytes),
+
+            mimetype="image/png",
+
+            download_name=(
+                "azure_figure_"
+                f"{str(figure_id).replace('.', '_')}.png"
+            )
+
+        )
+
+    except Exception as e:
+
+        _logger.exception(
+            "[AZURE FIGURE TEST FAILED]"
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error": str(e)
+
+        }), 500
 
 # ================= START APP =================
 if __name__ == "__main__":
