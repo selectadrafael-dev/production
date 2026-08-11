@@ -12,7 +12,11 @@ import vision_test
 
 from azure_layout import analyze_pdf
 from azure_product_evidence import build_product_evidence
+
 from azure_openai_product_mapper import map_products_with_openai
+from azure_openai_asset_mapper import (
+    map_assets_with_openai
+)
 
 app = Flask(__name__)
 
@@ -503,6 +507,103 @@ def test_azure_openai_mapping():
                 str(e)
 
         }), 500
+
+
+# ============================================================
+# AZURE + OPENAI INDIVIDUAL ASSET TEST
+# ============================================================
+
+@app.route(
+    "/test_azure_asset_mapping",
+    methods=["POST"]
+)
+def test_azure_asset_mapping():
+
+    _logger.warning(
+        "========== AZURE ASSET MAPPING TEST =========="
+    )
+
+    if "file" not in request.files:
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                "No PDF uploaded"
+
+        }), 400
+
+    file = request.files["file"]
+
+    try:
+
+        # ----------------------------------------------------
+        # STEP 1 — Azure evidence
+        # ----------------------------------------------------
+
+        evidence = analyze_pdf(
+            file
+        )
+
+        # ----------------------------------------------------
+        # STEP 2 — Existing product mapper
+        # ----------------------------------------------------
+
+        product_mapping = (
+            map_products_with_openai(
+                evidence
+            )
+        )
+
+        # ----------------------------------------------------
+        # STEP 3 — Individual asset mapper
+        # ----------------------------------------------------
+
+        asset_mapping = (
+            map_assets_with_openai(
+                evidence,
+                product_mapping
+            )
+        )
+
+        return jsonify({
+
+            "success":
+                True,
+
+            "azure_figure_count":
+                len(
+                    evidence.get(
+                        "figures",
+                        []
+                    )
+                ),
+
+            "product_mapping":
+                product_mapping,
+
+            "asset_mapping":
+                asset_mapping,
+
+        })
+
+    except Exception as e:
+
+        _logger.exception(
+            "[AZURE ASSET MAPPING TEST FAILED]"
+        )
+
+        return jsonify({
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
+        }), 500
+    
 # ================= START APP =================
 if __name__ == "__main__":
 
