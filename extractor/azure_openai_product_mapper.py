@@ -204,34 +204,44 @@ IMPORTANT RULES:
    the text is geographically nearby.
 
 5. Use the COMPLETE ORIGINAL PAGE IMAGE as the
-   primary visual context.
+   PRIMARY visual context.
 
-6. Use Azure figure IDs and bounding boxes as
+   The original page shows the actual catalogue
+   layout and must be used to determine which
+   images and text belong to each product.
+
+   Do not rely only on the cropped Azure figures.
+
+6. The Azure figure images are supporting evidence.
+   Use their figure IDs to identify the exact image
+   regions on the original page.
+
+7. Use Azure figure IDs and bounding boxes as
    precise evidence.
 
-7. Use OCR text and its coordinates as supporting
+8. Use OCR text and its coordinates as supporting
    evidence.
 
-8. Determine product boundaries from the complete
+9. Determine product boundaries from the complete
    visual layout.
 
-9. Keep different products separate even when their
+10. Keep different products separate even when their
    images are close together.
 
-10. If multiple images clearly represent the same
+11. If multiple images clearly represent the same
     product, place them in the same product group.
 
-11. If an image is ambiguous, do NOT invent a
+12. If an image is ambiguous, do NOT invent a
     product. Mark it as ambiguous or secondary.
 
-12. Preserve every Azure figure ID. Never silently
+13. Preserve every Azure figure ID. Never silently
     discard an image.
 
-13. Preserve the original OCR text. Do not invent
+14. Preserve the original OCR text. Do not invent
     specifications, stock quantities, dimensions,
     colours, or product names.
 
-14. Your output must be valid JSON matching the
+15. Your output must be valid JSON matching the
     requested structure.
 
 Your objective is to produce reliable product-to-image
@@ -443,6 +453,17 @@ def map_products_with_openai(
         )
     )
 
+    # ======================================================
+    # ORIGINAL CATALOGUE PAGE IMAGES
+    # ======================================================
+
+    if page_images is None:
+
+        page_images = evidence.get(
+            "original_page_images",
+            []
+        )
+
     figure_manifest = (
         _build_figure_manifest(
             evidence
@@ -481,29 +502,65 @@ def map_products_with_openai(
 
     ]
 
+   
     # ======================================================
-    # ORIGINAL PAGE IMAGE(S)
+    # ORIGINAL CATALOGUE PAGE IMAGES
     # ======================================================
 
     for page_image in (
         page_images or []
     ):
 
+        if isinstance(
+            page_image,
+            dict
+        ):
+
+            image_base64 = page_image.get(
+                "image_base64"
+            )
+
+            mime_type = page_image.get(
+                "mime_type",
+                "image/png"
+            )
+
+        else:
+
+            # Backward compatibility if a raw
+            # base64 string is ever supplied.
+            image_base64 = page_image
+
+            mime_type = "image/png"
+
         image_url = _image_data_url(
-            page_image
+            image_base64,
+            mime_type
         )
 
-        if image_url:
+        if not image_url:
+            continue
 
-            content.append({
+        content.append({
 
-                "type":
-                    "input_image",
+            "type":
+                "input_text",
 
-                "image_url":
-                    image_url,
+            "text":
+                "ORIGINAL CATALOGUE PAGE "
+                "IMAGE",
 
-            })
+        })
+
+        content.append({
+
+            "type":
+                "input_image",
+
+            "image_url":
+                image_url,
+
+        })
 
     # ======================================================
     # INDIVIDUAL AZURE FIGURES
