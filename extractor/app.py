@@ -13,11 +13,6 @@ import vision_test
 from azure_layout import analyze_pdf
 from azure_product_evidence import build_product_evidence
 
-from azure_openai_product_mapper import map_products_with_openai
-from azure_openai_asset_mapper import (
-    map_assets_with_openai
-)
-
 app = Flask(__name__)
 
 logging.basicConfig(level=logging.INFO)
@@ -444,259 +439,11 @@ def test_azure_figure():
         }), 500
 
 
-# ==========================================================
-# AZURE + OPENAI PRODUCT MAPPING TEST
-# ==========================================================
-
-@app.route(
-    "/test_azure_openai_mapping",
-    methods=["POST"]
-)
-def test_azure_openai_mapping():
-
-    _logger.warning(
-        "========== AZURE + OPENAI MAPPING TEST =========="
-    )
-
-    if "file" not in request.files:
-
-        return jsonify({
-
-            "success": False,
-
-            "error":
-                "No PDF uploaded"
-
-        }), 400
-
-    file = request.files["file"]
-
-    try:
-
-        # ==================================================
-        # 1. AZURE ANALYSIS
-        # ==================================================
-
-        evidence = analyze_pdf(
-            file
-        )
-
-        # ==================================================
-        # 2. OPENAI SEMANTIC MAPPING
-        # ==================================================
-
-        result = map_products_with_openai(
-            evidence
-        )
-
-        return jsonify(
-            result
-        )
-
-    except Exception as e:
-
-        _logger.exception(
-            "[AZURE + OPENAI MAPPING FAILED]"
-        )
-
-        return jsonify({
-
-            "success": False,
-
-            "error":
-                str(e)
-
-        }), 500
-
-
-# ============================================================
-# AZURE + OPENAI INDIVIDUAL ASSET TEST
-# ============================================================
-
-@app.route(
-    "/test_azure_asset_mapping",
-    methods=["POST"]
-)
-# ============================================================
-# AZURE + OPENAI PRODUCT MAPPER TEST
-# ============================================================
-
-@app.route(
-    "/test_azure_asset_mapping",
-    methods=["POST"]
-)
-# ============================================================
-# AZURE + PRODUCT MAPPER + ASSET MAPPER TEST
-# ============================================================
-
-@app.route(
-    "/test_azure_asset_mapping",
-    methods=["POST"]
-)
-def test_azure_asset_mapping():
-
-    _logger.warning(
-        "========== AZURE ASSET MAPPING TEST =========="
-    )
-
-    if "file" not in request.files:
-
-        return jsonify({
-
-            "success": False,
-
-            "stage": "request",
-
-            "error": "No PDF uploaded"
-
-        }), 400
-
-    file = request.files["file"]
-
-    try:
-
-        # ==================================================
-        # STAGE 1 — AZURE
-        # ==================================================
-
-        _logger.warning(
-            "[ASSET TEST] Starting Azure analysis..."
-        )
-
-        evidence = analyze_pdf(file)
-
-        _logger.warning(
-            "[ASSET TEST] Azure analysis completed."
-        )
-
-        # ==================================================
-        # STAGE 2 — PRODUCT MAPPER
-        # ==================================================
-
-        _logger.warning(
-            "[ASSET TEST] Starting product mapper..."
-        )
-
-        product_mapping = (
-            map_products_with_openai(
-                evidence
-            )
-        )
-
-        _logger.warning(
-            "[ASSET TEST] Product mapper completed."
-        )
-
-        # ==================================================
-        # STAGE 3 — DIAGNOSTIC
-        # ==================================================
-
-        figures = evidence.get(
-            "figures",
-            []
-        )
-
-        figure_summary = []
-
-        total_image_chars = 0
-
-        for figure in figures:
-
-            image_base64 = (
-                figure.get(
-                    "image_base64"
-                )
-                or ""
-            )
-
-            image_chars = len(
-                image_base64
-            )
-
-            total_image_chars += image_chars
-
-            figure_summary.append({
-
-                "figure_id":
-                    figure.get(
-                        "figure_id"
-                    ),
-
-                "image_base64_chars":
-                    image_chars,
-
-                "has_image":
-                    bool(image_base64),
-
-                "width":
-                    figure.get(
-                        "width"
-                    ),
-
-                "height":
-                    figure.get(
-                        "height"
-                    )
-
-            })
-
-        # ==================================================
-        # IMPORTANT:
-        # DO NOT CALL ASSET MAPPER YET
-        # ==================================================
-
-        return jsonify({
-
-            "success": True,
-
-            "stage":
-                "ready_for_asset_mapper",
-
-            "azure_figure_count":
-                len(figures),
-
-            "figure_summary":
-                figure_summary,
-
-            "total_image_base64_chars":
-                total_image_chars,
-
-            "product_mapping_available":
-                bool(product_mapping),
-
-            "message":
-                "Azure and product mapper completed. "
-                "Asset mapper was intentionally NOT called."
-
-        })
-
-    except Exception as e:
-
-        _logger.exception(
-            "[AZURE ASSET MAPPING DIAGNOSTIC FAILED]"
-        )
-
-        return jsonify({
-
-            "success": False,
-
-            "stage":
-                "exception",
-
-            "error":
-                str(e)
-
-        }), 500
-
-
 # ============================================================
 # AZURE EVIDENCE FOR ODOO
 # ============================================================
 
-@app.route(
-    "/azure_evidence",
-    methods=["POST"]
-)
+@app.route("/azure_evidence", methods=["POST"])
 def azure_evidence():
 
     _logger.warning(
@@ -717,13 +464,9 @@ def azure_evidence():
         evidence = analyze_pdf(file)
 
         return jsonify({
-
             "success": True,
-
             "stage": "azure_evidence_completed",
-
             "evidence": evidence
-
         })
 
     except Exception as e:
@@ -733,15 +476,11 @@ def azure_evidence():
         )
 
         return jsonify({
-
             "success": False,
-
             "stage": "azure_evidence_failed",
-
             "error": str(e)
-
         }), 500
-    
+
 # ================= START APP =================
 if __name__ == "__main__":
 
