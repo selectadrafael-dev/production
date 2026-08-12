@@ -10156,20 +10156,24 @@ class VendorImportJob(models.Model):
 
                             })
 
-                            self.message_post(
-                                body=(
-                                    "<b>AZURE FIGURE</b><br/>"
+                            self.env["mail.message"].sudo().create({
+                                "model": self._name,
+                                "res_id": self.id,
+                                "body": (
+                                    "<b>OPENAI CROP VISUAL DEBUG</b><br/>"
                                     f"Job: {self.id}<br/>"
                                     f"Page: {page_number}<br/>"
-                                    f"Figure: {figure_id}<br/>"
-                                    f"Visual index: {input_index}<br/>"
-                                    f"Resolution: "
-                                    f"{image.width} × {image.height}"
+                                    "Red boxes = OpenAI requested crops<br/>"
+                                    "Blue boxes = Azure figures"
                                 ),
-                                attachment_ids=[
-                                    figure_attachment.id
+                                "message_type": "comment",
+                                "subtype_id": self.env.ref(
+                                    "mail.mt_note"
+                                ).id,
+                                "attachment_ids": [
+                                    (4, attachment.id)
                                 ],
-                            )
+                            })
 
                             loaded_images.append({
                                 "label":
