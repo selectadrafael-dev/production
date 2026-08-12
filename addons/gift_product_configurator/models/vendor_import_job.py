@@ -9165,14 +9165,14 @@ class VendorImportJob(models.Model):
             # STORE AUDIT RESULT
             # ====================================================
 
-            self.azure_ai_audit_json = (
+            self.azure_review_json = (
                 json.dumps(
                     audit_result,
                     ensure_ascii=False
                 )
             ) if hasattr(
                 self,
-                "azure_ai_audit_json"
+                "azure_review_json"
             ) else False
 
             _logger.warning(
