@@ -20,7 +20,9 @@ import psycopg2
 from PIL import (
     Image,
     ImageOps,
-    ImageChops
+    ImageChops,
+    ImageDraw,
+    ImageFont
 )
 
 import cv2
@@ -28,7 +30,6 @@ import numpy as np
 from odoo.exceptions import AccessError
 import imagehash
 import time
-
 
  
 _logger = logging.getLogger(__name__)
@@ -10101,6 +10102,75 @@ class VendorImportJob(models.Model):
                                 "RGB"
                             )
 
+                            # ========================================================
+                            # DEBUG — SAVE INDIVIDUAL AZURE FIGURE
+                            # ========================================================
+
+                            figure_buffer = io.BytesIO()
+
+                            image.save(
+                                figure_buffer,
+                                format="PNG"
+                            )
+
+                            figure_buffer.seek(0)
+
+                            figure_attachment_data = (
+                                base64.b64encode(
+                                    figure_buffer.read()
+                                )
+                            )
+
+                            figure_id = item.get(
+                                "azure_figure_id"
+                            )
+
+                            figure_attachment_name = (
+                                "azure_figure_"
+                                f"{figure_id}_"
+                                f"job_{self.id}_"
+                                f"page_{page_number}.png"
+                            )
+
+                            figure_attachment = self.env[
+                                "ir.attachment"
+                            ].sudo().create({
+
+                                "name":
+                                    figure_attachment_name,
+
+                                "type":
+                                    "binary",
+
+                                "datas":
+                                    figure_attachment_data,
+
+                                "mimetype":
+                                    "image/png",
+
+                                "res_model":
+                                    self._name,
+
+                                "res_id":
+                                    self.id,
+
+                            })
+
+                            self.message_post(
+                                body=(
+                                    "<b>AZURE FIGURE</b><br/>"
+                                    f"Job: {self.id}<br/>"
+                                    f"Page: {page_number}<br/>"
+                                    f"Figure: {figure_id}<br/>"
+                                    f"Visual index: {input_index}<br/>"
+                                    f"Resolution: "
+                                    f"{image.width} × {image.height}"
+                                ),
+                                attachment_ids=[
+                                    figure_attachment.id
+                                ],
+                            )
+
                             loaded_images.append({
                                 "label":
                                     item["label"],
@@ -10844,13 +10914,6 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    import base64
-                    import io
-
-                    from PIL import Image
-                    from PIL import ImageDraw
-                    from PIL import ImageFont
-
                     _logger.warning(
                         "[OPENAI CROP VISUAL DEBUG] "
                         "START "
@@ -10948,6 +11011,83 @@ class VendorImportJob(models.Model):
                             )
                         ).convert(
                             "RGB"
+                        )
+
+                        # ========================================================
+                        # DEBUG — SAVE ORIGINAL PAGE AS SEPARATE ATTACHMENT
+                        # ========================================================
+
+                        original_buffer = io.BytesIO()
+
+                        original_image.save(
+                            original_buffer,
+                            format="PNG"
+                        )
+
+                        original_buffer.seek(0)
+
+                        original_attachment_data = (
+                            base64.b64encode(
+                                original_buffer.read()
+                            )
+                        )
+
+                        original_attachment_name = (
+                            "azure_original_page_"
+                            f"job_{self.id}_"
+                            f"page_{page_number}.png"
+                        )
+
+                        original_attachment = self.env[
+                            "ir.attachment"
+                        ].sudo().create({
+
+                            "name":
+                                original_attachment_name,
+
+                            "type":
+                                "binary",
+
+                            "datas":
+                                original_attachment_data,
+
+                            "mimetype":
+                                "image/png",
+
+                            "res_model":
+                                self._name,
+
+                            "res_id":
+                                self.id,
+
+                        })
+
+                        self.message_post(
+                            body=(
+                                "<b>AZURE ORIGINAL PAGE</b><br/>"
+                                f"Job: {self.id}<br/>"
+                                f"Page: {page_number}<br/>"
+                                f"Resolution: "
+                                f"{original_image.width} × "
+                                f"{original_image.height}"
+                            ),
+                            attachment_ids=[
+                                original_attachment.id
+                            ],
+                        )
+
+                        _logger.warning(
+                            "[OPENAI VISUAL DEBUG] "
+                            "ORIGINAL PAGE ATTACHED "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| ATTACHMENT_ID=%s "
+                            "| SIZE=%sx%s",
+                            self.id,
+                            page_number,
+                            original_attachment.id,
+                            original_image.width,
+                            original_image.height
                         )
 
                         # =================================================
@@ -11348,6 +11488,23 @@ class VendorImportJob(models.Model):
                                 self.id,
 
                         })
+
+                        # ========================================================
+                        # POST DEBUG IMAGE INTO JOB CHATTER
+                        # ========================================================
+
+                        self.message_post(
+                            body=(
+                                "<b>OPENAI CROP VISUAL DEBUG</b><br/>"
+                                f"Job: {self.id}<br/>"
+                                f"Page: {page_number}<br/>"
+                                "Blue boxes = Azure figures<br/>"
+                                "Red boxes = OpenAI requested crops"
+                            ),
+                            attachment_ids=[
+                                attachment.id
+                            ],
+                        )
 
                         _logger.warning(
                             "[OPENAI CROP VISUAL DEBUG] "
