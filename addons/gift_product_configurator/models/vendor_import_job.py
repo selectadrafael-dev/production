@@ -721,7 +721,7 @@ class VendorImportJob(models.Model):
 
                 f"[REVIEW RECOVERY] "
 
-                f"retry={self.stage_retry_count}/5 "
+                f"retry={self.stage_retry_count}/10 "
 
                 f"last_state={self.last_known_state}"
             )
