@@ -711,7 +711,6 @@ class VendorImportJob(models.Model):
 
             return
 
-
         # =================================================
         # REVIEW RECOVERY
         # =================================================
@@ -756,13 +755,46 @@ class VendorImportJob(models.Model):
 
                 self.state = self.last_known_state
 
+                _logger.warning(
+                    "[REVIEW RECOVERY] "
+                    f"RESTORED STATE → {self.state} "
+                    f"| JOB={self.id}"
+                )
+
+                self._safe_commit_progress()
+
+                # IMPORTANT:
+                # Do NOT return here.
+                #
+                # Continue through _process_step() so the
+                # restored state is actually processed during
+                # this same cron invocation.
+                #
+                # Example:
+                #
+                # review
+                #   ↓
+                # azure_review
+                #   ↓
+                # Azure/OpenAI interception
+                #
+                # This prevents the job from repeatedly
+                # bouncing between review and azure_review.
+
             else:
 
                 self.state = 'failed'
 
-            self._safe_commit_progress()
+                self.last_error = (
+                    "Review recovery failed: "
+                    "no last known state available."
+                )
 
-            return
+                self.failed_at = fields.Datetime.now()
+
+                self._safe_commit_progress()
+
+                return
 
 
         # =================================================
