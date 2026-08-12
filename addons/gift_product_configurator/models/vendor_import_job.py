@@ -11149,7 +11149,43 @@ class VendorImportJob(models.Model):
                 f"| {decision}"
             )
 
+            # ====================================================
+            # IMPORTANT:
+            # Return the NORMALIZED internal decision.
+            #
+            # OpenAI may return:
+            #
+            #     decision = FAIL
+            #     crop_required = True
+            #     crops = [...]
+            #
+            # Internally we normalize that to:
+            #
+            #     decision = CROP
+            #
+            # The caller reads audit_result["decision"],
+            # therefore the normalized decision MUST be written
+            # back into the returned dictionary.
+            # ====================================================
+
+            if decision:
+                audit_result["decision"] = decision
+
+            audit_result["crop_required"] = (
+                crop_required
+            )
+
+            audit_result["crops"] = crops
+
             return audit_result
+
+            # _logger.warning(
+            #     "[AZURE AUDIT] DECISION "
+            #     f"| JOB={self.id} "
+            #     f"| {decision}"
+            # )
+
+            # return audit_result
 
         except Exception as e:
 
