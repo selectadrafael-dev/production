@@ -10376,7 +10376,7 @@ class VendorImportJob(models.Model):
                     })
 
                     debug_url = (
-                        f"/web/content/{original_attachment.id}"
+                        f"/web/content/{attachment.id}"
                     )
 
                     _logger.warning(
@@ -10390,7 +10390,7 @@ class VendorImportJob(models.Model):
                         self.id,
                         page_number,
                         original_index,
-                        original_attachment.id,
+                        attachment.id,
                         debug_url,
                     )
 
@@ -11036,9 +11036,9 @@ class VendorImportJob(models.Model):
                             "RGB"
                         )
 
-                        # ========================================================
+                        # =======================================================
                         # DEBUG — SAVE ORIGINAL PAGE AS SEPARATE ATTACHMENT
-                        # ========================================================
+                        # =======================================================
 
                         original_buffer = io.BytesIO()
 
