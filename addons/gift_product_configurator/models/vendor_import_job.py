@@ -10818,6 +10818,565 @@ class VendorImportJob(models.Model):
                 else 0
             )
 
+            # ========================================================
+            # DEBUG — VISUALIZE OPENAI CROP REQUESTS
+            # ========================================================
+            #
+            # IMPORTANT:
+            # OpenAI crop coordinates are supposed to be relative
+            # to the ORIGINAL PAGE IMAGE.
+            #
+            # This debug image draws:
+            #
+            #   1. Azure figure bounding boxes
+            #   2. OpenAI requested crop boxes
+            #
+            # directly on the ORIGINAL PAGE IMAGE.
+            #
+            # This allows us to visually verify exactly what
+            # OpenAI is asking us to crop.
+            # ========================================================
+
+            if DEBUG_AZURE_VISUAL_AUDIT and isinstance(
+                crops,
+                list
+            ) and crops:
+
+                try:
+
+                    import base64
+                    import io
+
+                    from PIL import Image
+                    from PIL import ImageDraw
+                    from PIL import ImageFont
+
+                    _logger.warning(
+                        "[OPENAI CROP VISUAL DEBUG] "
+                        "START "
+                        "| JOB=%s "
+                        "| CROPS=%s",
+                        self.id,
+                        len(crops)
+                    )
+
+                    # ====================================================
+                    # PROCESS EACH PAGE
+                    # ====================================================
+
+                    for audit_page in audit_pages:
+
+                        page_number = audit_page.get(
+                            "page"
+                        )
+
+                        original_index = audit_page.get(
+                            "original_page_visual_index"
+                        )
+
+                        if original_index is None:
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "NO ORIGINAL PAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s",
+                                self.id,
+                                page_number
+                            )
+
+                            continue
+
+                        if (
+                            original_index < 0
+                            or original_index >= len(
+                                image_inputs
+                            )
+                        ):
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "INVALID ORIGINAL INDEX "
+                                "| JOB=%s "
+                                "| PAGE=%s "
+                                "| INDEX=%s",
+                                self.id,
+                                page_number,
+                                original_index
+                            )
+
+                            continue
+
+                        # =================================================
+                        # LOAD EXACT ORIGINAL PAGE SENT TO OPENAI
+                        # =================================================
+
+                        image_input = image_inputs[
+                            original_index
+                        ]
+
+                        image_url = image_input.get(
+                            "image_url",
+                            ""
+                        )
+
+                        if not image_url:
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "EMPTY ORIGINAL PAGE IMAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s",
+                                self.id,
+                                page_number
+                            )
+
+                            continue
+
+                        encoded = image_url.split(
+                            ",",
+                            1
+                        )[1]
+
+                        image_bytes = base64.b64decode(
+                            encoded
+                        )
+
+                        original_image = Image.open(
+                            io.BytesIO(
+                                image_bytes
+                            )
+                        ).convert(
+                            "RGB"
+                        )
+
+                        # =================================================
+                        # CREATE DRAWING CANVAS
+                        # =================================================
+
+                        canvas = original_image.copy()
+
+                        draw = ImageDraw.Draw(
+                            canvas
+                        )
+
+                        # =================================================
+                        # FONT
+                        # =================================================
+
+                        try:
+
+                            font = ImageFont.truetype(
+                                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                                24
+                            )
+
+                        except Exception:
+
+                            font = ImageFont.load_default()
+
+                        # =================================================
+                        # DRAW AZURE FIGURE BOUNDARIES
+                        # =================================================
+
+                        for figure in audit_page.get(
+                            "figures",
+                            []
+                        ):
+
+                            figure_id = figure.get(
+                                "azure_figure_id"
+                            )
+
+                            try:
+
+                                fx = float(
+                                    figure.get(
+                                        "x",
+                                        0
+                                    )
+                                )
+
+                                fy = float(
+                                    figure.get(
+                                        "y",
+                                        0
+                                    )
+                                )
+
+                                fw = float(
+                                    figure.get(
+                                        "width",
+                                        0
+                                    )
+                                )
+
+                                fh = float(
+                                    figure.get(
+                                        "height",
+                                        0
+                                    )
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                continue
+
+                            figure_right = (
+                                fx + fw
+                            )
+
+                            figure_bottom = (
+                                fy + fh
+                            )
+
+                            # ---------------------------------------------
+                            # AZURE FIGURE BOX
+                            # ---------------------------------------------
+
+                            draw.rectangle(
+                                (
+                                    fx,
+                                    fy,
+                                    figure_right,
+                                    figure_bottom
+                                ),
+                                outline="blue",
+                                width=6
+                            )
+
+                            # ---------------------------------------------
+                            # FIGURE LABEL
+                            # ---------------------------------------------
+
+                            label = (
+                                f"AZURE FIGURE {figure_id}"
+                            )
+
+                            label_x = fx
+                            label_y = max(
+                                0,
+                                fy - 32
+                            )
+
+                            draw.rectangle(
+                                (
+                                    label_x,
+                                    label_y,
+                                    label_x + 260,
+                                    label_y + 32
+                                ),
+                                fill="blue"
+                            )
+
+                            draw.text(
+                                (
+                                    label_x + 6,
+                                    label_y + 4
+                                ),
+                                label,
+                                fill="white",
+                                font=font
+                            )
+
+                        # =================================================
+                        # DRAW OPENAI CROP REQUESTS
+                        # =================================================
+
+                        for crop in crops:
+
+                            if not isinstance(
+                                crop,
+                                dict
+                            ):
+
+                                continue
+
+                            crop_id = crop.get(
+                                "crop_id",
+                                "unknown"
+                            )
+
+                            figure_id = crop.get(
+                                "figure_id",
+                                "unknown"
+                            )
+
+                            try:
+
+                                crop_x = float(
+                                    crop.get(
+                                        "x",
+                                        0
+                                    )
+                                )
+
+                                crop_y = float(
+                                    crop.get(
+                                        "y",
+                                        0
+                                    )
+                                )
+
+                                crop_width = float(
+                                    crop.get(
+                                        "width",
+                                        0
+                                    )
+                                )
+
+                                crop_height = float(
+                                    crop.get(
+                                        "height",
+                                        0
+                                    )
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                continue
+
+                            crop_right = (
+                                crop_x
+                                + crop_width
+                            )
+
+                            crop_bottom = (
+                                crop_y
+                                + crop_height
+                            )
+
+                            # ---------------------------------------------
+                            # DETERMINE WHICH AZURE FIGURES CONTAIN
+                            # THIS CROP
+                            # ---------------------------------------------
+
+                            containing_figures = []
+
+                            for figure in audit_page.get(
+                                "figures",
+                                []
+                            ):
+
+                                candidate_id = str(
+                                    figure.get(
+                                        "azure_figure_id"
+                                    )
+                                )
+
+                                try:
+
+                                    fx = float(
+                                        figure.get(
+                                            "x",
+                                            0
+                                        )
+                                    )
+
+                                    fy = float(
+                                        figure.get(
+                                            "y",
+                                            0
+                                        )
+                                    )
+
+                                    fw = float(
+                                        figure.get(
+                                            "width",
+                                            0
+                                        )
+                                    )
+
+                                    fh = float(
+                                        figure.get(
+                                            "height",
+                                            0
+                                        )
+                                    )
+
+                                except (
+                                    TypeError,
+                                    ValueError
+                                ):
+
+                                    continue
+
+                                if (
+                                    crop_x >= fx
+                                    and crop_y >= fy
+                                    and crop_right
+                                        <= fx + fw
+                                    and crop_bottom
+                                        <= fy + fh
+                                ):
+
+                                    containing_figures.append(
+                                        candidate_id
+                                    )
+
+                            # ---------------------------------------------
+                            # LOG EXACT GEOMETRY
+                            # ---------------------------------------------
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "CROP=%s "
+                                "| REQUESTED_FIGURE=%s "
+                                "| CROP=(%s,%s,%s,%s) "
+                                "| CONTAINED_BY=%s "
+                                "| PURPOSE=%s "
+                                "| PRODUCT=%s",
+                                crop_id,
+                                figure_id,
+                                crop_x,
+                                crop_y,
+                                crop_width,
+                                crop_height,
+                                containing_figures,
+                                crop.get(
+                                    "purpose",
+                                    ""
+                                ),
+                                crop.get(
+                                    "product_reference",
+                                    ""
+                                )
+                            )
+
+                            # ---------------------------------------------
+                            # CROP BOX
+                            # ---------------------------------------------
+
+                            draw.rectangle(
+                                (
+                                    crop_x,
+                                    crop_y,
+                                    crop_right,
+                                    crop_bottom
+                                ),
+                                outline="red",
+                                width=8
+                            )
+
+                            # ---------------------------------------------
+                            # CROP LABEL
+                            # ---------------------------------------------
+
+                            label = (
+                                f"{crop_id} "
+                                f"→ FIGURE {figure_id}"
+                            )
+
+                            label_x = crop_x
+
+                            label_y = max(
+                                0,
+                                crop_y - 34
+                            )
+
+                            draw.rectangle(
+                                (
+                                    label_x,
+                                    label_y,
+                                    label_x + 300,
+                                    label_y + 34
+                                ),
+                                fill="red"
+                            )
+
+                            draw.text(
+                                (
+                                    label_x + 6,
+                                    label_y + 5
+                                ),
+                                label,
+                                fill="white",
+                                font=font
+                            )
+
+                        # =================================================
+                        # SAVE DEBUG IMAGE
+                        # =================================================
+
+                        output_buffer = io.BytesIO()
+
+                        canvas.save(
+                            output_buffer,
+                            format="PNG"
+                        )
+
+                        output_buffer.seek(0)
+
+                        attachment_data = (
+                            base64.b64encode(
+                                output_buffer.read()
+                            )
+                        )
+
+                        attachment_name = (
+                            "azure_crop_debug_"
+                            f"job_{self.id}_"
+                            f"page_{page_number}.png"
+                        )
+
+                        attachment = self.env[
+                            "ir.attachment"
+                        ].sudo().create({
+
+                            "name":
+                                attachment_name,
+
+                            "type":
+                                "binary",
+
+                            "datas":
+                                attachment_data,
+
+                            "mimetype":
+                                "image/png",
+
+                            "res_model":
+                                self._name,
+
+                            "res_id":
+                                self.id,
+
+                        })
+
+                        _logger.warning(
+                            "[OPENAI CROP VISUAL DEBUG] "
+                            "IMAGE CREATED "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| ATTACHMENT_ID=%s "
+                            "| NAME=%s",
+                            self.id,
+                            page_number,
+                            attachment.id,
+                            attachment_name
+                        )
+
+                    _logger.warning(
+                        "[OPENAI CROP VISUAL DEBUG] "
+                        "COMPLETE "
+                        "| JOB=%s",
+                        self.id
+                    )
+
+                except Exception:
+
+                    _logger.exception(
+                        "[OPENAI CROP VISUAL DEBUG] "
+                        "FAILED "
+                        f"| JOB={self.id}"
+                    )
+
             # ----------------------------------------------------
             # INTERNAL DECISION CONTRACT
             #
