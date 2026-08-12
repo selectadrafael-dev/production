@@ -10818,9 +10818,9 @@ class VendorImportJob(models.Model):
                 else 0
             )
 
-            # ========================================================
+            # =========================================================
             # DEBUG — VISUALIZE OPENAI CROP REQUESTS
-            # ========================================================
+            # =========================================================
             #
             # IMPORTANT:
             # OpenAI crop coordinates are supposed to be relative
