@@ -9264,11 +9264,11 @@ class VendorImportJob(models.Model):
                     "be a JSON object"
                 )
 
-            # ----------------------------------------------------
-            # NORMALIZE DECISION
-            # ----------------------------------------------------
+            # ====================================================
+            # NORMALIZE AZURE AUDIT DECISION
+            # ====================================================
 
-            decision = (
+            raw_decision = (
                 str(
                     audit_result.get(
                         "decision",
@@ -9279,11 +9279,77 @@ class VendorImportJob(models.Model):
                 .strip()
             )
 
+            crop_required = bool(
+                audit_result.get(
+                    "crop_required",
+                    False
+                )
+            )
+
+            crops = audit_result.get(
+                "crops",
+                []
+            )
+
+            # ----------------------------------------------------
+            # INTERNAL DECISION CONTRACT
+            #
+            # PASS = existing assets can go directly
+            #        to Family A / production.
+            #
+            # CROP = Render must crop individual assets
+            #        before production.
+            # ----------------------------------------------------
+
+            if raw_decision == "PASS":
+
+                decision = "PASS"
+
+            elif raw_decision == "CROP":
+
+                decision = "CROP"
+
+            elif (
+                raw_decision == "FAIL"
+                and crop_required
+                and isinstance(crops, list)
+                and len(crops) > 0
+            ):
+
+                # OpenAI currently uses FAIL to mean:
+                # "current figure assets are not production-ready".
+                #
+                # Because it also supplied explicit crop
+                # instructions, translate that into the
+                # state-machine decision CROP.
+
+                decision = "CROP"
+
+                _logger.warning(
+                    "[AZURE AUDIT] "
+                    "FAIL + CROP INSTRUCTIONS "
+                    "→ NORMALIZED TO CROP "
+                    "| JOB=%s | CROPS=%s",
+                    self.id,
+                    len(crops)
+                )
+
+            else:
+
+                decision = ""
+
             _logger.warning(
                 "[AZURE AUDIT] DECISION | "
-                "JOB=%s | %s",
+                "JOB=%s | RAW=%s | "
+                "CROP_REQUIRED=%s | "
+                "CROPS=%s | NORMALIZED=%s",
                 self.id,
-                decision
+                raw_decision,
+                crop_required,
+                len(crops)
+                    if isinstance(crops, list)
+                    else 0,
+                decision or "INVALID"
             )
 
             # ====================================================
