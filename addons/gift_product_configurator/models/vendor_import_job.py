@@ -256,6 +256,16 @@ class VendorImportJob(models.Model):
         default="{}"
     )
 
+    azure_review_json = fields.Text(
+        string="Azure Visual Review",
+        default=""
+    )
+
+    azure_crop_completed = fields.Boolean(
+        string="Azure Crop Completed",
+        default=False
+    )
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -269,7 +279,19 @@ class VendorImportJob(models.Model):
         ('url_ai', 'URL AI'),
         ('url_creating', 'URL Creating'),
 
+        # ('pdf_extracting', 'PDF Extracting'),
+        # ('pdf_ai', 'PDF AI'),
+        # ('pdf_creating', 'PDF Creating'),
+
         ('pdf_extracting', 'PDF Extracting'),
+
+        # =================================================
+        # AZURE VISUAL REVIEW / CROPPING
+        # =================================================
+
+        ('azure_review', 'Azure Visual Review'),
+        ('azure_crop', 'Azure Image Cropping'),
+
         ('pdf_ai', 'PDF AI'),
         ('pdf_creating', 'PDF Creating'),
 
@@ -1511,14 +1533,17 @@ class VendorImportJob(models.Model):
                     )
 
                     self.state = 'pdf_extracting'
-
+                
                 else:
 
                     _logger.warning(
-                        "PDF EXTRACTION COMPLETE → pdf_ai"
+                        "PDF EXTRACTION COMPLETE "
+                        "→ azure_review"
                     )
 
-                    self.state = 'pdf_ai'
+                    self.last_known_state = 'azure_review'
+
+                    #self.state = 'azure_review'
 
 
                 self.flush_recordset()
@@ -1620,6 +1645,226 @@ class VendorImportJob(models.Model):
                 return
 
 
+            # =================================================
+            # AZURE VISUAL REVIEW
+            # =================================================
+
+            if self.state == 'azure_review':
+
+                _logger.warning(
+                    "[AZURE REVIEW] START "
+                    f"| JOB={self.id}"
+                )
+
+                self.last_known_state = 'azure_review'
+
+                try:
+
+                    audit_result = (
+                        self._review_azure_evidence_with_openai()
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[AZURE REVIEW] FAILED "
+                        f"| {str(e)}"
+                    )
+
+                    # =============================================
+                    # REAL TECHNICAL FAILURE
+                    # =============================================
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'azure_review'
+
+                    # Use the EXISTING retry/review mechanism.
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # =================================================
+                # READ AI DECISION
+                # =================================================
+
+                decision = str(
+                    audit_result.get(
+                        "decision",
+                        "FAIL"
+                    )
+                ).upper()
+
+                # =================================================
+                # SAVE COMPLETE REVIEW RESULT
+                # =================================================
+
+                self.azure_review_json = json.dumps(
+                    audit_result,
+                    ensure_ascii=False
+                )
+
+                # =================================================
+                # PASS
+                # =================================================
+
+                if decision == "PASS":
+
+                    _logger.warning(
+                        "[AZURE REVIEW] PASS "
+                        "→ EXISTING PDF AI "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.last_known_state = 'pdf_ai'
+
+                    self.state = 'pdf_ai'
+
+                # =================================================
+                # CROP REQUIRED
+                # =================================================
+
+                elif decision == "CROP":
+
+                    _logger.warning(
+                        "[AZURE REVIEW] CROP REQUIRED "
+                        "→ AZURE CROP "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.azure_crop_completed = False
+
+                    self.last_known_state = 'azure_crop'
+
+                    self.state = 'azure_crop'
+
+                # =================================================
+                # UNKNOWN / INVALID DECISION
+                # =================================================
+
+                else:
+
+                    _logger.warning(
+                        "[AZURE REVIEW] "
+                        f"INVALID DECISION={decision} "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = (
+                        "Azure visual review returned "
+                        f"invalid decision: {decision}"
+                    )
+
+                    self.last_known_state = 'azure_review'
+
+                    self.state = 'review'
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
+
+                return
+
+
+            # =================================================
+            # AZURE IMAGE CROPPING
+            # =================================================
+
+            if self.state == 'azure_crop':
+
+                _logger.warning(
+                    "[AZURE CROP] START "
+                    f"| JOB={self.id}"
+                )
+
+                self.last_known_state = 'azure_crop'
+
+                try:
+
+                    crop_result = (
+                        self._process_azure_crop_request()
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[AZURE CROP] FAILED "
+                        f"| {str(e)}"
+                    )
+
+                    # =============================================
+                    # REAL TECHNICAL FAILURE
+                    # =============================================
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'azure_crop'
+
+                    # Existing retry mechanism.
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # =================================================
+                # CROP SUCCESS
+                # =================================================
+
+                if crop_result.get(
+                    "success"
+                ):
+
+                    _logger.warning(
+                        "[AZURE CROP] COMPLETE "
+                        "→ EXISTING PDF AI "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.azure_crop_completed = True
+
+                    self.last_known_state = 'pdf_ai'
+
+                    self.state = 'pdf_ai'
+
+                # =================================================
+                # CROP FAILURE
+                # =================================================
+
+                else:
+
+                    _logger.warning(
+                        "[AZURE CROP] FAILED "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = (
+                        crop_result.get(
+                            "error",
+                            "Azure crop failed"
+                        )
+                    )
+
+                    self.last_known_state = 'azure_crop'
+
+                    self.state = 'review'
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
+
+                return
+
             # =============================================
             # PDF CREATE
             # =============================================
@@ -1703,6 +1948,8 @@ class VendorImportJob(models.Model):
                 self.env.cr.commit()
 
                 return
+
+            
 
     #=========Variant color swatch logic===========================================
 
@@ -2483,7 +2730,8 @@ class VendorImportJob(models.Model):
 
                         response = requests.post(
 
-                            "https://pdf-extractor-staging.onrender.com/extract",
+                            #"https://pdf-extractor-staging.onrender.com/extract",
+                            "https://pdf-extractor-staging.onrender.com/azure_evidence",
 
                             files={
 
@@ -2516,28 +2764,51 @@ class VendorImportJob(models.Model):
 
                         page_data = response.json()
 
+                        # =====================================================
+                        # AZURE EVIDENCE RESPONSE
+                        # =====================================================
 
-                        # =========================
-                        # RESPONSE FORMAT
-                        # =========================
+                        if not isinstance(page_data, dict):
 
-                        if isinstance(page_data, dict):
-
-                            pages = page_data.get(
-                                "pages",
-                                []
+                            _logger.warning(
+                                "[AZURE EVIDENCE] INVALID RESPONSE TYPE "
+                                f"| page={i + 1}"
                             )
 
-                        elif isinstance(
-                            page_data,
-                            list
-                        ):
+                            continue
 
-                            pages = page_data
 
-                        else:
+                        if not page_data.get("success"):
 
-                            pages = []
+                            _logger.warning(
+                                "[AZURE EVIDENCE] REQUEST FAILED "
+                                f"| page={i + 1} "
+                                f"| error={page_data.get('error')}"
+                            )
+
+                            continue
+
+
+                        evidence = page_data.get(
+                            "evidence",
+                            {}
+                        )
+
+                        if not isinstance(evidence, dict):
+
+                            _logger.warning(
+                                "[AZURE EVIDENCE] "
+                                "MISSING EVIDENCE OBJECT "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        pages = evidence.get(
+                            "pages",
+                            []
+                        )
 
 
                         if not pages:
@@ -2553,11 +2824,6 @@ class VendorImportJob(models.Model):
 
                         normalized_blocks = []
 
-
-                        # =========================
-                        # NORMALIZE
-                        # =========================
-
                         for p in pages:
 
                             text = p.get(
@@ -2570,13 +2836,36 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
-                            # ===========================
-                            # CLEAN CATALOG SEGMENTATION
-                            # ===========================
+                            # =====================================================
+                            # AZURE EVIDENCE
+                            # =====================================================
+                            # Azure has already detected/catalogued the figures.
+                            # DO NOT run legacy segmentation again.
+                            # =====================================================
 
-                            images = self._segment_catalog_images(
-                                images
+                            is_azure_evidence = bool(
+                                p.get("azure_evidence")
+                                or any(
+                                    isinstance(img, dict)
+                                    and img.get("azure_figure_id")
+                                    for img in images
+                                )
                             )
+
+                            if is_azure_evidence:
+
+                                _logger.warning(
+                                    "[AZURE EVIDENCE] "
+                                    f"PAGE={i + 1} "
+                                    f"| FIGURES={len(images)} "
+                                    "| SKIPPING LEGACY SEGMENTATION"
+                                )
+
+                            else:
+
+                                images = self._segment_catalog_images(
+                                    images
+                                )
 
                             # ============================
                             # SEGMENT PIPELINE SUMMARY
@@ -2676,7 +2965,35 @@ class VendorImportJob(models.Model):
 
                                 "stock": stock,
 
-                                "images": images
+                                "images": images,
+
+                                # =================================================
+                                # PRESERVE ORIGINAL PAGE
+                                # =================================================
+
+                                "page_image": p.get(
+                                    "page_image",
+                                    ""
+                                ),
+
+                                "page_width": p.get(
+                                    "page_width",
+                                    0
+                                ),
+
+                                "page_height": p.get(
+                                    "page_height",
+                                    0
+                                ),
+
+                                # =================================================
+                                # AZURE EVIDENCE MARKER
+                                # =================================================
+
+                                "azure_evidence": bool(
+                                    is_azure_evidence
+                                )
+
                             })
 
 
@@ -2792,9 +3109,24 @@ class VendorImportJob(models.Model):
 
                 self.state = "pdf_extracting"
 
+           
             else:
 
-                self.state = "pdf_ai"
+                # self.state = "pdf_ai"
+
+                # =========================================================
+                # PDF EXTRACTION COMPLETE
+                # HAND OFF TO AZURE VISUAL REVIEW
+                # =========================================================
+
+                _logger.warning(
+                    "[PDF EXTRACTION] "
+                    f"COMPLETE → AZURE REVIEW | JOB={self.id}"
+                )
+
+                self.last_known_state = 'azure_review'
+
+                self.state = 'azure_review'
 
 
             try:
@@ -6318,7 +6650,6 @@ class VendorImportJob(models.Model):
 
 
     # =========== PDF OPENAI BACKUP ================================
-    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -6982,6 +7313,61 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
+        # VISUAL INPUT INSTRUCTIONS
+        # =====================================================
+
+        visual_reference_instruction = """
+
+        IMPORTANT VISUAL INPUT STRUCTURE:
+
+        The FIRST image supplied to you is the COMPLETE
+        ORIGINAL CATALOGUE PAGE.
+
+        The remaining images are Azure-detected catalogue
+        figure assets extracted from that page.
+
+        The original page is provided ONLY as a visual
+        reference for:
+
+        - product grouping
+        - spatial relationships
+        - variant relationships
+        - missing or partial figure context
+        - text/image relationships
+        - understanding the complete catalogue layout
+
+        IMPORTANT IMAGE INDEX RULE:
+
+        The original page is NOT part of the product image
+        index system.
+
+        When returning:
+
+        - hero_image_index
+        - gallery_image_indexes
+        - variant image_index
+
+        use indexes ONLY from the Azure figure assets.
+
+        Therefore:
+
+        image_index 0 = first Azure figure
+        image_index 1 = second Azure figure
+        image_index 2 = third Azure figure
+        and so on.
+
+        NEVER use the original full-page image as:
+        - hero_image_index
+        - gallery_image_indexes
+        - variant image_index
+
+        Use the original page to understand the page.
+        Use Azure figure images for product image references.
+
+        """
+
+
+        # =====================================================
         # PROMPT
         # =====================================================
         context_summary = f"""
@@ -7368,6 +7754,12 @@ class VendorImportJob(models.Model):
 
         """
 
+        prompt = (
+            visual_reference_instruction
+            + "\n\n"
+            + prompt
+        )
+
         # =====================================================
         # AI CALL
         # =====================================================
@@ -7378,6 +7770,38 @@ class VendorImportJob(models.Model):
             MAX_IMAGES = 24
 
             image_inputs = []
+
+            # =====================================================
+            # ORIGINAL PAGE VISUAL REFERENCE
+            # =====================================================
+            #
+            # IMPORTANT:
+            # page_image is added to OpenAI input ONLY.
+            #
+            # It is NOT added to page_images.
+            # Therefore it does NOT affect image_index mapping.
+            # =====================================================
+
+            if page_image:
+
+                image_inputs.append({
+
+                    "type":
+                        "input_image",
+
+                    "image_url":
+                        (
+                            "data:image/png;base64,"
+                            + page_image
+                        )
+
+                })
+
+                _logger.warning(
+                    "[PDF AI] ORIGINAL PAGE "
+                    "ADDED AS VISUAL REFERENCE "
+                    f"| size={len(page_image)}"
+                )
 
 
             def ai_visibility_score(asset):
@@ -8191,7 +8615,580 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-   
+
+
+    # =========== PDF OPENAI PRODUCT REVIEW ================================
+    def _review_azure_evidence_with_openai(self):
+        """
+        Interception gate between Azure extraction and the
+        existing PDF production AI pipeline.
+
+        PASS:
+            Azure evidence is sufficiently clear.
+            Existing production PDF AI can continue.
+
+        FAIL:
+            OpenAI identifies ambiguous/composite figures and
+            returns instructions for image separation/cropping.
+
+        IMPORTANT:
+            This method does NOT create products.
+            This method does NOT replace send_to_openai_pdf().
+        """
+
+        self.ensure_one()
+
+        import json
+        import base64
+        import logging
+
+        _logger = logging.getLogger(__name__)
+
+        _logger.warning(
+            "[AZURE AUDIT] ======================================="
+        )
+
+        _logger.warning(
+            "[AZURE AUDIT] START "
+            f"| JOB={self.id}"
+        )
+
+        # ========================================================
+        # LOAD SAVED AZURE PAGES
+        # ========================================================
+
+        page_records = self.env[
+            "vendor.import.page"
+        ].search(
+            [
+                ("job_id", "=", self.id)
+            ],
+            order="page_number asc"
+        )
+
+        if not page_records:
+
+            _logger.warning(
+                "[AZURE AUDIT] No page records found "
+                f"| JOB={self.id}"
+            )
+
+            return {
+                "status": "FAIL",
+                "reason": "No extracted pages found",
+                "pages": []
+            }
+
+        audit_pages = []
+
+        # ========================================================
+        # BUILD OPENAI VISUAL INPUT
+        # ========================================================
+
+        image_inputs = []
+
+        for record in page_records:
+
+            try:
+
+                page_blocks = json.loads(
+                    record.extracted_json
+                    or "[]"
+                )
+
+            except Exception:
+
+                _logger.exception(
+                    "[AZURE AUDIT] Invalid extracted_json "
+                    f"| PAGE={record.page_number}"
+                )
+
+                continue
+
+            if not isinstance(
+                page_blocks,
+                list
+            ):
+
+                continue
+
+            for block in page_blocks:
+
+                if not isinstance(
+                    block,
+                    dict
+                ):
+                    continue
+
+                if not block.get(
+                    "azure_evidence"
+                ):
+                    continue
+
+                page_number = block.get(
+                    "page",
+                    record.page_number
+                )
+
+                page_image = block.get(
+                    "page_image"
+                )
+
+                images = block.get(
+                    "images",
+                    []
+                )
+
+                # =================================================
+                # ORIGINAL PAGE
+                # =================================================
+
+                page_visual_index = None
+
+                if page_image:
+
+                    page_visual_index = (
+                        len(image_inputs)
+                    )
+
+                    image_inputs.append({
+
+                        "type":
+                            "input_image",
+
+                        "image_url":
+                            (
+                                "data:image/png;base64,"
+                                + page_image
+                            )
+
+                    })
+
+                # =================================================
+                # FIGURE IMAGES
+                # =================================================
+
+                figure_visual_indexes = []
+
+                for image in images:
+
+                    if not isinstance(
+                        image,
+                        dict
+                    ):
+                        continue
+
+                    image_data = image.get(
+                        "image"
+                    )
+
+                    if not image_data:
+                        continue
+
+                    visual_index = (
+                        len(image_inputs)
+                    )
+
+                    image_inputs.append({
+
+                        "type":
+                            "input_image",
+
+                        "image_url":
+                            (
+                                "data:image/png;base64,"
+                                + image_data
+                            )
+
+                    })
+
+                    figure_visual_indexes.append({
+
+                        "visual_index":
+                            visual_index,
+
+                        "azure_figure_id":
+                            image.get(
+                                "azure_figure_id"
+                            ),
+
+                        "x":
+                            image.get(
+                                "x",
+                                0
+                            ),
+
+                        "y":
+                            image.get(
+                                "y",
+                                0
+                            ),
+
+                        "width":
+                            image.get(
+                                "width",
+                                0
+                            ),
+
+                        "height":
+                            image.get(
+                                "height",
+                                0
+                            ),
+
+                        "azure_bbox":
+                            image.get(
+                                "azure_bbox"
+                            )
+
+                    })
+
+                # =================================================
+                # PAGE AUDIT DATA
+                # =================================================
+
+                audit_pages.append({
+
+                    "page":
+                        page_number,
+
+                    "page_width":
+                        block.get(
+                            "page_width",
+                            0
+                        ),
+
+                    "page_height":
+                        block.get(
+                            "page_height",
+                            0
+                        ),
+
+                    "original_page_visual_index":
+                        page_visual_index,
+
+                    "figures":
+                        figure_visual_indexes,
+
+                    "text":
+                        block.get(
+                            "text",
+                            ""
+                        ),
+
+                    "azure_evidence":
+                        block.get(
+                            "azure_evidence",
+                            {}
+                        )
+
+                })
+
+        # ========================================================
+        # NO AZURE DATA
+        # ========================================================
+
+        if not audit_pages:
+
+            _logger.warning(
+                "[AZURE AUDIT] No Azure pages available"
+            )
+
+            return {
+
+                "status":
+                    "FAIL",
+
+                "reason":
+                    "No Azure evidence available",
+
+                "pages":
+                    []
+
+            }
+
+        # ========================================================
+        # OPENAI REVIEW PROMPT
+        # ========================================================
+
+        audit_prompt = """
+    You are the visual quality-control layer between
+    Azure Document Intelligence and an existing product
+    catalogue extraction pipeline.
+
+    Your job is NOT to create products.
+
+    Your job is to inspect the COMPLETE ORIGINAL PAGE
+    and the Azure-detected figure images and determine
+    whether the extraction is safe to pass to the existing
+    production pipeline.
+
+    IMPORTANT:
+
+    The ORIGINAL PAGE is the authoritative visual reference.
+
+    Azure figures are detected visual regions from that page.
+
+    A single Azure figure may contain:
+
+    - multiple products
+    - multiple variants
+    - several images of one product
+    - lifestyle/supporting images
+    - a product plus a marketing object
+    - a composite catalogue layout
+
+    Do NOT assume:
+
+    one figure = one product.
+
+    You must visually inspect the original page and determine
+    the actual product/image relationships.
+
+    For example, a wallet deliberately displayed beside a
+    ballpoint pen may still represent one promoted wallet
+    product, with the pen being a supporting marketing object.
+
+    Likewise, a bag shown in Grey, Black and Folded states may
+    represent ONE product with multiple variants/images.
+
+    COLOR-ONLY VARIANTS:
+
+    If the catalogue indicates a variant only through visual
+    appearance without explicitly naming the color, preserve
+    the visual variant. Do not reject it merely because the
+    color name is absent.
+
+    YOUR DECISION:
+
+    PASS if the Azure figures and original page provide enough
+    information for the existing production pipeline to proceed
+    without requiring additional image cropping.
+
+    FAIL if one or more figures contain multiple individual
+    product images that must be separated before production.
+
+    If FAIL, provide exact crop coordinates relative to the
+    ORIGINAL PAGE IMAGE.
+
+    Return ONLY valid JSON:
+
+    {
+        "decision": "PASS" or "FAIL",
+
+        "confidence": 0.0,
+
+        "reason": "...",
+
+        "pages": [
+            {
+                "page": 1,
+
+                "products": [
+                    {
+                        "product_reference": "...",
+
+                        "figure_ids": [
+                            "1.1"
+                        ],
+
+                        "role": "primary_product"
+                        or "supporting_image"
+                        or "variant_group"
+                        or "ambiguous",
+
+                        "reason": "..."
+                    }
+                ],
+
+                "crop_required": false,
+
+                "crops": [
+                    {
+                        "crop_id": "crop_1",
+
+                        "figure_id": "1.3",
+
+                        "x": 0,
+
+                        "y": 0,
+
+                        "width": 0,
+
+                        "height": 0,
+
+                        "purpose": "...",
+
+                        "product_reference": "...",
+
+                        "confidence": 0.0
+                    }
+                ]
+            }
+        ]
+    }
+
+    Rules:
+
+    1. Use pixel coordinates relative to the ORIGINAL PAGE IMAGE.
+    2. Do not invent coordinates.
+    3. Only request crops when genuinely necessary.
+    4. Do not crop the original page merely because an Azure
+    figure contains multiple products.
+    5. Preserve grouped variants when they are visually and
+    contextually one product.
+    6. Supporting marketing objects must not automatically
+    become independent products.
+    7. Every product decision must be based on both the
+    original page and Azure evidence.
+    """
+
+        # ========================================================
+        # PAGE METADATA FOR OPENAI
+        # ========================================================
+
+        audit_context = json.dumps(
+            audit_pages,
+            ensure_ascii=False
+        )
+
+        # ========================================================
+        # OPENAI CALL
+        # ========================================================
+
+        try:
+
+            from openai import OpenAI
+
+            client = OpenAI()
+
+            response = client.responses.create(
+
+                model="gpt-4.1",
+
+                input=[{
+
+                    "role":
+                        "user",
+
+                    "content": [
+
+                        {
+                            "type":
+                                "input_text",
+
+                            "text":
+                                (
+                                    audit_prompt
+                                    + "\n\n"
+                                    + "PAGE EVIDENCE:\n"
+                                    + audit_context
+                                )
+                        }
+
+                    ] + image_inputs
+
+                }],
+
+                timeout=90
+
+            )
+
+            raw_output = (
+                response.output_text
+                or ""
+            )
+
+            _logger.warning(
+                "[AZURE AUDIT] OPENAI RESPONSE "
+                f"| JOB={self.id} "
+                f"| LENGTH={len(raw_output)}"
+            )
+
+            # ====================================================
+            # PARSE JSON
+            # ====================================================
+
+            cleaned = raw_output.strip()
+
+            if cleaned.startswith(
+                "```"
+            ):
+
+                cleaned = (
+                    cleaned
+                    .replace(
+                        "```json",
+                        ""
+                    )
+                    .replace(
+                        "```",
+                        ""
+                    )
+                    .strip()
+                )
+
+            audit_result = json.loads(
+                cleaned
+            )
+
+            decision = (
+                str(
+                    audit_result.get(
+                        "decision",
+                        "FAIL"
+                    )
+                )
+                .upper()
+            )
+
+            # ====================================================
+            # STORE AUDIT RESULT
+            # ====================================================
+
+            self.azure_ai_audit_json = (
+                json.dumps(
+                    audit_result,
+                    ensure_ascii=False
+                )
+            ) if hasattr(
+                self,
+                "azure_ai_audit_json"
+            ) else False
+
+            _logger.warning(
+                "[AZURE AUDIT] DECISION "
+                f"| JOB={self.id} "
+                f"| {decision}"
+            )
+
+            return audit_result
+
+        except Exception as e:
+
+            _logger.exception(
+                "[AZURE AUDIT] FAILED "
+                f"| JOB={self.id}"
+            )
+
+            return {
+
+                "decision":
+                    "FAIL",
+
+                "confidence":
+                    0,
+
+                "reason":
+                    str(e),
+
+                "pages":
+                    [],
+
+                "audit_error":
+                    True
+
+            }
 
     # =====================================================
     # REMOVE TEXT AREAS
@@ -24869,6 +25866,9 @@ class VendorImportJob(models.Model):
             'excel_ai',
             'excel_creating',
 
+            'azure_review',
+            'azure_crop',
+
             'pdf_extracting',
             'pdf_ai',
             'pdf_creating',
@@ -24899,7 +25899,21 @@ class VendorImportJob(models.Model):
 
             "url_creating": "URL creation stalled",
 
+            # =============================================
+            # AZURE VISUAL INTERCEPTION
+            # =============================================
+            
+            "azure_review": "Azure visual review stalled",
+            
+            "azure_crop": "Azure image cropping stalled",
+            
+            "pdf_ai": "PDF AI stalled",
+            
+            "pdf_creating": "PDF creation stalled",
+
         }
+
+       
 
 
         # =================================================
