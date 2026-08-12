@@ -838,3 +838,592 @@ def build_azure_evidence_package(evidence):
 
     }
 
+# ============================================================
+# AZURE → FAMILY A COORDINATE CONVERSION
+# ============================================================
+
+def _azure_bbox_to_page_pixels(
+    bbox,
+    azure_page_width,
+    azure_page_height,
+    rendered_page_width,
+    rendered_page_height,
+):
+    """
+    Convert Azure page coordinates into pixel coordinates
+    of the original rendered page image.
+
+    We deliberately use the actual page dimensions rather
+    than a hard-coded DPI value.
+    """
+
+    if not bbox:
+        return {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+        }
+
+    try:
+
+        left = float(
+            bbox.get("left", 0)
+        )
+
+        top = float(
+            bbox.get("top", 0)
+        )
+
+        right = float(
+            bbox.get("right", 0)
+        )
+
+        bottom = float(
+            bbox.get("bottom", 0)
+        )
+
+        if (
+            not azure_page_width
+            or not azure_page_height
+            or not rendered_page_width
+            or not rendered_page_height
+        ):
+            return {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+            }
+
+        scale_x = (
+            rendered_page_width
+            / float(azure_page_width)
+        )
+
+        scale_y = (
+            rendered_page_height
+            / float(azure_page_height)
+        )
+
+        x = int(
+            round(left * scale_x)
+        )
+
+        y = int(
+            round(top * scale_y)
+        )
+
+        width = int(
+            round(
+                (right - left)
+                * scale_x
+            )
+        )
+
+        height = int(
+            round(
+                (bottom - top)
+                * scale_y
+            )
+        )
+
+        # ----------------------------------------------------
+        # Clamp to actual page boundaries
+        # ----------------------------------------------------
+
+        x = max(
+            0,
+            min(
+                x,
+                rendered_page_width
+            )
+        )
+
+        y = max(
+            0,
+            min(
+                y,
+                rendered_page_height
+            )
+        )
+
+        width = max(
+            0,
+            min(
+                width,
+                rendered_page_width - x
+            )
+        )
+
+        height = max(
+            0,
+            min(
+                height,
+                rendered_page_height - y
+            )
+        )
+
+        return {
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+        }
+
+    except Exception:
+
+        _logger.exception(
+            "[AZURE] Failed converting bbox to pixels"
+        )
+
+        return {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+        }
+
+
+# ============================================================
+# AZURE EVIDENCE → FAMILY A COMPATIBLE STRUCTURE
+# ============================================================
+
+def build_family_a_compatible_azure_package(
+    evidence
+):
+    """
+    Convert Azure evidence into the structural contract
+    expected by the existing Family A production pipeline.
+
+    Azure remains the extraction source.
+
+    Family A remains the downstream production contract.
+
+    No existing Family A production method is modified here.
+    """
+
+    pages = []
+
+    raw_pages = evidence.get(
+        "pages",
+        []
+    )
+
+    raw_figures = evidence.get(
+        "figures",
+        []
+    )
+
+    original_page_images = evidence.get(
+        "original_page_images",
+        []
+    )
+
+    # ========================================================
+    # PAGE LOOP FIRST
+    # ========================================================
+
+    for raw_page in raw_pages:
+
+        page_number = raw_page.get(
+            "page_number"
+        )
+
+        azure_width = raw_page.get(
+            "width",
+            0
+        )
+
+        azure_height = raw_page.get(
+            "height",
+            0
+        )
+
+        azure_unit = raw_page.get(
+            "unit"
+        )
+
+        # ----------------------------------------------------
+        # Find original rendered page
+        # ----------------------------------------------------
+
+        original_page = None
+
+        for item in original_page_images:
+
+            if (
+                item.get("page_number")
+                == page_number
+            ):
+
+                original_page = item
+
+                break
+
+        page_image = (
+            original_page.get(
+                "image_base64"
+            )
+            if original_page
+            else None
+        )
+
+        rendered_width = (
+            original_page.get(
+                "width",
+                0
+            )
+            if original_page
+            else 0
+        )
+
+        rendered_height = (
+            original_page.get(
+                "height",
+                0
+            )
+            if original_page
+            else 0
+        )
+
+        # ====================================================
+        # PAGE TEXT
+        # ====================================================
+
+        text_lines = []
+
+        for line in raw_page.get(
+            "lines",
+            []
+        ):
+
+            content = line.get(
+                "content"
+            )
+
+            if content:
+                text_lines.append(
+                    content
+                )
+
+        page_text = "\n".join(
+            text_lines
+        )
+
+        # ====================================================
+        # FIGURES BELONGING TO THIS PAGE
+        # ====================================================
+
+        page_figures = []
+
+        for figure in raw_figures:
+
+            regions = figure.get(
+                "bounding_regions",
+                []
+            )
+
+            for region in regions:
+
+                if (
+                    region.get(
+                        "page_number"
+                    )
+                    == page_number
+                ):
+
+                    page_figures.append(
+                        figure
+                    )
+
+                    break
+
+        # ====================================================
+        # FAMILY A IMAGES
+        # ====================================================
+
+        family_a_images = []
+
+        for rank, figure in enumerate(
+            page_figures
+        ):
+
+            image_base64 = figure.get(
+                "image_base64"
+            )
+
+            if not image_base64:
+                continue
+
+            regions = figure.get(
+                "bounding_regions",
+                []
+            )
+
+            if not regions:
+                continue
+
+            region = regions[0]
+
+            bbox = region.get(
+                "bbox",
+                {}
+            )
+
+            pixel_bbox = (
+                _azure_bbox_to_page_pixels(
+                    bbox=bbox,
+
+                    azure_page_width=
+                        azure_width,
+
+                    azure_page_height=
+                        azure_height,
+
+                    rendered_page_width=
+                        rendered_width,
+
+                    rendered_page_height=
+                        rendered_height,
+                )
+            )
+
+            x = pixel_bbox["x"]
+            y = pixel_bbox["y"]
+            width = pixel_bbox["width"]
+            height = pixel_bbox["height"]
+
+            crop_area = (
+                width * height
+            )
+
+            portrait = (
+                height > width
+                if width and height
+                else False
+            )
+
+            large_image = (
+                width >= 300
+                and height >= 300
+            )
+
+            large_area = (
+                crop_area >= 120000
+            )
+
+            # ------------------------------------------------
+            # IMPORTANT
+            #
+            # Azure does NOT decide lifestyle/product status.
+            # OpenAI will make the semantic decision later.
+            # ------------------------------------------------
+
+            image_item = {
+
+                # ============================================
+                # FAMILY A CORE FIELDS
+                # ============================================
+
+                "image":
+                    image_base64,
+
+                "score":
+                    0,
+
+                "x":
+                    x,
+
+                "y":
+                    y,
+
+                "extractor_rank":
+                    rank,
+
+                "extractor_score":
+                    0,
+
+                "width":
+                    width,
+
+                "height":
+                    height,
+
+                "is_lifestyle":
+                    False,
+
+                "lifestyle_score":
+                    0,
+
+                "large_image":
+                    large_image,
+
+                "portrait":
+                    portrait,
+
+                "large_area":
+                    large_area,
+
+                "crop_area":
+                    crop_area,
+
+                # ============================================
+                # AZURE IDENTIFICATION
+                # ============================================
+
+                "azure_figure_id":
+                    figure.get(
+                        "figure_id"
+                    ),
+
+                "azure_bbox":
+                    bbox,
+
+                "azure_page_number":
+                    page_number,
+
+                "azure_unit":
+                    azure_unit,
+
+                "azure_caption":
+                    figure.get(
+                        "caption"
+                    ),
+
+            }
+
+            family_a_images.append(
+                image_item
+            )
+
+        # ====================================================
+        # FAMILY A PAGE OBJECT
+        # ====================================================
+
+        page_data = {
+
+            "page":
+                page_number,
+
+            "text":
+                page_text,
+
+            "page_image":
+                page_image,
+
+            "page_image_size":
+                len(page_image)
+                if page_image
+                else 0,
+
+            "page_width":
+                rendered_width,
+
+            "page_height":
+                rendered_height,
+
+            "images":
+                family_a_images,
+
+            # =================================================
+            # AZURE EVIDENCE EXTENSION
+            # =================================================
+
+            "azure_evidence": {
+
+                "page_number":
+                    page_number,
+
+                "azure_width":
+                    azure_width,
+
+                "azure_height":
+                    azure_height,
+
+                "azure_unit":
+                    azure_unit,
+
+                "figure_ids": [
+
+                    figure.get(
+                        "figure_id"
+                    )
+
+                    for figure
+                    in page_figures
+
+                ],
+
+                "ocr_lines": [
+
+                    {
+                        "text":
+                            line.get(
+                                "content"
+                            ),
+
+                        "bbox":
+                            line.get(
+                                "bbox"
+                            ),
+
+                        "polygon":
+                            line.get(
+                                "polygon"
+                            ),
+
+                    }
+
+                    for line
+                    in raw_page.get(
+                        "lines",
+                        []
+                    )
+
+                    if line.get(
+                        "content"
+                    )
+
+                ],
+
+            },
+
+        }
+
+        pages.append(
+            page_data
+        )
+
+    # ========================================================
+    # FINAL FAMILY-A COMPATIBLE PACKAGE
+    # ========================================================
+
+    return {
+
+        "pages":
+            pages,
+
+        "azure_evidence": {
+
+            "model_id":
+                evidence.get(
+                    "model_id"
+                ),
+
+            "operation_id":
+                evidence.get(
+                    "operation_id"
+                ),
+
+            "figure_count":
+                len(raw_figures),
+
+            "original_page_count":
+                len(
+                    original_page_images
+                ),
+
+        },
+
+    }
