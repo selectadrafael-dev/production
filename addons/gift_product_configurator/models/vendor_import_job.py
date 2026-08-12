@@ -9156,41 +9156,134 @@ class VendorImportJob(models.Model):
                 f"| LENGTH={len(raw_output)}"
             )
 
+
             # ====================================================
             # PARSE JSON
             # ====================================================
 
             cleaned = raw_output.strip()
 
-            if cleaned.startswith(
-                "```"
-            ):
+            # ----------------------------------------------------
+            # REMOVE MARKDOWN JSON FENCE IF PRESENT
+            # ----------------------------------------------------
 
-                cleaned = (
-                    cleaned
-                    .replace(
-                        "```json",
-                        ""
-                    )
-                    .replace(
-                        "```",
-                        ""
-                    )
-                    .strip()
-                )
+            if cleaned.startswith("```"):
 
-            audit_result = json.loads(
+                if cleaned.startswith("```json"):
+
+                    cleaned = cleaned[
+                        len("```json"):
+                    ]
+
+                else:
+
+                    cleaned = cleaned[
+                        len("```"):
+                    ]
+
+                if cleaned.endswith("```"):
+
+                    cleaned = cleaned[
+                        :-len("```")
+                    ]
+
+                cleaned = cleaned.strip()
+
+            # ----------------------------------------------------
+            # RAW RESPONSE
+            # ----------------------------------------------------
+
+            _logger.warning(
+                "[AZURE AUDIT] RAW RESPONSE | "
+                "JOB=%s | LENGTH=%s\n%s",
+                self.id,
+                len(cleaned),
                 cleaned
             )
+
+            # ----------------------------------------------------
+            # STRICT JSON PARSE
+            # ----------------------------------------------------
+
+            try:
+
+                audit_result = json.loads(
+                    cleaned
+                )
+
+            except json.JSONDecodeError as e:
+
+                _logger.error(
+                    "[AZURE AUDIT] JSON PARSE FAILED "
+                    "| JOB=%s "
+                    "| LINE=%s "
+                    "| COLUMN=%s "
+                    "| POSITION=%s",
+                    self.id,
+                    e.lineno,
+                    e.colno,
+                    e.pos
+                )
+
+                # Show the exact area around the
+                # malformed character instead of flooding
+                # the Odoo log with the entire response again.
+
+                context_start = max(
+                    0,
+                    e.pos - 400
+                )
+
+                context_end = min(
+                    len(cleaned),
+                    e.pos + 400
+                )
+
+                _logger.error(
+                    "[AZURE AUDIT] RESPONSE AROUND "
+                    "PARSE ERROR | JOB=%s\n%s",
+                    self.id,
+                    cleaned[
+                        context_start:context_end
+                    ]
+                )
+
+                raise
+
+            # ----------------------------------------------------
+            # VALIDATE TOP-LEVEL RESPONSE
+            # ----------------------------------------------------
+
+            if not isinstance(
+                audit_result,
+                dict
+            ):
+
+                raise ValueError(
+                    "Azure audit response must "
+                    "be a JSON object"
+                )
+
+            # ----------------------------------------------------
+            # NORMALIZE DECISION
+            # ----------------------------------------------------
 
             decision = (
                 str(
                     audit_result.get(
                         "decision",
-                        "FAIL"
+                        ""
                     )
                 )
                 .upper()
+                .strip()
+            )
+
+            _logger.warning(
+                "[AZURE AUDIT] DECISION | "
+                "JOB=%s | %s",
+                self.id,
+                decision
             )
 
             # ====================================================
