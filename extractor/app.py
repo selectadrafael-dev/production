@@ -17,12 +17,14 @@ from azure_layout import (
 
 from azure_layout import (
     analyze_pdf,
-    build_azure_evidence_package
+    build_family_a_compatible_azure_package
 )
 
 from azure_layout_postman import (
     analyze_pdf as analyze_pdf_raw
 )
+
+
 
 app = Flask(__name__)
 
@@ -494,10 +496,22 @@ def azure_evidence():
 
         evidence = analyze_pdf(file)
 
+        family_a_package = (
+            build_family_a_compatible_azure_package(
+                evidence
+            )
+        )
+
         return jsonify({
+
             "success": True,
-            "stage": "azure_evidence_completed",
-            "evidence": evidence
+
+            "stage":
+                "azure_evidence_completed",
+
+            "evidence":
+                family_a_package
+
         })
 
     except Exception as e:
