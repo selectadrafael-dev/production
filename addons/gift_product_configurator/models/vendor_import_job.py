@@ -29,6 +29,8 @@ from odoo.exceptions import AccessError
 import imagehash
 import time
 
+
+
  
 _logger = logging.getLogger(__name__)
 
@@ -9058,9 +9060,26 @@ class VendorImportJob(models.Model):
 
         try:
 
-            from openai import OpenAI
+            api_key = self.env[
+                'ir.config_parameter'
+            ].sudo().get_param(
+                'openai.api.key'
+            )
 
-            client = OpenAI()
+            if not api_key:
+
+                raise Exception(
+                    "OpenAI API key not configured"
+                )
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            _logger.warning(
+                "[AZURE AUDIT] START "
+                f"| JOB={self.id}"
+            )
 
             response = client.responses.create(
 
