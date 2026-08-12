@@ -10,8 +10,19 @@ from recovery_dispatcher import dispatch
 from recovery_v2 import recovery_v2
 import vision_test
 
-from azure_layout import analyze_pdf
 from azure_product_evidence import build_product_evidence
+from azure_layout import (
+    build_azure_evidence_package
+)
+
+from azure_layout import (
+    analyze_pdf,
+    build_azure_evidence_package
+)
+
+from azure_layout_postman import (
+    analyze_pdf as analyze_pdf_raw
+)
 
 app = Flask(__name__)
 
@@ -213,12 +224,32 @@ def test_azure_layout():
 
     try:
 
-        evidence = analyze_pdf(file)
+        # evidence = analyze_pdf(file)
+
+        evidence = analyze_pdf_raw(file)
+
+        package = build_azure_evidence_package(
+            evidence
+        )
 
         return jsonify({
+
             "success": True,
-            "evidence": evidence
+
+            "stage":
+                "azure_evidence_completed",
+
+            "evidence":
+                package
+
         })
+
+        # evidence = analyze_pdf(file)
+
+        # return jsonify({
+        #     "success": True,
+        #     "evidence": evidence
+        # })
 
     except Exception as e:
 
