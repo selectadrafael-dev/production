@@ -9624,6 +9624,12 @@ class VendorImportJob(models.Model):
 
         self.ensure_one()
 
+        # ========================================================
+        # TEMPORARY VISUAL DEBUG
+        # ========================================================
+
+        DEBUG_AZURE_VISUAL_AUDIT = True
+
         _logger.warning(
             "[AZURE AUDIT] ======================================="
         )
@@ -9936,6 +9942,387 @@ class VendorImportJob(models.Model):
         )
 
         # ========================================================
+        # TEMPORARY OPENAI VISUAL CONTACT SHEET
+        # ========================================================
+        #
+        # IMPORTANT:
+        # This uses the EXACT image_inputs already prepared
+        # for OpenAI.
+        #
+        # Therefore this proves what OpenAI is actually receiving.
+        #
+        # It does NOT alter image_inputs.
+        # It does NOT add the contact sheet to OpenAI.
+        # It only creates a temporary Odoo attachment for inspection.
+        # ========================================================
+
+        if DEBUG_AZURE_VISUAL_AUDIT:
+
+            try:
+
+                import base64
+                import io
+
+                from PIL import Image
+                from PIL import ImageDraw
+                from PIL import ImageFont
+
+                _logger.warning(
+                    "[OPENAI VISUAL DEBUG] "
+                    "BUILDING CONTACT SHEETS "
+                    f"| JOB={self.id}"
+                )
+
+                for audit_page in audit_pages:
+
+                    page_number = audit_page.get(
+                        "page"
+                    )
+
+                    original_index = audit_page.get(
+                        "original_page_visual_index"
+                    )
+
+                    figures = audit_page.get(
+                        "figures",
+                        []
+                    )
+
+                    visual_items = []
+
+                    # =================================================
+                    # ORIGINAL PAGE
+                    # =================================================
+
+                    if (
+                        original_index is not None
+                        and original_index < len(image_inputs)
+                    ):
+
+                        visual_items.append({
+                            "label": (
+                                f"PAGE {page_number} "
+                                f"| ORIGINAL PAGE "
+                                f"| INDEX={original_index}"
+                            ),
+                            "input_index":
+                                original_index,
+                        })
+
+                    # =================================================
+                    # AZURE FIGURES
+                    # =================================================
+
+                    for figure in figures:
+
+                        visual_index = figure.get(
+                            "visual_index"
+                        )
+
+                        if (
+                            visual_index is None
+                            or visual_index >= len(
+                                image_inputs
+                            )
+                        ):
+                            continue
+
+                        visual_items.append({
+                            "label": (
+                                f"PAGE {page_number} "
+                                f"| FIGURE "
+                                f"{figure.get('azure_figure_id')} "
+                                f"| INDEX={visual_index} "
+                                f"| X={figure.get('x')} "
+                                f"| Y={figure.get('y')} "
+                                f"| W={figure.get('width')} "
+                                f"| H={figure.get('height')}"
+                            ),
+                            "input_index":
+                                visual_index,
+                        })
+
+                    if not visual_items:
+
+                        _logger.warning(
+                            "[OPENAI VISUAL DEBUG] "
+                            "NO VISUAL ITEMS "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number}"
+                        )
+
+                        continue
+
+                    # =================================================
+                    # LOAD IMAGES
+                    # =================================================
+
+                    loaded_images = []
+
+                    for item in visual_items:
+
+                        input_index = item[
+                            "input_index"
+                        ]
+
+                        image_input = image_inputs[
+                            input_index
+                        ]
+
+                        image_url = image_input.get(
+                            "image_url",
+                            ""
+                        )
+
+                        if not image_url:
+                            continue
+
+                        try:
+
+                            encoded = (
+                                image_url
+                                .split(
+                                    ",",
+                                    1
+                                )[1]
+                            )
+
+                            image_bytes = (
+                                base64.b64decode(
+                                    encoded
+                                )
+                            )
+
+                            image = Image.open(
+                                io.BytesIO(
+                                    image_bytes
+                                )
+                            ).convert(
+                                "RGB"
+                            )
+
+                            loaded_images.append({
+                                "label":
+                                    item["label"],
+                                "image":
+                                    image,
+                            })
+
+                            _logger.warning(
+                                "[OPENAI VISUAL DEBUG] "
+                                "CONTACT IMAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s "
+                                "| INDEX=%s "
+                                "| SIZE=%sx%s",
+                                self.id,
+                                page_number,
+                                input_index,
+                                image.width,
+                                image.height
+                            )
+
+                        except Exception:
+
+                            _logger.exception(
+                                "[OPENAI VISUAL DEBUG] "
+                                "FAILED TO LOAD IMAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s "
+                                "| INDEX=%s",
+                                self.id,
+                                page_number,
+                                input_index
+                            )
+
+                    if not loaded_images:
+                        continue
+
+                    # =================================================
+                    # CONTACT SHEET SETTINGS
+                    # =================================================
+
+                    thumbnail_width = 700
+                    label_height = 55
+                    margin = 20
+
+                    rendered = []
+
+                    total_height = margin
+
+                    for item in loaded_images:
+
+                        image = item["image"]
+
+                        scale = (
+                            thumbnail_width
+                            / float(image.width)
+                        )
+
+                        thumbnail_height = int(
+                            image.height * scale
+                        )
+
+                        thumbnail = image.copy()
+
+                        thumbnail.thumbnail(
+                            (
+                                thumbnail_width,
+                                900
+                            ),
+                            Image.Resampling.LANCZOS
+                        )
+
+                        rendered.append({
+                            "label":
+                                item["label"],
+                            "image":
+                                thumbnail,
+                        })
+
+                        total_height += (
+                            label_height
+                            + thumbnail.height
+                            + margin
+                        )
+
+                    # =================================================
+                    # CREATE CANVAS
+                    # =================================================
+
+                    canvas_width = (
+                        thumbnail_width
+                        + (margin * 2)
+                    )
+
+                    canvas = Image.new(
+                        "RGB",
+                        (
+                            canvas_width,
+                            total_height
+                        ),
+                        "white"
+                    )
+
+                    draw = ImageDraw.Draw(
+                        canvas
+                    )
+
+                    current_y = margin
+
+                    for item in rendered:
+
+                        label = item["label"]
+                        image = item["image"]
+
+                        draw.rectangle(
+                            (
+                                margin,
+                                current_y,
+                                canvas_width - margin,
+                                current_y
+                                + label_height
+                            ),
+                            fill="black"
+                        )
+
+                        draw.text(
+                            (
+                                margin + 10,
+                                current_y + 10
+                            ),
+                            label,
+                            fill="white"
+                        )
+
+                        current_y += (
+                            label_height
+                        )
+
+                        canvas.paste(
+                            image,
+                            (
+                                margin,
+                                current_y
+                            )
+                        )
+
+                        current_y += (
+                            image.height
+                            + margin
+                        )
+
+                    # =================================================
+                    # ENCODE CONTACT SHEET
+                    # =================================================
+
+                    output_buffer = io.BytesIO()
+
+                    canvas.save(
+                        output_buffer,
+                        format="PNG"
+                    )
+
+                    output_buffer.seek(0)
+
+                    attachment_data = (
+                        base64.b64encode(
+                            output_buffer.read()
+                        )
+                    )
+
+                    attachment_name = (
+                        "azure_visual_debug_"
+                        f"job_{self.id}_"
+                        f"page_{page_number}.png"
+                    )
+
+                    attachment = self.env[
+                        "ir.attachment"
+                    ].sudo().create({
+
+                        "name":
+                            attachment_name,
+
+                        "type":
+                            "binary",
+
+                        "datas":
+                            attachment_data,
+
+                        "mimetype":
+                            "image/png",
+
+                        "res_model":
+                            self._name,
+
+                        "res_id":
+                            self.id,
+
+                    })
+
+                    _logger.warning(
+                        "[OPENAI VISUAL DEBUG] "
+                        "CONTACT SHEET CREATED "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| ATTACHMENT_ID=%s "
+                        "| NAME=%s",
+                        self.id,
+                        page_number,
+                        attachment.id,
+                        attachment_name
+                    )
+
+            except Exception:
+
+                _logger.exception(
+                    "[OPENAI VISUAL DEBUG] "
+                    "CONTACT SHEET FAILED "
+                    f"| JOB={self.id}"
+                )
+
+        # ========================================================
         # NO AZURE DATA
         # ========================================================
 
@@ -9963,136 +10350,178 @@ class VendorImportJob(models.Model):
         # ========================================================
 
         audit_prompt = """
-    You are the visual quality-control layer between
-    Azure Document Intelligence and an existing product
-    catalogue extraction pipeline.
+        You are the visual quality-control layer between
+        Azure Document Intelligence and an existing product
+        catalogue extraction pipeline.
 
-    Your job is NOT to create products.
+        Your job is NOT to create products.
 
-    Your job is to inspect the COMPLETE ORIGINAL PAGE
-    and the Azure-detected figure images and determine
-    whether the extraction is safe to pass to the existing
-    production pipeline.
+        Your job is to inspect the COMPLETE ORIGINAL PAGE
+        and the Azure-detected figure images and determine
+        whether the extraction is safe to pass to the existing
+        production pipeline.
 
-    IMPORTANT:
+        IMPORTANT:
 
-    The ORIGINAL PAGE is the authoritative visual reference.
+        The ORIGINAL PAGE is the authoritative visual reference.
 
-    Azure figures are detected visual regions from that page.
+        Azure figures are detected visual regions from that page.
 
-    A single Azure figure may contain:
+        A single Azure figure may contain:
 
-    - multiple products
-    - multiple variants
-    - several images of one product
-    - lifestyle/supporting images
-    - a product plus a marketing object
-    - a composite catalogue layout
+        - multiple products
+        - multiple variants
+        - several images of one product
+        - lifestyle/supporting images
+        - a product plus a marketing object
+        - a composite catalogue layout
 
-    Do NOT assume:
+        Do NOT assume:
 
-    one figure = one product.
+        one figure = one product.
 
-    You must visually inspect the original page and determine
-    the actual product/image relationships.
+        You must visually inspect the original page and determine
+        the actual product/image relationships.
 
-    For example, a wallet deliberately displayed beside a
-    ballpoint pen may still represent one promoted wallet
-    product, with the pen being a supporting marketing object.
+        For example, a wallet deliberately displayed beside a
+        ballpoint pen may still represent one promoted wallet
+        product, with the pen being a supporting marketing object.
 
-    Likewise, a bag shown in Grey, Black and Folded states may
-    represent ONE product with multiple variants/images.
+        Likewise, a bag shown in Grey, Black and Folded states may
+        represent ONE product with multiple variants/images.
 
-    COLOR-ONLY VARIANTS:
+        COLOR-ONLY VARIANTS:
 
-    If the catalogue indicates a variant only through visual
-    appearance without explicitly naming the color, preserve
-    the visual variant. Do not reject it merely because the
-    color name is absent.
+        If the catalogue indicates a variant only through visual
+        appearance without explicitly naming the color, preserve
+        the visual variant. Do not reject it merely because the
+        color name is absent.
 
-    YOUR DECISION:
+        YOUR DECISION:
 
-    PASS if the Azure figures and original page provide enough
-    information for the existing production pipeline to proceed
-    without requiring additional image cropping.
+        PASS if the Azure figures and original page provide enough
+        information for the existing production pipeline to proceed
+        without requiring additional image cropping.
 
-    FAIL if one or more figures contain multiple individual
-    product images that must be separated before production.
+        FAIL if one or more figures contain multiple individual
+        product images that must be separated before production.
 
-    If FAIL, provide exact crop coordinates relative to the
-    ORIGINAL PAGE IMAGE.
+        If FAIL, provide exact crop coordinates relative to the
+        ORIGINAL PAGE IMAGE.
 
-    Return ONLY valid JSON:
+        Return ONLY valid JSON:
 
-    {
-        "decision": "PASS" or "FAIL",
+        {
+            "decision": "PASS" or "FAIL",
 
-        "confidence": 0.0,
+            "confidence": 0.0,
 
-        "reason": "...",
+            "reason": "...",
 
-        "pages": [
-            {
-                "page": 1,
+            "pages": [
+                {
+                    "page": 1,
 
-                "products": [
-                    {
-                        "product_reference": "...",
+                    "products": [
+                        {
+                            "product_reference": "...",
 
-                        "figure_ids": [
-                            "1.1"
-                        ],
+                            "figure_ids": [
+                                "1.1"
+                            ],
 
-                        "role": "primary_product"
-                        or "supporting_image"
-                        or "variant_group"
-                        or "ambiguous",
+                            "role": "primary_product"
+                            or "supporting_image"
+                            or "variant_group"
+                            or "ambiguous",
 
-                        "reason": "..."
-                    }
-                ],
+                            "reason": "..."
+                        }
+                    ],
 
-                "crop_required": false,
+                    "crop_required": false,
 
-                "crops": [
-                    {
-                        "crop_id": "crop_1",
+                    "crops": [
+                        {
+                            "crop_id": "crop_1",
 
-                        "figure_id": "1.3",
+                            "figure_id": "1.3",
 
-                        "x": 0,
+                            "x": 0,
 
-                        "y": 0,
+                            "y": 0,
 
-                        "width": 0,
+                            "width": 0,
 
-                        "height": 0,
+                            "height": 0,
 
-                        "purpose": "...",
+                            "purpose": "...",
 
-                        "product_reference": "...",
+                            "product_reference": "...",
 
-                        "confidence": 0.0
-                    }
-                ]
-            }
-        ]
-    }
+                            "confidence": 0.0
+                        }
+                    ]
+                }
+            ]
+        }
 
-    Rules:
 
-    1. Use pixel coordinates relative to the ORIGINAL PAGE IMAGE.
-    2. Do not invent coordinates.
-    3. Only request crops when genuinely necessary.
-    4. Do not crop the original page merely because an Azure
-    figure contains multiple products.
-    5. Preserve grouped variants when they are visually and
-    contextually one product.
-    6. Supporting marketing objects must not automatically
-    become independent products.
-    7. Every product decision must be based on both the
-    original page and Azure evidence.
-    """
+        Rules:
+
+        1. Use pixel coordinates relative to the ORIGINAL PAGE IMAGE.
+
+        2. Do not invent coordinates.
+
+        3. Only request crops when genuinely necessary.
+
+        4. Do not crop the original page merely because an
+           Azure figure contains multiple products.
+
+        5. Preserve grouped variants when they are visually and
+           contextually one product.
+
+        6. Supporting marketing objects must not automatically
+           become independent products.
+
+        7. Every product decision must be based on both the
+           original page and Azure evidence.
+
+        8. IMPORTANT FIGURE IDENTITY RULE:
+           Each Azure figure image supplied to you is a separate
+           visual input.
+
+           When analyzing Figure 1.3, inspect the actual image
+           supplied for Figure 1.3.
+
+           Do NOT transfer an object seen in Figure 1.2 into
+           Figure 1.3 merely because the objects are spatially
+           close on the original page.
+
+        9. If you say that Figure X contains multiple individual
+           images, every object you identify must actually be
+           visible inside the supplied Figure X image.
+
+        10. CROP COORDINATE CONSISTENCY:
+            A crop assigned to Figure X must lie completely
+            inside Figure X's Azure bounding rectangle on the
+            original page.
+
+        11. Before returning a crop instruction, verify:
+
+            crop_x >= figure_x
+            crop_y >= figure_y
+
+            crop_x + crop_width
+                <= figure_x + figure_width
+
+            crop_y + crop_height
+                <= figure_y + figure_height
+
+        12. If a requested crop would fall outside its assigned
+            figure, do not return that crop. Re-evaluate the
+            figure assignment first.
+        """
 
         # ========================================================
         # PAGE METADATA FOR OPENAI
@@ -10307,6 +10736,22 @@ class VendorImportJob(models.Model):
                 .strip()
             )
 
+            # ====================================================
+            # EXTRACT CROP INSTRUCTIONS
+            # ====================================================
+            #
+            # OpenAI may return crop_required/crops either:
+            #
+            # 1. At the top level
+            #
+            # OR
+            #
+            # 2. Inside pages[]
+            #
+            # Family-A-compatible responses currently use
+            # the second structure.
+            # ====================================================
+
             crop_required = bool(
                 audit_result.get(
                     "crop_required",
@@ -10317,6 +10762,60 @@ class VendorImportJob(models.Model):
             crops = audit_result.get(
                 "crops",
                 []
+            )
+
+            # ----------------------------------------------------
+            # FALLBACK TO PAGE-LEVEL CROP DATA
+            # ----------------------------------------------------
+
+            if not crop_required:
+
+                for audit_page in audit_result.get(
+                    "pages",
+                    []
+                ):
+
+                    if not isinstance(
+                        audit_page,
+                        dict
+                    ):
+                        continue
+
+                    if audit_page.get(
+                        "crop_required",
+                        False
+                    ):
+
+                        crop_required = True
+
+                    page_crops = audit_page.get(
+                        "crops",
+                        []
+                    )
+
+                    if isinstance(
+                        page_crops,
+                        list
+                    ):
+
+                        crops.extend(
+                            page_crops
+                        )
+
+            _logger.warning(
+                "[AZURE AUDIT] "
+                "CROP DATA EXTRACTED "
+                "| JOB=%s "
+                "| CROP_REQUIRED=%s "
+                "| CROPS=%s",
+                self.id,
+                crop_required,
+                len(crops)
+                if isinstance(
+                    crops,
+                    list
+                )
+                else 0
             )
 
             # ----------------------------------------------------
@@ -10378,6 +10877,256 @@ class VendorImportJob(models.Model):
                     if isinstance(crops, list)
                     else 0,
                 decision or "INVALID"
+            )
+
+            # ====================================================
+            # VALIDATE CROP COORDINATES AGAINST AZURE FIGURES
+            # ====================================================
+
+            valid_crops = []
+
+            if isinstance(
+                crops,
+                list
+            ):
+
+                # ------------------------------------------------
+                # Build lookup:
+                #
+                # figure_id
+                #     →
+                # Azure original-page bounds
+                # ------------------------------------------------
+
+                figure_bounds = {}
+
+                for audit_page in audit_pages:
+
+                    for figure in audit_page.get(
+                        "figures",
+                        []
+                    ):
+
+                        figure_id = figure.get(
+                            "azure_figure_id"
+                        )
+
+                        if not figure_id:
+                            continue
+
+                        figure_bounds[
+                            str(figure_id)
+                        ] = {
+                            "x":
+                                float(
+                                    figure.get(
+                                        "x",
+                                        0
+                                    )
+                                ),
+
+                            "y":
+                                float(
+                                    figure.get(
+                                        "y",
+                                        0
+                                    )
+                                ),
+
+                            "width":
+                                float(
+                                    figure.get(
+                                        "width",
+                                        0
+                                    )
+                                ),
+
+                            "height":
+                                float(
+                                    figure.get(
+                                        "height",
+                                        0
+                                    )
+                                ),
+                        }
+
+                # ------------------------------------------------
+                # Validate every crop
+                # ------------------------------------------------
+
+                for crop in crops:
+
+                    if not isinstance(
+                        crop,
+                        dict
+                    ):
+                        continue
+
+                    crop_id = crop.get(
+                        "crop_id",
+                        "unknown"
+                    )
+
+                    figure_id = str(
+                        crop.get(
+                            "figure_id",
+                            ""
+                        )
+                    )
+
+                    if figure_id not in figure_bounds:
+
+                        _logger.error(
+                            "[AZURE AUDIT] "
+                            "INVALID CROP FIGURE "
+                            "| JOB=%s "
+                            "| CROP=%s "
+                            "| FIGURE=%s",
+                            self.id,
+                            crop_id,
+                            figure_id
+                        )
+
+                        continue
+
+                    bounds = figure_bounds[
+                        figure_id
+                    ]
+
+                    try:
+
+                        crop_x = float(
+                            crop.get(
+                                "x",
+                                0
+                            )
+                        )
+
+                        crop_y = float(
+                            crop.get(
+                                "y",
+                                0
+                            )
+                        )
+
+                        crop_width = float(
+                            crop.get(
+                                "width",
+                                0
+                            )
+                        )
+
+                        crop_height = float(
+                            crop.get(
+                                "height",
+                                0
+                            )
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        _logger.error(
+                            "[AZURE AUDIT] "
+                            "INVALID CROP NUMBERS "
+                            "| JOB=%s "
+                            "| CROP=%s",
+                            self.id,
+                            crop_id
+                        )
+
+                        continue
+
+                    crop_right = (
+                        crop_x
+                        + crop_width
+                    )
+
+                    crop_bottom = (
+                        crop_y
+                        + crop_height
+                    )
+
+                    figure_right = (
+                        bounds["x"]
+                        + bounds["width"]
+                    )
+
+                    figure_bottom = (
+                        bounds["y"]
+                        + bounds["height"]
+                    )
+
+                    inside_figure = (
+                        crop_x >= bounds["x"]
+                        and crop_y >= bounds["y"]
+                        and crop_right <= figure_right
+                        and crop_bottom <= figure_bottom
+                    )
+
+                    if not inside_figure:
+
+                        _logger.error(
+                            "[AZURE AUDIT] "
+                            "CROP OUTSIDE FIGURE "
+                            "| JOB=%s "
+                            "| CROP=%s "
+                            "| FIGURE=%s "
+                            "| CROP=(%s,%s,%s,%s) "
+                            "| FIGURE=(%s,%s,%s,%s)",
+                            self.id,
+                            crop_id,
+                            figure_id,
+                            crop_x,
+                            crop_y,
+                            crop_width,
+                            crop_height,
+                            bounds["x"],
+                            bounds["y"],
+                            bounds["width"],
+                            bounds["height"]
+                        )
+
+                        continue
+
+                    _logger.warning(
+                        "[AZURE AUDIT] "
+                        "CROP VALID "
+                        "| JOB=%s "
+                        "| CROP=%s "
+                        "| FIGURE=%s",
+                        self.id,
+                        crop_id,
+                        figure_id
+                    )
+
+                    valid_crops.append(
+                        crop
+                    )
+
+            crops = valid_crops
+
+            # ----------------------------------------------------
+            # A crop request is actionable only when at least
+            # one valid crop survives validation.
+            # ----------------------------------------------------
+
+            crop_required = (
+                crop_required
+                and len(crops) > 0
+            )
+
+            _logger.warning(
+                "[AZURE AUDIT] "
+                "CROP VALIDATION COMPLETE "
+                "| JOB=%s "
+                "| VALID_CROPS=%s "
+                "| CROP_REQUIRED=%s",
+                self.id,
+                len(crops),
+                crop_required
             )
 
             # ====================================================
