@@ -30,7 +30,6 @@ import imagehash
 import time
 
 
-
  
 _logger = logging.getLogger(__name__)
 
@@ -8650,6 +8649,959 @@ class VendorImportJob(models.Model):
 
         return
 
+    # ==========================================================
+    # AZURE / OPENAI VISUAL DEBUGGER
+    # ==========================================================
+
+    def _debug_save_visual_asset(
+        self,
+        *,
+        label,
+        image_bytes,
+        source,
+        figure_id=None,
+        page_number=None,
+        bbox=None,
+    ):
+        """
+        Diagnostic only.
+
+        Saves the exact image that is being inspected/sent to
+        OpenAI as an Odoo attachment and logs:
+
+            - source
+            - figure ID
+            - page
+            - byte size
+            - SHA256
+            - width
+            - height
+            - mime type
+            - Azure bbox
+
+        This does NOT modify the production extraction flow.
+        """
+
+        if not image_bytes:
+
+            _logger.warning(
+                "[AZURE DEBUG] EMPTY IMAGE | "
+                "JOB=%s | LABEL=%s | SOURCE=%s",
+                self.id,
+                label,
+                source,
+            )
+
+            return None
+
+        try:
+
+            image_hash = hashlib.sha256(
+                image_bytes
+            ).hexdigest()
+
+            image_size = len(
+                image_bytes
+            )
+
+            width = None
+            height = None
+            detected_format = None
+
+            try:
+
+                with Image.open(
+                    io.BytesIO(image_bytes)
+                ) as image:
+
+                    width, height = (
+                        image.size
+                    )
+
+                    detected_format = (
+                        image.format
+                    )
+
+            except Exception as image_error:
+
+                _logger.warning(
+                    "[AZURE DEBUG] "
+                    "IMAGE METADATA FAILED | "
+                    "JOB=%s | LABEL=%s | ERROR=%s",
+                    self.id,
+                    label,
+                    image_error,
+                )
+
+            _logger.warning(
+                "[AZURE DEBUG] "
+                "IMAGE | "
+                "JOB=%s | "
+                "LABEL=%s | "
+                "SOURCE=%s | "
+                "PAGE=%s | "
+                "FIGURE=%s | "
+                "WIDTH=%s | "
+                "HEIGHT=%s | "
+                "FORMAT=%s | "
+                "BYTES=%s | "
+                "SHA256=%s | "
+                "BBOX=%s",
+                self.id,
+                label,
+                source,
+                page_number,
+                figure_id,
+                width,
+                height,
+                detected_format,
+                image_size,
+                image_hash,
+                bbox,
+            )
+
+            # --------------------------------------------------
+            # Avoid creating duplicate attachments
+            # --------------------------------------------------
+
+            existing = self.env[
+                "ir.attachment"
+            ].sudo().search(
+                [
+                    (
+                        "res_model",
+                        "=",
+                        self._name,
+                    ),
+                    (
+                        "res_id",
+                        "=",
+                        self.id,
+                    ),
+                    (
+                        "checksum",
+                        "=",
+                        image_hash,
+                    ),
+                ],
+                limit=1,
+            )
+
+            if existing:
+
+                _logger.warning(
+                    "[AZURE DEBUG] "
+                    "ATTACHMENT EXISTS | "
+                    "JOB=%s | "
+                    "LABEL=%s | "
+                    "ATTACHMENT=%s",
+                    self.id,
+                    label,
+                    existing.id,
+                )
+
+                return existing
+
+            extension = (
+                "png"
+                if detected_format == "PNG"
+                else "jpg"
+            )
+
+            filename = (
+                "azure_debug_"
+                f"job_{self.id}_"
+                f"{label}_"
+                f"{image_hash[:12]}."
+                f"{extension}"
+            )
+
+            attachment = self.env[
+                "ir.attachment"
+            ].sudo().create({
+
+                "name": filename,
+
+                "type": "binary",
+
+                "datas": base64.b64encode(
+                    image_bytes
+                ).decode("ascii"),
+
+                "res_model": self._name,
+
+                "res_id": self.id,
+
+                "mimetype": (
+                    "image/png"
+                    if extension == "png"
+                    else "image/jpeg"
+                ),
+
+                "description": (
+                    "AZURE/OPENAI visual "
+                    "debug asset | "
+                    f"source={source} | "
+                    f"page={page_number} | "
+                    f"figure={figure_id} | "
+                    f"sha256={image_hash}"
+                ),
+            })
+
+            _logger.warning(
+                "[AZURE DEBUG] "
+                "ATTACHMENT CREATED | "
+                "JOB=%s | "
+                "LABEL=%s | "
+                "ATTACHMENT=%s | "
+                "NAME=%s",
+                self.id,
+                label,
+                attachment.id,
+                filename,
+            )
+
+            return attachment
+
+        except Exception as e:
+
+            _logger.exception(
+                "[AZURE DEBUG] "
+                "FAILED | "
+                "JOB=%s | "
+                "LABEL=%s | "
+                "ERROR=%s",
+                self.id,
+                label,
+                e,
+            )
+
+            return None
+
+    #===========image decoder============================================
+    def _debug_decode_image_base64(
+        self,
+        value,
+    ):
+        """
+        Convert either:
+
+            raw base64
+            data:image/png;base64,...
+
+        into bytes.
+        """
+
+        if not value:
+
+            return None
+
+        try:
+
+            value = str(
+                value
+            )
+
+            if value.startswith(
+                "data:"
+            ):
+
+                value = value.split(
+                    ",",
+                    1
+                )[1]
+
+            return base64.b64decode(
+                value
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                "[AZURE DEBUG] "
+                "BASE64 DECODE FAILED | "
+                "JOB=%s | ERROR=%s",
+                self.id,
+                e,
+            )
+
+            return None
+
+    #================Azure evidence debugger================================
+
+    def _debug_azure_audit_pages(
+        self,
+        audit_pages,
+    ):
+        """
+        Diagnostic inspection of the exact Azure evidence
+        already loaded by _review_azure_evidence_with_openai().
+
+        This does NOT modify audit_pages or image_inputs.
+        """
+
+        _logger.warning(
+            "[AZURE DEBUG] ======================================="
+        )
+
+        _logger.warning(
+            "[AZURE DEBUG] EVIDENCE INVENTORY START | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[AZURE DEBUG] TOTAL AUDIT PAGES=%s | JOB=%s",
+            len(audit_pages)
+            if isinstance(audit_pages, list)
+            else 0,
+            self.id,
+        )
+
+        if not isinstance(
+            audit_pages,
+            list,
+        ):
+            _logger.error(
+                "[AZURE DEBUG] "
+                "audit_pages is not a list | JOB=%s",
+                self.id,
+            )
+
+            return
+
+        # ======================================================
+        # PAGE-BY-PAGE INSPECTION
+        # ======================================================
+
+        for page_data in audit_pages:
+
+            if not isinstance(
+                page_data,
+                dict,
+            ):
+                continue
+
+            page_number = page_data.get(
+                "page"
+            )
+
+            page_width = page_data.get(
+                "page_width",
+                0,
+            )
+
+            page_height = page_data.get(
+                "page_height",
+                0,
+            )
+
+            original_index = page_data.get(
+                "original_page_visual_index"
+            )
+
+            figures = page_data.get(
+                "figures",
+                []
+            )
+
+            text = page_data.get(
+                "text",
+                ""
+            )
+
+            azure_evidence = page_data.get(
+                "azure_evidence",
+                {}
+            )
+
+            _logger.warning(
+                "[AZURE DEBUG] PAGE | "
+                "JOB=%s | "
+                "PAGE=%s | "
+                "PAGE_SIZE=%sx%s | "
+                "ORIGINAL_VISUAL_INDEX=%s | "
+                "FIGURE_COUNT=%s | "
+                "TEXT_LENGTH=%s",
+                self.id,
+                page_number,
+                page_width,
+                page_height,
+                original_index,
+                len(figures)
+                if isinstance(
+                    figures,
+                    list,
+                )
+                else 0,
+                len(text)
+                if isinstance(
+                    text,
+                    str,
+                )
+                else 0,
+            )
+
+            # ==================================================
+            # ORIGINAL PAGE VISUAL
+            # ==================================================
+
+            if original_index is not None:
+
+                _logger.warning(
+                    "[AZURE DEBUG] ORIGINAL PAGE | "
+                    "JOB=%s | "
+                    "PAGE=%s | "
+                    "IMAGE_INPUT_INDEX=%s",
+                    self.id,
+                    page_number,
+                    original_index,
+                )
+
+            # ==================================================
+            # AZURE FIGURES
+            # ==================================================
+
+            if not isinstance(
+                figures,
+                list,
+            ):
+                continue
+
+            for figure in figures:
+
+                if not isinstance(
+                    figure,
+                    dict,
+                ):
+                    continue
+
+                visual_index = figure.get(
+                    "visual_index"
+                )
+
+                figure_id = figure.get(
+                    "azure_figure_id"
+                )
+
+                x = figure.get(
+                    "x",
+                    0,
+                )
+
+                y = figure.get(
+                    "y",
+                    0,
+                )
+
+                width = figure.get(
+                    "width",
+                    0,
+                )
+
+                height = figure.get(
+                    "height",
+                    0,
+                )
+
+                azure_bbox = figure.get(
+                    "azure_bbox"
+                )
+
+                _logger.warning(
+                    "[AZURE DEBUG] FIGURE | "
+                    "JOB=%s | "
+                    "PAGE=%s | "
+                    "FIGURE=%s | "
+                    "VISUAL_INDEX=%s | "
+                    "X=%s | "
+                    "Y=%s | "
+                    "WIDTH=%s | "
+                    "HEIGHT=%s | "
+                    "AZURE_BBOX=%s",
+                    self.id,
+                    page_number,
+                    figure_id,
+                    visual_index,
+                    x,
+                    y,
+                    width,
+                    height,
+                    azure_bbox,
+                )
+
+            # ==================================================
+            # RAW AZURE EVIDENCE SUMMARY
+            # ==================================================
+
+            if isinstance(
+                azure_evidence,
+                dict,
+            ):
+
+                azure_pages = (
+                    azure_evidence.get(
+                        "pages",
+                        []
+                    )
+                )
+
+                azure_figures = (
+                    azure_evidence.get(
+                        "figures",
+                        []
+                    )
+                )
+
+                original_page_images = (
+                    azure_evidence.get(
+                        "original_page_images",
+                        []
+                    )
+                )
+
+                _logger.warning(
+                    "[AZURE DEBUG] RAW EVIDENCE | "
+                    "JOB=%s | "
+                    "PAGE=%s | "
+                    "AZURE_PAGES=%s | "
+                    "AZURE_FIGURES=%s | "
+                    "ORIGINAL_PAGE_IMAGES=%s",
+                    self.id,
+                    page_number,
+                    len(azure_pages)
+                    if isinstance(
+                        azure_pages,
+                        list,
+                    )
+                    else 0,
+                    len(azure_figures)
+                    if isinstance(
+                        azure_figures,
+                        list,
+                    )
+                    else 0,
+                    len(original_page_images)
+                    if isinstance(
+                        original_page_images,
+                        list,
+                    )
+                    else 0,
+                )
+
+        _logger.warning(
+            "[AZURE DEBUG] EVIDENCE INVENTORY COMPLETE | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[AZURE DEBUG] ======================================="
+        )
+
+    #======debug_openai_image_inputs========================================
+
+    def _debug_openai_image_inputs(
+        self,
+        image_inputs,
+    ):
+        """
+        Inspect the exact image_inputs list that will be
+        appended to the OpenAI user content.
+        """
+
+        _logger.warning(
+            "[OPENAI DEBUG] ======================================"
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] IMAGE INPUT INVENTORY START | JOB=%s",
+            self.id,
+        )
+
+        if not isinstance(
+            image_inputs,
+            list,
+        ):
+            _logger.error(
+                "[OPENAI DEBUG] "
+                "image_inputs is not a list | JOB=%s",
+                self.id,
+            )
+
+            return
+
+        _logger.warning(
+            "[OPENAI DEBUG] TOTAL IMAGE INPUTS=%s | JOB=%s",
+            len(image_inputs),
+            self.id,
+        )
+
+        for index, image_input in enumerate(
+            image_inputs
+        ):
+
+            if not isinstance(
+                image_input,
+                dict,
+            ):
+                continue
+
+            image_url = image_input.get(
+                "image_url",
+                ""
+            )
+
+            image_type = image_input.get(
+                "type"
+            )
+
+            image_bytes = None
+
+            try:
+
+                if isinstance(
+                    image_url,
+                    str,
+                ) and image_url.startswith(
+                    "data:image/"
+                ):
+
+                    encoded = (
+                        image_url.split(
+                            ",",
+                            1
+                        )[1]
+                    )
+
+                    image_bytes = (
+                        base64.b64decode(
+                            encoded
+                        )
+                    )
+
+            except Exception as e:
+
+                _logger.exception(
+                    "[OPENAI DEBUG] "
+                    "IMAGE DECODE FAILED | "
+                    "JOB=%s | "
+                    "INDEX=%s | ERROR=%s",
+                    self.id,
+                    index,
+                    e,
+                )
+
+            if not image_bytes:
+
+                _logger.warning(
+                    "[OPENAI DEBUG] IMAGE | "
+                    "JOB=%s | "
+                    "INDEX=%s | "
+                    "TYPE=%s | "
+                    "BYTES=0",
+                    self.id,
+                    index,
+                    image_type,
+                )
+
+                continue
+
+            image_hash = hashlib.sha256(
+                image_bytes
+            ).hexdigest()
+
+            width = None
+            height = None
+            image_format = None
+
+            try:
+
+                with Image.open(
+                    io.BytesIO(
+                        image_bytes
+                    )
+                ) as image:
+
+                    width = image.width
+                    height = image.height
+                    image_format = image.format
+
+            except Exception as e:
+
+                _logger.warning(
+                    "[OPENAI DEBUG] "
+                    "IMAGE METADATA FAILED | "
+                    "JOB=%s | "
+                    "INDEX=%s | ERROR=%s",
+                    self.id,
+                    index,
+                    e,
+                )
+
+            _logger.warning(
+                "[OPENAI DEBUG] IMAGE | "
+                "JOB=%s | "
+                "INDEX=%s | "
+                "TYPE=%s | "
+                "WIDTH=%s | "
+                "HEIGHT=%s | "
+                "FORMAT=%s | "
+                "BYTES=%s | "
+                "SHA256=%s",
+                self.id,
+                index,
+                image_type,
+                width,
+                height,
+                image_format,
+                len(image_bytes),
+                image_hash,
+            )
+
+        _logger.warning(
+            "[OPENAI DEBUG] IMAGE INPUT INVENTORY COMPLETE | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] ======================================"
+        )
+
+    #====================OpenAI payload debugger============================
+
+    def _debug_openai_input_images(
+        self,
+        openai_input,
+    ):
+        """
+        Inspect the exact payload that is about to be
+        sent to OpenAI.
+
+        This is deliberately recursive because the
+        Responses API input can contain nested lists
+        and dictionaries.
+
+        We identify:
+
+            data:image/...;base64,...
+
+        and:
+
+            image_base64
+
+        values.
+
+        This proves exactly what OpenAI received.
+        """
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "======================================="
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "INPUT INSPECTION START | JOB=%s",
+            self.id,
+        )
+
+        found_images = []
+
+        def walk(
+            value,
+            path="root",
+        ):
+
+            if isinstance(
+                value,
+                dict
+            ):
+
+                for key, child in value.items():
+
+                    key_text = str(
+                        key
+                    )
+
+                    # --------------------------------------
+                    # Direct image_base64
+                    # --------------------------------------
+
+                    if key_text == (
+                        "image_base64"
+                    ):
+
+                        if child:
+
+                            found_images.append({
+                                "path": (
+                                    f"{path}."
+                                    f"{key_text}"
+                                ),
+                                "value": child,
+                                "source": (
+                                    "image_base64"
+                                ),
+                            })
+
+                    # --------------------------------------
+                    # image_url
+                    # --------------------------------------
+
+                    elif key_text in (
+                        "image_url",
+                        "image",
+                    ):
+
+                        if isinstance(
+                            child,
+                            str
+                        ):
+
+                            if child.startswith(
+                                "data:image/"
+                            ):
+
+                                found_images.append({
+                                    "path": (
+                                        f"{path}."
+                                        f"{key_text}"
+                                    ),
+                                    "value": child,
+                                    "source": (
+                                        "data_image_url"
+                                    ),
+                                })
+
+                    walk(
+                        child,
+                        (
+                            f"{path}."
+                            f"{key_text}"
+                        ),
+                    )
+
+            elif isinstance(
+                value,
+                (list, tuple)
+            ):
+
+                for index, child in enumerate(
+                    value
+                ):
+
+                    walk(
+                        child,
+                        (
+                            f"{path}[{index}]"
+                        ),
+                    )
+
+        walk(
+            openai_input
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "TOTAL IMAGE PAYLOADS=%s | JOB=%s",
+            len(found_images),
+            self.id,
+        )
+
+        # ==================================================
+        # SAVE EVERY EXACT OPENAI IMAGE
+        # ==================================================
+
+        for index, item in enumerate(
+            found_images,
+            start=1
+        ):
+
+            value = item[
+                "value"
+            ]
+
+            image_bytes = (
+                self._debug_decode_image_base64(
+                    value
+                )
+            )
+
+            self._debug_save_visual_asset(
+
+                label=(
+                    f"openai_input_"
+                    f"{index:02d}"
+                ),
+
+                image_bytes=image_bytes,
+
+                source=(
+                    "openai_exact_payload"
+                ),
+
+                page_number=None,
+
+                figure_id=None,
+
+                bbox=None,
+            )
+
+            if image_bytes:
+
+                image_hash = (
+                    hashlib.sha256(
+                        image_bytes
+                    ).hexdigest()
+                )
+
+                width = None
+                height = None
+
+                try:
+
+                    with Image.open(
+                        io.BytesIO(
+                            image_bytes
+                        )
+                    ) as image:
+
+                        width, height = (
+                            image.size
+                        )
+
+                except Exception:
+                    pass
+
+                _logger.warning(
+                    "[OPENAI DEBUG] "
+                    "IMAGE #%s | "
+                    "PATH=%s | "
+                    "SOURCE=%s | "
+                    "WIDTH=%s | "
+                    "HEIGHT=%s | "
+                    "BYTES=%s | "
+                    "SHA256=%s",
+                    index,
+                    item["path"],
+                    item["source"],
+                    width,
+                    height,
+                    len(image_bytes),
+                    image_hash,
+                )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "INPUT INSPECTION COMPLETE | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "======================================="
+        )
+
+        return found_images
 
     # =========== PDF OPENAI PRODUCT REVIEW ================================
     def _review_azure_evidence_with_openai(self):
@@ -8671,12 +9623,6 @@ class VendorImportJob(models.Model):
         """
 
         self.ensure_one()
-
-        import json
-        import base64
-        import logging
-
-        _logger = logging.getLogger(__name__)
 
         _logger.warning(
             "[AZURE AUDIT] ======================================="
@@ -8785,6 +9731,26 @@ class VendorImportJob(models.Model):
                         len(image_inputs)
                     )
 
+                    _logger.warning(
+                        "[OPENAI DEBUG] "
+                        "ADDING ORIGINAL PAGE | "
+                        "JOB=%s | "
+                        "PAGE=%s | "
+                        "VISUAL_INDEX=%s | "
+                        "PAGE_SIZE=%sx%s",
+                        self.id,
+                        page_number,
+                        page_visual_index,
+                        block.get(
+                            "page_width",
+                            0
+                        ),
+                        block.get(
+                            "page_height",
+                            0
+                        ),
+                    )
+
                     image_inputs.append({
 
                         "type":
@@ -8819,8 +9785,51 @@ class VendorImportJob(models.Model):
                     if not image_data:
                         continue
 
+                    # visual_index = (
+                    #     len(image_inputs)
+                    # )
+
                     visual_index = (
                         len(image_inputs)
+                    )
+
+                    _logger.warning(
+                        "[OPENAI DEBUG] "
+                        "ADDING AZURE FIGURE | "
+                        "JOB=%s | "
+                        "PAGE=%s | "
+                        "FIGURE=%s | "
+                        "VISUAL_INDEX=%s | "
+                        "X=%s | "
+                        "Y=%s | "
+                        "WIDTH=%s | "
+                        "HEIGHT=%s | "
+                        "AZURE_BBOX=%s",
+                        self.id,
+                        page_number,
+                        image.get(
+                            "azure_figure_id"
+                        ),
+                        visual_index,
+                        image.get(
+                            "x",
+                            0
+                        ),
+                        image.get(
+                            "y",
+                            0
+                        ),
+                        image.get(
+                            "width",
+                            0
+                        ),
+                        image.get(
+                            "height",
+                            0
+                        ),
+                        image.get(
+                            "azure_bbox"
+                        ),
                     )
 
                     image_inputs.append({
@@ -8917,6 +9926,14 @@ class VendorImportJob(models.Model):
                         )
 
                 })
+
+         # ========================================================
+        # DEBUG — AZURE EVIDENCE INVENTORY
+        # ========================================================
+
+        self._debug_azure_audit_pages(
+            audit_pages
+        )
 
         # ========================================================
         # NO AZURE DATA
@@ -9113,6 +10130,17 @@ class VendorImportJob(models.Model):
                 f"| JOB={self.id}"
             )
 
+             # ========================================================
+            # DEBUG — EXACT OPENAI IMAGE INPUTS
+            # ========================================================
+
+            self._debug_openai_image_inputs(
+                image_inputs
+            )
+
+            #========================================================
+            # OPENAI CALL
+            # ========================================================
             response = client.responses.create(
 
                 model="gpt-4.1",
