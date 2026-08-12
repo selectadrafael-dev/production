@@ -22094,7 +22094,8 @@ class VendorImportJob(models.Model):
                 f"existing={product.name}"
             )
 
-            return product, False
+            # return product, False
+            return product, False, None
 
         # =====================================
         # BUILD PROFESSIONAL DESCRIPTION
