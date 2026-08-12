@@ -529,10 +529,6 @@ def test_azure_openai_mapping():
 # AZURE + PRODUCT MAPPER + ASSET MAPPER TEST
 # ============================================================
 
-# ============================================================
-# AZURE + PRODUCT MAPPER + ASSET MAPPER DIAGNOSTIC
-# ============================================================
-
 @app.route(
     "/test_azure_asset_mapping",
     methods=["POST"]
@@ -689,6 +685,60 @@ def test_azure_asset_mapping():
 
             "error":
                 str(e)
+
+        }), 500
+
+
+# ============================================================
+# AZURE EVIDENCE FOR ODOO
+# ============================================================
+
+@app.route(
+    "/azure_evidence",
+    methods=["POST"]
+)
+def azure_evidence():
+
+    _logger.warning(
+        "========== AZURE EVIDENCE FOR ODOO =========="
+    )
+
+    if "file" not in request.files:
+
+        return jsonify({
+            "success": False,
+            "error": "No PDF uploaded"
+        }), 400
+
+    file = request.files["file"]
+
+    try:
+
+        evidence = analyze_pdf(file)
+
+        return jsonify({
+
+            "success": True,
+
+            "stage": "azure_evidence_completed",
+
+            "evidence": evidence
+
+        })
+
+    except Exception as e:
+
+        _logger.exception(
+            "[AZURE EVIDENCE FAILED]"
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "stage": "azure_evidence_failed",
+
+            "error": str(e)
 
         }), 500
     
