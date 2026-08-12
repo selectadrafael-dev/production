@@ -10501,6 +10501,7 @@ class VendorImportJob(models.Model):
 
         If FAIL, provide exact crop coordinates relative to the
         ORIGINAL PAGE IMAGE.
+        
 
         Return ONLY valid JSON:
 
@@ -10569,31 +10570,32 @@ class VendorImportJob(models.Model):
         3. Only request crops when genuinely necessary.
 
         4. Do not crop the original page merely because an
-           Azure figure contains multiple products.
+        Azure figure contains multiple visual elements.
 
         5. Preserve grouped variants when they are visually and
-           contextually one product.
+        contextually one product AND each required production
+        image is already available as a separate usable image.
 
         6. Supporting marketing objects must not automatically
-           become independent products.
+        become independent products.
 
         7. Every product decision must be based on both the
-           original page and Azure evidence.
+        original page and Azure evidence.
 
         8. IMPORTANT FIGURE IDENTITY RULE:
-           Each Azure figure image supplied to you is a separate
-           visual input.
+        Each Azure figure image supplied to you is a separate
+        visual input.
 
-           When analyzing Figure 1.3, inspect the actual image
-           supplied for Figure 1.3.
+        When analyzing Figure 1.3, inspect the actual image
+        supplied for Figure 1.3.
 
-           Do NOT transfer an object seen in Figure 1.2 into
-           Figure 1.3 merely because the objects are spatially
-           close on the original page.
+        Do NOT transfer an object seen in Figure 1.2 into
+        Figure 1.3 merely because the objects are spatially
+        close on the original page.
 
         9. If you say that Figure X contains multiple individual
-           images, every object you identify must actually be
-           visible inside the supplied Figure X image.
+        images, every object you identify must actually be
+        visible inside the supplied Figure X image.
 
         10. CROP COORDINATE CONSISTENCY:
             A crop assigned to Figure X must lie completely
@@ -10614,6 +10616,101 @@ class VendorImportJob(models.Model):
         12. If a requested crop would fall outside its assigned
             figure, do not return that crop. Re-evaluate the
             figure assignment first.
+
+
+        13. PRODUCT GROUPING AND IMAGE SEPARATION ARE SEPARATE
+            DECISIONS.
+
+            A figure may belong to ONE product or variant group
+            and STILL require cropping.
+
+            Product grouping does NOT by itself determine whether
+            cropping is required.
+
+
+        14. If a single figure contains TWO OR MORE visually
+            distinct, individually marketable product
+            representations that are embedded together in the
+            SAME image, they MUST be identified separately for
+            production image extraction.
+
+
+        15. This includes DIFFERENT COLOR VARIANTS shown together
+            in one figure.
+
+            For example, if one figure contains a Grey product
+            and a Black product inside the same image, do NOT
+            treat the figure as a single usable image for both
+            variants.
+
+            Identify and crop the Grey and Black product
+            representations separately.
+
+
+        16. Different physical forms of the same product must be
+            evaluated separately when they are shown as distinct
+            product representations.
+
+            However, do NOT automatically crop every different
+            angle, folded state, detail view, or feature view.
+
+            Only request a separate crop when the visual
+            representation is useful as an individual production
+            image and is not already available separately.
+
+
+        17. Lifestyle or usage scenes are NOT automatically
+            product variants.
+
+            Do not crop people, usage scenes, or contextual
+            lifestyle imagery as product variants unless the image
+            clearly contains a standalone marketable product
+            representation.
+
+
+        18. Logos, recycling symbols, icons, text, badges, and
+            marketing graphics are NOT product variants.
+
+            Treat them as supporting or marketing assets.
+
+
+        19. A figure containing multiple product representations
+            MUST set:
+
+                "crop_required": true
+
+            when those representations are embedded together
+            in the same figure image and cannot be supplied to
+            the production pipeline as separate image assets.
+
+
+        20. When crop_required is true, provide a separate crop
+            entry for EACH individually useful product
+            representation that needs to be separated.
+
+
+        21. Do NOT use the fact that several images belong to the
+            same product group as a reason to set
+            crop_required=false.
+
+            First determine whether the required individual
+            production images already exist separately.
+
+            If they do not, and multiple useful product
+            representations are embedded together in one figure,
+            cropping is required.
+
+
+        22. The goal is to provide the production pipeline with
+            CLEAN, INDIVIDUAL PRODUCT IMAGES.
+
+            Do not leave multiple marketable products or color
+            variants embedded together inside one image when
+            they can be separated by cropping.
+
+            At the same time, do not create unnecessary crops
+            when clean individual images already exist.
+            
         """
 
         # ========================================================
