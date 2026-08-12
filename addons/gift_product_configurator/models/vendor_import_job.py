@@ -9934,7 +9934,7 @@ class VendorImportJob(models.Model):
 
                 })
 
-         # ========================================================
+        # ========================================================
         # DEBUG — AZURE EVIDENCE INVENTORY
         # ========================================================
 
@@ -10370,6 +10370,25 @@ class VendorImportJob(models.Model):
                             self.id,
 
                     })
+
+                    debug_url = (
+                        f"/web/content/{original_attachment.id}"
+                    )
+
+                    _logger.warning(
+                        "[OPENAI VISUAL DEBUG] "
+                        "ATTACHMENT READY "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| INDEX=%s "
+                        "| ATTACHMENT_ID=%s "
+                        "| URL=%s",
+                        self.id,
+                        page_number,
+                        original_index,
+                        original_attachment.id,
+                        debug_url,
+                    )
 
                     _logger.warning(
                         "[OPENAI VISUAL DEBUG] "
@@ -11062,19 +11081,26 @@ class VendorImportJob(models.Model):
 
                         })
 
-                        self.message_post(
-                            body=(
-                                "<b>AZURE ORIGINAL PAGE</b><br/>"
+                        self.env["mail.message"].sudo().create({
+                            "model": self._name,
+                            "res_id": self.id,
+                            "body": (
+                                "<b>OPENAI ORIGINAL PAGE DEBUG</b><br/>"
                                 f"Job: {self.id}<br/>"
                                 f"Page: {page_number}<br/>"
-                                f"Resolution: "
+                                f"Image index: {original_index}<br/>"
+                                f"Image size: "
                                 f"{original_image.width} × "
                                 f"{original_image.height}"
                             ),
-                            attachment_ids=[
-                                original_attachment.id
+                            "message_type": "comment",
+                            "subtype_id": self.env.ref(
+                                "mail.mt_note"
+                            ).id,
+                            "attachment_ids": [
+                                (4, original_attachment.id)
                             ],
-                        )
+                        })
 
                         _logger.warning(
                             "[OPENAI VISUAL DEBUG] "
@@ -11493,18 +11519,24 @@ class VendorImportJob(models.Model):
                         # POST DEBUG IMAGE INTO JOB CHATTER
                         # ========================================================
 
-                        self.message_post(
-                            body=(
+                        self.env["mail.message"].sudo().create({
+                            "model": self._name,
+                            "res_id": self.id,
+                            "body": (
                                 "<b>OPENAI CROP VISUAL DEBUG</b><br/>"
                                 f"Job: {self.id}<br/>"
                                 f"Page: {page_number}<br/>"
-                                "Blue boxes = Azure figures<br/>"
-                                "Red boxes = OpenAI requested crops"
+                                "Red boxes = OpenAI requested crops<br/>"
+                                "Blue boxes = Azure figures"
                             ),
-                            attachment_ids=[
-                                attachment.id
+                            "message_type": "comment",
+                            "subtype_id": self.env.ref(
+                                "mail.mt_note"
+                            ).id,
+                            "attachment_ids": [
+                                (4, attachment.id)
                             ],
-                        )
+                        })
 
                         _logger.warning(
                             "[OPENAI CROP VISUAL DEBUG] "
