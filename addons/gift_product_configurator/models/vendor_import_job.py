@@ -10171,7 +10171,7 @@ class VendorImportJob(models.Model):
                                     "mail.mt_note"
                                 ).id,
                                 "attachment_ids": [
-                                    (4, attachment.id)
+                                    (4, figure_attachment.id)
                                 ],
                             })
 
@@ -11527,18 +11527,20 @@ class VendorImportJob(models.Model):
                             "model": self._name,
                             "res_id": self.id,
                             "body": (
-                                "<b>OPENAI CROP VISUAL DEBUG</b><br/>"
+                                "<b>AZURE FIGURE VISUAL DEBUG</b><br/>"
                                 f"Job: {self.id}<br/>"
                                 f"Page: {page_number}<br/>"
-                                "Red boxes = OpenAI requested crops<br/>"
-                                "Blue boxes = Azure figures"
+                                f"Figure: {figure_id}<br/>"
+                                f"Input index: {input_index}<br/>"
+                                f"Resolution: "
+                                f"{image.width} × {image.height}"
                             ),
                             "message_type": "comment",
                             "subtype_id": self.env.ref(
                                 "mail.mt_note"
                             ).id,
                             "attachment_ids": [
-                                (4, attachment.id)
+                                (4, figure_attachment.id)
                             ],
                         })
 
