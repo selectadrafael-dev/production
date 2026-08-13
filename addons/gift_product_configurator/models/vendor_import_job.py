@@ -13883,24 +13883,29 @@ class VendorImportJob(models.Model):
 
         created_assets = []
 
-
         # =========================================================
         # BUILD AUTHORITATIVE AZURE FIGURE BOUNDS
         # =========================================================
         #
-        # Azure/OpenAI crop coordinates are relative to the Azure
-        # figure, NOT necessarily relative to the original PDF page.
+        # IMPORTANT:
         #
-        # Therefore:
+        # OpenAI crop instructions identify the Azure figure using:
         #
-        #     page_x = figure_x + crop_x
-        #     page_y = figure_y + crop_y
+        #     figure_id
         #
-        # The figure itself provides the coordinate origin on the
-        # original page.
+        # The authoritative figure geometry is stored in:
+        #
+        #     audit_result["pages"][...]["figures"]
+        #
+        # We build the lookup using BOTH:
+        #
+        #     page number
+        #     figure ID
+        #
+        # because figure IDs must not be assumed globally unique.
         # =========================================================
 
-        figure_bounds = {}
+        figure_bounds_by_page = {}
 
         for audit_page in audit_result.get(
             "pages",
@@ -13911,6 +13916,26 @@ class VendorImportJob(models.Model):
                 audit_page,
                 dict
             ):
+                continue
+
+            page_number = audit_page.get(
+                "page"
+            )
+
+            if page_number is None:
+                continue
+
+            try:
+
+                page_number = int(
+                    page_number
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
                 continue
 
             for figure in audit_page.get(
@@ -13927,7 +13952,10 @@ class VendorImportJob(models.Model):
                 figure_id = str(
                     figure.get(
                         "azure_figure_id",
-                        ""
+                        figure.get(
+                            "figure_id",
+                            ""
+                        )
                     )
                 ).strip()
 
@@ -13936,37 +13964,33 @@ class VendorImportJob(models.Model):
 
                 try:
 
-                    figure_bounds[
-                        figure_id
-                    ] = {
-                        "x": float(
-                            figure.get(
-                                "x",
-                                0
-                            )
-                        ),
+                    figure_x = float(
+                        figure.get(
+                            "x",
+                            0
+                        )
+                    )
 
-                        "y": float(
-                            figure.get(
-                                "y",
-                                0
-                            )
-                        ),
+                    figure_y = float(
+                        figure.get(
+                            "y",
+                            0
+                        )
+                    )
 
-                        "width": float(
-                            figure.get(
-                                "width",
-                                0
-                            )
-                        ),
+                    figure_width = float(
+                        figure.get(
+                            "width",
+                            0
+                        )
+                    )
 
-                        "height": float(
-                            figure.get(
-                                "height",
-                                0
-                            )
-                        ),
-                    }
+                    figure_height = float(
+                        figure.get(
+                            "height",
+                            0
+                        )
+                    )
 
                 except (
                     TypeError,
@@ -13974,21 +13998,79 @@ class VendorImportJob(models.Model):
                 ):
 
                     _logger.warning(
-                        "[AZURE CROP] INVALID FIGURE "
-                        "BOUNDS | JOB=%s | FIGURE=%s",
+                        "[AZURE CROP] INVALID FIGURE BOUNDS "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| FIGURE=%s",
                         self.id,
+                        page_number,
                         figure_id
                     )
 
                     continue
 
+                if (
+                    figure_width <= 0
+                    or figure_height <= 0
+                ):
+
+                    _logger.warning(
+                        "[AZURE CROP] EMPTY FIGURE BOUNDS "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| FIGURE=%s",
+                        self.id,
+                        page_number,
+                        figure_id
+                    )
+
+                    continue
+
+                figure_bounds_by_page[
+                    (
+                        page_number,
+                        figure_id
+                    )
+                ] = {
+                    "x": figure_x,
+                    "y": figure_y,
+                    "width": figure_width,
+                    "height": figure_height,
+                }
+
+                _logger.warning(
+                    "[AZURE CROP] REGISTER FIGURE BOUNDS "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| FIGURE=%s "
+                    "| X=%s "
+                    "| Y=%s "
+                    "| W=%s "
+                    "| H=%s",
+                    self.id,
+                    page_number,
+                    figure_id,
+                    figure_x,
+                    figure_y,
+                    figure_width,
+                    figure_height
+                )
+
 
         _logger.warning(
             "[AZURE CROP] AUTHORITATIVE FIGURE BOUNDS "
-            "| JOB=%s | BOUNDS=%s",
+            "| JOB=%s "
+            "| BOUNDS=%s",
             self.id,
             json.dumps(
-                figure_bounds,
+                {
+                    f"{page}:{figure}": bounds
+                    for (
+                        page,
+                        figure
+                    ), bounds
+                    in figure_bounds_by_page.items()
+                },
                 ensure_ascii=False,
                 default=str
             )
@@ -13999,6 +14081,8 @@ class VendorImportJob(models.Model):
         # ENRICH CROPS WITH FIGURE BOUNDS
         # =========================================================
 
+        enriched_crops = []
+
         for crop in crops:
 
             if not isinstance(
@@ -14007,15 +14091,42 @@ class VendorImportJob(models.Model):
             ):
                 continue
 
+            # -----------------------------------------------
+            # KEEP THE ORIGINAL CROP DATA
+            # -----------------------------------------------
+
+            enriched_crop = dict(
+                crop
+            )
+
             figure_id = str(
-                crop.get(
+                enriched_crop.get(
                     "figure_id",
                     ""
                 )
             ).strip()
 
-            bounds = figure_bounds.get(
-                figure_id
+            try:
+
+                crop_page = int(
+                    enriched_crop.get(
+                        "page",
+                        1
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                crop_page = 1
+
+            bounds = figure_bounds_by_page.get(
+                (
+                    crop_page,
+                    figure_id
+                )
             )
 
             if not bounds:
@@ -14024,22 +14135,30 @@ class VendorImportJob(models.Model):
                     "[AZURE CROP] FIGURE BOUNDS NOT FOUND "
                     "| JOB=%s "
                     "| CROP=%s "
+                    "| PAGE=%s "
                     "| FIGURE=%s",
                     self.id,
-                    crop.get(
+                    enriched_crop.get(
                         "crop_id",
                         "unknown"
                     ),
+                    crop_page,
                     figure_id
+                )
+
+                # Keep the crop in the list.
+                # Do NOT silently delete it here.
+                enriched_crops.append(
+                    enriched_crop
                 )
 
                 continue
 
-            # -----------------------------------------------------
-            # PRESERVE AUTHORITATIVE FIGURE BOUNDS
-            # -----------------------------------------------------
+            # -----------------------------------------------
+            # ATTACH AUTHORITATIVE FIGURE BOUNDS
+            # -----------------------------------------------
 
-            crop[
+            enriched_crop[
                 "azure_figure_bounds"
             ] = dict(
                 bounds
@@ -14049,16 +14168,18 @@ class VendorImportJob(models.Model):
                 "[AZURE CROP] FIGURE BOUNDS ATTACHED "
                 "| JOB=%s "
                 "| CROP=%s "
+                "| PAGE=%s "
                 "| FIGURE=%s "
                 "| X=%s "
                 "| Y=%s "
                 "| W=%s "
                 "| H=%s",
                 self.id,
-                crop.get(
+                enriched_crop.get(
                     "crop_id",
                     "unknown"
                 ),
+                crop_page,
                 figure_id,
                 bounds["x"],
                 bounds["y"],
@@ -14066,6 +14187,17 @@ class VendorImportJob(models.Model):
                 bounds["height"]
             )
 
+            enriched_crops.append(
+                enriched_crop
+            )
+
+
+        # =========================================================
+        # IMPORTANT:
+        # FROM THIS POINT FORWARD USE THE ENRICHED CROP OBJECTS.
+        # =========================================================
+
+        crops = enriched_crops
 
         _logger.warning(
             "[AZURE CROP] USING ENRICHED CROPS "
