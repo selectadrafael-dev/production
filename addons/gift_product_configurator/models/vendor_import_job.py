@@ -4104,7 +4104,10 @@ class VendorImportJob(models.Model):
 
             return crop
 
-    #===========correct_variant_image_indexes================
+
+    # =========================================================
+    # CORRECT VARIANT IMAGE INDEXES
+    # =========================================================
     def _correct_variant_image_indexes(
         self,
         product_data,
@@ -4113,91 +4116,314 @@ class VendorImportJob(models.Model):
 
         try:
 
+            product_name = (
+                product_data.get("name")
+                or ""
+            ).strip()
+
             _logger.warning(
-                f"[VARIANT CORRECTION START] "
-                f"product={product_data.get('name')}"
+                "[VARIANT CORRECTION START] "
+                "JOB=%s | PRODUCT=%s | ASSETS=%s",
+                self.id,
+                product_name,
+                len(asset_pool)
             )
+
+            # =====================================================
+            # BUILD COLOR -> ACTUAL CLEAN INDEX LOOKUP
+            # =====================================================
 
             color_lookup = {}
 
-            for idx, asset in enumerate(asset_pool):
+            for asset in asset_pool:
 
-                _logger.warning(
-                    f"[CORRECTION ASSET] "
-                    f"idx={idx} "
-                    f"color={asset.get('dominant_color')}"
+                if not isinstance(
+                    asset,
+                    dict
+                ):
+                    continue
+
+                clean_index = asset.get(
+                    "clean_index"
                 )
 
-                color = str(
+                dominant_color = str(
                     asset.get(
-                        "dominant_color"
+                        "dominant_color",
+                        ""
                     )
-                        or ""
+                    or ""
                 ).strip().lower()
 
-                if color:
+                product_reference = str(
+                    asset.get(
+                        "product_reference",
+                        ""
+                    )
+                    or ""
+                ).strip()
 
-                    color_lookup[color] = idx
+                crop_id = asset.get(
+                    "crop_id"
+                )
+
+                _logger.warning(
+                    "[CORRECTION ASSET] "
+                    "JOB=%s | "
+                    "CLEAN_INDEX=%s | "
+                    "COLOR=%s | "
+                    "PRODUCT=%s | "
+                    "CROP=%s",
+                    self.id,
+                    clean_index,
+                    dominant_color,
+                    product_reference,
+                    crop_id
+                )
+
+                if (
+                    clean_index is None
+                    or clean_index == ""
+                ):
+                    continue
+
+                if dominant_color:
+
+                    color_lookup[
+                        dominant_color
+                    ] = clean_index
 
             _logger.warning(
-                f"[COLOR LOOKUP] "
-                f"{color_lookup}"
+                "[COLOR LOOKUP] "
+                "JOB=%s | %s",
+                self.id,
+                color_lookup
             )
+
+            # =====================================================
+            # CORRECT EACH VARIANT
+            # =====================================================
 
             for variant in product_data.get(
                 "variants",
                 []
             ):
 
-                _logger.warning(
-                    f"[CORRECTION VARIANT] "
-                    f"color={variant.get('attributes', {}).get('Color')} "
-                    f"image_index={variant.get('image_index')}"
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+                attributes = variant.get(
+                    "attributes",
+                    {}
                 )
 
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    attributes = {}
 
                 variant_color = str(
-                    variant.get(
-                        "attributes",
-                        {}
-                    ).get(
-                        "Color"
+                    attributes.get(
+                        "Color",
+                        ""
                     )
                     or ""
                 ).strip().lower()
 
-                if variant_color in color_lookup:
+                old_index = variant.get(
+                    "image_index"
+                )
 
-                    old_index = variant.get(
-                        "image_index"
+                _logger.warning(
+                    "[CORRECTION VARIANT] "
+                    "JOB=%s | "
+                    "COLOR=%s | "
+                    "OLD_INDEX=%s",
+                    self.id,
+                    variant_color,
+                    old_index
+                )
+
+                if not variant_color:
+                    continue
+
+                # =================================================
+                # FIRST PRIORITY:
+                # FIND AZURE CROP WHOSE PRODUCT REFERENCE
+                # EXPLICITLY MATCHES THIS VARIANT COLOR.
+                #
+                # Example:
+                #
+                # Sling Eco - Grey
+                # Sling Eco - Black
+                #
+                # This is stronger than dominant_color alone.
+                # =================================================
+
+                explicit_match = None
+
+                for asset in asset_pool:
+
+                    if not isinstance(
+                        asset,
+                        dict
+                    ):
+                        continue
+
+                    clean_index = asset.get(
+                        "clean_index"
                     )
+
+                    if (
+                        clean_index is None
+                        or clean_index == ""
+                    ):
+                        continue
+
+                    product_reference = str(
+                        asset.get(
+                            "product_reference",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    crop_id = str(
+                        asset.get(
+                            "crop_id",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    # -------------------------------------------------
+                    # Do not use pouch/folded/supporting assets as the
+                    # explicit variant image.
+                    # -------------------------------------------------
+
+                    supporting_text = (
+                        f"{product_reference} "
+                        f"{crop_id}"
+                    )
+
+                    if any(
+                        keyword in supporting_text
+                        for keyword in (
+                            "pouch",
+                            "folded",
+                            "supporting",
+                            "gallery"
+                        )
+                    ):
+                        continue
+
+                    if (
+                        variant_color
+                        and
+                        variant_color in product_reference
+                    ):
+
+                        explicit_match = asset
+
+                        _logger.warning(
+                            "[CORRECTION EXPLICIT MATCH] "
+                            "JOB=%s | "
+                            "COLOR=%s | "
+                            "CLEAN_INDEX=%s | "
+                            "PRODUCT=%s | "
+                            "CROP=%s",
+                            self.id,
+                            variant_color,
+                            clean_index,
+                            asset.get(
+                                "product_reference"
+                            ),
+                            asset.get(
+                                "crop_id"
+                            )
+                        )
+
+                        break
+
+                # =================================================
+                # SECOND PRIORITY:
+                # MATCH BY DOMINANT COLOR
+                # =================================================
+
+                if explicit_match:
+
+                    new_index = explicit_match.get(
+                        "clean_index"
+                    )
+
+                elif variant_color in color_lookup:
 
                     new_index = color_lookup[
                         variant_color
                     ]
 
-                    variant["image_index"] = (
+                    _logger.warning(
+                        "[CORRECTION COLOR MATCH] "
+                        "JOB=%s | "
+                        "COLOR=%s | "
+                        "CLEAN_INDEX=%s",
+                        self.id,
+                        variant_color,
                         new_index
                     )
 
+                else:
+
                     _logger.warning(
-                        f"[CORRECTION APPLIED] "
-                        f"color={variant_color} "
-                        f"old={old_index} "
-                        f"new={new_index}"
+                        "[CORRECTION NO MATCH] "
+                        "JOB=%s | "
+                        "COLOR=%s | "
+                        "KEEPING_INDEX=%s",
+                        self.id,
+                        variant_color,
+                        old_index
                     )
+
+                    continue
+
+                # =================================================
+                # APPLY CORRECTED CLEAN INDEX
+                # =================================================
+
+                variant[
+                    "image_index"
+                ] = new_index
+
+                _logger.warning(
+                    "[CORRECTION APPLIED] "
+                    "JOB=%s | "
+                    "COLOR=%s | "
+                    "OLD=%s | "
+                    "NEW_CLEAN_INDEX=%s",
+                    self.id,
+                    variant_color,
+                    old_index,
+                    new_index
+                )
 
             return product_data
 
         except Exception as e:
 
             _logger.warning(
-                f"[VARIANT CORRECTION FAILED] "
-                f"{str(e)}"
+                "[VARIANT CORRECTION FAILED] "
+                "JOB=%s | %s",
+                self.id,
+                str(e),
+                exc_info=True
             )
 
             return product_data
-
+    
     #==========build_product_family========================
     def _build_product_family(
         self,
@@ -17263,7 +17489,7 @@ class VendorImportJob(models.Model):
                             a.get("width", 0)
                             *
                             a.get("height", 0)
-                        ) < 250000
+                        ) < 500000
                     )
                 ]
 
@@ -17296,6 +17522,180 @@ class VendorImportJob(models.Model):
                 f"pool={len(asset_pool)}"
             )
 
+            # =====================================================
+            # EXPLICIT AZURE CROP / IMAGE INDEX MATCH
+            # =====================================================
+            #
+            # PDF AI + Azure Crop may already have identified the
+            # exact image for this variant.
+            #
+            # In that situation, do NOT ask CLIP or the scoring
+            # system to rediscover the image.
+            #
+            # The corrected image_index represents the asset's
+            # actual clean_index.
+            # =====================================================
+
+            requested_image_index = variant.get(
+                "image_index"
+            )
+
+            if requested_image_index not in (
+                None,
+                "",
+                False
+            ):
+
+                try:
+
+                    requested_image_index = int(
+                        requested_image_index
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    requested_image_index = None
+
+
+            if requested_image_index is not None:
+
+                for explicit_asset in asset_pool:
+
+                    if not isinstance(
+                        explicit_asset,
+                        dict
+                    ):
+                        continue
+
+                    explicit_clean_index = explicit_asset.get(
+                        "clean_index"
+                    )
+
+                    try:
+
+                        explicit_clean_index = int(
+                            explicit_clean_index
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        continue
+
+                    if (
+                        explicit_clean_index
+                        != requested_image_index
+                    ):
+                        continue
+
+                    # -------------------------------------------------
+                    # Never use lifestyle assets as variant images.
+                    # -------------------------------------------------
+
+                    if explicit_asset.get(
+                        "is_lifestyle",
+                        False
+                    ):
+                        continue
+
+                    # -------------------------------------------------
+                    # Supporting / pouch / folded assets must not
+                    # become the explicit color variant.
+                    # -------------------------------------------------
+
+                    explicit_reference = str(
+                        explicit_asset.get(
+                            "product_reference",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    explicit_crop_id = str(
+                        explicit_asset.get(
+                            "crop_id",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    explicit_identity = (
+                        f"{explicit_reference} "
+                        f"{explicit_crop_id}"
+                    )
+
+                    if any(
+                        keyword in explicit_identity
+                        for keyword in (
+                            "pouch",
+                            "folded",
+                            "supporting",
+                            "gallery"
+                        )
+                    ):
+
+                        _logger.warning(
+                            "[EXPLICIT VARIANT SKIP SUPPORTING] "
+                            "variant=%s | "
+                            "index=%s | "
+                            "product=%s | "
+                            "crop=%s",
+                            variant_text,
+                            requested_image_index,
+                            explicit_asset.get(
+                                "product_reference"
+                            ),
+                            explicit_asset.get(
+                                "crop_id"
+                            )
+                        )
+
+                        continue
+
+                    # -------------------------------------------------
+                    # Exact explicit asset found.
+                    # -------------------------------------------------
+
+                    if requested_image_index not in (
+                        used_asset_indexes
+                    ):
+
+                        used_asset_indexes.add(
+                            requested_image_index
+                        )
+
+                        _logger.warning(
+                            "[EXPLICIT VARIANT MATCH] "
+                            "variant=%s | "
+                            "clean_index=%s | "
+                            "product=%s | "
+                            "crop=%s",
+                            variant_text,
+                            requested_image_index,
+                            explicit_asset.get(
+                                "product_reference"
+                            ),
+                            explicit_asset.get(
+                                "crop_id"
+                            )
+                        )
+
+                        return explicit_asset
+
+                    _logger.warning(
+                        "[EXPLICIT VARIANT ALREADY USED] "
+                        "variant=%s | "
+                        "clean_index=%s",
+                        variant_text,
+                        requested_image_index
+                    )
+
+                    break
 
             clip_asset = None
 
