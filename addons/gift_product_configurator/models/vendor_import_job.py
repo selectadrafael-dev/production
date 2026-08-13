@@ -12930,7 +12930,58 @@ class VendorImportJob(models.Model):
             len(created_assets)
         )
 
+
         self.last_known_state = "azure_crop"
+
+        # =========================================================
+        # VERIFY CROPS WERE ACTUALLY PERSISTED
+        # =========================================================
+
+        for page_record in page_records:
+
+            try:
+                stored_assets = json.loads(
+                    page_record.page_images_json or "[]"
+                )
+            except Exception:
+                stored_assets = []
+
+            crop_assets = [
+                asset
+                for asset in stored_assets
+                if isinstance(asset, dict)
+                and asset.get("azure_crop") is True
+            ]
+
+            _logger.warning(
+                "[AZURE CROP] PERSISTENCE CHECK "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| TOTAL_ASSETS=%s "
+                "| AZURE_CROPS=%s",
+                self.id,
+                page_record.page_number,
+                len(stored_assets),
+                len(crop_assets),
+            )
+
+            for asset in crop_assets:
+
+                _logger.warning(
+                    "[AZURE CROP] STORED CROP "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| CROP=%s "
+                    "| PRODUCT=%s "
+                    "| IMAGE_BYTES=%s "
+                    "| CLEAN_INDEX=%s",
+                    self.id,
+                    page_record.page_number,
+                    asset.get("crop_id"),
+                    asset.get("product_reference"),
+                    len(asset.get("image") or ""),
+                    asset.get("clean_index"),
+                )
 
         self.state = "pdf_ai"
 
