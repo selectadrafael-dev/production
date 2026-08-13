@@ -13454,26 +13454,44 @@ class VendorImportJob(models.Model):
     # SAFE CROP / WHITESPACE EXPANSION
     # =========================================================
 
-    def _safe_crop_visual_score(self, image, box):
+    def _safe_crop_visual_score(
+        self,
+        image,
+        box
+    ):
         """
-        Estimate how visually complex a region is.
+        Estimate how visually occupied a region is.
 
-        This intentionally does NOT assume a white background.
+        IMPORTANT:
 
-        A product edge/detail normally produces more local visual
-        structure than an empty separation area.
+        This does NOT assume a white background.
+
+        The region is evaluated both globally and locally.
+
+        Local tile analysis is important because a product edge,
+        strap, handle, corner, or other product detail may occupy
+        only a small portion of the scanned band.
 
         Returns:
-            float: normalized visual complexity score 0.0 - 1.0
+            float:
+                0.0 = visually simple / likely separation
+                1.0 = visually occupied / structured
         """
 
         try:
+
             left, top, right, bottom = [
-                int(round(v))
+                int(
+                    round(v)
+                )
                 for v in box
             ]
 
-            if right <= left or bottom <= top:
+            if (
+                right <= left
+                or bottom <= top
+            ):
+
                 return 0.0
 
             region = image.crop(
@@ -13483,35 +13501,40 @@ class VendorImportJob(models.Model):
                     right,
                     bottom
                 )
-            ).convert("L")
+            ).convert(
+                "L"
+            )
 
-            # Keep the calculation cheap.
+            # -----------------------------------------------------
+            # KEEP PROCESSING CHEAP
+            # -----------------------------------------------------
+
             region.thumbnail(
-                (64, 64),
+                (
+                    96,
+                    96
+                ),
                 Image.Resampling.BILINEAR
             )
 
             if (
-                region.width < 2
-                or region.height < 2
+                region.width < 4
+                or region.height < 4
             ):
+
                 return 0.0
 
-            # FIND_EDGES works for:
-            #
-            # - white backgrounds
-            # - grey backgrounds
-            # - black backgrounds
-            # - beige backgrounds
-            # - coloured backgrounds
-            # - photographs
-            #
-            # We are measuring visual structure, not whiteness.
+            # -----------------------------------------------------
+            # GLOBAL EDGE SCORE
+            # -----------------------------------------------------
+
             edges = region.filter(
                 ImageFilter.FIND_EDGES
             )
 
-            histogram = edges.histogram()
+            histogram = (
+                edges.histogram()
+            )
 
             total_pixels = (
                 region.width
@@ -13519,35 +13542,247 @@ class VendorImportJob(models.Model):
             )
 
             if total_pixels <= 0:
+
                 return 0.0
 
-            # Count meaningful edge pixels.
             meaningful_edges = sum(
                 histogram[32:]
             )
 
-            score = (
+            global_score = (
                 meaningful_edges
-                / float(total_pixels)
+                / float(
+                    total_pixels
+                )
+            )
+
+            # -----------------------------------------------------
+            # LOCAL TILE ANALYSIS
+            # -----------------------------------------------------
+            #
+            # A product may occupy only a small part of the band.
+            #
+            # Example:
+            #
+            #       background
+            #       background
+            #       ███████
+            #       ███████
+            #
+            # Global averaging can hide this.
+            #
+            # Tile analysis allows us to detect that local structure.
+            # -----------------------------------------------------
+
+            tile_scores = []
+
+            tile_columns = 4
+            tile_rows = 4
+
+            tile_width = max(
+                1,
+                region.width
+                // tile_columns
+            )
+
+            tile_height = max(
+                1,
+                region.height
+                // tile_rows
+            )
+
+            for row in range(
+                tile_rows
+            ):
+
+                for col in range(
+                    tile_columns
+                ):
+
+                    tile_left = (
+                        col
+                        * tile_width
+                    )
+
+                    tile_top = (
+                        row
+                        * tile_height
+                    )
+
+                    tile_right = (
+                        region.width
+                        if col
+                        == tile_columns - 1
+                        else
+                        min(
+                            region.width,
+                            (
+                                col + 1
+                            )
+                            * tile_width
+                        )
+                    )
+
+                    tile_bottom = (
+                        region.height
+                        if row
+                        == tile_rows - 1
+                        else
+                        min(
+                            region.height,
+                            (
+                                row + 1
+                            )
+                            * tile_height
+                        )
+                    )
+
+                    if (
+                        tile_right
+                        <= tile_left
+                        or
+                        tile_bottom
+                        <= tile_top
+                    ):
+
+                        continue
+
+                    tile = edges.crop(
+                        (
+                            tile_left,
+                            tile_top,
+                            tile_right,
+                            tile_bottom
+                        )
+                    )
+
+                    tile_histogram = (
+                        tile.histogram()
+                    )
+
+                    tile_pixels = (
+                        tile.width
+                        * tile.height
+                    )
+
+                    if tile_pixels <= 0:
+                        continue
+
+                    tile_edges = sum(
+                        tile_histogram[32:]
+                    )
+
+                    tile_score = (
+                        tile_edges
+                        / float(
+                            tile_pixels
+                        )
+                    )
+
+                    tile_scores.append(
+                        max(
+                            0.0,
+                            min(
+                                1.0,
+                                tile_score
+                            )
+                        )
+                    )
+
+            if not tile_scores:
+
+                return max(
+                    0.0,
+                    min(
+                        1.0,
+                        global_score
+                    )
+                )
+
+            # -----------------------------------------------------
+            # LOCAL OCCUPANCY SCORE
+            # -----------------------------------------------------
+            #
+            # We don't use the absolute maximum because one isolated
+            # compression/noise pixel should not make the whole band
+            # look occupied.
+            #
+            # Instead use the strongest local tile scores.
+            # -----------------------------------------------------
+
+            sorted_tiles = sorted(
+                tile_scores,
+                reverse=True
+            )
+
+            strong_tile_count = max(
+                1,
+                int(
+                    len(
+                        sorted_tiles
+                    )
+                    * 0.25
+                )
+            )
+
+            strong_tiles = (
+                sorted_tiles[
+                    :strong_tile_count
+                ]
+            )
+
+            local_score = (
+                sum(
+                    strong_tiles
+                )
+                / float(
+                    len(
+                        strong_tiles
+                    )
+                )
+            )
+
+            # -----------------------------------------------------
+            # COMBINE GLOBAL + LOCAL
+            # -----------------------------------------------------
+            #
+            # Global score protects against broad visual structure.
+            #
+            # Local score protects against thin product details,
+            # straps, handles, corners, edges, etc.
+            # -----------------------------------------------------
+
+            combined_score = (
+                (
+                    global_score
+                    * 0.40
+                )
+                +
+                (
+                    local_score
+                    * 0.60
+                )
             )
 
             return max(
                 0.0,
                 min(
                     1.0,
-                    score
+                    combined_score
                 )
             )
 
         except Exception:
+
             _logger.exception(
-                "[SAFE CROP] VISUAL SCORE FAILED"
+                "[SAFE CROP] VISUAL SCORE FAILED "
                 "| JOB=%s",
                 self.id
             )
 
             return 0.0
 
+    #=========safe crop real=================
 
     def _safe_crop_background_score(
         self,
@@ -13572,6 +13807,10 @@ class VendorImportJob(models.Model):
         )
 
 
+    # =========================================================
+    # SAFE CROP / DIRECTIONAL EXPANSION
+    # =========================================================
+
     def _safe_crop_expand_direction(
         self,
         image,
@@ -13580,36 +13819,82 @@ class VendorImportJob(models.Model):
         direction,
     ):
         """
-        Expand one side of a crop into available visual space.
+        Expand one side of a crop into visually safe space.
 
-        The algorithm does NOT assume that the background is white.
+        IMPORTANT:
 
-        It scans outward in small bands.
+        The AI crop is only the starting point.
 
-        Example:
+        The scanner moves outward one band at a time.
 
-            PRODUCT | PRODUCT EDGE | GAP | NEXT PRODUCT
+        Behaviour:
 
-        The scan keeps enough room to recover a clipped product,
-        then stops before crossing into a neighbouring object.
+            PRODUCT
+                ↓
+            occupied bands
+                ↓
+            gap
+                ↓
+            gap
+                ↓
+            figure/page edge
 
-        Returns:
-            tuple:
-                (new_box, expansion_pixels)
+        → expand through the entire safe gap.
+
+        But:
+
+            PRODUCT
+                ↓
+            gap
+                ↓
+            another occupied object
+
+        → stop at the end of the safe gap.
+
+        The crop NEVER exceeds allowed_box.
         """
 
         try:
-            image_width, image_height = image.size
 
-            seed_left = float(seed_box[0])
-            seed_top = float(seed_box[1])
-            seed_right = float(seed_box[2])
-            seed_bottom = float(seed_box[3])
+            image_width, image_height = (
+                image.size
+            )
 
-            allowed_left = float(allowed_box[0])
-            allowed_top = float(allowed_box[1])
-            allowed_right = float(allowed_box[2])
-            allowed_bottom = float(allowed_box[3])
+            seed_left = float(
+                seed_box[0]
+            )
+
+            seed_top = float(
+                seed_box[1]
+            )
+
+            seed_right = float(
+                seed_box[2]
+            )
+
+            seed_bottom = float(
+                seed_box[3]
+            )
+
+            allowed_left = float(
+                allowed_box[0]
+            )
+
+            allowed_top = float(
+                allowed_box[1]
+            )
+
+            allowed_right = float(
+                allowed_box[2]
+            )
+
+            allowed_bottom = float(
+                allowed_box[3]
+            )
+
+            # =====================================================
+            # SEED DIMENSIONS
+            # =====================================================
 
             seed_width = max(
                 1.0,
@@ -13621,27 +13906,37 @@ class VendorImportJob(models.Model):
                 seed_bottom - seed_top
             )
 
-            # -----------------------------------------------------
+            # =====================================================
             # STEP SIZE
-            # -----------------------------------------------------
-            #
-            # Small enough to avoid jumping over a narrow gap.
-            #
+            # =====================================================
+
             if direction in (
                 "left",
                 "right"
             ):
+
                 step = max(
                     4,
-                    int(round(seed_width * 0.025))
-                )
-            else:
-                step = max(
-                    4,
-                    int(round(seed_height * 0.025))
+                    int(
+                        round(
+                            seed_width
+                            * 0.025
+                        )
+                    )
                 )
 
-            # Never allow extremely tiny or huge steps.
+            else:
+
+                step = max(
+                    4,
+                    int(
+                        round(
+                            seed_height
+                            * 0.025
+                        )
+                    )
+                )
+
             step = max(
                 4,
                 min(
@@ -13650,16 +13945,12 @@ class VendorImportJob(models.Model):
                 )
             )
 
-            # -----------------------------------------------------
-            # HARD MAXIMUM EXPANSION
-            # -----------------------------------------------------
-            #
-            # We deliberately do NOT allow the crop to consume
-            # the entire figure blindly.
-            #
-            # Maximum expansion is based on the available region.
-            #
+            # =====================================================
+            # MAXIMUM AVAILABLE EXPANSION
+            # =====================================================
+
             if direction == "left":
+
                 maximum = max(
                     0,
                     int(
@@ -13669,6 +13960,7 @@ class VendorImportJob(models.Model):
                 )
 
             elif direction == "right":
+
                 maximum = max(
                     0,
                     int(
@@ -13678,6 +13970,7 @@ class VendorImportJob(models.Model):
                 )
 
             elif direction == "top":
+
                 maximum = max(
                     0,
                     int(
@@ -13687,6 +13980,7 @@ class VendorImportJob(models.Model):
                 )
 
             else:
+
                 maximum = max(
                     0,
                     int(
@@ -13696,27 +13990,16 @@ class VendorImportJob(models.Model):
                 )
 
             if maximum <= 0:
+
                 return (
                     seed_box,
                     0
                 )
 
-            # -----------------------------------------------------
-            # BUILD BAND SCORES
-            # -----------------------------------------------------
-            #
-            # We first inspect the available area in small bands.
-            #
-            # This lets us distinguish:
-            #
-            #     target product
-            #          ↓
-            #     separation area
-            #          ↓
-            #     next object
-            #
-            # without assuming any particular background colour.
-            #
+            # =====================================================
+            # BUILD SCAN BANDS
+            # =====================================================
+
             bands = []
 
             distance = 0
@@ -13727,6 +14010,10 @@ class VendorImportJob(models.Model):
                     distance + step,
                     maximum
                 )
+
+                # -------------------------------------------------
+                # BUILD BAND
+                # -------------------------------------------------
 
                 if direction == "left":
 
@@ -13764,7 +14051,10 @@ class VendorImportJob(models.Model):
                         seed_bottom + next_distance
                     )
 
-                # Clamp to image.
+                # -------------------------------------------------
+                # CLAMP BAND TO IMAGE
+                # -------------------------------------------------
+
                 band = (
                     max(
                         0,
@@ -13788,6 +14078,7 @@ class VendorImportJob(models.Model):
                     band[2] <= band[0]
                     or band[3] <= band[1]
                 ):
+
                     break
 
                 score = (
@@ -13806,25 +14097,16 @@ class VendorImportJob(models.Model):
                 distance = next_distance
 
             if not bands:
+
                 return (
                     seed_box,
                     0
                 )
 
-            # -----------------------------------------------------
-            # DETERMINE LOCAL BACKGROUND COMPLEXITY
-            # -----------------------------------------------------
-            #
-            # IMPORTANT:
-            #
-            # We don't say:
-            #
-            #     score < X = white background
-            #
-            # Instead, we use the lowest scores found in the
-            # available surrounding area as the local separation
-            # baseline.
-            #
+            # =====================================================
+            # LOCAL BACKGROUND BASELINE
+            # =====================================================
+
             scores = [
                 band["score"]
                 for band in bands
@@ -13837,7 +14119,9 @@ class VendorImportJob(models.Model):
             baseline_count = max(
                 1,
                 int(
-                    len(sorted_scores)
+                    len(
+                        sorted_scores
+                    )
                     * 0.25
                 )
             )
@@ -13859,97 +14143,158 @@ class VendorImportJob(models.Model):
                 )
             )
 
-            # A band materially above the local background baseline
-            # is considered visually occupied.
-            #
-            # The absolute floor prevents extremely low-complexity
-            # catalogue pages from treating tiny compression noise
-            # as product content.
+            # =====================================================
+            # OCCUPANCY THRESHOLD
+            # =====================================================
+
             occupancy_threshold = max(
                 0.055,
                 background_baseline * 1.65
             )
 
-            # -----------------------------------------------------
-            # EXPANSION DECISION
-            # -----------------------------------------------------
+            # =====================================================
+            # SCAN STATE
+            # =====================================================
             #
-            # We want to preserve product content immediately
-            # outside the AI crop.
+            # IMPORTANT:
             #
-            # Once we have crossed into a genuine low-complexity
-            # separation zone, we stop.
+            # We DO NOT stop at the first gap.
             #
-            # We keep a small amount of the separation zone itself.
+            # We continue scanning.
             #
+            # This gives us:
+            #
+            #   PRODUCT → GAP → GAP → EDGE
+            #
+            # the ability to expand all the way to EDGE.
+            #
+            # But:
+            #
+            #   PRODUCT → GAP → PRODUCT
+            #
+            # stops before the second product.
+            # =====================================================
+
             expanded_distance = 0
+
             saw_gap = False
-            gap_distance = 0
+
+            gap_end_distance = 0
+
+            occupied_before_gap = False
 
             for band in bands:
 
-                score = band["score"]
+                score = band[
+                    "score"
+                ]
 
-                if score >= occupancy_threshold:
+                # =================================================
+                # OCCUPIED BAND
+                # =================================================
 
-                    # Still visually occupied.
+                if (
+                    score
+                    >= occupancy_threshold
+                ):
+
+                    # ---------------------------------------------
+                    # CASE 1:
+                    # Product/detail continues immediately outside
+                    # the AI crop.
+                    # ---------------------------------------------
+
+                    if not saw_gap:
+
+                        expanded_distance = (
+                            band["end"]
+                        )
+
+                        occupied_before_gap = True
+
+                        continue
+
+                    # ---------------------------------------------
+                    # CASE 2:
                     #
-                    # This is exactly the situation we want to
-                    # recover when AI has clipped a strap, handle,
-                    # product edge, etc.
+                    # We already crossed a separation gap and have
+                    # now found another occupied region.
+                    #
+                    # This is most likely:
+                    #
+                    #     PRODUCT → GAP → NEXT PRODUCT
+                    #
+                    # STOP at the end of the gap.
+                    # ---------------------------------------------
+
                     expanded_distance = (
-                        band["end"]
+                        gap_end_distance
                     )
 
-                    # If we had already found a gap and then
-                    # encounter another occupied region, we assume
-                    # that region may be another object.
-                    #
-                    # Stop BEFORE crossing that gap.
-                    if saw_gap:
-                        break
+                    _logger.warning(
+                        "[SAFE CROP] "
+                        "NEIGHBORING OBJECT DETECTED "
+                        "| JOB=%s "
+                        "| DIRECTION=%s "
+                        "| GAP_END=%s "
+                        "| SCORE=%s "
+                        "| THRESHOLD=%s",
+                        self.id,
+                        direction,
+                        gap_end_distance,
+                        score,
+                        occupancy_threshold
+                    )
+
+                    break
+
+                # =================================================
+                # BACKGROUND / GAP BAND
+                # =================================================
 
                 else:
 
-                    # We have reached a visually simple region.
                     saw_gap = True
-                    gap_distance = (
+
+                    gap_end_distance = (
                         band["end"]
                     )
 
-                    # Include this separation region so that the
-                    # final crop does not touch the product.
+                    # ---------------------------------------------
+                    # Keep expanding through the gap.
+                    #
+                    # If this eventually reaches the figure/page
+                    # edge without another occupied region, the
+                    # final crop will reach that edge.
+                    # ---------------------------------------------
+
                     expanded_distance = (
                         band["end"]
                     )
 
-                    # We deliberately stop after the first
-                    # meaningful separation region.
-                    #
-                    # This is what prevents us from swallowing
-                    # another product.
-                    break
+                    continue
 
-            # -----------------------------------------------------
-            # IF THE AI CROP ALREADY HAS A GAP AROUND IT
-            # -----------------------------------------------------
-            #
-            # No expansion may be needed.
-            #
+            # =====================================================
+            # NO EXPANSION
+            # =====================================================
+
             if expanded_distance <= 0:
+
                 return (
                     seed_box,
                     0
                 )
 
-            # -----------------------------------------------------
-            # BUILD RESULT
-            # -----------------------------------------------------
+            # =====================================================
+            # FINAL DIRECTIONAL BOX
+            # =====================================================
+
             if direction == "left":
 
                 new_left = max(
                     allowed_left,
-                    seed_left - expanded_distance
+                    seed_left
+                    - expanded_distance
                 )
 
                 new_box = (
@@ -13963,7 +14308,8 @@ class VendorImportJob(models.Model):
 
                 new_right = min(
                     allowed_right,
-                    seed_right + expanded_distance
+                    seed_right
+                    + expanded_distance
                 )
 
                 new_box = (
@@ -13977,7 +14323,8 @@ class VendorImportJob(models.Model):
 
                 new_top = max(
                     allowed_top,
-                    seed_top - expanded_distance
+                    seed_top
+                    - expanded_distance
                 )
 
                 new_box = (
@@ -13991,7 +14338,8 @@ class VendorImportJob(models.Model):
 
                 new_bottom = min(
                     allowed_bottom,
-                    seed_bottom + expanded_distance
+                    seed_bottom
+                    + expanded_distance
                 )
 
                 new_box = (
@@ -14001,12 +14349,54 @@ class VendorImportJob(models.Model):
                     new_bottom
                 )
 
+            # =====================================================
+            # FINAL SAFETY CLAMP
+            # =====================================================
+
+            new_box = (
+                max(
+                    allowed_left,
+                    new_box[0]
+                ),
+                max(
+                    allowed_top,
+                    new_box[1]
+                ),
+                min(
+                    allowed_right,
+                    new_box[2]
+                ),
+                min(
+                    allowed_bottom,
+                    new_box[3]
+                )
+            )
+
+            _logger.warning(
+                "[SAFE CROP] DIRECTION EXPANDED "
+                "| JOB=%s "
+                "| DIRECTION=%s "
+                "| EXPANSION=%s "
+                "| MAX=%s "
+                "| SAW_GAP=%s "
+                "| GAP_END=%s "
+                "| FINAL_BOX=%s",
+                self.id,
+                direction,
+                expanded_distance,
+                maximum,
+                saw_gap,
+                gap_end_distance,
+                new_box
+            )
+
             return (
                 new_box,
                 expanded_distance
             )
 
         except Exception:
+
             _logger.exception(
                 "[SAFE CROP] EXPANSION FAILED "
                 "| JOB=%s "
@@ -14021,6 +14411,7 @@ class VendorImportJob(models.Model):
             )
 
 
+    #===========build_safe_product_crop=================================
     def _build_safe_product_crop(
         self,
         original_image,
