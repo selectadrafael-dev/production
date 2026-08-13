@@ -11602,6 +11602,248 @@ class VendorImportJob(models.Model):
             )
 
             # =========================================================
+            # ATTACH AUTHORITATIVE AZURE FIGURE BOUNDS TO EACH CROP
+            # =========================================================
+            #
+            # IMPORTANT:
+            #
+            # audit_pages contains the ORIGINAL Azure figure geometry.
+            #
+            # audit_result contains OpenAI's crop instructions.
+            #
+            # Do NOT try to reconstruct Azure figure bounds from
+            # audit_result["pages"]["figures"] later.
+            #
+            # We attach the exact Azure bounds to each crop now so
+            # _process_azure_crop_request() receives authoritative
+            # geometry together with the crop instruction.
+            # =========================================================
+
+            if isinstance(crops, list):
+
+                for crop in crops:
+
+                    if not isinstance(crop, dict):
+                        continue
+
+                    crop_figure_id = str(
+                        crop.get(
+                            "figure_id",
+                            ""
+                        )
+                    ).strip()
+
+                    if not crop_figure_id:
+                        _logger.warning(
+                            "[AZURE CROP] CROP HAS NO FIGURE ID "
+                            "| JOB=%s "
+                            "| CROP=%s",
+                            self.id,
+                            crop.get(
+                                "crop_id",
+                                "unknown"
+                            )
+                        )
+
+                        continue
+
+                    crop_page = crop.get(
+                        "page"
+                    )
+
+                    matched_figure = None
+
+                    # -----------------------------------------------------
+                    # FIRST: match by page + figure ID
+                    # -----------------------------------------------------
+
+                    for audit_page in audit_pages:
+
+                        if not isinstance(
+                            audit_page,
+                            dict
+                        ):
+                            continue
+
+                        audit_page_number = audit_page.get(
+                            "page"
+                        )
+
+                        if (
+                            crop_page is not None
+                            and audit_page_number != crop_page
+                        ):
+                            continue
+
+                        for figure in audit_page.get(
+                            "figures",
+                            []
+                        ):
+
+                            if not isinstance(
+                                figure,
+                                dict
+                            ):
+                                continue
+
+                            figure_id = str(
+                                figure.get(
+                                    "azure_figure_id",
+                                    ""
+                                )
+                            ).strip()
+
+                            if figure_id == crop_figure_id:
+
+                                matched_figure = figure
+
+                                break
+
+                        if matched_figure:
+                            break
+
+                    # -----------------------------------------------------
+                    # SECOND: fallback to figure ID only
+                    # -----------------------------------------------------
+
+                    if not matched_figure:
+
+                        for audit_page in audit_pages:
+
+                            if not isinstance(
+                                audit_page,
+                                dict
+                            ):
+                                continue
+
+                            for figure in audit_page.get(
+                                "figures",
+                                []
+                            ):
+
+                                if not isinstance(
+                                    figure,
+                                    dict
+                                ):
+                                    continue
+
+                                figure_id = str(
+                                    figure.get(
+                                        "azure_figure_id",
+                                        ""
+                                    )
+                                ).strip()
+
+                                if figure_id == crop_figure_id:
+
+                                    matched_figure = figure
+
+                                    break
+
+                            if matched_figure:
+                                break
+
+                    # -----------------------------------------------------
+                    # NO MATCH
+                    # -----------------------------------------------------
+
+                    if not matched_figure:
+
+                        _logger.error(
+                            "[AZURE CROP] FIGURE BOUNDS NOT FOUND "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| FIGURE=%s "
+                            "| CROP=%s",
+                            self.id,
+                            crop_page,
+                            crop_figure_id,
+                            crop.get(
+                                "crop_id",
+                                "unknown"
+                            )
+                        )
+
+                        continue
+
+                    # -----------------------------------------------------
+                    # COPY ONLY THE AUTHORITATIVE GEOMETRY
+                    # -----------------------------------------------------
+
+                    try:
+
+                        azure_bounds = {
+                            "x": float(
+                                matched_figure.get(
+                                    "x",
+                                    0
+                                )
+                            ),
+                            "y": float(
+                                matched_figure.get(
+                                    "y",
+                                    0
+                                )
+                            ),
+                            "width": float(
+                                matched_figure.get(
+                                    "width",
+                                    0
+                                )
+                            ),
+                            "height": float(
+                                matched_figure.get(
+                                    "height",
+                                    0
+                                )
+                            ),
+                        }
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        _logger.error(
+                            "[AZURE CROP] INVALID FIGURE BOUNDS "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| FIGURE=%s",
+                            self.id,
+                            crop_page,
+                            crop_figure_id
+                        )
+
+                        continue
+
+                    crop[
+                        "azure_figure_bounds"
+                    ] = azure_bounds
+
+                    _logger.warning(
+                        "[AZURE CROP] FIGURE BOUNDS ATTACHED "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| CROP=%s "
+                        "| FIGURE=%s "
+                        "| X=%s "
+                        "| Y=%s "
+                        "| W=%s "
+                        "| H=%s",
+                        self.id,
+                        crop_page,
+                        crop.get(
+                            "crop_id",
+                            "unknown"
+                        ),
+                        crop_figure_id,
+                        azure_bounds["x"],
+                        azure_bounds["y"],
+                        azure_bounds["width"],
+                        azure_bounds["height"]
+                    )
+
+            # =========================================================
             # DEBUG — VISUALIZE OPENAI CROP REQUESTS
             # =========================================================
             #
@@ -12796,99 +13038,66 @@ class VendorImportJob(models.Model):
 
         created_assets = []
 
+
         # =========================================================
-        # BUILD AZURE FIGURE BOUNDS ONCE
+        # AZURE FIGURE BOUNDS
+        # =========================================================
+        #
+        # The authoritative Azure figure bounds were attached to
+        # each crop during the Azure/OpenAI audit stage.
+        #
+        # Do NOT rebuild them from audit_result["pages"] here.
         # =========================================================
 
-        figure_bounds = {}
+        _logger.warning(
+            "[AZURE CROP] USING EMBEDDED FIGURE BOUNDS "
+            "| JOB=%s "
+            "| CROPS=%s",
+            self.id,
+            len(crops)
+            if isinstance(crops, list)
+            else 0
+        )
 
-        for audit_page in audit_result.get(
-            "pages",
-            []
+        for crop in (
+            crops
+            if isinstance(crops, list)
+            else []
         ):
 
             if not isinstance(
-                audit_page,
+                crop,
                 dict
             ):
                 continue
 
-            for figure in audit_page.get(
-                "figures",
-                []
-            ):
-
-                if not isinstance(
-                    figure,
-                    dict
-                ):
-                    continue
-
-                azure_figure_id = str(
-                    figure.get(
-                        "azure_figure_id",
-                        ""
-                    )
+            _logger.warning(
+                "[AZURE CROP] CROP GEOMETRY "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| PAGE=%s "
+                "| BOUNDS=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                crop.get(
+                    "figure_id",
+                    "unknown"
+                ),
+                crop.get(
+                    "page"
+                ),
+                json.dumps(
+                    crop.get(
+                        "azure_figure_bounds"
+                    ),
+                    ensure_ascii=False,
+                    default=str
                 )
-
-                if not azure_figure_id:
-                    continue
-
-                try:
-
-                    figure_bounds[
-                        azure_figure_id
-                    ] = {
-                        "x": float(
-                            figure.get(
-                                "x",
-                                0
-                            )
-                        ),
-                        "y": float(
-                            figure.get(
-                                "y",
-                                0
-                            )
-                        ),
-                        "width": float(
-                            figure.get(
-                                "width",
-                                0
-                            )
-                        ),
-                        "height": float(
-                            figure.get(
-                                "height",
-                                0
-                            )
-                        ),
-                    }
-
-                except (
-                    TypeError,
-                    ValueError
-                ):
-
-                    _logger.warning(
-                        "[AZURE CROP] INVALID FIGURE BOUNDS "
-                        "| JOB=%s "
-                        "| FIGURE=%s",
-                        self.id,
-                        azure_figure_id
-                    )
-
-                    continue
-
-        _logger.warning(
-            "[AZURE CROP] FIGURE BOUNDS READY "
-            "| JOB=%s "
-            "| FIGURES=%s",
-            self.id,
-            len(
-                figure_bounds
             )
-        )
 
         # =========================================================
         # PROCESS EACH CROP
@@ -13154,16 +13363,75 @@ class VendorImportJob(models.Model):
 
                 continue
 
-            # =====================================================
-            # SAFE WHITESPACE / VISUAL-GAP EXPANSION
-            # =====================================================
+            # =========================================================
+            # BUILD FIGURE BOUNDS FOR THIS CROP
+            # =========================================================
 
-            safe_crop = (
-                self._build_safe_product_crop(
-                    original_image,
-                    crop,
-                    figure_bounds
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
                 )
+            ).strip()
+
+            azure_bounds = crop.get(
+                "azure_figure_bounds"
+            )
+
+            if (
+                float(azure_bounds.get("width", 0)) <= 0
+                or float(azure_bounds.get("height", 0)) <= 0
+            ):
+
+                _logger.error(
+                    "[AZURE CROP] INVALID EMBEDDED FIGURE BOUNDS "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s "
+                    "| BOUNDS=%s",
+                    self.id,
+                    crop.get(
+                        "crop_id",
+                        "unknown"
+                    ),
+                    figure_id,
+                    json.dumps(
+                        azure_bounds,
+                        ensure_ascii=False,
+                        default=str
+                    )
+                )
+
+                continue
+
+            if not isinstance(
+                azure_bounds,
+                dict
+            ):
+
+                _logger.error(
+                    "[AZURE CROP] MISSING EMBEDDED FIGURE BOUNDS "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s",
+                    self.id,
+                    crop.get(
+                        "crop_id",
+                        "unknown"
+                    ),
+                    figure_id
+                )
+
+                continue
+
+            figure_bounds = {
+                figure_id: azure_bounds
+            }
+
+            safe_crop = self._build_safe_product_crop(
+                original_image,
+                crop,
+                figure_bounds
             )
 
             if not safe_crop:
