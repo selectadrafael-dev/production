@@ -22,7 +22,8 @@ from PIL import (
     ImageOps,
     ImageChops,
     ImageDraw,
-    ImageFont
+    ImageFont,
+    ImageFilter
 )
 
 import cv2
@@ -12656,9 +12657,9 @@ class VendorImportJob(models.Model):
             self.id
         )
 
-        # =========================================================
+        # ===========================================================
         # LOAD STORED AZURE AUDIT
-        # =========================================================
+        # ===========================================================
 
         audit_json = self.azure_review_json
 
@@ -12673,7 +12674,10 @@ class VendorImportJob(models.Model):
 
             self._safe_commit_progress()
 
-            return
+            return {
+                "success": True,
+                "created": 0,
+            }
 
         try:
 
@@ -12693,7 +12697,10 @@ class VendorImportJob(models.Model):
 
             self._safe_commit_progress()
 
-            return
+            return {
+                "success": True,
+                "created": 0,
+            }
 
         # =========================================================
         # COLLECT CROPS
@@ -12758,7 +12765,10 @@ class VendorImportJob(models.Model):
 
             self._safe_commit_progress()
 
-            return
+            return {
+                "success": True,
+                "created": 0,
+            }
 
         # =========================================================
         # LOAD PDF PAGE RECORDS
@@ -12778,9 +12788,107 @@ class VendorImportJob(models.Model):
 
             self.state = "failed"
             self._safe_commit_progress()
-            return
+          
+            return {
+                "success": True,
+                "created": 0,
+            }
 
         created_assets = []
+
+        # =========================================================
+        # BUILD AZURE FIGURE BOUNDS ONCE
+        # =========================================================
+
+        figure_bounds = {}
+
+        for audit_page in audit_result.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                audit_page,
+                dict
+            ):
+                continue
+
+            for figure in audit_page.get(
+                "figures",
+                []
+            ):
+
+                if not isinstance(
+                    figure,
+                    dict
+                ):
+                    continue
+
+                azure_figure_id = str(
+                    figure.get(
+                        "azure_figure_id",
+                        ""
+                    )
+                )
+
+                if not azure_figure_id:
+                    continue
+
+                try:
+
+                    figure_bounds[
+                        azure_figure_id
+                    ] = {
+                        "x": float(
+                            figure.get(
+                                "x",
+                                0
+                            )
+                        ),
+                        "y": float(
+                            figure.get(
+                                "y",
+                                0
+                            )
+                        ),
+                        "width": float(
+                            figure.get(
+                                "width",
+                                0
+                            )
+                        ),
+                        "height": float(
+                            figure.get(
+                                "height",
+                                0
+                            )
+                        ),
+                    }
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    _logger.warning(
+                        "[AZURE CROP] INVALID FIGURE BOUNDS "
+                        "| JOB=%s "
+                        "| FIGURE=%s",
+                        self.id,
+                        azure_figure_id
+                    )
+
+                    continue
+
+        _logger.warning(
+            "[AZURE CROP] FIGURE BOUNDS READY "
+            "| JOB=%s "
+            "| FIGURES=%s",
+            self.id,
+            len(
+                figure_bounds
+            )
+        )
 
         # =========================================================
         # PROCESS EACH CROP
@@ -13047,31 +13155,53 @@ class VendorImportJob(models.Model):
                 continue
 
             # =====================================================
-            # ROUND COORDINATES
+            # SAFE WHITESPACE / VISUAL-GAP EXPANSION
             # =====================================================
 
-            left = int(
-                round(x)
-            )
-
-            top = int(
-                round(y)
-            )
-
-            right = int(
-                round(
-                    x + width
+            safe_crop = (
+                self._build_safe_product_crop(
+                    original_image,
+                    crop,
+                    figure_bounds
                 )
             )
 
-            bottom = int(
-                round(
-                    y + height
+            if not safe_crop:
+
+                _logger.error(
+                    "[AZURE CROP] SAFE CROP FAILED "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s "
+                    "| PRODUCT=%s",
+                    self.id,
+                    crop_id,
+                    figure_id,
+                    product_reference
                 )
-            )
+
+                continue
+
+
+            left = safe_crop[
+                "left"
+            ]
+
+            top = safe_crop[
+                "top"
+            ]
+
+            right = safe_crop[
+                "right"
+            ]
+
+            bottom = safe_crop[
+                "bottom"
+            ]
+
 
             # =====================================================
-            # ACTUAL CROP
+            # ACTUAL SAFE CROP
             # =====================================================
 
             cropped_image = original_image.crop(
@@ -13087,8 +13217,8 @@ class VendorImportJob(models.Model):
 
             cropped_image.save(
                 output,
-                format="JPEG",
-                quality=95
+                format="PNG",
+                optimize=True
             )
 
             cropped_bytes = output.getvalue()
@@ -13319,6 +13449,883 @@ class VendorImportJob(models.Model):
                 created_assets
             )
         }
+
+    # =========================================================
+    # SAFE CROP / WHITESPACE EXPANSION
+    # =========================================================
+
+    def _safe_crop_visual_score(self, image, box):
+        """
+        Estimate how visually complex a region is.
+
+        This intentionally does NOT assume a white background.
+
+        A product edge/detail normally produces more local visual
+        structure than an empty separation area.
+
+        Returns:
+            float: normalized visual complexity score 0.0 - 1.0
+        """
+
+        try:
+            left, top, right, bottom = [
+                int(round(v))
+                for v in box
+            ]
+
+            if right <= left or bottom <= top:
+                return 0.0
+
+            region = image.crop(
+                (
+                    left,
+                    top,
+                    right,
+                    bottom
+                )
+            ).convert("L")
+
+            # Keep the calculation cheap.
+            region.thumbnail(
+                (64, 64),
+                Image.Resampling.BILINEAR
+            )
+
+            if (
+                region.width < 2
+                or region.height < 2
+            ):
+                return 0.0
+
+            # FIND_EDGES works for:
+            #
+            # - white backgrounds
+            # - grey backgrounds
+            # - black backgrounds
+            # - beige backgrounds
+            # - coloured backgrounds
+            # - photographs
+            #
+            # We are measuring visual structure, not whiteness.
+            edges = region.filter(
+                ImageFilter.FIND_EDGES
+            )
+
+            histogram = edges.histogram()
+
+            total_pixels = (
+                region.width
+                * region.height
+            )
+
+            if total_pixels <= 0:
+                return 0.0
+
+            # Count meaningful edge pixels.
+            meaningful_edges = sum(
+                histogram[32:]
+            )
+
+            score = (
+                meaningful_edges
+                / float(total_pixels)
+            )
+
+            return max(
+                0.0,
+                min(
+                    1.0,
+                    score
+                )
+            )
+
+        except Exception:
+            _logger.exception(
+                "[SAFE CROP] VISUAL SCORE FAILED"
+                "| JOB=%s",
+                self.id
+            )
+
+            return 0.0
+
+
+    def _safe_crop_background_score(
+        self,
+        image,
+        box,
+    ):
+        """
+        Estimate how background-like a region is.
+
+        This is deliberately based on local visual complexity,
+        NOT on RGB whiteness.
+
+        A low score means the region is visually simple and is
+        therefore more likely to be separation/background.
+
+        A high score means the region contains more visual structure.
+        """
+
+        return self._safe_crop_visual_score(
+            image,
+            box
+        )
+
+
+    def _safe_crop_expand_direction(
+        self,
+        image,
+        seed_box,
+        allowed_box,
+        direction,
+    ):
+        """
+        Expand one side of a crop into available visual space.
+
+        The algorithm does NOT assume that the background is white.
+
+        It scans outward in small bands.
+
+        Example:
+
+            PRODUCT | PRODUCT EDGE | GAP | NEXT PRODUCT
+
+        The scan keeps enough room to recover a clipped product,
+        then stops before crossing into a neighbouring object.
+
+        Returns:
+            tuple:
+                (new_box, expansion_pixels)
+        """
+
+        try:
+            image_width, image_height = image.size
+
+            seed_left = float(seed_box[0])
+            seed_top = float(seed_box[1])
+            seed_right = float(seed_box[2])
+            seed_bottom = float(seed_box[3])
+
+            allowed_left = float(allowed_box[0])
+            allowed_top = float(allowed_box[1])
+            allowed_right = float(allowed_box[2])
+            allowed_bottom = float(allowed_box[3])
+
+            seed_width = max(
+                1.0,
+                seed_right - seed_left
+            )
+
+            seed_height = max(
+                1.0,
+                seed_bottom - seed_top
+            )
+
+            # -----------------------------------------------------
+            # STEP SIZE
+            # -----------------------------------------------------
+            #
+            # Small enough to avoid jumping over a narrow gap.
+            #
+            if direction in (
+                "left",
+                "right"
+            ):
+                step = max(
+                    4,
+                    int(round(seed_width * 0.025))
+                )
+            else:
+                step = max(
+                    4,
+                    int(round(seed_height * 0.025))
+                )
+
+            # Never allow extremely tiny or huge steps.
+            step = max(
+                4,
+                min(
+                    step,
+                    32
+                )
+            )
+
+            # -----------------------------------------------------
+            # HARD MAXIMUM EXPANSION
+            # -----------------------------------------------------
+            #
+            # We deliberately do NOT allow the crop to consume
+            # the entire figure blindly.
+            #
+            # Maximum expansion is based on the available region.
+            #
+            if direction == "left":
+                maximum = max(
+                    0,
+                    int(
+                        seed_left
+                        - allowed_left
+                    )
+                )
+
+            elif direction == "right":
+                maximum = max(
+                    0,
+                    int(
+                        allowed_right
+                        - seed_right
+                    )
+                )
+
+            elif direction == "top":
+                maximum = max(
+                    0,
+                    int(
+                        seed_top
+                        - allowed_top
+                    )
+                )
+
+            else:
+                maximum = max(
+                    0,
+                    int(
+                        allowed_bottom
+                        - seed_bottom
+                    )
+                )
+
+            if maximum <= 0:
+                return (
+                    seed_box,
+                    0
+                )
+
+            # -----------------------------------------------------
+            # BUILD BAND SCORES
+            # -----------------------------------------------------
+            #
+            # We first inspect the available area in small bands.
+            #
+            # This lets us distinguish:
+            #
+            #     target product
+            #          ↓
+            #     separation area
+            #          ↓
+            #     next object
+            #
+            # without assuming any particular background colour.
+            #
+            bands = []
+
+            distance = 0
+
+            while distance < maximum:
+
+                next_distance = min(
+                    distance + step,
+                    maximum
+                )
+
+                if direction == "left":
+
+                    band = (
+                        seed_left - next_distance,
+                        seed_top,
+                        seed_left - distance,
+                        seed_bottom
+                    )
+
+                elif direction == "right":
+
+                    band = (
+                        seed_right + distance,
+                        seed_top,
+                        seed_right + next_distance,
+                        seed_bottom
+                    )
+
+                elif direction == "top":
+
+                    band = (
+                        seed_left,
+                        seed_top - next_distance,
+                        seed_right,
+                        seed_top - distance
+                    )
+
+                else:
+
+                    band = (
+                        seed_left,
+                        seed_bottom + distance,
+                        seed_right,
+                        seed_bottom + next_distance
+                    )
+
+                # Clamp to image.
+                band = (
+                    max(
+                        0,
+                        band[0]
+                    ),
+                    max(
+                        0,
+                        band[1]
+                    ),
+                    min(
+                        image_width,
+                        band[2]
+                    ),
+                    min(
+                        image_height,
+                        band[3]
+                    )
+                )
+
+                if (
+                    band[2] <= band[0]
+                    or band[3] <= band[1]
+                ):
+                    break
+
+                score = (
+                    self._safe_crop_background_score(
+                        image,
+                        band
+                    )
+                )
+
+                bands.append({
+                    "start": distance,
+                    "end": next_distance,
+                    "score": score,
+                })
+
+                distance = next_distance
+
+            if not bands:
+                return (
+                    seed_box,
+                    0
+                )
+
+            # -----------------------------------------------------
+            # DETERMINE LOCAL BACKGROUND COMPLEXITY
+            # -----------------------------------------------------
+            #
+            # IMPORTANT:
+            #
+            # We don't say:
+            #
+            #     score < X = white background
+            #
+            # Instead, we use the lowest scores found in the
+            # available surrounding area as the local separation
+            # baseline.
+            #
+            scores = [
+                band["score"]
+                for band in bands
+            ]
+
+            sorted_scores = sorted(
+                scores
+            )
+
+            baseline_count = max(
+                1,
+                int(
+                    len(sorted_scores)
+                    * 0.25
+                )
+            )
+
+            baseline_values = (
+                sorted_scores[
+                    :baseline_count
+                ]
+            )
+
+            background_baseline = (
+                sum(
+                    baseline_values
+                )
+                / float(
+                    len(
+                        baseline_values
+                    )
+                )
+            )
+
+            # A band materially above the local background baseline
+            # is considered visually occupied.
+            #
+            # The absolute floor prevents extremely low-complexity
+            # catalogue pages from treating tiny compression noise
+            # as product content.
+            occupancy_threshold = max(
+                0.055,
+                background_baseline * 1.65
+            )
+
+            # -----------------------------------------------------
+            # EXPANSION DECISION
+            # -----------------------------------------------------
+            #
+            # We want to preserve product content immediately
+            # outside the AI crop.
+            #
+            # Once we have crossed into a genuine low-complexity
+            # separation zone, we stop.
+            #
+            # We keep a small amount of the separation zone itself.
+            #
+            expanded_distance = 0
+            saw_gap = False
+            gap_distance = 0
+
+            for band in bands:
+
+                score = band["score"]
+
+                if score >= occupancy_threshold:
+
+                    # Still visually occupied.
+                    #
+                    # This is exactly the situation we want to
+                    # recover when AI has clipped a strap, handle,
+                    # product edge, etc.
+                    expanded_distance = (
+                        band["end"]
+                    )
+
+                    # If we had already found a gap and then
+                    # encounter another occupied region, we assume
+                    # that region may be another object.
+                    #
+                    # Stop BEFORE crossing that gap.
+                    if saw_gap:
+                        break
+
+                else:
+
+                    # We have reached a visually simple region.
+                    saw_gap = True
+                    gap_distance = (
+                        band["end"]
+                    )
+
+                    # Include this separation region so that the
+                    # final crop does not touch the product.
+                    expanded_distance = (
+                        band["end"]
+                    )
+
+                    # We deliberately stop after the first
+                    # meaningful separation region.
+                    #
+                    # This is what prevents us from swallowing
+                    # another product.
+                    break
+
+            # -----------------------------------------------------
+            # IF THE AI CROP ALREADY HAS A GAP AROUND IT
+            # -----------------------------------------------------
+            #
+            # No expansion may be needed.
+            #
+            if expanded_distance <= 0:
+                return (
+                    seed_box,
+                    0
+                )
+
+            # -----------------------------------------------------
+            # BUILD RESULT
+            # -----------------------------------------------------
+            if direction == "left":
+
+                new_left = max(
+                    allowed_left,
+                    seed_left - expanded_distance
+                )
+
+                new_box = (
+                    new_left,
+                    seed_top,
+                    seed_right,
+                    seed_bottom
+                )
+
+            elif direction == "right":
+
+                new_right = min(
+                    allowed_right,
+                    seed_right + expanded_distance
+                )
+
+                new_box = (
+                    seed_left,
+                    seed_top,
+                    new_right,
+                    seed_bottom
+                )
+
+            elif direction == "top":
+
+                new_top = max(
+                    allowed_top,
+                    seed_top - expanded_distance
+                )
+
+                new_box = (
+                    seed_left,
+                    new_top,
+                    seed_right,
+                    seed_bottom
+                )
+
+            else:
+
+                new_bottom = min(
+                    allowed_bottom,
+                    seed_bottom + expanded_distance
+                )
+
+                new_box = (
+                    seed_left,
+                    seed_top,
+                    seed_right,
+                    new_bottom
+                )
+
+            return (
+                new_box,
+                expanded_distance
+            )
+
+        except Exception:
+            _logger.exception(
+                "[SAFE CROP] EXPANSION FAILED "
+                "| JOB=%s "
+                "| DIRECTION=%s",
+                self.id,
+                direction
+            )
+
+            return (
+                seed_box,
+                0
+            )
+
+
+    def _build_safe_product_crop(
+        self,
+        original_image,
+        crop,
+        figure_bounds,
+    ):
+        """
+        Convert an AI crop proposal into a safer production crop.
+
+        IMPORTANT:
+
+        The AI coordinates remain the seed.
+
+        We expand them into available visual separation rather
+        than trusting the AI rectangle as the final product boundary.
+
+        The crop is NEVER allowed outside its Azure figure.
+        """
+
+        try:
+
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            )
+
+            bounds = figure_bounds.get(
+                figure_id
+            )
+
+            if not bounds:
+                _logger.warning(
+                    "[SAFE CROP] NO FIGURE BOUNDS "
+                    "| JOB=%s | FIGURE=%s",
+                    self.id,
+                    figure_id
+                )
+
+                return None
+
+            x = float(
+                crop.get(
+                    "x",
+                    0
+                )
+            )
+
+            y = float(
+                crop.get(
+                    "y",
+                    0
+                )
+            )
+
+            width = float(
+                crop.get(
+                    "width",
+                    0
+                )
+            )
+
+            height = float(
+                crop.get(
+                    "height",
+                    0
+                )
+            )
+
+            if (
+                width <= 0
+                or height <= 0
+            ):
+                return None
+
+            image_width, image_height = (
+                original_image.size
+            )
+
+            # -----------------------------------------------------
+            # HARD FIGURE BOUNDARY
+            # -----------------------------------------------------
+
+            figure_left = max(
+                0.0,
+                float(
+                    bounds["x"]
+                )
+            )
+
+            figure_top = max(
+                0.0,
+                float(
+                    bounds["y"]
+                )
+            )
+
+            figure_right = min(
+                float(image_width),
+                float(
+                    bounds["x"]
+                    + bounds["width"]
+                )
+            )
+
+            figure_bottom = min(
+                float(image_height),
+                float(
+                    bounds["y"]
+                    + bounds["height"]
+                )
+            )
+
+            # -----------------------------------------------------
+            # INITIAL AI BOX
+            # -----------------------------------------------------
+
+            seed_left = max(
+                figure_left,
+                x
+            )
+
+            seed_top = max(
+                figure_top,
+                y
+            )
+
+            seed_right = min(
+                figure_right,
+                x + width
+            )
+
+            seed_bottom = min(
+                figure_bottom,
+                y + height
+            )
+
+            if (
+                seed_right <= seed_left
+                or seed_bottom <= seed_top
+            ):
+                return None
+
+            seed_box = (
+                seed_left,
+                seed_top,
+                seed_right,
+                seed_bottom
+            )
+
+            # -----------------------------------------------------
+            # EXPAND
+            # -----------------------------------------------------
+            #
+            # Each direction is processed independently.
+            #
+            # This is important because the product may have:
+            #
+            #     much more space on the right
+            #     little space on the left
+            #
+            # or vice versa.
+            #
+
+            current_box = seed_box
+
+            total_expansion = {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0,
+            }
+
+            for direction in (
+                "left",
+                "right",
+                "top",
+                "bottom"
+            ):
+
+                current_box, expansion = (
+                    self._safe_crop_expand_direction(
+                        original_image,
+                        current_box,
+                        (
+                            figure_left,
+                            figure_top,
+                            figure_right,
+                            figure_bottom
+                        ),
+                        direction
+                    )
+                )
+
+                total_expansion[
+                    direction
+                ] = expansion
+
+            # -----------------------------------------------------
+            # FINAL CLAMP
+            # -----------------------------------------------------
+
+            left = max(
+                0,
+                min(
+                    image_width,
+                    int(
+                        round(
+                            current_box[0]
+                        )
+                    )
+                )
+            )
+
+            top = max(
+                0,
+                min(
+                    image_height,
+                    int(
+                        round(
+                            current_box[1]
+                        )
+                    )
+                )
+            )
+
+            right = max(
+                left + 1,
+                min(
+                    image_width,
+                    int(
+                        round(
+                            current_box[2]
+                        )
+                    )
+                )
+            )
+
+            bottom = max(
+                top + 1,
+                min(
+                    image_height,
+                    int(
+                        round(
+                            current_box[3]
+                        )
+                    )
+                )
+            )
+
+            final_box = (
+                left,
+                top,
+                right,
+                bottom
+            )
+
+            _logger.warning(
+                "[SAFE CROP] EXPANDED "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| AI=(%s,%s,%s,%s) "
+                "| FINAL=(%s,%s,%s,%s) "
+                "| EXPANSION=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                figure_id,
+                x,
+                y,
+                width,
+                height,
+                left,
+                top,
+                right,
+                bottom,
+                total_expansion
+            )
+
+            return {
+                "left": left,
+                "top": top,
+                "right": right,
+                "bottom": bottom,
+                "ai_box": seed_box,
+                "expansion": total_expansion,
+            }
+
+        except Exception:
+            _logger.exception(
+                "[SAFE CROP] FAILED "
+                "| JOB=%s "
+                "| CROP=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                )
+            )
+
+            return None
 
     # =======================================================
     # REMOVE TEXT AREAS
