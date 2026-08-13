@@ -7652,6 +7652,38 @@ class VendorImportJob(models.Model):
         19. If uncertain whether an image represents a variant or a
             supporting/gallery image, prefer supporting/gallery image
             rather than creating an unsupported Odoo variant.
+        
+
+        20. A variant must only reference an image that clearly and specifically
+            represents that variant.
+
+        21. Do NOT assign the same image_index to multiple color variants when
+            the image does not individually and clearly represent each variant.
+
+        22. In particular, never use a shared/group image, hero image, collage,
+            multi-color image, supporting image, lifestyle image, or another
+            variant's image as the image_index for multiple variants.
+
+        23. If multiple variants exist but a clean, variant-specific image is not
+            available, leave image_index unassigned rather than reusing an
+            incorrect image.
+
+        24. The existence of a variant does NOT imply that it must have an image.
+            Image assignment must be based on actual visual evidence.
+
+        25. If a single image visibly contains multiple color variants, treat it
+            as a shared/group or gallery image unless the image has already been
+            separated into individual variant assets by cropping.
+
+        26. VARIANT IMAGE OUTPUT RULE
+
+        27. For every variant:
+
+            - Use image_index only when a valid variant-specific image exists.
+            - Otherwise omit image_index from that variant object.
+
+            NEVER fabricate, duplicate, or reuse an image_index merely to ensure
+            that every variant has an image.
 
 
         ==================================================
@@ -8265,6 +8297,7 @@ class VendorImportJob(models.Model):
                                 f"color={color} "
                                 f"image_index={image_index}"
                             )
+                            
 
                     #==========prevent variant duplicate==========
                     seen_colors = set()
@@ -12302,191 +12335,142 @@ class VendorImportJob(models.Model):
     # AZURE OPENAI CROP PROCESSOR
     # =========================================================
     def _process_azure_crop_request(self):
-        """
-        Execute the normalized crop instructions returned by
-        _review_azure_evidence_with_openai().
-
-        IMPORTANT:
-            - Crops are taken from the ORIGINAL PAGE IMAGE.
-            - Coordinates are interpreted relative to that original
-            page image.
-            - We do NOT crop Azure figure images.
-            - Cropped assets are appended to the existing page image
-            pool so the existing PDF AI pipeline can consume them.
-        """
 
         self.ensure_one()
 
-        import base64
-        import io
-        import json
-
-        from PIL import Image
-
         _logger.warning(
-            "[AZURE CROP] PROCESSING "
-            "| JOB=%s",
+            "[AZURE CROP] START | JOB=%s",
             self.id
         )
 
         # =========================================================
-        # 1. LOAD THE SAVED NORMALIZED AUDIT RESULT
+        # LOAD STORED AZURE AUDIT
         # =========================================================
 
-        if not self.azure_review_json:
+        audit_json = self.azure_ai_audit_json
 
-            _logger.error(
-                "[AZURE CROP] NO AZURE REVIEW JSON "
-                "| JOB=%s",
+        if not audit_json:
+
+            _logger.warning(
+                "[AZURE CROP] NO AUDIT JSON | JOB=%s",
                 self.id
             )
 
-            return {
-                "success": False,
-                "error": "azure_review_json is empty"
-            }
+            self.state = "pdf_ai"
+
+            self._safe_commit_progress()
+
+            return
 
         try:
 
             audit_result = json.loads(
-                self.azure_review_json
+                audit_json
             )
 
-        except Exception as e:
+        except Exception:
 
             _logger.exception(
-                "[AZURE CROP] INVALID AZURE REVIEW JSON "
+                "[AZURE CROP] INVALID STORED AUDIT JSON "
                 "| JOB=%s",
                 self.id
             )
 
-            return {
-                "success": False,
-                "error": (
-                    "Invalid azure_review_json: "
-                    f"{str(e)}"
-                )
-            }
+            self.state = "failed"
 
-        if not isinstance(
-            audit_result,
-            dict
-        ):
+            self._safe_commit_progress()
 
-            return {
-                "success": False,
-                "error": (
-                    "Azure review JSON must "
-                    "be a dictionary"
-                )
-            }
+            return
 
         # =========================================================
-        # 2. READ NORMALIZED CROP LIST
-        # =========================================================
-        #
-        # _review_azure_evidence_with_openai() already normalizes
-        # page-level crops into:
-        #
-        #     audit_result["crops"]
-        #
-        # So DO NOT try to read:
-        #
-        #     audit_result["pages"][...]["crops"]
-        #
-        # here.
-        #
-        # The normalized top-level list is the source of truth.
+        # COLLECT CROPS
         # =========================================================
 
-        crops = audit_result.get(
+        crops = []
+
+        top_crops = audit_result.get(
             "crops",
             []
         )
 
-        crop_required = bool(
-            audit_result.get(
-                "crop_required",
-                False
-            )
-        )
-
-        if not crop_required:
-
-            _logger.warning(
-                "[AZURE CROP] CROP NOT REQUIRED "
-                "| JOB=%s",
-                self.id
-            )
-
-            return {
-                "success": True,
-                "created": 0
-            }
-
-        if not isinstance(
-            crops,
+        if isinstance(
+            top_crops,
             list
-        ) or not crops:
+        ):
 
-            _logger.error(
-                "[AZURE CROP] CROP REQUIRED "
-                "BUT NO CROP INSTRUCTIONS FOUND "
-                "| JOB=%s",
-                self.id
+            crops.extend(
+                top_crops
             )
 
-            return {
-                "success": False,
-                "error": (
-                    "crop_required=True but "
-                    "no crop instructions exist"
+        for audit_page in audit_result.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                audit_page,
+                dict
+            ):
+                continue
+
+            page_crops = audit_page.get(
+                "crops",
+                []
+            )
+
+            if isinstance(
+                page_crops,
+                list
+            ):
+
+                crops.extend(
+                    page_crops
                 )
-            }
 
         _logger.warning(
-            "[AZURE CROP] INSTRUCTIONS "
-            "| JOB=%s "
-            "| CROPS=%s",
-            self.id,
-            len(crops)
+            "[AZURE CROP] REQUESTS=%s | JOB=%s",
+            len(crops),
+            self.id
         )
 
+        if not crops:
+
+            _logger.warning(
+                "[AZURE CROP] NOTHING TO CROP "
+                "| JOB=%s",
+                self.id
+            )
+
+            self.state = "pdf_ai"
+
+            self._safe_commit_progress()
+
+            return
+
         # =========================================================
-        # 3. LOAD THE SAVED PDF PAGE RECORDS
-        # =========================================================
-        #
-        # This is the SAME model used by
-        # _review_azure_evidence_with_openai().
+        # LOAD PDF PAGE RECORDS
         # =========================================================
 
-        page_records = self.env[
-            "vendor.import.page"
-        ].search(
-            [
-                ("job_id", "=", self.id)
-            ],
-            order="page_number asc"
-        )
+        page_records = self.pdf_page_ids
 
         if not page_records:
 
             _logger.error(
-                "[AZURE CROP] NO PAGE RECORDS "
-                "| JOB=%s",
+                "[AZURE CROP] NO PAGE RECORDS | JOB=%s",
                 self.id
             )
 
-            return {
-                "success": False,
-                "error": "No vendor.import.page records found"
-            }
+            self.state = "failed"
+
+            self._safe_commit_progress()
+
+            return
+
+        created_assets = []
 
         # =========================================================
-        # 4. GROUP CROPS BY PAGE
+        # PROCESS EACH CROP
         # =========================================================
-
-        crops_by_page = {}
 
         for crop in crops:
 
@@ -12496,200 +12480,138 @@ class VendorImportJob(models.Model):
             ):
                 continue
 
-            crop_page = crop.get(
-                "page"
+            crop_id = crop.get(
+                "crop_id"
             )
 
-            # -----------------------------------------------------
-            # The current OpenAI schema normally puts crops inside
-            # pages[], and your normalization flattens them.
-            #
-            # Therefore page information should ideally be present.
-            #
-            # If not present, we attempt to resolve the page from
-            # the product/figure reference below.
-            # -----------------------------------------------------
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            )
 
-            if crop_page is None:
+            page_number = int(
+                crop.get(
+                    "page",
+                    1
+                )
+            )
 
-                _logger.warning(
-                    "[AZURE CROP] CROP HAS NO PAGE "
-                    "| JOB=%s "
-                    "| CROP=%s",
+            x = float(
+                crop.get(
+                    "x",
+                    0
+                )
+            )
+
+            y = float(
+                crop.get(
+                    "y",
+                    0
+                )
+            )
+
+            width = float(
+                crop.get(
+                    "width",
+                    0
+                )
+            )
+
+            height = float(
+                crop.get(
+                    "height",
+                    0
+                )
+            )
+
+            product_reference = crop.get(
+                "product_reference",
+                ""
+            )
+
+            purpose = crop.get(
+                "purpose",
+                ""
+            )
+
+            _logger.warning(
+                "[AZURE CROP] REQUEST "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| PAGE=%s "
+                "| FIGURE=%s "
+                "| X=%s "
+                "| Y=%s "
+                "| W=%s "
+                "| H=%s "
+                "| PRODUCT=%s",
+                self.id,
+                crop_id,
+                page_number,
+                figure_id,
+                x,
+                y,
+                width,
+                height,
+                product_reference
+            )
+
+            # =====================================================
+            # BASIC VALIDATION
+            # =====================================================
+
+            if width <= 0 or height <= 0:
+
+                _logger.error(
+                    "[AZURE CROP] INVALID SIZE "
+                    "| JOB=%s | CROP=%s",
                     self.id,
-                    crop.get(
-                        "crop_id"
-                    )
+                    crop_id
                 )
 
                 continue
 
-            try:
+            # =====================================================
+            # FIND ORIGINAL PAGE
+            # =====================================================
 
-                crop_page = int(
-                    crop_page
-                )
+            page_record = page_records.filtered(
+                lambda p:
+                    int(
+                        getattr(
+                            p,
+                            "page_number",
+                            0
+                        )
+                    ) == page_number
+            )[:1]
 
-            except (
-                TypeError,
-                ValueError
-            ):
+            if not page_record:
 
-                _logger.warning(
-                    "[AZURE CROP] INVALID PAGE "
+                _logger.error(
+                    "[AZURE CROP] PAGE NOT FOUND "
                     "| JOB=%s "
                     "| CROP=%s "
                     "| PAGE=%s",
                     self.id,
-                    crop.get("crop_id"),
-                    crop_page
+                    crop_id,
+                    page_number
                 )
 
                 continue
 
-            crops_by_page.setdefault(
-                crop_page,
-                []
-            ).append(
-                crop
-            )
-
-        # =========================================================
-        # 5. PROCESS EACH PAGE
-        # =========================================================
-
-        total_created = 0
-
-        processed_pages = 0
-
-        for record in page_records:
-
-            page_number = int(
-                record.page_number
-            )
-
-            page_crops = crops_by_page.get(
-                page_number,
-                []
-            )
-
-            if not page_crops:
-                continue
+            page_record = page_record[0]
 
             # =====================================================
-            # LOAD EXTRACTED PAGE JSON
+            # GET ORIGINAL PAGE IMAGE
             # =====================================================
 
-            try:
-
-                page_blocks = json.loads(
-                    record.extracted_json
-                    or "[]"
-                )
-
-            except Exception as e:
-
-                _logger.exception(
-                    "[AZURE CROP] INVALID extracted_json "
-                    "| JOB=%s "
-                    "| PAGE=%s",
-                    self.id,
-                    page_number
-                )
-
-                return {
-                    "success": False,
-                    "error": (
-                        f"Invalid extracted_json "
-                        f"for page {page_number}: {e}"
-                    )
-                }
-
-            if not isinstance(
-                page_blocks,
-                list
-            ):
-
-                _logger.error(
-                    "[AZURE CROP] PAGE BLOCKS NOT LIST "
-                    "| JOB=%s "
-                    "| PAGE=%s",
-                    self.id,
-                    page_number
-                )
-
-                return {
-                    "success": False,
-                    "error": (
-                        f"Page {page_number} "
-                        "extracted_json is not a list"
-                    )
-                }
-
-            # =====================================================
-            # FIND THE AZURE PAGE BLOCK
-            # =====================================================
-
-            target_block = None
-
-            for block in page_blocks:
-
-                if not isinstance(
-                    block,
-                    dict
-                ):
-                    continue
-
-                if int(
-                    block.get(
-                        "page",
-                        page_number
-                    )
-                ) != page_number:
-                    continue
-
-                if block.get(
-                    "azure_evidence"
-                ):
-
-                    target_block = block
-                    break
-
-            if target_block is None:
-
-                _logger.error(
-                    "[AZURE CROP] AZURE PAGE BLOCK NOT FOUND "
-                    "| JOB=%s "
-                    "| PAGE=%s",
-                    self.id,
-                    page_number
-                )
-
-                return {
-                    "success": False,
-                    "error": (
-                        f"Azure page block not found "
-                        f"for page {page_number}"
-                    )
-                }
-
-            # =====================================================
-            # 6. GET THE ORIGINAL PAGE IMAGE
-            # =====================================================
-            #
-            # THIS IS THE CRITICAL PART.
-            #
-            # We use:
-            #
-            #     target_block["page_image"]
-            #
-            # which is the same original page image that
-            # _review_azure_evidence_with_openai() placed into
-            # image_inputs.
-            # =====================================================
-
-            page_image_b64 = target_block.get(
-                "page_image"
+            page_image_b64 = getattr(
+                page_record,
+                "page_image",
+                False
             )
 
             if not page_image_b64:
@@ -12702,681 +12624,286 @@ class VendorImportJob(models.Model):
                     page_number
                 )
 
-                return {
-                    "success": False,
-                    "error": (
-                        f"Original page image missing "
-                        f"for page {page_number}"
-                    )
-                }
+                continue
 
             try:
 
+                original_bytes = base64.b64decode(
+                    page_image_b64
+                )
+
                 original_image = Image.open(
                     io.BytesIO(
-                        base64.b64decode(
-                            page_image_b64
-                        )
+                        original_bytes
                     )
                 ).convert(
                     "RGB"
                 )
 
-            except Exception as e:
+            except Exception:
 
                 _logger.exception(
-                    "[AZURE CROP] FAILED TO DECODE ORIGINAL PAGE "
+                    "[AZURE CROP] FAILED TO LOAD ORIGINAL PAGE "
                     "| JOB=%s "
                     "| PAGE=%s",
                     self.id,
                     page_number
                 )
 
-                return {
-                    "success": False,
-                    "error": (
-                        f"Could not decode page "
-                        f"{page_number}: {e}"
-                    )
-                }
+                continue
 
-            original_width = (
-                original_image.width
-            )
-
-            original_height = (
-                original_image.height
+            page_width, page_height = (
+                original_image.size
             )
 
             _logger.warning(
-                "[AZURE CROP] ORIGINAL PAGE LOADED "
+                "[AZURE CROP] ORIGINAL PAGE "
                 "| JOB=%s "
                 "| PAGE=%s "
-                "| SIZE=%sx%s "
-                "| CROPS=%s",
+                "| WIDTH=%s "
+                "| HEIGHT=%s",
                 self.id,
                 page_number,
-                original_width,
-                original_height,
-                len(page_crops)
+                page_width,
+                page_height
             )
 
             # =====================================================
-            # 7. EXISTING IMAGE LIST
+            # COORDINATE VALIDATION
             # =====================================================
 
-            existing_images = target_block.get(
-                "images",
-                []
-            )
-
-            if not isinstance(
-                existing_images,
-                list
+            if (
+                x < 0
+                or y < 0
+                or x + width > page_width
+                or y + height > page_height
             ):
 
-                existing_images = []
-
-            # =====================================================
-            # 8. PROCESS EACH OPENAI CROP
-            # =====================================================
-
-            page_created = 0
-
-            for crop in page_crops:
-
-                crop_id = str(
-                    crop.get(
-                        "crop_id",
-                        f"crop_{page_created + 1}"
-                    )
-                )
-
-                product_reference = str(
-                    crop.get(
-                        "product_reference",
-                        ""
-                    )
-                    or ""
-                ).strip()
-
-                purpose = str(
-                    crop.get(
-                        "purpose",
-                        ""
-                    )
-                    or ""
-                ).strip()
-
-                # =================================================
-                # READ COORDINATES
-                # =================================================
-
-                try:
-
-                    crop_x = int(
-                        round(
-                            float(
-                                crop.get(
-                                    "x"
-                                )
-                            )
-                        )
-                    )
-
-                    crop_y = int(
-                        round(
-                            float(
-                                crop.get(
-                                    "y"
-                                )
-                            )
-                        )
-                    )
-
-                    crop_width = int(
-                        round(
-                            float(
-                                crop.get(
-                                    "width"
-                                )
-                            )
-                        )
-                    )
-
-                    crop_height = int(
-                        round(
-                            float(
-                                crop.get(
-                                    "height"
-                                )
-                            )
-                        )
-                    )
-
-                except (
-                    TypeError,
-                    ValueError
-                ):
-
-                    _logger.error(
-                        "[AZURE CROP] INVALID COORDINATES "
-                        "| JOB=%s "
-                        "| PAGE=%s "
-                        "| CROP=%s",
-                        self.id,
-                        page_number,
-                        crop_id
-                    )
-
-                    continue
-
-                # =================================================
-                # 9. HARD ORIGINAL-IMAGE BOUNDS CHECK
-                # =================================================
-
-                crop_right = (
-                    crop_x +
-                    crop_width
-                )
-
-                crop_bottom = (
-                    crop_y +
-                    crop_height
-                )
-
-                if (
-                    crop_x < 0
-                    or crop_y < 0
-                    or crop_width <= 0
-                    or crop_height <= 0
-                    or crop_right > original_width
-                    or crop_bottom > original_height
-                ):
-
-                    _logger.error(
-                        "[AZURE CROP] CROP OUTSIDE ORIGINAL PAGE "
-                        "| JOB=%s "
-                        "| PAGE=%s "
-                        "| CROP=%s "
-                        "| CROP=(%s,%s,%s,%s) "
-                        "| ORIGINAL=(0,0,%s,%s)",
-                        self.id,
-                        page_number,
-                        crop_id,
-                        crop_x,
-                        crop_y,
-                        crop_width,
-                        crop_height,
-                        original_width,
-                        original_height
-                    )
-
-                    continue
-
-                # =================================================
-                # 10. OPTIONAL FIGURE SAFETY CHECK
-                # =================================================
-                #
-                # We already validated this during the audit stage.
-                # We keep the check here as a final production guard.
-                # =================================================
-
-                figure_id = str(
-                    crop.get(
-                        "figure_id",
-                        crop.get(
-                            "figure_ids",
-                            ""
-                        )
-                    )
-                    or ""
-                )
-
-                if isinstance(
-                    crop.get(
-                        "figure_ids"
-                    ),
-                    list
-                ):
-
-                    figure_ids = [
-                        str(x)
-                        for x in crop.get(
-                            "figure_ids"
-                        )
-                    ]
-
-                else:
-
-                    figure_ids = [
-                        figure_id
-                    ] if figure_id else []
-
-                matching_figure = None
-
-                for image in existing_images:
-
-                    if not isinstance(
-                        image,
-                        dict
-                    ):
-                        continue
-
-                    if str(
-                        image.get(
-                            "azure_figure_id",
-                            ""
-                        )
-                    ) in figure_ids:
-
-                        matching_figure = image
-
-                        break
-
-                if matching_figure:
-
-                    try:
-
-                        fx = float(
-                            matching_figure.get(
-                                "x",
-                                0
-                            )
-                        )
-
-                        fy = float(
-                            matching_figure.get(
-                                "y",
-                                0
-                            )
-                        )
-
-                        fw = float(
-                            matching_figure.get(
-                                "width",
-                                0
-                            )
-                        )
-
-                        fh = float(
-                            matching_figure.get(
-                                "height",
-                                0
-                            )
-                        )
-
-                        figure_right = (
-                            fx + fw
-                        )
-
-                        figure_bottom = (
-                            fy + fh
-                        )
-
-                        if not (
-                            crop_x >= fx
-                            and crop_y >= fy
-                            and crop_right <= figure_right
-                            and crop_bottom <= figure_bottom
-                        ):
-
-                            _logger.error(
-                                "[AZURE CROP] FINAL FIGURE "
-                                "BOUNDARY CHECK FAILED "
-                                "| JOB=%s "
-                                "| PAGE=%s "
-                                "| CROP=%s "
-                                "| FIGURE=%s "
-                                "| CROP=(%s,%s,%s,%s) "
-                                "| FIGURE=(%s,%s,%s,%s)",
-                                self.id,
-                                page_number,
-                                crop_id,
-                                figure_id,
-                                crop_x,
-                                crop_y,
-                                crop_width,
-                                crop_height,
-                                fx,
-                                fy,
-                                fw,
-                                fh
-                            )
-
-                            continue
-
-                    except (
-                        TypeError,
-                        ValueError
-                    ):
-
-                        _logger.warning(
-                            "[AZURE CROP] FIGURE "
-                            "BOUNDARY CHECK SKIPPED "
-                            "| JOB=%s "
-                            "| PAGE=%s "
-                            "| CROP=%s",
-                            self.id,
-                            page_number,
-                            crop_id
-                        )
-
-                # =================================================
-                # 11. PERFORM ACTUAL CROP
-                # =================================================
-
-                cropped_image = original_image.crop(
-                    (
-                        crop_x,
-                        crop_y,
-                        crop_right,
-                        crop_bottom
-                    )
-                )
-
-                # =================================================
-                # 12. ENCODE CROPPED IMAGE
-                # =================================================
-
-                crop_buffer = io.BytesIO()
-
-                cropped_image.save(
-                    crop_buffer,
-                    format="PNG"
-                )
-
-                crop_bytes = (
-                    crop_buffer.getvalue()
-                )
-
-                crop_b64 = (
-                    base64.b64encode(
-                        crop_bytes
-                    ).decode(
-                        "utf-8"
-                    )
-                )
-
-                # =================================================
-                # 13. BUILD PRODUCTION ASSET
-                # =================================================
-                #
-                # "image" is the key consumed by the existing
-                # PDF asset pipeline.
-                # =================================================
-
-                crop_asset = {
-
-                    "image":
-                        crop_b64,
-
-                    "width":
-                        cropped_image.width,
-
-                    "height":
-                        cropped_image.height,
-
-                    "x":
-                        crop_x,
-
-                    "y":
-                        crop_y,
-
-                    "crop_area":
-                        crop_width *
-                        crop_height,
-
-                    "coverage_ratio":
-                        (
-                            (
-                                crop_width *
-                                crop_height
-                            )
-                            /
-                            (
-                                original_width *
-                                original_height
-                            )
-                        ),
-
-                    "score":
-                        100,
-
-                    "hero_score":
-                        100,
-
-                    "gallery_score":
-                        100,
-
-                    "crop_quality":
-                        1.0,
-
-                    "priority":
-                        1000,
-
-                    "is_collage":
-                        False,
-
-                    "centered_object":
-                        True,
-
-                    "is_lifestyle":
-                        False,
-
-                    "classification":
-                        "PRODUCT",
-
-                    "asset_role":
-                        "product",
-
-                    "asset_group":
-                        "real",
-
-                    "azure_crop":
-                        True,
-
-                    "azure_crop_id":
-                        crop_id,
-
-                    "azure_figure_id":
-                        (
-                            figure_id
-                            if figure_id
-                            else False
-                        ),
-
-                    "product_reference":
-                        product_reference,
-
-                    "crop_purpose":
-                        purpose,
-
-                    "crop_source":
-                        "openai_original_page",
-
-                    "rejection_reason":
-                        False
-                }
-
-                # =================================================
-                # 14. APPEND TO EXISTING IMAGE POOL
-                # =================================================
-
-                existing_images.append(
-                    crop_asset
-                )
-
-                page_created += 1
-
-                total_created += 1
-
-                # =================================================
-                # 15. SAVE CROP AS ODOO ATTACHMENT
-                # =================================================
-
-                attachment_name = (
-                    "azure_crop_"
-                    f"job_{self.id}_"
-                    f"page_{page_number}_"
-                    f"{crop_id}.png"
-                )
-
-                attachment = self.env[
-                    "ir.attachment"
-                ].sudo().create({
-
-                    "name":
-                        attachment_name,
-
-                    "type":
-                        "binary",
-
-                    "datas":
-                        base64.b64encode(
-                            crop_bytes
-                        ),
-
-                    "mimetype":
-                        "image/png",
-
-                    "res_model":
-                        self._name,
-
-                    "res_id":
-                        self.id
-                })
-
-                # =================================================
-                # 16. PUT VISUAL EVIDENCE INTO ODOO CHATTER
-                # =================================================
-
-                self.env[
-                    "mail.message"
-                ].sudo().create({
-
-                    "model":
-                        self._name,
-
-                    "res_id":
-                        self.id,
-
-                    "body": (
-                        "<b>AZURE / OPENAI CROP</b><br/>"
-                        f"Job: {self.id}<br/>"
-                        f"Page: {page_number}<br/>"
-                        f"Crop: {crop_id}<br/>"
-                        f"Figure: {figure_id}<br/>"
-                        f"Product: "
-                        f"{product_reference}<br/>"
-                        f"Coordinates: "
-                        f"({crop_x}, {crop_y}, "
-                        f"{crop_width}, {crop_height})<br/>"
-                        f"Size: "
-                        f"{cropped_image.width} × "
-                        f"{cropped_image.height}<br/>"
-                        f"Purpose: {purpose}"
-                    ),
-
-                    "message_type":
-                        "comment",
-
-                    "subtype_id":
-                        self.env.ref(
-                            "mail.mt_note"
-                        ).id,
-
-                    "attachment_ids": [
-                        (
-                            4,
-                            attachment.id
-                        )
-                    ]
-                })
-
-                _logger.warning(
-                    "[AZURE CROP] CREATED "
+                _logger.error(
+                    "[AZURE CROP] OUTSIDE ORIGINAL PAGE "
                     "| JOB=%s "
-                    "| PAGE=%s "
                     "| CROP=%s "
-                    "| FIGURE=%s "
-                    "| PRODUCT=%s "
-                    "| XYWH=(%s,%s,%s,%s) "
-                    "| SIZE=%sx%s",
+                    "| CROP=(%s,%s,%s,%s) "
+                    "| PAGE=(0,0,%s,%s)",
                     self.id,
-                    page_number,
                     crop_id,
-                    figure_id,
-                    product_reference,
-                    crop_x,
-                    crop_y,
-                    crop_width,
-                    crop_height,
-                    cropped_image.width,
-                    cropped_image.height
+                    x,
+                    y,
+                    width,
+                    height,
+                    page_width,
+                    page_height
                 )
+
+                continue
 
             # =====================================================
-            # 17. SAVE UPDATED PAGE BLOCK
+            # ROUND COORDINATES
             # =====================================================
 
-            if page_created:
+            left = int(
+                round(x)
+            )
 
-                # The target_block is the same dictionary contained
-                # inside page_blocks, so its "images" list has already
-                # been updated.
-                record.extracted_json = json.dumps(
-                    page_blocks,
-                    ensure_ascii=False
+            top = int(
+                round(y)
+            )
+
+            right = int(
+                round(
+                    x + width
                 )
+            )
 
-                processed_pages += 1
-
-                _logger.warning(
-                    "[AZURE CROP] PAGE SAVED "
-                    "| JOB=%s "
-                    "| PAGE=%s "
-                    "| CROPS_CREATED=%s",
-                    self.id,
-                    page_number,
-                    page_created
+            bottom = int(
+                round(
+                    y + height
                 )
+            )
+
+            # =====================================================
+            # ACTUAL CROP
+            # =====================================================
+
+            cropped_image = original_image.crop(
+                (
+                    left,
+                    top,
+                    right,
+                    bottom
+                )
+            )
+
+            output = io.BytesIO()
+
+            cropped_image.save(
+                output,
+                format="JPEG",
+                quality=95
+            )
+
+            cropped_bytes = output.getvalue()
+
+            cropped_b64 = base64.b64encode(
+                cropped_bytes
+            ).decode(
+                "ascii"
+            )
+
+            _logger.warning(
+                "[AZURE CROP] CREATED "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| SIZE=%sx%s "
+                "| PRODUCT=%s",
+                self.id,
+                crop_id,
+                cropped_image.width,
+                cropped_image.height,
+                product_reference
+            )
+
+            # =====================================================
+            # BUILD CLEAN ASSET
+            # =====================================================
+
+            created_assets.append(
+                {
+                    "crop_id": crop_id,
+                    "page": page_number,
+                    "figure_id": figure_id,
+                    "image": cropped_b64,
+                    "width": cropped_image.width,
+                    "height": cropped_image.height,
+                    "x": left,
+                    "y": top,
+                    "product_reference": product_reference,
+                    "purpose": purpose,
+                    "is_lifestyle": False,
+                    "azure_crop": True,
+                }
+            )
 
         # =========================================================
-        # 18. FINAL RESULT
+        # NOTHING CREATED
         # =========================================================
 
-        if total_created == 0:
+        if not created_assets:
 
             _logger.error(
-                "[AZURE CROP] NO CROPS CREATED "
+                "[AZURE CROP] ZERO CROPS CREATED "
                 "| JOB=%s",
                 self.id
             )
 
-            return {
-                "success": False,
-                "error": (
-                    "No valid Azure/OpenAI crops "
-                    "were created"
+            self.state = "failed"
+
+            self._safe_commit_progress()
+
+            return
+
+        # =========================================================
+        # ADD CROPS TO EXISTING PAGE ASSETS
+        # =========================================================
+
+        for asset in created_assets:
+
+            page_number = asset[
+                "page"
+            ]
+
+            page_record = page_records.filtered(
+                lambda p:
+                    int(
+                        getattr(
+                            p,
+                            "page_number",
+                            0
+                        )
+                    ) == page_number
+            )[:1]
+
+            if not page_record:
+
+                continue
+
+            page_record = page_record[0]
+
+            # -----------------------------------------------------
+            # IMPORTANT:
+            # Use the existing JSON asset field used by your
+            # PDF AI pipeline.
+            # -----------------------------------------------------
+
+            existing_images = (
+                page_record.extracted_images
+                or "[]"
+            )
+
+            try:
+
+                image_assets = json.loads(
+                    existing_images
                 )
-            }
+
+            except Exception:
+
+                image_assets = []
+
+            if not isinstance(
+                image_assets,
+                list
+            ):
+
+                image_assets = []
+
+            # -----------------------------------------------------
+            # Assign a clean index.
+            # -----------------------------------------------------
+
+            asset["clean_index"] = len(
+                image_assets
+            )
+
+            image_assets.append(
+                asset
+            )
+
+            page_record.extracted_images = json.dumps(
+                image_assets
+            )
+
+            _logger.warning(
+                "[AZURE CROP] ASSET ADDED "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| CLEAN_INDEX=%s "
+                "| CROP=%s "
+                "| PRODUCT=%s",
+                self.id,
+                page_number,
+                asset["clean_index"],
+                asset["crop_id"],
+                asset["product_reference"]
+            )
+
+        # =========================================================
+        # COMPLETE
+        # =========================================================
 
         _logger.warning(
-            "[AZURE CROP] ALL CROPS COMPLETE "
+            "[AZURE CROP] COMPLETE "
             "| JOB=%s "
-            "| PAGES=%s "
-            "| CROPS=%s",
+            "| CREATED=%s",
             self.id,
-            processed_pages,
-            total_created
+            len(created_assets)
         )
 
-        return {
-            "success": True,
-            "created": total_created,
-            "pages": processed_pages
-        }
+        self.last_known_state = "azure_crop"
+
+        self.state = "pdf_ai"
+
+        self._safe_commit_progress()
 
     # =====================================================
     # REMOVE TEXT AREAS
@@ -22877,6 +22404,8 @@ class VendorImportJob(models.Model):
                             "expected_variant_keys"
 
                         ].append(key)
+                    
+                    
 
                     variant_group = (
 
@@ -23276,41 +22805,54 @@ class VendorImportJob(models.Model):
                                 if not matched_asset:
 
                                     matched_asset = self._match_variant_image(
-
                                         variant,
-
                                         asset_pool,
-
                                         used_asset_indexes
-
                                     )
 
-                                    clean_index = matched_asset.get(
+                                # =====================================================
+                                # NO IMAGE MATCH → DO NOT CRASH
+                                # =====================================================
 
-                                        "clean_index"
+                                if not matched_asset:
+
+                                    _logger.warning(
+                                        "[VARIANT IMAGE] NO MATCH "
+                                        "| JOB=%s "
+                                        "| PRODUCT=%s "
+                                        "| VARIANT=%s",
+                                        self.id,
+                                        product_data.get("name"),
+                                        variant.get("attributes", {})
                                     )
 
-                                    if clean_index in page_validation["used_indexes"]:
+                                    continue
 
-                                        page_validation[
+                                clean_index = matched_asset.get(
+                                    "clean_index"
+                                )
 
-                                            "duplicate_indexes"
-
-                                        ].append(clean_index)
-
-                                    else:
-
-                                        page_validation[
-
-                                            "used_indexes"
-
-                                        ].add(clean_index)
+                                if clean_index in page_validation["used_indexes"]:
 
                                     page_validation[
+                                        "duplicate_indexes"
+                                    ].append(
+                                        clean_index
+                                    )
 
-                                        "variant_indexes"
+                                else:
 
-                                    ].append(clean_index)
+                                    page_validation[
+                                        "used_indexes"
+                                    ].add(
+                                        clean_index
+                                    )
+
+                                page_validation[
+                                    "variant_indexes"
+                                ].append(
+                                    clean_index
+                                )
 
                                 # =====================================
                                 # APPLY
