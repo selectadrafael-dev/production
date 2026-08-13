@@ -6979,23 +6979,21 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # BUILD PAGE DATA
+        # BUILD PAGE IMAGE ASSET POOL
         # =====================================================
-
-        page_text = "\n".join([
-
-            p.get("text", "")
-
-            for p in page_blocks
-
-        ])
-
 
         page_images = []
 
+        # =====================================================
+        # 1. LOAD ORIGINAL EXTRACTED IMAGES
+        # =====================================================
+
         for p in page_blocks:
 
-            raw_images = p.get("images", [])
+            raw_images = p.get(
+                "images",
+                []
+            )
 
             # =====================================
             # NORMALIZE STRUCTURED ASSETS
@@ -7007,7 +7005,9 @@ class VendorImportJob(models.Model):
 
                     if img.get("image"):
 
-                        page_images.append(img)
+                        page_images.append(
+                            img
+                        )
 
                 elif isinstance(img, str):
 
@@ -7019,6 +7019,106 @@ class VendorImportJob(models.Model):
 
                         "is_collage": False
                     })
+
+        # =====================================================
+        # 2. LOAD PERSISTED AZURE CROP ASSETS
+        # =====================================================
+        #
+        # page_images_json contains persisted page assets.
+        #
+        # IMPORTANT:
+        # Do NOT blindly append every persisted asset because
+        # the original extracted images may already exist inside
+        # extracted_json.
+        #
+        # Only add assets explicitly marked as Azure crops.
+        # =====================================================
+
+        try:
+
+            persisted_assets = json.loads(
+                next_record.page_images_json
+                or "[]"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                "[PDF AI] PAGE IMAGE JSON LOAD FAILED "
+                "| PAGE=%s | %s",
+                next_record.page_number,
+                str(e)
+            )
+
+            persisted_assets = []
+
+
+        if not isinstance(
+            persisted_assets,
+            list
+        ):
+
+            persisted_assets = []
+
+
+        azure_crop_assets = []
+
+        for asset in persisted_assets:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+
+                continue
+
+            if not asset.get(
+                "image"
+            ):
+
+                continue
+
+            if asset.get(
+                "azure_crop"
+            ) is not True:
+
+                continue
+
+            azure_crop_assets.append(
+                asset
+            )
+
+
+        _logger.warning(
+            "[PDF AI] PERSISTED AZURE CROPS "
+            "| PAGE=%s | COUNT=%s",
+            next_record.page_number,
+            len(azure_crop_assets)
+        )
+
+
+        # =====================================================
+        # 3. ADD AZURE CROP ASSETS
+        # =====================================================
+
+        for asset in azure_crop_assets:
+
+            page_images.append(
+                asset
+            )
+
+
+        _logger.warning(
+            "[PDF AI] COMBINED PAGE ASSETS "
+            "| PAGE=%s "
+            "| ORIGINAL=%s "
+            "| AZURE_CROPS=%s "
+            "| TOTAL=%s",
+            next_record.page_number,
+            len(page_images) - len(azure_crop_assets),
+            len(azure_crop_assets),
+            len(page_images)
+        )
 
         # =====================================================
         # VALIDATE PAGE IMAGES
