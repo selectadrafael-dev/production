@@ -7659,6 +7659,98 @@ class VendorImportJob(models.Model):
                         "is_collage": False
                     })
 
+        # =========================================================
+        # PRESERVE ENRICHED AZURE CROP OBJECTS
+        # =========================================================
+        #
+        # Azure crops must retain ALL metadata.
+        #
+        # Do not reduce them to:
+        #
+        #     {"image": "..."}
+        #
+        # because PDF Create and variant correction need:
+        #
+        #     crop_id
+        #     product_reference
+        #     figure_id
+        #     purpose
+        #     azure_crop
+        #     color (when available)
+        #     clean_index
+        #
+        # The image itself is not enough to reliably map variants.
+        # =========================================================
+
+        azure_crop_assets = []
+
+        for asset in page_images:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            if not asset.get(
+                "azure_crop"
+            ):
+                continue
+
+            if not asset.get(
+                "crop_id"
+            ):
+                continue
+
+            # Keep the ORIGINAL dictionary.
+            # Do not create a reduced copy.
+
+            azure_crop_assets.append(
+                asset
+            )
+
+        _logger.warning(
+            "[PDF AI] AZURE CROP METADATA PRESERVED "
+            "| PAGE=%s "
+            "| COUNT=%s",
+            next_record.page_number,
+            len(
+                azure_crop_assets
+            )
+        )
+
+        for asset in azure_crop_assets:
+
+            _logger.warning(
+                "[PDF AI] AZURE CROP META "
+                "| PAGE=%s "
+                "| CROP=%s "
+                "| PRODUCT=%s "
+                "| COLOR=%s "
+                "| FIGURE=%s "
+                "| PURPOSE=%s "
+                "| CLEAN_INDEX=%s",
+                next_record.page_number,
+                asset.get(
+                    "crop_id"
+                ),
+                asset.get(
+                    "product_reference"
+                ),
+                asset.get(
+                    "color"
+                ),
+                asset.get(
+                    "figure_id"
+                ),
+                asset.get(
+                    "purpose"
+                ),
+                asset.get(
+                    "clean_index"
+                )
+            )
+
         # =====================================================
         # 2. LOAD PERSISTED AZURE CROP ASSETS
         # =====================================================
@@ -12243,6 +12335,68 @@ class VendorImportJob(models.Model):
             )
 
             # =========================================================
+            # DETERMINE FIGURES CONTAINING MULTIPLE CROPS
+            # =========================================================
+            #
+            # A figure containing multiple Azure crop instructions
+            # represents multiple visual products/variants.
+            #
+            # IMPORTANT:
+            # We must NOT perform whitespace expansion on such
+            # figures because the whitespace between products can
+            # be mistaken for available expansion space.
+            # =========================================================
+
+            figure_crop_counts = {}
+
+            for crop in crops:
+
+                if not isinstance(
+                    crop,
+                    dict
+                ):
+                    continue
+
+                figure_id = str(
+                    crop.get(
+                        "figure_id",
+                        ""
+                    )
+                ).strip()
+
+                if not figure_id:
+                    continue
+
+                figure_crop_counts[
+                    figure_id
+                ] = (
+                    figure_crop_counts.get(
+                        figure_id,
+                        0
+                    )
+                    + 1
+                )
+
+            multi_product_figures = {
+                figure_id
+                for figure_id, count
+                in figure_crop_counts.items()
+                if count > 1
+            }
+
+            _logger.warning(
+                "[AZURE CROP] FIGURE CROP COUNTS "
+                "| JOB=%s "
+                "| COUNTS=%s "
+                "| MULTI_PRODUCT=%s",
+                self.id,
+                figure_crop_counts,
+                sorted(
+                    multi_product_figures
+                )
+            )
+
+            # =========================================================
             # ATTACH AUTHORITATIVE AZURE FIGURE BOUNDS TO EACH CROP
             # =========================================================
             #
@@ -13630,6 +13784,56 @@ class VendorImportJob(models.Model):
                     page_crops
                 )
 
+        # =========================================================
+        # DETERMINE FIGURES CONTAINING MULTIPLE PRODUCT CROPS
+        # =========================================================
+
+        figure_crop_counts = {}
+
+        for crop in crops:
+
+            if not isinstance(
+                crop,
+                dict
+            ):
+                continue
+
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            ).strip()
+
+            if not figure_id:
+                continue
+
+            figure_crop_counts[figure_id] = (
+                figure_crop_counts.get(
+                    figure_id,
+                    0
+                ) + 1
+            )
+
+        multi_product_figures = {
+            figure_id
+            for figure_id, count
+            in figure_crop_counts.items()
+            if count > 1
+        }
+
+        _logger.warning(
+            "[AZURE CROP] MULTI-PRODUCT FIGURES "
+            "| JOB=%s "
+            "| COUNTS=%s "
+            "| MULTI=%s",
+            self.id,
+            figure_crop_counts,
+            sorted(
+                multi_product_figures
+            )
+        )
+
         _logger.warning(
             "[AZURE CROP] REQUESTS=%s | JOB=%s",
             len(crops),
@@ -13718,8 +13922,12 @@ class VendorImportJob(models.Model):
                 "| CROP=%s "
                 "| FIGURE=%s "
                 "| PAGE=%s "
+                "| COLOR=%s "
+                "| PURPOSE=%s "
+                "| PRODUCT=%s "
                 "| BOUNDS=%s",
-                self.id,
+
+               self.id,
                 crop.get(
                     "crop_id",
                     "unknown"
@@ -13730,6 +13938,18 @@ class VendorImportJob(models.Model):
                 ),
                 crop.get(
                     "page"
+                ),
+                crop.get(
+                    "color",
+                    ""
+                ),
+                crop.get(
+                    "purpose",
+                    ""
+                ),
+                crop.get(
+                    "product_reference",
+                    ""
                 ),
                 json.dumps(
                     crop.get(
@@ -14175,10 +14395,39 @@ class VendorImportJob(models.Model):
                 figure_id: azure_bounds
             }
 
+
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            ).strip()
+
+            allow_expansion = (
+                figure_id
+                not in multi_product_figures
+            )
+
+            _logger.warning(
+                "[AZURE CROP] EXPANSION POLICY "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| ALLOW_EXPANSION=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                figure_id,
+                allow_expansion
+            )
+
             safe_crop = self._build_safe_product_crop(
                 original_image,
                 crop,
-                figure_bounds
+                figure_bounds,
+                allow_expansion=allow_expansion,
             )
 
             if not safe_crop:
@@ -14273,6 +14522,14 @@ class VendorImportJob(models.Model):
                     "y": top,
                     "product_reference": product_reference,
                     "purpose": purpose,
+
+                    # Preserve Azure's semantic color metadata
+                    # if it exists on the crop object.
+                    "color": crop.get(
+                        "color",
+                        ""
+                    ),
+
                     "is_lifestyle": False,
                     "azure_crop": True,
                 }
@@ -15426,12 +15683,13 @@ class VendorImportJob(models.Model):
             )
 
 
-    #===========build_safe_product_crop=================================
+    #===========build_safe_product_crop================================
     def _build_safe_product_crop(
         self,
         original_image,
         crop,
         figure_bounds,
+        allow_expansion=True,
     ):
         """
         Convert an AI crop proposal into a safer production crop.
@@ -15579,18 +15837,19 @@ class VendorImportJob(models.Model):
             )
 
             # -----------------------------------------------------
-            # EXPAND
+            # SAFE EXPANSION POLICY
             # -----------------------------------------------------
             #
-            # Each direction is processed independently.
+            # MULTI-PRODUCT FIGURE:
             #
-            # This is important because the product may have:
+            # Azure has already separated the individual products.
+            # Preserve the AI seed box exactly.
             #
-            #     much more space on the right
-            #     little space on the left
+            # SINGLE-PRODUCT FIGURE:
             #
-            # or vice versa.
-            #
+            # The AI box may be too tight, so the existing visual
+            # separation expansion algorithm is allowed.
+            # -----------------------------------------------------
 
             current_box = seed_box
 
@@ -15601,30 +15860,61 @@ class VendorImportJob(models.Model):
                 "bottom": 0,
             }
 
-            for direction in (
-                "left",
-                "right",
-                "top",
-                "bottom"
-            ):
+            if allow_expansion:
 
-                current_box, expansion = (
-                    self._safe_crop_expand_direction(
-                        original_image,
-                        current_box,
-                        (
-                            figure_left,
-                            figure_top,
-                            figure_right,
-                            figure_bottom
-                        ),
-                        direction
-                    )
+                _logger.warning(
+                    "[SAFE CROP] EXPANSION ENABLED "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s",
+                    self.id,
+                    crop.get(
+                        "crop_id",
+                        "unknown"
+                    ),
+                    figure_id
                 )
 
-                total_expansion[
-                    direction
-                ] = expansion
+                for direction in (
+                    "left",
+                    "right",
+                    "top",
+                    "bottom"
+                ):
+
+                    current_box, expansion = (
+                        self._safe_crop_expand_direction(
+                            original_image,
+                            current_box,
+                            (
+                                figure_left,
+                                figure_top,
+                                figure_right,
+                                figure_bottom
+                            ),
+                            direction
+                        )
+                    )
+
+                    total_expansion[
+                        direction
+                    ] = expansion
+
+            else:
+
+                _logger.warning(
+                    "[SAFE CROP] EXPANSION DISABLED "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s "
+                    "| REASON=MULTI_PRODUCT_FIGURE",
+                    self.id,
+                    crop.get(
+                        "crop_id",
+                        "unknown"
+                    ),
+                    figure_id
+                )
 
             # -----------------------------------------------------
             # FINAL CLAMP
@@ -15683,6 +15973,27 @@ class VendorImportJob(models.Model):
                 top,
                 right,
                 bottom
+            )
+
+            _logger.warning(
+                "[SAFE CROP] FINAL DECISION "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| EXPANSION_ALLOWED=%s "
+                "| SEED=%s "
+                "| FINAL=%s "
+                "| EXPANSION=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                figure_id,
+                allow_expansion,
+                seed_box,
+                final_box,
+                total_expansion
             )
 
             _logger.warning(
