@@ -8021,7 +8021,7 @@ class VendorImportJob(models.Model):
         PAGE TEXT
         ==================================================
 
-        {page_text}
+        {page_context}
 
         ==================================================
         DETECTED PRICE
