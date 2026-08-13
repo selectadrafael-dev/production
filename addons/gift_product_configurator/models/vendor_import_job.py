@@ -14242,14 +14242,14 @@ class VendorImportJob(models.Model):
             # READ FIGURE-RELATIVE CROP COORDINATES
             # =========================================================
 
-            x = float(
+            crop_x = float(
                 crop.get(
                     "x",
                     0
                 )
             )
 
-            y = float(
+            crop_y = float(
                 crop.get(
                     "y",
                     0
@@ -14295,8 +14295,8 @@ class VendorImportJob(models.Model):
                 crop_id,
                 page_number,
                 figure_id,
-                x,
-                y,
+                crop_x,
+                crop_y,
                 width,
                 height,
                 product_reference
@@ -14553,14 +14553,12 @@ class VendorImportJob(models.Model):
                 figure_id,
                 figure_x,
                 figure_y,
-                x,
-                y,
+                crop_x,
+                crop_y,
                 width,
                 height,
                 x,
-                y,
-                width,
-                height
+                y
             )
 
             # =====================================================
