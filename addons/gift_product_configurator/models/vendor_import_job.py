@@ -4105,6 +4105,418 @@ class VendorImportJob(models.Model):
 
             return crop
 
+    #======================validate_variant_image_assignments===============
+    def _validate_variant_image_assignments(
+        self,
+        products,
+        page_images
+    ):
+        """
+        Deterministically validate and repair
+        variant -> image assignments.
+
+        AI proposes the mapping.
+
+        Structured Azure asset metadata is used to
+        correct obvious contradictory mappings.
+        """
+
+        if not isinstance(
+            products,
+            list
+        ):
+            return products
+
+        if not isinstance(
+            page_images,
+            list
+        ):
+            return products
+
+        # =========================================================
+        # BUILD ASSET INDEX
+        # =========================================================
+
+        assets_by_index = {}
+
+        for asset in page_images:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            index = asset.get(
+                "clean_index"
+            )
+
+            if index is None:
+                continue
+
+            try:
+                index = int(
+                    index
+                )
+            except (
+                TypeError,
+                ValueError
+            ):
+                continue
+
+            assets_by_index[
+                index
+            ] = asset
+
+        # =========================================================
+        # PROCESS PRODUCTS
+        # =========================================================
+
+        for product in products:
+
+            if not isinstance(
+                product,
+                dict
+            ):
+                continue
+
+            variants = product.get(
+                "variants",
+                []
+            )
+
+            if not isinstance(
+                variants,
+                list
+            ):
+                continue
+
+            product_name = str(
+                product.get(
+                    "name",
+                    ""
+                )
+            ).strip()
+
+            # =====================================================
+            # BUILD EXPLICIT COLOR ASSET MAP
+            # =====================================================
+
+            color_assets = {}
+
+            for index, asset in assets_by_index.items():
+
+                color = str(
+                    asset.get(
+                        "dominant_color",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                if not color:
+                    continue
+
+                crop_id = str(
+                    asset.get(
+                        "crop_id",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                role = str(
+                    asset.get(
+                        "role",
+                        ""
+                    )
+                    or asset.get(
+                        "image_role",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                product_reference = str(
+                    asset.get(
+                        "product_reference",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                # -------------------------------------------------
+                # NEVER USE SUPPORTING ASSETS AS VARIANT ASSETS
+                # -------------------------------------------------
+
+                supporting_words = (
+                    "supporting",
+                    "pouch",
+                    "folded",
+                    "accessory",
+                    "packaging",
+                    "detail",
+                    "lifestyle",
+                    "marketing",
+                )
+
+                if any(
+                    word in role
+                    or word in crop_id
+                    or word in product_reference
+                    for word in supporting_words
+                ):
+                    continue
+
+                color_assets.setdefault(
+                    color,
+                    []
+                ).append(
+                    (
+                        index,
+                        asset
+                    )
+                )
+
+            # =====================================================
+            # VALIDATE EACH VARIANT
+            # =====================================================
+
+            for variant in variants:
+
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+                attributes = variant.get(
+                    "attributes",
+                    {}
+                )
+
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    continue
+
+                variant_color = str(
+                    attributes.get(
+                        "Color",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                if not variant_color:
+                    continue
+
+                candidates = color_assets.get(
+                    variant_color,
+                    []
+                )
+
+                if not candidates:
+                    continue
+
+                # =================================================
+                # CURRENT AI IMAGE
+                # =================================================
+
+                current_index = variant.get(
+                    "image_index"
+                )
+
+                current_asset = None
+
+                try:
+
+                    if current_index is not None:
+
+                        current_asset = assets_by_index.get(
+                            int(
+                                current_index
+                            )
+                        )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    current_asset = None
+
+                current_color = ""
+
+                if current_asset:
+
+                    current_color = str(
+                        current_asset.get(
+                            "dominant_color",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                # =================================================
+                # AI ALREADY CORRECT
+                # =================================================
+
+                if (
+                    current_asset
+                    and current_color == variant_color
+                ):
+
+                    _logger.warning(
+                        "[VARIANT IMAGE VALID] "
+                        "PRODUCT=%s "
+                        "| COLOR=%s "
+                        "| IMAGE=%s",
+                        product_name,
+                        variant_color,
+                        current_index
+                    )
+
+                    continue
+
+                # =================================================
+                # PREFER EXPLICIT AZURE CROP
+                # =================================================
+
+                crop_candidates = [
+                    item
+                    for item in candidates
+                    if item[1].get(
+                        "crop_id"
+                    )
+                ]
+
+                if crop_candidates:
+
+                    best_index = (
+                        crop_candidates[0][0]
+                    )
+
+                else:
+
+                    best_index = (
+                        candidates[0][0]
+                    )
+
+                old_index = current_index
+
+                variant[
+                    "image_index"
+                ] = best_index
+
+                _logger.warning(
+                    "[VARIANT IMAGE CORRECTED] "
+                    "PRODUCT=%s "
+                    "| COLOR=%s "
+                    "| OLD=%s "
+                    "| NEW=%s",
+                    product_name,
+                    variant_color,
+                    old_index,
+                    best_index
+                )
+
+        # =========================================================
+        # FINAL ONE-TO-ONE CONFLICT AUDIT
+        # =========================================================
+
+        for product in products:
+
+            variants = product.get(
+                "variants",
+                []
+            )
+
+            if not isinstance(
+                variants,
+                list
+            ):
+                continue
+
+            used_images = {}
+
+            for variant in variants:
+
+                attributes = variant.get(
+                    "attributes",
+                    {}
+                )
+
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    continue
+
+                color = str(
+                    attributes.get(
+                        "Color",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                image_index = variant.get(
+                    "image_index"
+                )
+
+                if (
+                    not color
+                    or image_index is None
+                ):
+                    continue
+
+                try:
+
+                    image_index = int(
+                        image_index
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    continue
+
+                if image_index in used_images:
+
+                    previous_color = (
+                        used_images[
+                            image_index
+                        ]
+                    )
+
+                    if previous_color != color:
+
+                        _logger.warning(
+                            "[VARIANT IMAGE CONFLICT] "
+                            "PRODUCT=%s "
+                            "| IMAGE=%s "
+                            "| COLOR_A=%s "
+                            "| COLOR_B=%s",
+                            product.get(
+                                "name"
+                            ),
+                            image_index,
+                            previous_color,
+                            color
+                        )
+
+                else:
+
+                    used_images[
+                        image_index
+                    ] = color
+
+        return products
+
 
     # =========================================================
     # CORRECT VARIANT IMAGE INDEXES
@@ -7416,6 +7828,96 @@ class VendorImportJob(models.Model):
 
 
         page_images = normalized_page_images
+
+        # =========================================================
+        # BUILD STRUCTURED IMAGE ASSET IDENTITY MAP
+        # =========================================================
+
+        asset_identity_lines = []
+
+        for asset in page_images:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            clean_index = asset.get(
+                "clean_index"
+            )
+
+            if clean_index is None:
+                continue
+
+            azure_figure_id = (
+                asset.get(
+                    "azure_figure_id"
+                )
+                or ""
+            )
+
+            crop_id = (
+                asset.get(
+                    "crop_id"
+                )
+                or ""
+            )
+
+            product_reference = (
+                asset.get(
+                    "product_reference"
+                )
+                or ""
+            )
+
+            dominant_color = (
+                asset.get(
+                    "dominant_color"
+                )
+                or ""
+            )
+
+            image_role = (
+                asset.get(
+                    "role"
+                )
+                or asset.get(
+                    "image_role"
+                )
+                or ""
+            )
+
+            azure_caption = (
+                asset.get(
+                    "azure_caption"
+                )
+                or ""
+            )
+
+            asset_identity_lines.append(
+                f"""
+        INDEX {clean_index}
+        - Azure Figure ID: {azure_figure_id}
+        - Crop ID: {crop_id}
+        - Product Reference: {product_reference}
+        - Color: {dominant_color}
+        - Image Role: {image_role}
+        - Azure Caption: {azure_caption}
+        """.strip()
+            )
+
+        asset_identity_map = "\n\n".join(
+            asset_identity_lines
+        )
+
+        _logger.warning(
+            "[PDF AI ASSET IDENTITY MAP] "
+            "PAGE=%s\n%s",
+            next_record.page_number,
+            asset_identity_map
+        )
+
         # =====================================
         # CLASSIFY IMAGES BEFORE AI
         # =====================================
@@ -7781,8 +8283,40 @@ class VendorImportJob(models.Model):
 
 
         prompt = context_summary + f"""
-        You are an AI ecommerce catalog extraction engine.
 
+        ==================================================
+        STRUCTURED IMAGE ASSET IDENTITY
+        ==================================================
+
+        The following metadata identifies the available image assets.
+
+        Use this information together with the visual images when assigning
+        hero_image_index, gallery_image_indexes, and variant image_index.
+
+        IMPORTANT:
+
+        The structured metadata identifies the known identity and purpose
+        of each asset.
+
+        If an asset is explicitly identified as belonging to a specific
+        variant/color, use that asset for that variant.
+
+        Do NOT replace a color-specific asset with a generic hero image.
+
+        Do NOT assign a Grey-specific asset to Black.
+
+        Do NOT assign a Black-specific asset to Grey.
+
+        Do NOT turn a supporting, folded, pouch, accessory, detail,
+        lifestyle, packaging, or marketing asset into a variant image.
+
+        AVAILABLE ASSETS:
+
+        {asset_identity_map}
+
+        ==================================================
+
+        You are an AI ecommerce catalog extraction engine.
 
         Analyze:
         - catalog page text
@@ -8012,6 +8546,88 @@ class VendorImportJob(models.Model):
             NEVER fabricate, duplicate, or reuse an image_index merely to ensure
             that every variant has an image.
 
+        28. A variant image_index MUST identify an image that visually represents
+            that exact variant.
+
+        29. NEVER assign the same image_index to multiple color variants merely
+            because the image shows the same product family.
+
+        30. If separate images/crops exist for different colors, each color variant
+            MUST use its corresponding color-specific image.
+
+        31. A supporting image, folded image, pouch image, detail image, accessory
+            image, lifestyle image, or figure showing another representation MUST
+            NOT be used as a variant image.
+
+            Such images may only be assigned to gallery_image_indexes.
+
+        32. If the main product images clearly show separate color variants,
+            preserve those separate variant images even when they belong to the
+            same Azure figure.
+
+            Do not use hero_image_index as a variant image unless that exact image
+            visually represents the variant.
+
+       33. STRUCTURED IMAGE ASSET IDENTITY
+
+            Each available image asset may contain structured metadata such as:
+
+            - clean_index
+            - Azure figure ID
+            - crop ID
+            - product reference
+            - color
+            - image role
+            - Azure caption
+
+            Use this metadata when determining image ownership.
+
+            The structured asset metadata identifies the known purpose and identity
+            of the image. Do not ignore it and rely only on visual similarity.
+
+
+        34. COLOR-SPECIFIC ASSET PRIORITY
+
+            If a color-specific asset exists for a variant, that asset has priority
+            over a generic hero image or shared product image.
+
+            For example:
+
+            Grey variant → Grey-specific asset
+            Black variant → Black-specific asset
+
+            Never substitute the hero image merely because it is visually stronger.
+
+
+        35. SUPPORTING ASSET PRIORITY
+
+            An asset identified as supporting, folded, pouch, accessory, packaging,
+            detail, lifestyle, or marketing must remain a gallery/supporting asset.
+
+            Its visual similarity to a product variant does not override its
+            structured supporting role.
+
+
+        36. ONE-TO-ONE VARIANT IMAGE RULE
+
+            When separate color-specific assets exist, each color variant must use
+            its own corresponding asset.
+
+            Do not reuse one asset for multiple color variants when separate
+            variant-specific assets exist.
+
+
+        37. UNSAFE MAPPING RULE
+
+            If the correct variant-specific image cannot be established safely,
+            leave image_index as null.
+
+            Never solve uncertainty by:
+
+            - reusing the hero image
+            - reusing another variant's image
+            - assigning the same image to multiple colors
+            - assigning a supporting image to a variant
 
         ==================================================
         TITLE RULES
@@ -8927,6 +9543,31 @@ class VendorImportJob(models.Model):
 
             return
 
+
+        # =====================================================
+        # FINAL VARIANT IMAGE VALIDATION
+        # =====================================================
+        #
+        # IMPORTANT:
+        #
+        # At this point:
+        #
+        # - OpenAI has already returned the JSON
+        # - `parsed` contains the products/variants
+        # - page_images contains the actual image assets
+        # - clean_index values have already been assigned
+        #
+        # We now validate/correct variant -> image mapping
+        # BEFORE the results are saved and sent to PDF creation.
+        #
+        # Do NOT use `products` here.
+        # The actual variable in this method is `parsed`.
+        # =====================================================
+
+        parsed = self._validate_variant_image_assignments(
+            parsed,
+            page_images
+        )
 
         # =====================================================
         # SMART IMAGE MATCHING
