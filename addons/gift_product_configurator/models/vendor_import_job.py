@@ -12247,26 +12247,6 @@ class VendorImportJob(models.Model):
             )
 
             # ====================================================
-            # STORE AUDIT RESULT
-            # ====================================================
-
-            self.azure_review_json = (
-                json.dumps(
-                    audit_result,
-                    ensure_ascii=False
-                )
-            ) if hasattr(
-                self,
-                "azure_review_json"
-            ) else False
-
-            _logger.warning(
-                "[AZURE AUDIT] DECISION "
-                f"| JOB={self.id} "
-                f"| {decision}"
-            )
-
-            # ====================================================
             # IMPORTANT:
             # Return the NORMALIZED internal decision.
             #
@@ -12294,15 +12274,22 @@ class VendorImportJob(models.Model):
 
             audit_result["crops"] = crops
 
+            # ====================================================
+            # STORE NORMALIZED AUDIT RESULT
+            # ====================================================
+
+            self.azure_review_json = (
+                json.dumps(
+                    audit_result,
+                    ensure_ascii=False
+                )
+            ) if hasattr(
+                self,
+                "azure_review_json"
+            ) else False
+
+
             return audit_result
-
-            # _logger.warning(
-            #     "[AZURE AUDIT] DECISION "
-            #     f"| JOB={self.id} "
-            #     f"| {decision}"
-            # )
-
-            # return audit_result
 
         except Exception as e:
 
@@ -12347,7 +12334,7 @@ class VendorImportJob(models.Model):
         # LOAD STORED AZURE AUDIT
         # =========================================================
 
-        audit_json = self.azure_ai_audit_json
+        audit_json = self.azure_review_json
 
         if not audit_json:
 
