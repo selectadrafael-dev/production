@@ -12438,19 +12438,20 @@ class VendorImportJob(models.Model):
         # LOAD PDF PAGE RECORDS
         # =========================================================
 
-        page_records = self.pdf_page_ids
+        page_records = self.env[
+            'vendor.import.page'
+        ].search([
+            ('job_id', '=', self.id)
+        ], order='page_number asc')
 
         if not page_records:
-
             _logger.error(
                 "[AZURE CROP] NO PAGE RECORDS | JOB=%s",
                 self.id
             )
 
             self.state = "failed"
-
             self._safe_commit_progress()
-
             return
 
         created_assets = []
