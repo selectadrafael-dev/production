@@ -12829,6 +12829,7 @@ class VendorImportJob(models.Model):
                 "error": "No Azure crops were created"
             }
 
+
         # =========================================================
         # ADD CROPS TO EXISTING PAGE ASSETS
         # =========================================================
@@ -12857,13 +12858,15 @@ class VendorImportJob(models.Model):
             page_record = page_record[0]
 
             # -----------------------------------------------------
-            # IMPORTANT:
-            # Use the existing JSON asset field used by your
-            # PDF AI pipeline.
+            # Use the actual JSON asset field defined on
+            # vendor.import.page.
+            #
+            # Model field:
+            #     page_images_json = fields.Text()
             # -----------------------------------------------------
 
             existing_images = (
-                page_record.extracted_images
+                page_record.page_images_json
                 or "[]"
             )
 
@@ -12896,7 +12899,7 @@ class VendorImportJob(models.Model):
                 asset
             )
 
-            page_record.extracted_images = json.dumps(
+            page_record.page_images_json = json.dumps(
                 image_assets
             )
 
@@ -12913,6 +12916,7 @@ class VendorImportJob(models.Model):
                 asset["crop_id"],
                 asset["product_reference"]
             )
+
 
         # =========================================================
         # COMPLETE
