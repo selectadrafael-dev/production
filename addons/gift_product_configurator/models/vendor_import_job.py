@@ -14599,67 +14599,93 @@ class VendorImportJob(models.Model):
                     f"color={dominant_color}"
                 )
 
+
                 # =====================================
                 # REJECT LIFESTYLE / HUMAN IMAGES
                 # =====================================
 
                 width = (
-
                     asset.get("width", 0)
-
                     if isinstance(asset, dict)
-
                     else 0
                 )
 
                 height = (
-
                     asset.get("height", 0)
-
                     if isinstance(asset, dict)
-
                     else 0
                 )
 
                 ratio = width / float(max(height, 1))
 
                 recovered = (
-
                     asset.get(
                         "recovered",
                         False
                     )
-
                     if isinstance(asset, dict)
-
                     else False
                 )
+
+                # =====================================
+                # AZURE CROP PROTECTION
+                # =====================================
+                #
+                # Azure/OpenAI crops are already explicitly
+                # requested as clean product extractions.
+                #
+                # They must NOT be rejected by the generic
+                # portrait/human heuristic simply because
+                # the cropped product happens to be tall.
+                # =====================================
+
+                is_azure_crop = (
+                    isinstance(asset, dict)
+                    and bool(
+                        asset.get("crop_id")
+                        or asset.get("azure_crop")
+                    )
+                )
+
+                if is_azure_crop:
+
+                    _logger.warning(
+                        "[AZURE CROP PRESERVED] "
+                        "crop=%s "
+                        "| product=%s "
+                        "| size=%sx%s "
+                        "| ratio=%.2f",
+                        asset.get("crop_id"),
+                        asset.get("product_reference"),
+                        width,
+                        height,
+                        ratio
+                    )
+
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
 
-                # tall portrait images
+                # Tall portrait images are rejected ONLY
+                # when they are ordinary extracted assets.
+                #
+                # Azure crops are explicitly exempt.
+                # =====================================
+
                 if (
-
                     not recovered
-
-                    and
-
-                    ratio < 0.72
-
-                    and
-
-                    height > width * 1.20
-
+                    and not is_azure_crop
+                    and ratio < 0.72
+                    and height > width * 1.20
                 ):
 
                     _logger.warning(
-
-                        f"[ASSET REJECTED HUMAN] "
-
-                        f"ratio={ratio:.2f} "
-
-                        f"size={width}x{height}"
+                        "[ASSET REJECTED HUMAN] "
+                        "ratio=%.2f "
+                        "size=%sx%s",
+                        ratio,
+                        width,
+                        height
                     )
 
                     continue
@@ -14752,6 +14778,37 @@ class VendorImportJob(models.Model):
                     "asset_role": asset.get("asset_role"),
 
                     "priority": asset.get("priority", 0),
+
+                    # =====================================
+                    # AZURE CROP METADATA
+                    # =====================================
+
+                    "crop_id": asset.get(
+                        "crop_id"
+                    ),
+
+                    "product_reference": asset.get(
+                        "product_reference"
+                    ),
+
+                    "purpose": asset.get(
+                        "purpose"
+                    ),
+
+                    "figure_id": asset.get(
+                        "figure_id"
+                        or asset.get("azure_figure_id")
+                    ),
+
+                    "page": asset.get(
+                        "page"
+                        or asset.get("azure_page_number")
+                    ),
+
+                    "azure_crop": asset.get(
+                        "azure_crop",
+                        False
+                    ),
 
                 })
 
@@ -22437,10 +22494,75 @@ class VendorImportJob(models.Model):
                         1
                     )
 
-                    # prefer highest gallery assets
-                    sorted_page_assets = sorted(
+                    # =========================================
+                    # PRIORITIZE AZURE CROPS
+                    # =========================================
+                    #
+                    # Azure crops were explicitly requested by
+                    # the PDF/Azure AI pipeline and therefore must
+                    # not lose their allocation slot to unrelated
+                    # page images.
+                    # =========================================
 
-                        page_images,
+                    azure_crop_assets = []
+
+                    normal_page_assets = []
+
+                    for asset in page_images:
+
+                        if (
+                            isinstance(asset, dict)
+                            and (
+                                asset.get("crop_id")
+                                or asset.get("azure_crop")
+                            )
+                        ):
+
+                            azure_crop_assets.append(
+                                asset
+                            )
+
+                        else:
+
+                            normal_page_assets.append(
+                                asset
+                            )
+
+                    _logger.warning(
+                        "[SMART PAGE FALLBACK] "
+                        "AZURE CROPS FOUND=%s "
+                        "| NORMAL ASSETS=%s",
+                        len(azure_crop_assets),
+                        len(normal_page_assets)
+                    )
+
+                    # -----------------------------------------
+                    # Sort Azure crops deterministically.
+                    # -----------------------------------------
+                    #
+                    # Preserve the order generated by the AI
+                    # crop pipeline rather than allowing gallery
+                    # scoring to displace them.
+                    # -----------------------------------------
+
+                    azure_crop_assets = sorted(
+
+                        azure_crop_assets,
+
+                        key=lambda x: (
+                            x.get("page", 0),
+                            x.get("clean_index", 0),
+                            x.get("crop_id", "")
+                        )
+                    )
+
+                    # -----------------------------------------
+                    # Sort ordinary page assets normally.
+                    # -----------------------------------------
+
+                    normal_page_assets = sorted(
+
+                        normal_page_assets,
 
                         key=lambda x: (
 
@@ -22453,17 +22575,72 @@ class VendorImportJob(models.Model):
                         reverse=True
                     )
 
-                    # allocate enough assets
+                    # -----------------------------------------
+                    # Allocate enough assets.
+                    # -----------------------------------------
+
                     allocation_size = min(
 
                         max(variant_count * 2, 4),
 
-                        len(sorted_page_assets)
+                        len(page_images)
                     )
 
-                    product_images = sorted_page_assets[
+                    # -----------------------------------------
+                    # Azure crops get first allocation priority.
+                    # -----------------------------------------
+
+                    product_images = azure_crop_assets[
                         :allocation_size
                     ]
+
+                    # -----------------------------------------
+                    # Fill remaining slots with normal assets.
+                    # -----------------------------------------
+
+                    remaining_slots = (
+                        allocation_size
+                        - len(product_images)
+                    )
+
+                    if remaining_slots > 0:
+
+                        product_images.extend(
+                            normal_page_assets[
+                                :remaining_slots
+                            ]
+                        )
+
+                    _logger.warning(
+                        "[SMART PAGE FALLBACK] "
+                        "%s | allocated=%s "
+                        "| azure_crops=%s "
+                        "| normal_assets=%s",
+                        product_data.get("name"),
+                        len(product_images),
+                        sum(
+                            1
+                            for asset in product_images
+                            if (
+                                isinstance(asset, dict)
+                                and (
+                                    asset.get("crop_id")
+                                    or asset.get("azure_crop")
+                                )
+                            )
+                        ),
+                        sum(
+                            1
+                            for asset in product_images
+                            if not (
+                                isinstance(asset, dict)
+                                and (
+                                    asset.get("crop_id")
+                                    or asset.get("azure_crop")
+                                )
+                            )
+                        )
+                    )
 
                     _logger.warning(
 
