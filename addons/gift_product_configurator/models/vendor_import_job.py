@@ -12596,11 +12596,46 @@ class VendorImportJob(models.Model):
             # GET ORIGINAL PAGE IMAGE
             # =====================================================
 
-            page_image_b64 = getattr(
-                page_record,
-                "page_image",
-                False
-            )
+            page_image_b64 = False
+
+            try:
+
+                page_blocks = json.loads(
+                    page_record.extracted_json or "[]"
+                )
+
+                for block in page_blocks:
+
+                    if not isinstance(
+                        block,
+                        dict
+                    ):
+                        continue
+
+                    if block.get(
+                        "page_image"
+                    ):
+
+                        page_image_b64 = (
+                            block.get(
+                                "page_image"
+                            )
+                        )
+
+                        break
+
+            except Exception as e:
+
+                _logger.exception(
+                    "[AZURE CROP] FAILED TO READ "
+                    "PAGE EXTRACTED JSON "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| ERROR=%s",
+                    self.id,
+                    page_number,
+                    str(e)
+                )
 
             if not page_image_b64:
 
@@ -12788,7 +12823,11 @@ class VendorImportJob(models.Model):
 
             self._safe_commit_progress()
 
-            return
+            return {
+                "success": False,
+                "created": 0,
+                "error": "No Azure crops were created"
+            }
 
         # =========================================================
         # ADD CROPS TO EXISTING PAGE ASSETS
@@ -12892,6 +12931,13 @@ class VendorImportJob(models.Model):
         self.state = "pdf_ai"
 
         self._safe_commit_progress()
+
+        return {
+            "success": True,
+            "created": len(
+                created_assets
+            )
+        }
 
     # =====================================================
     # REMOVE TEXT AREAS
