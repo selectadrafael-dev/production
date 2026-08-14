@@ -14401,6 +14401,101 @@ class VendorImportJob(models.Model):
         # PROCESS EACH CROP
         # =========================================================
 
+        # =========================================================
+        # BUILD PRODUCT SEED BOXES FOR MULTI-PRODUCT PROTECTION
+        # =========================================================
+        #
+        # These are the AI-provided product regions.
+        #
+        # They are NOT used as the final crop.
+        # They are used only to prevent one product from expanding
+        # into another product's region.
+        # =========================================================
+
+        crop_seed_boxes = []
+
+        for other_crop in crops:
+
+            if not isinstance(
+                other_crop,
+                dict
+            ):
+                continue
+
+            try:
+
+                other_x = float(
+                    other_crop.get(
+                        "x",
+                        0
+                    )
+                )
+
+                other_y = float(
+                    other_crop.get(
+                        "y",
+                        0
+                    )
+                )
+
+                other_width = float(
+                    other_crop.get(
+                        "width",
+                        0
+                    )
+                )
+
+                other_height = float(
+                    other_crop.get(
+                        "height",
+                        0
+                    )
+                )
+
+                if (
+                    other_width <= 0
+                    or other_height <= 0
+                ):
+                    continue
+
+                crop_seed_boxes.append({
+                    "crop_id": str(
+                        other_crop.get(
+                            "crop_id",
+                            ""
+                        )
+                    ),
+                    "figure_id": str(
+                        other_crop.get(
+                            "figure_id",
+                            ""
+                        )
+                    ),
+                    "box": (
+                        other_x,
+                        other_y,
+                        other_x + other_width,
+                        other_y + other_height
+                    ),
+                })
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+        _logger.warning(
+            "[AZURE CROP] PRODUCT SEED BOXES "
+            "| JOB=%s "
+            "| COUNT=%s",
+            self.id,
+            len(
+                crop_seed_boxes
+            )
+        )
+
         for crop in crops:
 
             if not isinstance(
@@ -14872,7 +14967,8 @@ class VendorImportJob(models.Model):
                 original_image,
                 crop,
                 figure_bounds,
-                allow_expansion=allow_expansion,
+                allow_expansion=True,
+                crop_seed_boxes=crop_seed_boxes,
             )
 
             if not safe_crop:
@@ -16135,6 +16231,7 @@ class VendorImportJob(models.Model):
         crop,
         figure_bounds,
         allow_expansion=True,
+        crop_seed_boxes=None,
     ):
         """
         Convert an AI crop proposal into a safer production crop.
@@ -16281,19 +16378,16 @@ class VendorImportJob(models.Model):
                 seed_bottom
             )
 
+
             # -----------------------------------------------------
             # SAFE EXPANSION POLICY
             # -----------------------------------------------------
             #
-            # MULTI-PRODUCT FIGURE:
+            # Expansion is allowed even when several products share
+            # the same Azure figure.
             #
-            # Azure has already separated the individual products.
-            # Preserve the AI seed box exactly.
-            #
-            # SINGLE-PRODUCT FIGURE:
-            #
-            # The AI box may be too tight, so the existing visual
-            # separation expansion algorithm is allowed.
+            # The important protection is that expansion must not
+            # cross into another product's seed region.
             # -----------------------------------------------------
 
             current_box = seed_box
@@ -16305,20 +16399,227 @@ class VendorImportJob(models.Model):
                 "bottom": 0,
             }
 
-            if allow_expansion:
+            # =====================================================
+            # BUILD PRODUCT-SPECIFIC SAFE BOUNDARY
+            # =====================================================
 
-                _logger.warning(
-                    "[SAFE CROP] EXPANSION ENABLED "
-                    "| JOB=%s "
-                    "| CROP=%s "
-                    "| FIGURE=%s",
-                    self.id,
-                    crop.get(
-                        "crop_id",
-                        "unknown"
-                    ),
-                    figure_id
+            safe_left = figure_left
+            safe_top = figure_top
+            safe_right = figure_right
+            safe_bottom = figure_bottom
+
+            current_crop_id = str(
+                crop.get(
+                    "crop_id",
+                    ""
                 )
+            )
+
+            current_figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            )
+
+            for other in (
+                crop_seed_boxes
+                or []
+            ):
+
+                if not isinstance(
+                    other,
+                    dict
+                ):
+                    continue
+
+                other_crop_id = str(
+                    other.get(
+                        "crop_id",
+                        ""
+                    )
+                )
+
+                other_figure_id = str(
+                    other.get(
+                        "figure_id",
+                        ""
+                    )
+                )
+
+                if (
+                    other_crop_id
+                    == current_crop_id
+                ):
+                    continue
+
+                if (
+                    other_figure_id
+                    != current_figure_id
+                ):
+                    continue
+
+                other_box = other.get(
+                    "box"
+                )
+
+                if not other_box:
+                    continue
+
+                other_left = float(
+                    other_box[0]
+                )
+
+                other_top = float(
+                    other_box[1]
+                )
+
+                other_right = float(
+                    other_box[2]
+                )
+
+                other_bottom = float(
+                    other_box[3]
+                )
+
+                # =================================================
+                # NEIGHBOUR TO THE RIGHT
+                # =================================================
+
+                if (
+                    other_left >= seed_right
+                    and
+                    other_top < seed_bottom
+                    and
+                    other_bottom > seed_top
+                ):
+
+                    separation = (
+                        other_left
+                        - seed_right
+                    )
+
+                    if separation >= 0:
+
+                        safe_right = min(
+                            safe_right,
+                            seed_right
+                            + (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+                # =================================================
+                # NEIGHBOUR TO THE LEFT
+                # =================================================
+
+                if (
+                    other_right <= seed_left
+                    and
+                    other_top < seed_bottom
+                    and
+                    other_bottom > seed_top
+                ):
+
+                    separation = (
+                        seed_left
+                        - other_right
+                    )
+
+                    if separation >= 0:
+
+                        safe_left = max(
+                            safe_left,
+                            seed_left
+                            - (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+                # =================================================
+                # NEIGHBOUR ABOVE
+                # =================================================
+
+                if (
+                    other_bottom <= seed_top
+                    and
+                    other_left < seed_right
+                    and
+                    other_right > seed_left
+                ):
+
+                    separation = (
+                        seed_top
+                        - other_bottom
+                    )
+
+                    if separation >= 0:
+
+                        safe_top = max(
+                            safe_top,
+                            seed_top
+                            - (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+                # =================================================
+                # NEIGHBOUR BELOW
+                # =================================================
+
+                if (
+                    other_top >= seed_bottom
+                    and
+                    other_left < seed_right
+                    and
+                    other_right > seed_left
+                ):
+
+                    separation = (
+                        other_top
+                        - seed_bottom
+                    )
+
+                    if separation >= 0:
+
+                        safe_bottom = min(
+                            safe_bottom,
+                            seed_bottom
+                            + (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+            safe_allowed_box = (
+                safe_left,
+                safe_top,
+                safe_right,
+                safe_bottom
+            )
+
+            _logger.warning(
+                "[SAFE CROP] PRODUCT SAFE BOUNDARY "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| SEED=%s "
+                "| SAFE=%s",
+                self.id,
+                current_crop_id,
+                current_figure_id,
+                seed_box,
+                safe_allowed_box
+            )
+
+            # =====================================================
+            # EXPAND INSIDE PRODUCT-SAFE BOUNDARY
+            # =====================================================
+
+            if allow_expansion:
 
                 for direction in (
                     "left",
@@ -16331,12 +16632,7 @@ class VendorImportJob(models.Model):
                         self._safe_crop_expand_direction(
                             original_image,
                             current_box,
-                            (
-                                figure_left,
-                                figure_top,
-                                figure_right,
-                                figure_bottom
-                            ),
+                            safe_allowed_box,
                             direction
                         )
                     )
@@ -16344,22 +16640,6 @@ class VendorImportJob(models.Model):
                     total_expansion[
                         direction
                     ] = expansion
-
-            else:
-
-                _logger.warning(
-                    "[SAFE CROP] EXPANSION DISABLED "
-                    "| JOB=%s "
-                    "| CROP=%s "
-                    "| FIGURE=%s "
-                    "| REASON=MULTI_PRODUCT_FIGURE",
-                    self.id,
-                    crop.get(
-                        "crop_id",
-                        "unknown"
-                    ),
-                    figure_id
-                )
 
             # -----------------------------------------------------
             # FINAL CLAMP
