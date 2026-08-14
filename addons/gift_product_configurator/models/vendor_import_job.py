@@ -300,7 +300,7 @@ class VendorImportJob(models.Model):
 
         ('azure_review', 'Azure Visual Review'),
         ('azure_crop', 'Azure Image Cropping'),
-        ('azure_fallback', 'Azure Fallback')
+        ('azure_fallback', 'Azure Fallback'),
 
         ('pdf_ai', 'PDF AI'),
         ('pdf_creating', 'PDF Creating'),
