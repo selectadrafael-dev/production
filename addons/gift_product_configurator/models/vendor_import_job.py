@@ -14740,25 +14740,59 @@ class VendorImportJob(models.Model):
                 "azure_figure_bounds"
             )
 
+
             if not isinstance(
                 azure_bounds,
                 dict
             ):
 
-                _logger.error(
-                    "[AZURE CROP] MISSING EMBEDDED FIGURE BOUNDS "
+                # =====================================================
+                # BACKWARD-COMPATIBLE PAGE BOUNDARY FALLBACK
+                # =====================================================
+                #
+                # Some catalogues may have valid ORIGINAL-PAGE crop
+                # coordinates without embedded Azure figure metadata.
+                #
+                # Do NOT discard the crop.
+                #
+                # The crop coordinates are already page coordinates.
+                # Therefore the original page becomes the outer safety
+                # boundary when a figure boundary is unavailable.
+                # =====================================================
+
+                azure_bounds = {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": float(
+                        page_width
+                    ),
+                    "height": float(
+                        page_height
+                    ),
+                }
+
+                crop[
+                    "azure_figure_bounds"
+                ] = dict(
+                    azure_bounds
+                )
+
+                _logger.warning(
+                    "[AZURE CROP] FIGURE BOUNDS UNAVAILABLE "
+                    "→ USING PAGE BOUNDARY FALLBACK "
                     "| JOB=%s "
                     "| CROP=%s "
-                    "| FIGURE=%s",
+                    "| FIGURE=%s "
+                    "| PAGE=%sx%s",
                     self.id,
                     crop.get(
                         "crop_id",
                         "unknown"
                     ),
-                    figure_id
+                    figure_id,
+                    page_width,
+                    page_height
                 )
-
-                continue
 
             figure_x = float(
                 azure_bounds.get(
@@ -14963,11 +14997,19 @@ class VendorImportJob(models.Model):
             )
 
 
+            # safe_crop = self._build_safe_product_crop(
+            #     original_image,
+            #     crop,
+            #     figure_bounds,
+            #     allow_expansion=True,
+            #     crop_seed_boxes=crop_seed_boxes,
+            # )
+
             safe_crop = self._build_safe_product_crop(
                 original_image,
                 crop,
                 figure_bounds,
-                allow_expansion=True,
+                allow_expansion=allow_expansion,
                 crop_seed_boxes=crop_seed_boxes,
             )
 
