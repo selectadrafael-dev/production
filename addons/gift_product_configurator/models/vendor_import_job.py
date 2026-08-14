@@ -1644,15 +1644,33 @@ class VendorImportJob(models.Model):
                     # =================================================
 
                     try:
+
                         family_a_review = json.loads(
                             self.family_a_review_json
                             or "{}"
                         )
+
                     except Exception as e:
+
                         raise ValueError(
                             "Invalid family_a_review_json: "
                             f"{str(e)}"
                         )
+
+                    # =================================================
+                    # DETERMINE REVIEW MODE
+                    # =================================================
+
+                    technical_failure = bool(
+                        family_a_review.get(
+                            "technical_failure",
+                            False
+                        )
+                    )
+
+                    # =================================================
+                    # READ NORMAL FAMILY A FAILED PAGES
+                    # =================================================
 
                     failed_pages = sorted({
                         int(page)
@@ -1662,18 +1680,74 @@ class VendorImportJob(models.Model):
                         )
                     })
 
-                    _logger.warning(
-                        "[AZURE FALLBACK] FAILED PAGES "
-                        "| JOB=%s | PAGES=%s",
-                        self.id,
-                        failed_pages
-                    )
+                    # =================================================
+                    # TECHNICAL REVIEW FAILURE
+                    # =================================================
+                    #
+                    # The Family A visual reviewer itself failed.
+                    #
+                    # Therefore there is NO trustworthy page-level
+                    # decision.
+                    #
+                    # Every page currently extracted by Family A
+                    # must be treated as requiring Azure processing.
+                    #
+                    # This is different from a normal review where
+                    # failed_pages contains only the pages that
+                    # Family A explicitly rejected.
+                    # =================================================
+
+                    if technical_failure:
+
+                        current_family_a_pages = page_model.search(
+                            [
+                                ('job_id', '=', self.id)
+                            ],
+                            order='page_number asc'
+                        )
+
+                        failed_pages = sorted({
+                            int(record.page_number)
+                            for record in current_family_a_pages
+                            if record.page_number
+                        })
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "FAMILY A REVIEW TECHNICAL FAILURE "
+                            "→ ALL FAMILY A PAGES "
+                            "| JOB=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            failed_pages
+                        )
+
+                    else:
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "FAMILY A REVIEW FAILED PAGES "
+                            "| JOB=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            failed_pages
+                        )
 
                     # =================================================
                     # SAFETY: NOTHING TO FALL BACK
                     # =================================================
+                    #
+                    # An empty failed_pages list is safe only when
+                    # the Family A review actually completed.
+                    #
+                    # A technical failure with an empty list must
+                    # NEVER go directly to PDF AI.
+                    # =================================================
 
-                    if not failed_pages:
+                    if (
+                        not failed_pages
+                        and not technical_failure
+                    ):
 
                         _logger.warning(
                             "[AZURE FALLBACK] NO FAILED PAGES "
@@ -1689,6 +1763,17 @@ class VendorImportJob(models.Model):
                         self.env.cr.commit()
 
                         return
+
+                    if (
+                        not failed_pages
+                        and technical_failure
+                    ):
+
+                        raise RuntimeError(
+                            "Family A review failed technically "
+                            "but no Family A page records were "
+                            "available for Azure fallback."
+                        )
 
                     # =================================================
                     # LOAD ALL REMAINING FAMILY A PASS PAGES
@@ -1718,11 +1803,68 @@ class VendorImportJob(models.Model):
                         len(existing_pages)
                     )
 
+
                     for record in existing_pages:
+
+                        page_number = int(
+                            record.page_number
+                        )
+
+                        # =================================================
+                        # TECHNICAL FAMILY A FAILURE
+                        # =================================================
+                        #
+                        # No Family A page was successfully reviewed.
+                        #
+                        # Therefore DO NOT preserve any Family A page
+                        # when technical_failure=True.
+                        #
+                        # Every page will be regenerated by Azure.
+                        # =================================================
+
+                        if (
+                            technical_failure
+                            and page_number in failed_pages
+                        ):
+
+                            _logger.warning(
+                                "[AZURE FALLBACK] "
+                                "NOT PRESERVING UNVERIFIED "
+                                "FAMILY A PAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s",
+                                self.id,
+                                page_number
+                            )
+
+                            continue
+
+                        # =================================================
+                        # NORMAL FAMILY A PASS PAGE
+                        # =================================================
+                        #
+                        # In a normal successful review, only pages
+                        # remaining here are approved Family A pages.
+                        # Preserve them while Azure replaces the
+                        # explicitly failed pages.
+                        # =================================================
+
+                        if page_number in failed_pages:
+
+                            _logger.warning(
+                                "[AZURE FALLBACK] "
+                                "NOT PRESERVING FAILED PAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s",
+                                self.id,
+                                page_number
+                            )
+
+                            continue
 
                         preserved_pages.append({
                             "page_number":
-                                int(record.page_number),
+                                page_number,
 
                             "extracted_json":
                                 record.extracted_json or "[]",
@@ -2450,6 +2592,7 @@ class VendorImportJob(models.Model):
                         self._review_family_a_extraction_with_openai()
                     )
 
+
                 except Exception as e:
 
                     _logger.exception(
@@ -2458,20 +2601,19 @@ class VendorImportJob(models.Model):
                     )
 
                     # =================================================
-                    # HARD ROUTING STOP
+                    # FAMILY A REVIEW TECHNICAL FAILURE
                     # =================================================
-
-                    page_records = self.env[
-                        'vendor.import.page'
-                    ].search([
-                        ('job_id', '=', self.id)
-                    ], order='page_number asc')
-
-                    failed_pages = sorted({
-                        int(record.page_number)
-                        for record in page_records
-                        if record.page_number
-                    })
+                    #
+                    # OpenAI did NOT successfully complete the
+                    # Family A visual review.
+                    #
+                    # Therefore Family A is NOT approved.
+                    #
+                    # Do not fabricate page-level failed_pages.
+                    # Mark this as a review-level technical failure
+                    # so azure_fallback can handle it differently
+                    # from a normal Family A FAIL decision.
+                    # =================================================
 
                     self.family_a_review_json = json.dumps(
                         {
@@ -2479,16 +2621,18 @@ class VendorImportJob(models.Model):
                             "confidence": 0,
                             "technical_failure": True,
                             "reason": (
-                                "Family A visual review failed "
-                                "technically."
+                                "Family A visual review "
+                                "failed technically."
                             ),
                             "error": str(e),
-                            "failed_pages": failed_pages,
+                            "pages": [],
+                            "failed_pages": [],
                         },
                         ensure_ascii=False
                     )
 
                     self.stage_retry_count = 0
+
                     self.last_error = str(e)
 
                     self.last_known_state = (
@@ -2501,12 +2645,13 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
                         "[FAMILY A REVIEW] "
-                        "HARD ROUTE → AZURE FALLBACK "
+                        "TECHNICAL FAILURE "
+                        "→ AZURE FALLBACK "
                         "| JOB=%s "
-                        "| FAILED_PAGES=%s "
+                        "| ERROR=%s "
                         "| NEW_STATE=%s",
                         self.id,
-                        failed_pages,
+                        str(e),
                         self.state,
                     )
 
@@ -2515,7 +2660,7 @@ class VendorImportJob(models.Model):
 
                     _logger.warning(
                         "[FAMILY A REVIEW] "
-                        "RETURNING AFTER FAILURE "
+                        "RETURNING AFTER TECHNICAL FAILURE "
                         "| JOB=%s "
                         "| STATE=%s",
                         self.id,
@@ -16375,23 +16520,21 @@ class VendorImportJob(models.Model):
                 self.id
             )
 
-            return {
+            # =================================================
+            # TECHNICAL FAILURE — DO NOT RETURN A REVIEW
+            # =================================================
+            #
+            # OpenAI did not successfully perform the Family A
+            # visual review.
+            #
+            # Therefore this result MUST NOT be interpreted as
+            # "all pages passed".
+            #
+            # Re-raise so the caller's technical-failure handler
+            # can route the job to Azure fallback.
+            # =================================================
 
-                "decision":
-                    "FAIL",
-
-                "confidence":
-                    0,
-
-                "reason":
-                    str(e),
-
-                "pages":
-                    [],
-
-                "review_error":
-                    True,
-            }
+            raise
 
     # =========================================================
     # AZURE OPENAI CROP PROCESSOR
