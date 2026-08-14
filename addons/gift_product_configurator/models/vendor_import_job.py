@@ -269,6 +269,10 @@ class VendorImportJob(models.Model):
         default=False
     )
 
+    family_a_review_json = fields.Text(
+        string="Family A Review"
+    )
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -282,11 +286,13 @@ class VendorImportJob(models.Model):
         ('url_ai', 'URL AI'),
         ('url_creating', 'URL Creating'),
 
-        # ('pdf_extracting', 'PDF Extracting'),
-        # ('pdf_ai', 'PDF AI'),
-        # ('pdf_creating', 'PDF Creating'),
-
         ('pdf_extracting', 'PDF Extracting'),
+
+        # =================================================
+        # FAMILY A VISUAL QUALITY REVIEW
+        # =================================================
+
+        ('family_a_review', 'Family A Visual Review'),
 
         # =================================================
         # AZURE VISUAL REVIEW / CROPPING
@@ -294,9 +300,11 @@ class VendorImportJob(models.Model):
 
         ('azure_review', 'Azure Visual Review'),
         ('azure_crop', 'Azure Image Cropping'),
+        ('azure_fallback', 'Azure Fallback')
 
         ('pdf_ai', 'PDF AI'),
         ('pdf_creating', 'PDF Creating'),
+
 
         ('excel_parsing', 'Excel Parsing'),
         ('excel_ai', 'Excel AI'),
@@ -1488,7 +1496,7 @@ class VendorImportJob(models.Model):
 
                 return
 
-        # =================================================
+        #=================================================
         # PDF FLOW
         # =================================================
 
@@ -1570,15 +1578,227 @@ class VendorImportJob(models.Model):
                     self.state = 'pdf_extracting'
                 
                 else:
-
                     _logger.warning(
                         "PDF EXTRACTION COMPLETE "
-                        "→ azure_review"
+                        "→ family_a_review"
                     )
 
-                    self.last_known_state = 'azure_review'
+                    self.last_known_state = (
+                        'family_a_review'
+                    )
 
-                    #self.state = 'azure_review'
+                    self.state = (
+                        'family_a_review'
+                    )
+                  
+
+                self.flush_recordset()
+                self.env.cr.commit()
+
+                return
+
+            # =================================================
+            # AZURE FALLBACK EXTRACTION
+            # =================================================
+
+            if self.state == 'azure_fallback':
+
+                _logger.warning(
+                    "[AZURE FALLBACK] START "
+                    "| JOB=%s",
+                    self.id
+                )
+
+                self.last_known_state = 'azure_fallback'
+
+                try:
+
+        
+                    # =============================================
+                    # RESET EXTRACTION POSITION
+                    # =============================================
+
+                    self.current_page = 0
+                    self.last_ai_page = 0
+
+                    # =============================================
+                    # RUN EXISTING AZURE EXTRACTOR
+                    # =============================================
+
+                    self.extract_pdf_azure()
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[AZURE FALLBACK] FAILED "
+                        "| JOB=%s | %s",
+                        self.id,
+                        str(e)
+                    )
+
+                    self.stage_retry_count += 1
+                    self.last_error = str(e)
+                    self.last_known_state = 'azure_fallback'
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # Existing Azure extractor controls its own
+                # page-by-page extraction state.
+
+                self.flush_recordset()
+                self.env.cr.commit()
+
+                return
+
+            # =================================================
+            # FAMILY A VISUAL QUALITY GATE
+            # =================================================
+
+            if self.state == 'family_a_review':
+
+                _logger.warning(
+                    "[FAMILY A REVIEW] START "
+                    "| JOB=%s",
+                    self.id
+                )
+
+                self.last_known_state = (
+                    'family_a_review'
+                )
+
+                try:
+
+                    review_result = (
+                        self._review_family_a_extraction_with_openai()
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[FAMILY A REVIEW] FAILED "
+                        "| JOB=%s | %s",
+                        self.id,
+                        str(e)
+                    )
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = (
+                        'family_a_review'
+                    )
+
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
+
+                    return
+
+
+                # =================================================
+                # SAVE COMPLETE REVIEW RESULT
+                # =================================================
+
+                self.family_a_review_json = json.dumps(
+                    review_result,
+                    ensure_ascii=False
+                )
+
+
+                # =================================================
+                # READ FAILED PAGES
+                # =================================================
+
+                failed_pages = {
+                    int(page)
+                    for page in review_result.get(
+                        'failed_pages',
+                        []
+                    )
+                }
+
+
+                # =================================================
+                # REMOVE ONLY FAILED FAMILY A PAGES
+                # =================================================
+
+                if failed_pages:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] FAILED PAGES "
+                        "| JOB=%s | PAGES=%s",
+                        self.id,
+                        sorted(failed_pages)
+                    )
+
+                    failed_page_records = self.env[
+                        'vendor.import.page'
+                    ].search([
+                        ('job_id', '=', self.id),
+                        ('page_number', 'in', list(
+                            failed_pages
+                        )),
+                    ])
+
+                    if failed_page_records:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] REMOVING "
+                            "FAILED FAMILY A RECORDS "
+                            "| JOB=%s | COUNT=%s",
+                            self.id,
+                            len(failed_page_records)
+                        )
+
+                        failed_page_records.unlink()
+
+
+                    # =================================================
+                    # FAILED PAGES → AZURE FALLBACK
+                    # =================================================
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "FAILED PAGES REMOVED "
+                        "→ AZURE FALLBACK "
+                        "| JOB=%s | PAGES=%s",
+                        self.id,
+                        sorted(failed_pages)
+                    )
+
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
+
+                    self.state = (
+                        'azure_fallback'
+                    )
+
+                else:
+
+                    # =================================================
+                    # ALL PAGES PASSED → EXISTING PDF AI
+                    # =================================================
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "ALL PAGES PASS "
+                        "→ PDF AI "
+                        "| JOB=%s",
+                        self.id
+                    )
+
+                    self.last_known_state = (
+                        'pdf_ai'
+                    )
+
+                    self.state = (
+                        'pdf_ai'
+                    )
 
 
                 self.flush_recordset()
@@ -1678,7 +1898,6 @@ class VendorImportJob(models.Model):
                 self.env.cr.commit()
 
                 return
-
 
             # =================================================
             # AZURE VISUAL REVIEW
@@ -2765,6 +2984,606 @@ class VendorImportJob(models.Model):
 
                         response = requests.post(
 
+                            "https://pdf-extractor-staging.onrender.com/extract",
+
+                            files={
+
+                                "file": (
+
+                                    "page.pdf",
+
+                                    pdf_bytes_io,
+
+                                    "application/pdf"
+                                )
+                            },
+
+                            timeout=45
+                        )
+
+
+                        _logger.warning(
+                            f"[PDF API] "
+                            f"STATUS="
+                            f"{response.status_code} "
+                            f"| page={i + 1}"
+                        )
+
+
+                        if response.status_code != 200:
+
+                            continue
+
+
+                        page_data = response.json()
+
+
+                        # =========================
+                        # RESPONSE FORMAT
+                        # =========================
+
+                        if isinstance(page_data, dict):
+
+                            pages = page_data.get(
+                                "pages",
+                                []
+                            )
+
+                        elif isinstance(
+                            page_data,
+                            list
+                        ):
+
+                            pages = page_data
+
+                        else:
+
+                            pages = []
+
+
+                        if not pages:
+
+                            _logger.warning(
+                                f"[PDF PAGE] "
+                                f"EMPTY RESPONSE "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        normalized_blocks = []
+
+
+                        # =========================
+                        # NORMALIZE
+                        # =========================
+
+                        for p in pages:
+
+                            text = p.get(
+                                "text",
+                                ""
+                            )
+
+                            images = p.get(
+                                "images",
+                                []
+                            )
+
+                            # ===========================
+                            # CLEAN CATALOG SEGMENTATION
+                            # ===========================
+
+                            images = self._segment_catalog_images(
+                                images
+                            )
+
+                            # ============================
+                            # SEGMENT PIPELINE SUMMARY
+                            # ============================
+
+                            real = 0
+                            life = 0
+                            gallery = 0
+                            reject = 0
+
+                            for asset in images:
+
+                                if asset.get("is_lifestyle"):
+                                    life += 1
+                                else:
+                                    real += 1
+
+                                if asset.get("asset_role") == "gallery":
+                                    gallery += 1
+
+                                if asset.get("asset_role") == "reject":
+                                    reject += 1
+
+                            _logger.warning(
+
+                                "[SEGMENT PIPELINE] "
+
+                                f"total={len(images)} "
+
+                                f"real={real} "
+
+                                f"life={life} "
+
+                                f"gallery={gallery} "
+
+                                f"reject={reject}"
+
+                            )
+
+
+
+                            if (
+                                not text
+                                and
+                                not images
+                            ):
+                                continue
+
+
+                            price = ""
+
+                            stock = ""
+
+
+                            price_match = re.search(
+
+                                r'(\$|€|£)\s?\d+[.,]?\d*',
+
+                                text
+                            )
+
+
+                            if price_match:
+
+                                price = (
+                                    price_match.group(0)
+                                )
+
+
+                            stock_match = re.search(
+
+                                r'(stock|available)'
+                                r'\s*:?\s*'
+                                r'(\d+)'
+                                r'\s*(pcs|pieces)?',
+
+                                text,
+
+                                re.I
+                            )
+
+
+                            if stock_match:
+
+                                stock = (
+                                    stock_match.group(2)
+                                )
+
+
+                            normalized_blocks.append({
+
+                                "page": i + 1,
+
+                                "text": text,
+
+                                "price": price,
+
+                                "stock": stock,
+
+                                "images": images
+                            })
+
+
+                        if not normalized_blocks:
+
+                            _logger.warning(
+                                f"[PDF PAGE] "
+                                f"NO VALID BLOCKS "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        # ===========================
+                        # SAVE PAGE
+                        # ===========================
+
+
+                        all_page_images = []
+
+                        for block in normalized_blocks:
+
+                            all_page_images.extend(
+                                block.get("images", [])
+                            )
+
+                            self._safe_commit_progress()
+
+                        self.env[
+                            'vendor.import.page'
+                        ].create({
+
+                            'job_id': self.id,
+
+                            'page_number': i + 1,
+
+                            'extracted_json': json.dumps(
+                                normalized_blocks
+                            ),
+
+                            'page_images_json': json.dumps(
+                                all_page_images
+                            )
+                        })
+
+
+                        _logger.warning(
+                            f"[PDF PAGE] "
+                            f"SAVED "
+                            f"| page={i + 1}"
+                        )
+
+
+                        self.current_page = i + 1
+
+                        processed_count += 1
+
+                        page_success = True
+
+                        break
+
+
+                    except Exception as e:
+
+                        _logger.exception(
+                            f"[PDF PAGE ERROR] "
+                            f"page={i + 1} "
+                            f"| {str(e)}"
+                        )
+
+
+                    finally:
+
+                        try:
+
+                            if pdf_bytes_io:
+                                pdf_bytes_io.close()
+
+                        except Exception:
+                            pass
+
+
+                        try:
+
+                            if single_pdf:
+                                single_pdf.close()
+
+                        except Exception:
+                            pass
+
+
+                if not page_success:
+
+                    _logger.error(
+                        f"[PDF PAGE FAILED] "
+                        f"page={i + 1}"
+                    )
+
+
+            # =====================================
+            # SAVE BATCH ONCE
+            # =====================================
+
+            _logger.warning(
+                f"[PDF BATCH] "
+                f"PROCESSED="
+                f"{processed_count}"
+            )
+
+
+            if self.current_page < total_pages:
+
+                self.state = "pdf_extracting"
+
+            else:
+
+                 # -------------------------------------------------
+                # FAMILY A EXTRACTION COMPLETE
+                #
+                # DO NOT GO DIRECTLY TO PDF AI.
+                #
+                # First send the complete Family A extraction
+                # through the OpenAI gateway review.
+                # -------------------------------------------------
+
+                _logger.warning(
+                    "[PDF EXTRACTION] FAMILY A COMPLETE "
+                    "→ FAMILY A REVIEW "
+                    "| JOB=%s "
+                    "| PAGES=%s",
+                    self.id,
+                    total_pages
+                )
+
+                self.last_known_state = "family_a_review"
+
+                self.state = "family_a_review"
+
+
+            try:
+
+                self._safe_commit_progress()
+
+                _logger.warning(
+                    f"[PDF SAVE] "
+                    f"SUCCESS "
+                    f"| state={self.state} "
+                    f"| current={self.current_page}"
+                )
+
+            except Exception as e:
+
+                _logger.exception(
+                    f"[PDF SAVE ERROR] "
+                    f"{str(e)}"
+                )
+
+
+        finally:
+
+            try:
+
+                if doc:
+                    doc.close()
+
+            except Exception:
+                pass
+
+
+            gc.collect()
+
+            _logger.warning(
+                "[PDF GC] COMPLETE"
+            )
+
+    #================AZURE EXTRACT PDF LOGIC================
+
+    def extract_pdf_azure(self):
+
+        import gc
+        import json
+        import io
+        import re
+        import fitz
+        import base64
+        import requests
+
+        _logger.warning(
+            f"[PDF EXTRACT] START "
+            f"| job={self.id}"
+        )
+
+        MAX_RETRIES = 3
+
+        # balanced batch size
+        BATCH_SIZE = 3
+
+        doc = None
+
+        try:
+
+            pdf_bytes = base64.b64decode(
+                self.pdf_file
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[PDF EXTRACT ERROR] "
+                f"PDF DECODE FAILED "
+                f"| {str(e)}"
+            )
+
+            self.state = "failed"
+
+            return
+
+
+        # =========================================
+        # OPEN PDF
+        # =========================================
+
+        try:
+
+            doc = fitz.open(
+                stream=pdf_bytes,
+                filetype="pdf"
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[PDF EXTRACT ERROR] "
+                f"PDF OPEN FAILED "
+                f"| {str(e)}"
+            )
+
+            self.state = "failed"
+
+            return
+
+
+        try:
+
+            total_pages = len(doc)
+
+            self.total_pages = total_pages
+
+
+            _logger.warning(
+                f"[PDF EXTRACT] "
+                f"TOTAL PAGES={total_pages}"
+            )
+
+
+            # =====================================
+            # CRASH SAFE RECOVERY
+            # =====================================
+
+            existing_pages = self.env[
+                'vendor.import.page'
+            ].search([
+
+                ('job_id', '=', self.id)
+
+            ], order='page_number desc', limit=1)
+
+
+            if existing_pages:
+
+                # move to NEXT page
+                start_page = (
+                    existing_pages.page_number
+                )
+
+                _logger.warning(
+                    f"[PDF RECOVERY] "
+                    f"LAST SAVED PAGE="
+                    f"{existing_pages.page_number}"
+                )
+
+            else:
+
+                start_page = (
+                    self.current_page or 0
+                )
+
+                _logger.warning(
+                    f"[PDF RECOVERY] "
+                    f"NO SAVED PAGES"
+                )
+
+
+            # =====================================
+            # SAFETY CLAMP
+            # =====================================
+
+            if start_page >= total_pages:
+
+                start_page = total_pages
+
+
+            end_page = min(
+                start_page + BATCH_SIZE,
+                total_pages
+            )
+
+
+            _logger.warning(
+                f"[PDF BATCH] "
+                f"START={start_page + 1} "
+                f"| END={end_page}"
+            )
+
+
+            processed_count = 0
+
+
+            # =====================================
+            # PROCESS PAGES
+            # =====================================
+
+            for i in range(start_page, end_page):
+
+                _logger.warning(
+                    f"[PDF PAGE] "
+                    f"START PAGE={i + 1}"
+                )
+
+                page_success = False
+
+
+                # =================================
+                # SKIP IF ALREADY EXISTS
+                # =================================
+
+                existing = self.env[
+                    'vendor.import.page'
+                ].search([
+
+                    ('job_id', '=', self.id),
+
+                    ('page_number', '=', i + 1)
+
+                ], limit=1)
+
+
+                if existing:
+
+                    _logger.warning(
+                        f"[PDF PAGE] "
+                        f"SKIP EXISTING "
+                        f"| page={i + 1}"
+                    )
+
+                    self.current_page = i + 1
+
+                    continue
+
+
+                for attempt in range(MAX_RETRIES):
+
+                    single_pdf = None
+                    pdf_bytes_io = None
+
+                    try:
+
+                        _logger.warning(
+                            f"[PDF API] "
+                            f"PAGE={i + 1} "
+                            f"| ATTEMPT={attempt + 1}"
+                        )
+
+
+                        # =========================
+                        # SINGLE PAGE PDF
+                        # =========================
+
+                        single_pdf = fitz.open()
+
+                        single_pdf.insert_pdf(
+
+                            doc,
+
+                            from_page=i,
+
+                            to_page=i
+                        )
+
+
+                        pdf_bytes_io = io.BytesIO()
+
+                        single_pdf.save(
+                            pdf_bytes_io
+                        )
+
+                        pdf_bytes_io.seek(0)
+
+
+                        # =========================
+                        # API CALL
+                        # =========================
+
+                        response = requests.post(
+
                             #"https://pdf-extractor-staging.onrender.com/extract",
                             "https://pdf-extractor-staging.onrender.com/azure_evidence",
 
@@ -3140,28 +3959,60 @@ class VendorImportJob(models.Model):
             )
 
 
+            # if self.current_page < total_pages:
+
+            #     self.state = "pdf_extracting"
+
             if self.current_page < total_pages:
 
-                self.state = "pdf_extracting"
+                # =================================================
+                # PRESERVE THE CURRENT AZURE ROUTE
+                # =================================================
+
+                if self.state == "azure_fallback":
+
+                    _logger.warning(
+                        "[AZURE EXTRACT] CONTINUES "
+                        "→ AZURE FALLBACK "
+                        "| JOB=%s "
+                        "| PAGE=%s/%s",
+                        self.id,
+                        self.current_page,
+                        total_pages,
+                    )
+
+                    self.last_known_state = (
+                        "azure_fallback"
+                    )
+
+                    self.state = (
+                        "azure_fallback"
+                    )
+
+                else:
+
+                    # ---------------------------------------------
+                    # EXISTING NORMAL AZURE EXTRACTION FLOW
+                    # ---------------------------------------------
+
+                    self.state = "pdf_extracting"
 
            
             else:
 
-                # self.state = "pdf_ai"
-
-                # =========================================================
-                # PDF EXTRACTION COMPLETE
-                # HAND OFF TO AZURE VISUAL REVIEW
-                # =========================================================
-
                 _logger.warning(
-                    "[PDF EXTRACTION] "
-                    f"COMPLETE → AZURE REVIEW | JOB={self.id}"
+                    "[AZURE EXTRACT] COMPLETE "
+                    "→ AZURE REVIEW "
+                    "| JOB=%s "
+                    "| PAGES=%s",
+                    self.id,
+                    total_pages,
                 )
 
-                self.last_known_state = 'azure_review'
+                self.last_known_state = "azure_review"
 
-                self.state = 'azure_review'
+                self.state = "azure_review"
+
 
 
             try:
@@ -13681,6 +14532,724 @@ class VendorImportJob(models.Model):
 
             }
 
+
+    # =========================================================
+    # FAMILY A VISUAL QUALITY GATE
+    # =========================================================
+
+    def _review_family_a_extraction_with_openai(self):
+
+        self.ensure_one()
+
+        _logger.warning(
+            "[FAMILY A REVIEW] START | JOB=%s",
+            self.id
+        )
+
+        # =====================================================
+        # LOAD NORMALIZED FAMILY A EXTRACTION
+        # =====================================================
+
+        page_records = self.env[
+            "vendor.import.page"
+        ].search(
+            [
+                ("job_id", "=", self.id)
+            ],
+            order="page_number asc"
+        )
+
+        if not page_records:
+
+            _logger.warning(
+                "[FAMILY A REVIEW] NO PAGE RECORDS | JOB=%s",
+                self.id
+            )
+
+            return {
+                "decision": "FAIL",
+                "reason": "No extracted page records",
+                "pages": [],
+            }
+
+        image_inputs = []
+
+        review_pages = []
+
+        # =====================================================
+        # BUILD VISUAL INPUT FROM FAMILY A EXTRACTION
+        # =====================================================
+
+        for record in page_records:
+
+            try:
+
+                page_blocks = json.loads(
+                    record.extracted_json
+                    or "[]"
+                )
+
+            except Exception:
+
+                _logger.exception(
+                    "[FAMILY A REVIEW] INVALID extracted_json "
+                    "| JOB=%s | PAGE=%s",
+                    self.id,
+                    record.page_number
+                )
+
+                continue
+
+            if not isinstance(
+                page_blocks,
+                list
+            ):
+                continue
+
+            for block in page_blocks:
+
+                if not isinstance(
+                    block,
+                    dict
+                ):
+                    continue
+
+                page_number = block.get(
+                    "page",
+                    record.page_number
+                )
+
+                page_image = block.get(
+                    "page_image",
+                    ""
+                )
+
+                images = block.get(
+                    "images",
+                    []
+                )
+
+                # =================================================
+                # ORIGINAL PAGE
+                # =================================================
+
+                original_page_index = None
+
+                if page_image:
+
+                    original_page_index = (
+                        len(image_inputs)
+                    )
+
+                    image_inputs.append({
+
+                        "type":
+                            "input_image",
+
+                        "image_url":
+                            (
+                                "data:image/png;base64,"
+                                + page_image
+                            )
+                    })
+
+                # =================================================
+                # FAMILY A EXTRACTED IMAGES
+                # =================================================
+
+                extracted_indexes = []
+
+                if isinstance(
+                    images,
+                    list
+                ):
+
+                    for image in images:
+
+                        if not isinstance(
+                            image,
+                            dict
+                        ):
+                            continue
+
+                        image_data = image.get(
+                            "image"
+                        )
+
+                        if not image_data:
+                            continue
+
+                        visual_index = (
+                            len(image_inputs)
+                        )
+
+                        image_inputs.append({
+
+                            "type":
+                                "input_image",
+
+                            "image_url":
+                                (
+                                    "data:image/png;base64,"
+                                    + image_data
+                                )
+                        })
+
+                        extracted_indexes.append({
+
+                            "visual_index":
+                                visual_index,
+
+                            "image_index":
+                                image.get(
+                                    "index",
+                                    len(
+                                        extracted_indexes
+                                    )
+                                ),
+
+                            "image":
+                                image,
+
+                        })
+
+                review_pages.append({
+
+                    "page":
+                        page_number,
+
+                    "original_page_visual_index":
+                        original_page_index,
+
+                    "extracted_images":
+                        extracted_indexes,
+
+                })
+
+        # =====================================================
+        # NO VISUAL EVIDENCE
+        # =====================================================
+
+        if not image_inputs:
+
+            _logger.warning(
+                "[FAMILY A REVIEW] NO VISUAL INPUT "
+                "| JOB=%s",
+                self.id
+            )
+
+            return {
+                "decision": "FAIL",
+                "reason": "No Family A visual evidence available",
+                "pages": review_pages,
+            }
+
+        # =====================================================
+        # FAMILY A VISUAL QUALITY PROMPT
+        # =====================================================
+
+        review_prompt = """
+        You are the FINAL visual quality-control gate between
+        Family A PDF extraction and the production PDF AI.
+
+        Family A has already extracted the COMPLETE catalogue.
+
+        Your task is to inspect EVERY PAGE INDEPENDENTLY.
+
+        The ORIGINAL PAGE is the authoritative visual reference.
+
+        For each page, compare:
+
+        1. ORIGINAL PAGE
+        2. FAMILY A EXTRACTED IMAGES
+
+        Determine whether Family A extraction for THAT SPECIFIC PAGE
+        is safe to retain for production.
+
+        IMPORTANT:
+
+        - Evaluate each page independently.
+        - One page passing MUST NOT cause another page to pass.
+        - One page failing MUST NOT cause another page to fail.
+        - Do not make one global decision based on the majority of pages.
+        - A catalogue may contain a mixture of PASS and FAIL pages.
+
+        PASS a page only when:
+
+        1. Required product/variant images are individually represented.
+        2. Products are not substantially cut or missing major visible portions.
+        3. Different products are not incorrectly merged.
+        4. Extracted images correspond to products actually visible
+        on that original page.
+        5. Important product bodies are present.
+        6. Separately shown colour/variant products are not incorrectly
+        combined.
+        7. The page is clean enough for the existing production PDF AI.
+
+        FAIL a page when Family A extraction on THAT PAGE is unsafe,
+        including:
+
+        - substantially cropped products;
+        - missing major product portions;
+        - merged products;
+        - missing required variants;
+        - incorrect image/product correspondence;
+        - images that are clearly not usable as product evidence.
+
+        Do NOT fail a page for minor cosmetic imperfections.
+
+        Do NOT judge product descriptions, prices, names, or text accuracy
+        unless the visual extraction itself is affected.
+
+        Do NOT create products.
+
+        Do NOT provide crop coordinates.
+
+        Do NOT perform Azure processing yourself.
+
+        Return ONLY valid JSON:
+
+        {
+            "decision": "PASS" or "FAIL",
+            "confidence": 0.0,
+            "reason": "overall routing summary",
+            "pages": [
+                {
+                    "page": 1,
+                    "decision": "PASS" or "FAIL",
+                    "confidence": 0.0,
+                    "reason": "specific reason for this page"
+                }
+            ]
+        }
+
+        CRITICAL:
+
+        The page-level decisions are authoritative.
+
+        The top-level decision MUST be:
+
+        "PASS" only if ALL supplied pages are PASS.
+
+        "FAIL" if ANY supplied page is FAIL.
+
+        However, the page-level decisions must still identify exactly
+        which pages passed and which pages failed.
+
+        Do not omit a page.
+        Every supplied page must appear exactly once in "pages".
+        """
+        # =====================================================
+        # PAGE CONTEXT
+        # =====================================================
+
+        review_context = json.dumps(
+            review_pages,
+            ensure_ascii=False
+        )
+
+        # =====================================================
+        # OPENAI CALL
+        # =====================================================
+
+        try:
+
+            api_key = self.env[
+                "ir.config_parameter"
+            ].sudo().get_param(
+                "openai.api.key"
+            )
+
+            if not api_key:
+
+                raise Exception(
+                    "OpenAI API key not configured"
+                )
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            _logger.warning(
+                "[FAMILY A REVIEW] OPENAI CALL "
+                "| JOB=%s | IMAGES=%s",
+                self.id,
+                len(image_inputs)
+            )
+
+            response = client.responses.create(
+
+                model="gpt-4.1",
+
+                input=[{
+
+                    "role":
+                        "user",
+
+                    "content": [
+
+                        {
+                            "type":
+                                "input_text",
+
+                            "text":
+                                (
+                                    review_prompt
+                                    + "\n\n"
+                                    + "EXTRACTION CONTEXT:\n"
+                                    + review_context
+                                )
+                        }
+
+                    ] + image_inputs
+
+                }],
+
+                timeout=90
+            )
+
+            raw_output = (
+                response.output_text
+                or ""
+            )
+
+            _logger.warning(
+                "[FAMILY A REVIEW] RESPONSE "
+                "| JOB=%s | LENGTH=%s",
+                self.id,
+                len(raw_output)
+            )
+
+            # =================================================
+            # CLEAN JSON
+            # =================================================
+
+            cleaned = raw_output.strip()
+
+            if cleaned.startswith("```"):
+
+                if cleaned.startswith(
+                    "```json"
+                ):
+
+                    cleaned = cleaned[
+                        len("```json"):
+                    ]
+
+                else:
+
+                    cleaned = cleaned[
+                        len("```"):
+                    ]
+
+                if cleaned.endswith(
+                    "```"
+                ):
+
+                    cleaned = cleaned[
+                        :-len("```")
+                    ]
+
+                cleaned = cleaned.strip()
+
+            # =================================================
+            # PARSE
+            # =================================================
+
+            result = json.loads(
+                cleaned
+            )
+
+            if not isinstance(
+                result,
+                dict
+            ):
+
+                raise ValueError(
+                    "Family A review response "
+                    "must be a JSON object"
+                )
+
+            # =================================================
+            # VALIDATE PAGE-LEVEL REVIEW RESULT
+            # =================================================
+
+            reviewed_pages = result.get(
+                "pages",
+                []
+            )
+
+            if not isinstance(
+                reviewed_pages,
+                list
+            ):
+
+                raise ValueError(
+                    "Family A review did not return "
+                    "a valid pages list"
+                )
+
+
+            expected_pages = {
+                int(record.page_number)
+                for record in page_records
+            }
+
+
+            reviewed_page_numbers = set()
+
+
+            normalized_pages = []
+
+
+            for page_result in reviewed_pages:
+
+                if not isinstance(
+                    page_result,
+                    dict
+                ):
+                    continue
+
+                try:
+
+                    page_number = int(
+                        page_result.get(
+                            "page"
+                        )
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    continue
+
+                if page_number not in expected_pages:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] UNKNOWN PAGE "
+                        "| JOB=%s | PAGE=%s",
+                        self.id,
+                        page_number
+                    )
+
+                    continue
+
+                if page_number in reviewed_page_numbers:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] DUPLICATE PAGE "
+                        "| JOB=%s | PAGE=%s",
+                        self.id,
+                        page_number
+                    )
+
+                    continue
+
+                page_decision = str(
+                    page_result.get(
+                        "decision",
+                        "FAIL"
+                    )
+                ).upper().strip()
+
+                if page_decision not in (
+                    "PASS",
+                    "FAIL"
+                ):
+
+                    page_decision = "FAIL"
+
+                normalized_page = {
+
+                    "page":
+                        page_number,
+
+                    "decision":
+                        page_decision,
+
+                    "confidence":
+                        page_result.get(
+                            "confidence",
+                            0
+                        ),
+
+                    "reason":
+                        str(
+                            page_result.get(
+                                "reason",
+                                ""
+                            )
+                        ),
+
+                }
+
+                normalized_pages.append(
+                    normalized_page
+                )
+
+                reviewed_page_numbers.add(
+                    page_number
+                )
+
+
+            # =================================================
+            # NEVER ALLOW AN UNREVIEWED PAGE INTO PRODUCTION
+            # =================================================
+
+            missing_pages = (
+                expected_pages
+                - reviewed_page_numbers
+            )
+
+
+            for page_number in sorted(
+                missing_pages
+            ):
+
+                normalized_pages.append({
+
+                    "page":
+                        page_number,
+
+                    "decision":
+                        "FAIL",
+
+                    "confidence":
+                        0,
+
+                    "reason":
+                        "Review AI did not return a decision "
+                        "for this page."
+
+                })
+
+
+            normalized_pages.sort(
+                key=lambda item:
+                    item["page"]
+            )
+
+
+            # =================================================
+            # CALCULATE AUTHORITATIVE GLOBAL DECISION
+            # =================================================
+
+            failed_pages = [
+
+                item
+                for item in normalized_pages
+
+                if item["decision"] == "FAIL"
+
+            ]
+
+
+            passed_pages = [
+
+                item
+                for item in normalized_pages
+
+                if item["decision"] == "PASS"
+
+            ]
+
+
+            decision = (
+                "FAIL"
+                if failed_pages
+                else "PASS"
+            )
+
+
+            result["decision"] = decision
+
+            result["pages"] = normalized_pages
+
+            result["passed_pages"] = [
+                item["page"]
+                for item in passed_pages
+            ]
+
+            result["failed_pages"] = [
+                item["page"]
+                for item in failed_pages
+            ]
+
+            # =================================================
+            # AUTHORITATIVE ROUTING SUMMARY
+            # =================================================
+
+            if failed_pages:
+
+                result["reason"] = (
+                    f"{len(failed_pages)} page(s) failed "
+                    "Family A visual quality review."
+                )
+
+            else:
+
+                result["reason"] = (
+                    "All pages passed Family A visual quality review."
+                )
+
+            result["summary"] = {
+
+                "total_pages":
+                    len(normalized_pages),
+
+                "passed":
+                    len(passed_pages),
+
+                "failed":
+                    len(failed_pages),
+
+            }
+
+            _logger.warning(
+                "[FAMILY A REVIEW] DECISION "
+                "| JOB=%s | DECISION=%s | CONFIDENCE=%s "
+                "| REASON=%s",
+                self.id,
+                decision,
+                result.get(
+                    "confidence",
+                    0
+                ),
+                result.get(
+                    "reason",
+                    ""
+                )
+            )
+
+            return result
+
+        except Exception as e:
+
+            _logger.exception(
+                "[FAMILY A REVIEW] FAILED "
+                "| JOB=%s",
+                self.id
+            )
+
+            return {
+
+                "decision":
+                    "FAIL",
+
+                "confidence":
+                    0,
+
+                "reason":
+                    str(e),
+
+                "pages":
+                    [],
+
+                "review_error":
+                    True,
+            }
 
     # =========================================================
     # AZURE OPENAI CROP PROCESSOR
@@ -33871,6 +35440,9 @@ class VendorImportJob(models.Model):
 
             'azure_review',
             'azure_crop',
+            'azure_fallback',
+
+            'family_a_review',
 
             'pdf_extracting',
             'pdf_ai',
@@ -33903,12 +35475,21 @@ class VendorImportJob(models.Model):
             "url_creating": "URL creation stalled",
 
             # =============================================
+            # FAMILY A VISUAL QUALITY GATE
+            # =============================================
+
+            "family_a_review": "Family A Review",
+
+            # =============================================
             # AZURE VISUAL INTERCEPTION
             # =============================================
             
             "azure_review": "Azure visual review stalled",
             
             "azure_crop": "Azure image cropping stalled",
+
+            "azure_fallback": "Azure Fallback",
+
             
             "pdf_ai": "PDF AI stalled",
             
