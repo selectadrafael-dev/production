@@ -20,7 +20,10 @@ import psycopg2
 from PIL import (
     Image,
     ImageOps,
-    ImageChops
+    ImageChops,
+    ImageDraw,
+    ImageFont,
+    ImageFilter
 )
 
 import cv2
@@ -256,6 +259,20 @@ class VendorImportJob(models.Model):
         default="{}"
     )
 
+    azure_review_json = fields.Text(
+        string="Azure Visual Review",
+        default=""
+    )
+
+    azure_crop_completed = fields.Boolean(
+        string="Azure Crop Completed",
+        default=False
+    )
+
+    family_a_review_json = fields.Text(
+        string="Family A Review"
+    )
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -270,8 +287,24 @@ class VendorImportJob(models.Model):
         ('url_creating', 'URL Creating'),
 
         ('pdf_extracting', 'PDF Extracting'),
+
+        # =================================================
+        # FAMILY A VISUAL QUALITY REVIEW
+        # =================================================
+
+        ('family_a_review', 'Family A Visual Review'),
+
+        # =================================================
+        # AZURE VISUAL REVIEW / CROPPING
+        # =================================================
+
+        ('azure_review', 'Azure Visual Review'),
+        ('azure_crop', 'Azure Image Cropping'),
+        ('azure_fallback', 'Azure Fallback'),
+
         ('pdf_ai', 'PDF AI'),
         ('pdf_creating', 'PDF Creating'),
+
 
         ('excel_parsing', 'Excel Parsing'),
         ('excel_ai', 'Excel AI'),
@@ -687,7 +720,6 @@ class VendorImportJob(models.Model):
 
             return
 
-
         # =================================================
         # REVIEW RECOVERY
         # =================================================
@@ -698,7 +730,7 @@ class VendorImportJob(models.Model):
 
                 f"[REVIEW RECOVERY] "
 
-                f"retry={self.stage_retry_count}/5 "
+                f"retry={self.stage_retry_count}/10 "
 
                 f"last_state={self.last_known_state}"
             )
@@ -732,13 +764,46 @@ class VendorImportJob(models.Model):
 
                 self.state = self.last_known_state
 
+                _logger.warning(
+                    "[REVIEW RECOVERY] "
+                    f"RESTORED STATE → {self.state} "
+                    f"| JOB={self.id}"
+                )
+
+                self._safe_commit_progress()
+
+                # IMPORTANT:
+                # Do NOT return here.
+                #
+                # Continue through _process_step() so the
+                # restored state is actually processed during
+                # this same cron invocation.
+                #
+                # Example:
+                #
+                # review
+                #   ↓
+                # azure_review
+                #   ↓
+                # Azure/OpenAI interception
+                #
+                # This prevents the job from repeatedly
+                # bouncing between review and azure_review.
+
             else:
 
                 self.state = 'failed'
 
-            self._safe_commit_progress()
+                self.last_error = (
+                    "Review recovery failed: "
+                    "no last known state available."
+                )
 
-            return
+                self.failed_at = fields.Datetime.now()
+
+                self._safe_commit_progress()
+
+                return
 
 
         # =================================================
@@ -1431,7 +1496,7 @@ class VendorImportJob(models.Model):
 
                 return
 
-        # =================================================
+        #=================================================
         # PDF FLOW
         # =================================================
 
@@ -1511,14 +1576,1228 @@ class VendorImportJob(models.Model):
                     )
 
                     self.state = 'pdf_extracting'
+                
+                else:
+                    _logger.warning(
+                        "PDF EXTRACTION COMPLETE "
+                        "→ family_a_review"
+                    )
+
+                    self.last_known_state = (
+                        'family_a_review'
+                    )
+
+                    self.state = (
+                        'family_a_review'
+                    )
+                  
+
+                self.flush_recordset()
+                self.env.cr.commit()
+
+                return
+
+            # =========================================================
+            # AZURE FALLBACK FOR FAMILY A FAILED PAGES
+            # =========================================================
+
+            if self.state == 'azure_fallback':
+
+                _logger.warning(
+                    "[AZURE FALLBACK] START "
+                    "| JOB=%s",
+                    self.id
+                )
+
+                self.last_known_state = 'azure_fallback'
+
+                # =====================================================
+                # SAVE ORIGINAL JOB STATE
+                # =====================================================
+
+                original_pdf_file = self.pdf_file
+
+                original_total_pages = (
+                    self.total_pages or 0
+                )
+
+                original_current_page = (
+                    self.current_page or 0
+                )
+
+                original_last_ai_page = (
+                    self.last_ai_page or 0
+                )
+
+                page_model = self.env[
+                    'vendor.import.page'
+                ]
+
+                preserved_pages = []
+
+                temporary_pdf_created = False
+
+                try:
+
+                    # =================================================
+                    # LOAD AUTHORITATIVE FAMILY A REVIEW
+                    # =================================================
+
+                    try:
+
+                        family_a_review = json.loads(
+                            self.family_a_review_json
+                            or "{}"
+                        )
+
+                    except Exception as e:
+
+                        raise ValueError(
+                            "Invalid family_a_review_json: "
+                            f"{str(e)}"
+                        )
+
+                    # =================================================
+                    # DETERMINE REVIEW MODE
+                    # =================================================
+
+                    technical_failure = bool(
+                        family_a_review.get(
+                            "technical_failure",
+                            False
+                        )
+                    )
+
+                    # =================================================
+                    # READ NORMAL FAMILY A FAILED PAGES
+                    # =================================================
+
+                    failed_pages = sorted({
+                        int(page)
+                        for page in family_a_review.get(
+                            "failed_pages",
+                            []
+                        )
+                    })
+
+                    # =================================================
+                    # TECHNICAL REVIEW FAILURE
+                    # =================================================
+                    #
+                    # The Family A visual reviewer itself failed.
+                    #
+                    # Therefore there is NO trustworthy page-level
+                    # decision.
+                    #
+                    # Every page currently extracted by Family A
+                    # must be treated as requiring Azure processing.
+                    #
+                    # This is different from a normal review where
+                    # failed_pages contains only the pages that
+                    # Family A explicitly rejected.
+                    # =================================================
+
+                    if technical_failure:
+
+                        # =================================================
+                        # TECHNICAL FAMILY A FAILURE
+                        # =================================================
+                        #
+                        # The original Family A page records may already have
+                        # been removed by an earlier Azure fallback invocation.
+                        #
+                        # Therefore NEVER depend on vendor.import.page here.
+                        #
+                        # The authoritative page list was captured inside
+                        # family_a_review_json before those records were removed.
+                        # =================================================
+
+                        failed_pages = sorted({
+                            int(page)
+                            for page in family_a_review.get(
+                                "failed_pages",
+                                []
+                            )
+                        })
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "TECHNICAL FAILURE PAGE SNAPSHOT "
+                            "| JOB=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            failed_pages
+                        )
+
+                    else:
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "FAMILY A REVIEW FAILED PAGES "
+                            "| JOB=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            failed_pages
+                        )
+
+                    # =================================================
+                    # SAFETY: NOTHING TO FALL BACK
+                    # =================================================
+                    #
+                    # An empty failed_pages list is safe only when
+                    # the Family A review actually completed.
+                    #
+                    # A technical failure with an empty list must
+                    # NEVER go directly to PDF AI.
+                    # =================================================
+
+                    if (
+                        not failed_pages
+                        and not technical_failure
+                    ):
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] NO FAILED PAGES "
+                            "→ PDF AI "
+                            "| JOB=%s",
+                            self.id
+                        )
+
+                        self.last_known_state = 'pdf_ai'
+                        self.state = 'pdf_ai'
+
+                        self.flush_recordset()
+                        self.env.cr.commit()
+
+                        return
+
+
+                    if (
+                        not failed_pages
+                        and technical_failure
+                    ):
+
+                        raise RuntimeError(
+                            "Family A review failed technically "
+                            "but no fallback page numbers were "
+                            "recorded."
+                        )
+
+                    
+                    # =================================================
+                    # LOAD FAMILY A PASS PAGES FOR PRESERVATION
+                    # =================================================
+                    #
+                    # NORMAL REVIEW:
+                    #
+                    # Family A successfully completed its review.
+                    # Therefore only explicitly failed pages are sent
+                    # to Azure. All other pages are preserved.
+                    #
+                    # TECHNICAL REVIEW FAILURE:
+                    #
+                    # Family A review never completed.
+                    # Therefore NO Family A page is trusted or preserved.
+                    # All captured fallback pages go to Azure.
+                    # =================================================
+
+                    preserved_pages = []
+
+                    if technical_failure:
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "TECHNICAL FAILURE "
+                            "→ NO FAMILY A PAGES PRESERVED "
+                            "| JOB=%s "
+                            "| AZURE_PAGES=%s",
+                            self.id,
+                            failed_pages
+                        )
+
+                    else:
+
+                        existing_pages = page_model.search(
+                            [
+                                ('job_id', '=', self.id)
+                            ],
+                            order='page_number asc'
+                        )
+
+                        for record in existing_pages:
+
+                            page_number = int(
+                                record.page_number
+                            )
+
+                            # -------------------------------------------------
+                            # EXPLICITLY FAILED FAMILY A PAGE
+                            # -------------------------------------------------
+
+                            if page_number in failed_pages:
+
+                                _logger.warning(
+                                    "[AZURE FALLBACK] "
+                                    "NOT PRESERVING FAILED PAGE "
+                                    "| JOB=%s "
+                                    "| PAGE=%s",
+                                    self.id,
+                                    page_number
+                                )
+
+                                continue
+
+                            # -------------------------------------------------
+                            # APPROVED FAMILY A PAGE
+                            # -------------------------------------------------
+
+                            preserved_pages.append({
+                                "page_number":
+                                    page_number,
+
+                                "extracted_json":
+                                    record.extracted_json or "[]",
+
+                                "page_images_json":
+                                    record.page_images_json or "[]",
+                            })
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "PRESERVED FAMILY A PASS PAGES "
+                            "| JOB=%s "
+                            "| COUNT=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            len(preserved_pages),
+                            [
+                                item["page_number"]
+                                for item in preserved_pages
+                            ]
+                        )
+
+                    # =================================================
+                    # LOAD ORIGINAL PDF
+                    # =================================================
+
+                    if not original_pdf_file:
+
+                        raise ValueError(
+                            "Original PDF file is not available."
+                        )
+
+                    try:
+
+                        original_pdf_bytes = (
+                            base64.b64decode(
+                                original_pdf_file
+                            )
+                        )
+
+                    except Exception as e:
+
+                        raise ValueError(
+                            "Unable to decode original PDF: "
+                            f"{str(e)}"
+                        )
+
+                    source_doc = None
+                    fallback_doc = None
+
+                    try:
+
+                        # =================================================
+                        # OPEN ORIGINAL PDF
+                        # =================================================
+
+                        source_doc = fitz.open(
+                            stream=original_pdf_bytes,
+                            filetype="pdf"
+                        )
+
+                        source_total_pages = len(
+                            source_doc
+                        )
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] ORIGINAL PDF "
+                            "| JOB=%s | TOTAL=%s",
+                            self.id,
+                            source_total_pages
+                        )
+
+                        # =================================================
+                        # VALIDATE FAILED PAGE NUMBERS
+                        # =================================================
+
+                        invalid_pages = [
+                            page
+                            for page in failed_pages
+                            if page < 1
+                            or page > source_total_pages
+                        ]
+
+                        if invalid_pages:
+
+                            raise ValueError(
+                                "Family A review returned invalid "
+                                "page numbers: "
+                                f"{invalid_pages}"
+                            )
+
+                        # =================================================
+                        # BUILD FAILED-PAGES-ONLY PDF
+                        # =================================================
+                        #
+                        # IMPORTANT:
+                        #
+                        # The existing Azure extractor is intentionally
+                        # reused unchanged.
+                        #
+                        # We give it a temporary PDF containing ONLY the
+                        # pages Family A failed.
+                        #
+                        # Example:
+                        #
+                        # Original PDF:
+                        #   1 2 3 4 5 6 7 8
+                        #
+                        # Family A:
+                        #   PASS PASS FAIL PASS FAIL PASS PASS PASS
+                        #
+                        # Temporary PDF:
+                        #   original page 3
+                        #   original page 5
+                        #
+                        # Azure sees only 2 pages.
+                        # =================================================
+
+                        fallback_doc = fitz.open()
+
+                        for original_page_number in failed_pages:
+
+                            zero_based_page = (
+                                original_page_number - 1
+                            )
+
+                            fallback_doc.insert_pdf(
+                                source_doc,
+                                from_page=zero_based_page,
+                                to_page=zero_based_page
+                            )
+
+                        fallback_pdf_io = io.BytesIO()
+
+                        fallback_doc.save(
+                            fallback_pdf_io
+                        )
+
+                        fallback_pdf_io.seek(0)
+
+                        fallback_pdf_bytes = (
+                            fallback_pdf_io.getvalue()
+                        )
+
+                        fallback_pdf_base64 = (
+                            base64.b64encode(
+                                fallback_pdf_bytes
+                            ).decode("utf-8")
+                        )
+
+                        temporary_pdf_created = True
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] TEMPORARY PDF CREATED "
+                            "| JOB=%s | FAILED_PAGES=%s "
+                            "| TEMP_PAGES=%s",
+                            self.id,
+                            failed_pages,
+                            len(failed_pages)
+                        )
+
+                    finally:
+
+                        try:
+                            if fallback_doc:
+                                fallback_doc.close()
+                        except Exception:
+                            pass
+
+                        try:
+                            if source_doc:
+                                source_doc.close()
+                        except Exception:
+                            pass
+
+                    # =================================================
+                    # REMOVE ALL CURRENT PAGE RECORDS TEMPORARILY
+                    # =================================================
+                    #
+                    # This is NOT throwing away Family A output.
+                    #
+                    # The PASS records have already been copied into
+                    # preserved_pages above.
+                    #
+                    # They will be recreated after Azure finishes.
+                    #
+                    # We must do this because the existing Azure
+                    # extractor skips any page that already has a
+                    # vendor.import.page record.
+                    # =================================================
+
+                    current_records = page_model.search([
+                        ('job_id', '=', self.id)
+                    ])
+
+                    if current_records:
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] TEMPORARILY REMOVING "
+                            "PASS PAGE RECORDS "
+                            "| JOB=%s | COUNT=%s",
+                            self.id,
+                            len(current_records)
+                        )
+
+                        current_records.unlink()
+
+                    # =================================================
+                    # SWITCH JOB TO FAILED-PAGES-ONLY PDF
+                    # =================================================
+
+                    self.pdf_file = (
+                        fallback_pdf_base64
+                    )
+
+                    self.total_pages = (
+                        len(failed_pages)
+                    )
+
+                    self.current_page = 0
+
+                    self.last_ai_page = 0
+
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
+
+                    self.state = (
+                        'azure_fallback'
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    # =================================================
+                    # RUN EXISTING AZURE EXTRACTOR
+                    # =================================================
+                    #
+                    # IMPORTANT:
+                    #
+                    # We are NOT rewriting extract_pdf_azure().
+                    #
+                    # It continues to perform its normal batching,
+                    # extraction, segmentation and persistence.
+                    #
+                    # The only difference is that its input PDF contains
+                    # ONLY the failed Family A pages.
+                    # =================================================
+
+                    expected_temp_pages = (
+                        len(failed_pages)
+                    )
+
+                    while (
+                        (self.current_page or 0)
+                        <
+                        expected_temp_pages
+                    ):
+
+                        previous_page = (
+                            self.current_page or 0
+                        )
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] RUNNING EXISTING "
+                            "AZURE EXTRACTOR "
+                            "| JOB=%s "
+                            "| TEMP_PAGE=%s/%s",
+                            self.id,
+                            previous_page,
+                            expected_temp_pages
+                        )
+
+                        self.last_known_state = (
+                            'azure_fallback'
+                        )
+
+                        self.state = (
+                            'azure_fallback'
+                        )
+
+                        self.extract_pdf_azure()
+
+                        current_page = (
+                            self.current_page or 0
+                        )
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] AZURE PROGRESS "
+                            "| JOB=%s "
+                            "| TEMP_PAGE=%s/%s",
+                            self.id,
+                            current_page,
+                            expected_temp_pages
+                        )
+
+                        # =============================================
+                        # PREVENT INFINITE LOOP
+                        # =============================================
+
+                        if current_page <= previous_page:
+
+                            raise RuntimeError(
+                                "Azure fallback extractor "
+                                "did not advance. "
+                                f"Previous={previous_page}, "
+                                f"Current={current_page}"
+                            )
+
+                    # =================================================
+                    # LOAD AZURE TEMPORARY PAGE RECORDS
+                    # =================================================
+
+                    azure_temp_pages = page_model.search(
+                        [
+                            ('job_id', '=', self.id)
+                        ],
+                        order='page_number asc'
+                    )
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] TEMPORARY AZURE RECORDS "
+                        "| JOB=%s | COUNT=%s | EXPECTED=%s",
+                        self.id,
+                        len(azure_temp_pages),
+                        len(failed_pages)
+                    )
+
+                    # =================================================
+                    # SAFETY CHECK
+                    # =================================================
+
+                    if len(azure_temp_pages) != len(
+                        failed_pages
+                    ):
+
+                        raise RuntimeError(
+                            "Azure fallback did not produce "
+                            "one page record for every failed "
+                            "Family A page. "
+                            f"Expected={len(failed_pages)}, "
+                            f"Received={len(azure_temp_pages)}"
+                        )
+
+                    # =================================================
+                    # REMAP AZURE TEMP PAGE NUMBERS
+                    # =================================================
+                    #
+                    # Temporary:
+                    #
+                    #   1 → original failed page 7
+                    #   2 → original failed page 13
+                    #   3 → original failed page 21
+                    #
+                    # Must become:
+                    #
+                    #   7
+                    #   13
+                    #   21
+                    #
+                    # Also update the "page" value inside extracted_json.
+                    # =================================================
+
+                    for temp_index, azure_record in enumerate(
+                        azure_temp_pages
+                    ):
+
+                        original_page_number = (
+                            failed_pages[temp_index]
+                        )
+
+                        try:
+
+                            blocks = json.loads(
+                                azure_record.extracted_json
+                                or "[]"
+                            )
+
+                        except Exception as e:
+
+                            raise ValueError(
+                                "Invalid Azure extracted_json "
+                                f"for temporary page "
+                                f"{temp_index + 1}: {str(e)}"
+                            )
+
+                        if not isinstance(
+                            blocks,
+                            list
+                        ):
+
+                            raise ValueError(
+                                "Azure extracted_json must "
+                                "contain a list."
+                            )
+
+                        # =============================================
+                        # RESTORE ORIGINAL PAGE NUMBER INSIDE BLOCKS
+                        # =============================================
+
+                        for block in blocks:
+
+                            if isinstance(
+                                block,
+                                dict
+                            ):
+
+                                block["page"] = (
+                                    original_page_number
+                                )
+
+                        azure_record.write({
+                            "page_number":
+                                original_page_number,
+
+                            "extracted_json":
+                                json.dumps(
+                                    blocks,
+                                    ensure_ascii=False
+                                )
+                        })
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] PAGE REMAPPED "
+                            "| TEMP=%s "
+                            "| ORIGINAL=%s "
+                            "| JOB=%s",
+                            temp_index + 1,
+                            original_page_number,
+                            self.id
+                        )
+
+                    # =================================================
+                    # RESTORE FAMILY A PASS PAGES
+                    # =================================================
+
+                    restored_count = 0
+
+                    for preserved in preserved_pages:
+
+                        page_number = (
+                            preserved["page_number"]
+                        )
+
+                        # ---------------------------------------------
+                        # Safety: failed pages must come from Azure.
+                        # ---------------------------------------------
+
+                        if page_number in failed_pages:
+
+                            _logger.warning(
+                                "[AZURE FALLBACK] "
+                                "NOT RESTORING FAILED PAGE "
+                                "| PAGE=%s | JOB=%s",
+                                page_number,
+                                self.id
+                            )
+
+                            continue
+
+                        # ---------------------------------------------
+                        # Safety: don't duplicate Azure page.
+                        # ---------------------------------------------
+
+                        existing = page_model.search([
+                            ('job_id', '=', self.id),
+                            ('page_number', '=', page_number)
+                        ], limit=1)
+
+                        if existing:
+
+                            _logger.warning(
+                                "[AZURE FALLBACK] PAGE ALREADY EXISTS "
+                                "| PAGE=%s | JOB=%s",
+                                page_number,
+                                self.id
+                            )
+
+                            continue
+
+                        page_model.create({
+                            'job_id':
+                                self.id,
+
+                            'page_number':
+                                page_number,
+
+                            'extracted_json':
+                                preserved[
+                                    "extracted_json"
+                                ],
+
+                            'page_images_json':
+                                preserved[
+                                    "page_images_json"
+                                ],
+                        })
+
+                        restored_count += 1
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] FAMILY A PASS PAGES "
+                        "RESTORED "
+                        "| JOB=%s | COUNT=%s",
+                        self.id,
+                        restored_count
+                    )
+
+                    # =================================================
+                    # VERIFY FINAL PAGE INVENTORY
+                    # =================================================
+
+                    final_pages = page_model.search(
+                        [
+                            ('job_id', '=', self.id)
+                        ],
+                        order='page_number asc'
+                    )
+
+                    final_page_numbers = [
+                        int(record.page_number)
+                        for record in final_pages
+                    ]
+
+                    expected_page_numbers = sorted({
+                        int(page)
+                        for page in (
+                            [
+                                item["page_number"]
+                                for item in preserved_pages
+                            ]
+                            +
+                            failed_pages
+                        )
+                    })
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] FINAL PAGE INVENTORY "
+                        "| JOB=%s "
+                        "| ACTUAL=%s "
+                        "| EXPECTED=%s",
+                        self.id,
+                        final_page_numbers,
+                        expected_page_numbers
+                    )
+
+                    if (
+                        final_page_numbers
+                        !=
+                        expected_page_numbers
+                    ):
+
+                        raise RuntimeError(
+                            "Final page inventory mismatch after "
+                            "Azure fallback. "
+                            f"Actual={final_page_numbers}, "
+                            f"Expected={expected_page_numbers}"
+                        )
+
+                    # =================================================
+                    # RESTORE ORIGINAL JOB PDF
+                    # =================================================
+
+                    self.pdf_file = (
+                        original_pdf_file
+                    )
+
+                    self.total_pages = (
+                        original_total_pages
+                        or len(expected_page_numbers)
+                    )
+
+                    self.current_page = (
+                        self.total_pages
+                    )
+
+                    # PDF AI must start from page 1 again.
+                    self.last_ai_page = 0
+
+                    # =================================================
+                    # HAND OFF TO EXISTING PDF AI
+                    # =================================================
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] COMPLETE "
+                        "→ PDF AI "
+                        "| JOB=%s "
+                        "| PASS_PAGES=%s "
+                        "| AZURE_PAGES=%s",
+                        self.id,
+                        len(preserved_pages),
+                        len(failed_pages)
+                    )
+
+                    self.stage_retry_count = 0
+
+                    self.last_error = False
+
+                    self.last_known_state = (
+                        'pdf_ai'
+                    )
+
+                    self.state = (
+                        'pdf_ai'
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    return
+
+                except Exception as e:
+
+                    # =================================================
+                    # RESTORE PASS PAGES ON FAILURE
+                    # =================================================
+
+                    _logger.exception(
+                        "[AZURE FALLBACK] FAILED "
+                        "| JOB=%s | %s",
+                        self.id,
+                        str(e)
+                    )
+
+                    try:
+
+                        # Remove temporary Azure records.
+                        temporary_records = page_model.search([
+                            ('job_id', '=', self.id)
+                        ])
+
+                        if temporary_records:
+
+                            temporary_records.unlink()
+
+                        # Restore Family A PASS records.
+                        for preserved in preserved_pages:
+
+                            existing = page_model.search([
+                                ('job_id', '=', self.id),
+                                (
+                                    'page_number',
+                                    '=',
+                                    preserved["page_number"]
+                                )
+                            ], limit=1)
+
+                            if existing:
+
+                                continue
+
+                            page_model.create({
+                                'job_id':
+                                    self.id,
+
+                                'page_number':
+                                    preserved[
+                                        "page_number"
+                                    ],
+
+                                'extracted_json':
+                                    preserved[
+                                        "extracted_json"
+                                    ],
+
+                                'page_images_json':
+                                    preserved[
+                                        "page_images_json"
+                                    ],
+                            })
+
+                    except Exception:
+
+                        _logger.exception(
+                            "[AZURE FALLBACK] "
+                            "FAILED TO RESTORE FAMILY A "
+                            "PASS PAGES "
+                            "| JOB=%s",
+                            self.id
+                        )
+
+                    # =================================================
+                    # RESTORE ORIGINAL JOB STATE
+                    # =================================================
+
+                    self.pdf_file = (
+                        original_pdf_file
+                    )
+
+                    self.total_pages = (
+                        original_total_pages
+                    )
+
+                    self.current_page = (
+                        original_current_page
+                    )
+
+                    self.last_ai_page = (
+                        original_last_ai_page
+                    )
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
+
+                    self.state = (
+                        'review'
+                    )
+
+                    self._safe_commit_progress()
+
+                    return
+
+            
+
+            # =================================================
+            # FAMILY A VISUAL QUALITY GATE
+            # =================================================
+
+            if self.state == 'family_a_review':
+
+                _logger.warning(
+                    "[FAMILY A REVIEW] START "
+                    "| JOB=%s",
+                    self.id
+                )
+
+                self.last_known_state = (
+                    'family_a_review'
+                )
+
+                try:
+
+                    review_result = (
+                        self._review_family_a_extraction_with_openai()
+                    )
+
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[FAMILY A REVIEW] FAILED "
+                        f"| JOB={self.id}"
+                    )
+
+                    # =================================================
+                    # FAMILY A REVIEW TECHNICAL FAILURE
+                    # =================================================
+                    #
+                    # OpenAI did NOT successfully complete the
+                    # Family A visual review.
+                    #
+                    # Therefore Family A is NOT approved.
+                    #
+                    # Do not fabricate page-level failed_pages.
+                    # Mark this as a review-level technical failure
+                    # so azure_fallback can handle it differently
+                    # from a normal Family A FAIL decision.
+                    # =================================================
+                    
+                    # =================================================
+                    # CAPTURE ORIGINAL FAMILY A PAGE NUMBERS
+                    # =================================================
+
+                    page_records = self.env[
+                        'vendor.import.page'
+                    ].search([
+                        ('job_id', '=', self.id)
+                    ], order='page_number asc')
+
+                    fallback_pages = sorted({
+                        int(record.page_number)
+                        for record in page_records
+                        if record.page_number
+                    })
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "TECHNICAL FAILURE PAGE SNAPSHOT "
+                        "| JOB=%s "
+                        "| PAGES=%s",
+                        self.id,
+                        fallback_pages
+                    )
+
+                    self.family_a_review_json = json.dumps(
+                        {
+                            "decision": "FAIL",
+                            "confidence": 0,
+                            "technical_failure": True,
+                            "reason": (
+                                "Family A visual review "
+                                "failed technically."
+                            ),
+                            "error": str(e),
+                            "pages": [],
+                            "failed_pages": fallback_pages,
+                        },
+                        ensure_ascii=False
+                    )
+
+                    self.stage_retry_count = 0
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
+
+                    self.state = (
+                        'azure_fallback'
+                    )
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "TECHNICAL FAILURE "
+                        "→ AZURE FALLBACK "
+                        "| JOB=%s "
+                        "| ERROR=%s "
+                        "| NEW_STATE=%s",
+                        self.id,
+                        str(e),
+                        self.state,
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "RETURNING AFTER TECHNICAL FAILURE "
+                        "| JOB=%s "
+                        "| STATE=%s",
+                        self.id,
+                        self.state,
+                    )
+
+                    return
+
+
+                # =================================================
+                # SAVE COMPLETE REVIEW RESULT
+                # =================================================
+
+                self.family_a_review_json = json.dumps(
+                    review_result,
+                    ensure_ascii=False
+                )
+
+
+                # =================================================
+                # READ FAILED PAGES
+                # =================================================
+
+                failed_pages = {
+                    int(page)
+                    for page in review_result.get(
+                        'failed_pages',
+                        []
+                    )
+                }
+
+
+                # =================================================
+                # REMOVE ONLY FAILED FAMILY A PAGES
+                # =================================================
+
+                if failed_pages:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] FAILED PAGES "
+                        "| JOB=%s | PAGES=%s",
+                        self.id,
+                        sorted(failed_pages)
+                    )
+
+                    failed_page_records = self.env[
+                        'vendor.import.page'
+                    ].search([
+                        ('job_id', '=', self.id),
+                        ('page_number', 'in', list(
+                            failed_pages
+                        )),
+                    ])
+
+                    if failed_page_records:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] REMOVING "
+                            "FAILED FAMILY A RECORDS "
+                            "| JOB=%s | COUNT=%s",
+                            self.id,
+                            len(failed_page_records)
+                        )
+
+                        failed_page_records.unlink()
+
+
+                    # =================================================
+                    # FAILED PAGES → AZURE FALLBACK
+                    # =================================================
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "FAILED PAGES REMOVED "
+                        "→ AZURE FALLBACK "
+                        "| JOB=%s | PAGES=%s",
+                        self.id,
+                        sorted(failed_pages)
+                    )
+
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
+
+                    self.state = (
+                        'azure_fallback'
+                    )
 
                 else:
 
+                    # =================================================
+                    # ALL PAGES PASSED → EXISTING PDF AI
+                    # =================================================
+
                     _logger.warning(
-                        "PDF EXTRACTION COMPLETE → pdf_ai"
+                        "[FAMILY A REVIEW] "
+                        "ALL PAGES PASS "
+                        "→ PDF AI "
+                        "| JOB=%s",
+                        self.id
                     )
 
-                    self.state = 'pdf_ai'
+                    self.last_known_state = (
+                        'pdf_ai'
+                    )
+
+                    self.state = (
+                        'pdf_ai'
+                    )
 
 
                 self.flush_recordset()
@@ -1619,6 +2898,225 @@ class VendorImportJob(models.Model):
 
                 return
 
+            # =================================================
+            # AZURE VISUAL REVIEW
+            # =================================================
+
+            if self.state == 'azure_review':
+
+                _logger.warning(
+                    "[AZURE REVIEW] START "
+                    f"| JOB={self.id}"
+                )
+
+                self.last_known_state = 'azure_review'
+
+                try:
+
+                    audit_result = (
+                        self._review_azure_evidence_with_openai()
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[AZURE REVIEW] FAILED "
+                        f"| {str(e)}"
+                    )
+
+                    # =============================================
+                    # REAL TECHNICAL FAILURE
+                    # =============================================
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'azure_review'
+
+                    # Use the EXISTING retry/review mechanism.
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # =================================================
+                # READ AI DECISION
+                # =================================================
+
+                decision = str(
+                    audit_result.get(
+                        "decision",
+                        "FAIL"
+                    )
+                ).upper()
+
+                # =================================================
+                # SAVE COMPLETE REVIEW RESULT
+                # =================================================
+
+                self.azure_review_json = json.dumps(
+                    audit_result,
+                    ensure_ascii=False
+                )
+
+                # =================================================
+                # PASS
+                # =================================================
+
+                if decision == "PASS":
+
+                    _logger.warning(
+                        "[AZURE REVIEW] PASS "
+                        "→ EXISTING PDF AI "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.last_known_state = 'pdf_ai'
+
+                    self.state = 'pdf_ai'
+
+                # =================================================
+                # CROP REQUIRED
+                # =================================================
+
+                elif decision == "CROP":
+
+                    _logger.warning(
+                        "[AZURE REVIEW] CROP REQUIRED "
+                        "→ AZURE CROP "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.azure_crop_completed = False
+
+                    self.last_known_state = 'azure_crop'
+
+                    self.state = 'azure_crop'
+
+                # =================================================
+                # UNKNOWN / INVALID DECISION
+                # =================================================
+
+                else:
+
+                    _logger.warning(
+                        "[AZURE REVIEW] "
+                        f"INVALID DECISION={decision} "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = (
+                        "Azure visual review returned "
+                        f"invalid decision: {decision}"
+                    )
+
+                    self.last_known_state = 'azure_review'
+
+                    self.state = 'review'
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
+
+                return
+
+
+            # =================================================
+            # AZURE IMAGE CROPPING
+            # =================================================
+
+            if self.state == 'azure_crop':
+
+                _logger.warning(
+                    "[AZURE CROP] START "
+                    f"| JOB={self.id}"
+                )
+
+                self.last_known_state = 'azure_crop'
+
+                try:
+
+                    crop_result = (
+                        self._process_azure_crop_request()
+                    )
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[AZURE CROP] FAILED "
+                        f"| {str(e)}"
+                    )
+
+                    # =============================================
+                    # REAL TECHNICAL FAILURE
+                    # =============================================
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = str(e)
+
+                    self.last_known_state = 'azure_crop'
+
+                    # Existing retry mechanism.
+                    self.state = 'review'
+
+                    self._safe_commit_progress()
+
+                    return
+
+                # =================================================
+                # CROP SUCCESS
+                # =================================================
+
+                if crop_result.get(
+                    "success"
+                ):
+
+                    _logger.warning(
+                        "[AZURE CROP] COMPLETE "
+                        "→ EXISTING PDF AI "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.azure_crop_completed = True
+
+                    self.last_known_state = 'pdf_ai'
+
+                    self.state = 'pdf_ai'
+
+                # =================================================
+                # CROP FAILURE
+                # =================================================
+
+                else:
+
+                    _logger.warning(
+                        "[AZURE CROP] FAILED "
+                        f"| JOB={self.id}"
+                    )
+
+                    self.stage_retry_count += 1
+
+                    self.last_error = (
+                        crop_result.get(
+                            "error",
+                            "Azure crop failed"
+                        )
+                    )
+
+                    self.last_known_state = 'azure_crop'
+
+                    self.state = 'review'
+
+                self.flush_recordset()
+
+                self.env.cr.commit()
+
+                return
 
             # =============================================
             # PDF CREATE
@@ -1703,6 +3201,8 @@ class VendorImportJob(models.Model):
                 self.env.cr.commit()
 
                 return
+
+            
 
     #=========Variant color swatch logic===========================================
 
@@ -2794,7 +4294,724 @@ class VendorImportJob(models.Model):
 
             else:
 
-                self.state = "pdf_ai"
+                 # -------------------------------------------------
+                # FAMILY A EXTRACTION COMPLETE
+                #
+                # DO NOT GO DIRECTLY TO PDF AI.
+                #
+                # First send the complete Family A extraction
+                # through the OpenAI gateway review.
+                # -------------------------------------------------
+
+                _logger.warning(
+                    "[PDF EXTRACTION] FAMILY A COMPLETE "
+                    "→ FAMILY A REVIEW "
+                    "| JOB=%s "
+                    "| PAGES=%s",
+                    self.id,
+                    total_pages
+                )
+
+                self.last_known_state = "family_a_review"
+
+                self.state = "family_a_review"
+
+
+            try:
+
+                self._safe_commit_progress()
+
+                _logger.warning(
+                    f"[PDF SAVE] "
+                    f"SUCCESS "
+                    f"| state={self.state} "
+                    f"| current={self.current_page}"
+                )
+
+            except Exception as e:
+
+                _logger.exception(
+                    f"[PDF SAVE ERROR] "
+                    f"{str(e)}"
+                )
+
+
+        finally:
+
+            try:
+
+                if doc:
+                    doc.close()
+
+            except Exception:
+                pass
+
+
+            gc.collect()
+
+            _logger.warning(
+                "[PDF GC] COMPLETE"
+            )
+
+    #================AZURE EXTRACT PDF LOGIC================
+
+    def extract_pdf_azure(self):
+
+        import gc
+        import json
+        import io
+        import re
+        import fitz
+        import base64
+        import requests
+
+        _logger.warning(
+            f"[PDF EXTRACT] START "
+            f"| job={self.id}"
+        )
+
+        MAX_RETRIES = 3
+
+        # balanced batch size
+        BATCH_SIZE = 3
+
+        doc = None
+
+        try:
+
+            pdf_bytes = base64.b64decode(
+                self.pdf_file
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[PDF EXTRACT ERROR] "
+                f"PDF DECODE FAILED "
+                f"| {str(e)}"
+            )
+
+            self.state = "failed"
+
+            return
+
+
+        # =========================================
+        # OPEN PDF
+        # =========================================
+
+        try:
+
+            doc = fitz.open(
+                stream=pdf_bytes,
+                filetype="pdf"
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                f"[PDF EXTRACT ERROR] "
+                f"PDF OPEN FAILED "
+                f"| {str(e)}"
+            )
+
+            self.state = "failed"
+
+            return
+
+
+        try:
+
+            total_pages = len(doc)
+
+            self.total_pages = total_pages
+
+
+            _logger.warning(
+                f"[PDF EXTRACT] "
+                f"TOTAL PAGES={total_pages}"
+            )
+
+
+            # =====================================
+            # CRASH SAFE RECOVERY
+            # =====================================
+
+            existing_pages = self.env[
+                'vendor.import.page'
+            ].search([
+
+                ('job_id', '=', self.id)
+
+            ], order='page_number desc', limit=1)
+
+
+            if existing_pages:
+
+                # move to NEXT page
+                start_page = (
+                    existing_pages.page_number
+                )
+
+                _logger.warning(
+                    f"[PDF RECOVERY] "
+                    f"LAST SAVED PAGE="
+                    f"{existing_pages.page_number}"
+                )
+
+            else:
+
+                start_page = (
+                    self.current_page or 0
+                )
+
+                _logger.warning(
+                    f"[PDF RECOVERY] "
+                    f"NO SAVED PAGES"
+                )
+
+
+            # =====================================
+            # SAFETY CLAMP
+            # =====================================
+
+            if start_page >= total_pages:
+
+                start_page = total_pages
+
+
+            end_page = min(
+                start_page + BATCH_SIZE,
+                total_pages
+            )
+
+
+            _logger.warning(
+                f"[PDF BATCH] "
+                f"START={start_page + 1} "
+                f"| END={end_page}"
+            )
+
+
+            processed_count = 0
+
+
+            # =====================================
+            # PROCESS PAGES
+            # =====================================
+
+            for i in range(start_page, end_page):
+
+                _logger.warning(
+                    f"[PDF PAGE] "
+                    f"START PAGE={i + 1}"
+                )
+
+                page_success = False
+
+
+                # =================================
+                # SKIP IF ALREADY EXISTS
+                # =================================
+
+                existing = self.env[
+                    'vendor.import.page'
+                ].search([
+
+                    ('job_id', '=', self.id),
+
+                    ('page_number', '=', i + 1)
+
+                ], limit=1)
+
+
+                if existing:
+
+                    _logger.warning(
+                        f"[PDF PAGE] "
+                        f"SKIP EXISTING "
+                        f"| page={i + 1}"
+                    )
+
+                    self.current_page = i + 1
+
+                    continue
+
+
+                for attempt in range(MAX_RETRIES):
+
+                    single_pdf = None
+                    pdf_bytes_io = None
+
+                    try:
+
+                        _logger.warning(
+                            f"[PDF API] "
+                            f"PAGE={i + 1} "
+                            f"| ATTEMPT={attempt + 1}"
+                        )
+
+
+                        # =========================
+                        # SINGLE PAGE PDF
+                        # =========================
+
+                        single_pdf = fitz.open()
+
+                        single_pdf.insert_pdf(
+
+                            doc,
+
+                            from_page=i,
+
+                            to_page=i
+                        )
+
+
+                        pdf_bytes_io = io.BytesIO()
+
+                        single_pdf.save(
+                            pdf_bytes_io
+                        )
+
+                        pdf_bytes_io.seek(0)
+
+
+                        # =========================
+                        # API CALL
+                        # =========================
+
+                        response = requests.post(
+
+                            #"https://pdf-extractor-staging.onrender.com/extract",
+                            "https://pdf-extractor-staging.onrender.com/azure_evidence",
+
+                            files={
+
+                                "file": (
+
+                                    "page.pdf",
+
+                                    pdf_bytes_io,
+
+                                    "application/pdf"
+                                )
+                            },
+
+                            timeout=45
+                        )
+
+
+                        _logger.warning(
+                            f"[PDF API] "
+                            f"STATUS="
+                            f"{response.status_code} "
+                            f"| page={i + 1}"
+                        )
+
+
+                        if response.status_code != 200:
+
+                            continue
+
+
+                        page_data = response.json()
+
+                        # =====================================================
+                        # AZURE EVIDENCE RESPONSE
+                        # =====================================================
+
+                        if not isinstance(page_data, dict):
+
+                            _logger.warning(
+                                "[AZURE EVIDENCE] INVALID RESPONSE TYPE "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        if not page_data.get("success"):
+
+                            _logger.warning(
+                                "[AZURE EVIDENCE] REQUEST FAILED "
+                                f"| page={i + 1} "
+                                f"| error={page_data.get('error')}"
+                            )
+
+                            continue
+
+
+                        evidence = page_data.get(
+                            "evidence",
+                            {}
+                        )
+
+                        if not isinstance(evidence, dict):
+
+                            _logger.warning(
+                                "[AZURE EVIDENCE] "
+                                "MISSING EVIDENCE OBJECT "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        pages = evidence.get(
+                            "pages",
+                            []
+                        )
+
+
+                        if not pages:
+
+                            _logger.warning(
+                                f"[PDF PAGE] "
+                                f"EMPTY RESPONSE "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        normalized_blocks = []
+
+                        for p in pages:
+
+                            text = p.get(
+                                "text",
+                                ""
+                            )
+
+                            images = p.get(
+                                "images",
+                                []
+                            )
+
+                            # =====================================================
+                            # AZURE EVIDENCE
+                            # =====================================================
+                            # Azure has already detected/catalogued the figures.
+                            # DO NOT run legacy segmentation again.
+                            # =====================================================
+
+                            is_azure_evidence = bool(
+                                p.get("azure_evidence")
+                                or any(
+                                    isinstance(img, dict)
+                                    and img.get("azure_figure_id")
+                                    for img in images
+                                )
+                            )
+
+                            if is_azure_evidence:
+
+                                _logger.warning(
+                                    "[AZURE EVIDENCE] "
+                                    f"PAGE={i + 1} "
+                                    f"| FIGURES={len(images)} "
+                                    "| SKIPPING LEGACY SEGMENTATION"
+                                )
+
+                            else:
+
+                                images = self._segment_catalog_images(
+                                    images
+                                )
+
+                            # ============================
+                            # SEGMENT PIPELINE SUMMARY
+                            # ============================
+
+                            real = 0
+                            life = 0
+                            gallery = 0
+                            reject = 0
+
+                            for asset in images:
+
+                                if asset.get("is_lifestyle"):
+                                    life += 1
+                                else:
+                                    real += 1
+
+                                if asset.get("asset_role") == "gallery":
+                                    gallery += 1
+
+                                if asset.get("asset_role") == "reject":
+                                    reject += 1
+
+                            _logger.warning(
+
+                                "[SEGMENT PIPELINE] "
+
+                                f"total={len(images)} "
+
+                                f"real={real} "
+
+                                f"life={life} "
+
+                                f"gallery={gallery} "
+
+                                f"reject={reject}"
+
+                            )
+
+
+
+                            if (
+                                not text
+                                and
+                                not images
+                            ):
+                                continue
+
+
+                            price = ""
+
+                            stock = ""
+
+
+                            price_match = re.search(
+
+                                r'(\$|€|£)\s?\d+[.,]?\d*',
+
+                                text
+                            )
+
+
+                            if price_match:
+
+                                price = (
+                                    price_match.group(0)
+                                )
+
+
+                            stock_match = re.search(
+
+                                r'(stock|available)'
+                                r'\s*:?\s*'
+                                r'(\d+)'
+                                r'\s*(pcs|pieces)?',
+
+                                text,
+
+                                re.I
+                            )
+
+
+                            if stock_match:
+
+                                stock = (
+                                    stock_match.group(2)
+                                )
+
+
+                            normalized_blocks.append({
+
+                                "page": i + 1,
+
+                                "text": text,
+
+                                "price": price,
+
+                                "stock": stock,
+
+                                "images": images,
+
+                                # =================================================
+                                # PRESERVE ORIGINAL PAGE
+                                # =================================================
+
+                                "page_image": p.get(
+                                    "page_image",
+                                    ""
+                                ),
+
+                                "page_width": p.get(
+                                    "page_width",
+                                    0
+                                ),
+
+                                "page_height": p.get(
+                                    "page_height",
+                                    0
+                                ),
+
+                                # =================================================
+                                # AZURE EVIDENCE MARKER
+                                # =================================================
+
+                                "azure_evidence": bool(
+                                    is_azure_evidence
+                                )
+
+                            })
+
+
+                        if not normalized_blocks:
+
+                            _logger.warning(
+                                f"[PDF PAGE] "
+                                f"NO VALID BLOCKS "
+                                f"| page={i + 1}"
+                            )
+
+                            continue
+
+
+                        # ===========================
+                        # SAVE PAGE
+                        # ===========================
+
+
+                        all_page_images = []
+
+                        for block in normalized_blocks:
+
+                            all_page_images.extend(
+                                block.get("images", [])
+                            )
+
+                            self._safe_commit_progress()
+
+                        self.env[
+                            'vendor.import.page'
+                        ].create({
+
+                            'job_id': self.id,
+
+                            'page_number': i + 1,
+
+                            'extracted_json': json.dumps(
+                                normalized_blocks
+                            ),
+
+                            'page_images_json': json.dumps(
+                                all_page_images
+                            )
+                        })
+
+
+                        _logger.warning(
+                            f"[PDF PAGE] "
+                            f"SAVED "
+                            f"| page={i + 1}"
+                        )
+
+
+                        self.current_page = i + 1
+
+                        processed_count += 1
+
+                        page_success = True
+
+                        break
+
+
+                    except Exception as e:
+
+                        _logger.exception(
+                            f"[PDF PAGE ERROR] "
+                            f"page={i + 1} "
+                            f"| {str(e)}"
+                        )
+
+
+                    finally:
+
+                        try:
+
+                            if pdf_bytes_io:
+                                pdf_bytes_io.close()
+
+                        except Exception:
+                            pass
+
+
+                        try:
+
+                            if single_pdf:
+                                single_pdf.close()
+
+                        except Exception:
+                            pass
+
+
+                if not page_success:
+
+                    _logger.error(
+                        f"[PDF PAGE FAILED] "
+                        f"page={i + 1}"
+                    )
+
+
+            # =====================================
+            # SAVE BATCH ONCE
+            # =====================================
+
+            _logger.warning(
+                f"[PDF BATCH] "
+                f"PROCESSED="
+                f"{processed_count}"
+            )
+
+
+            # if self.current_page < total_pages:
+
+            #     self.state = "pdf_extracting"
+
+            if self.current_page < total_pages:
+
+                # =================================================
+                # PRESERVE THE CURRENT AZURE ROUTE
+                # =================================================
+
+                if self.state == "azure_fallback":
+
+                    _logger.warning(
+                        "[AZURE EXTRACT] CONTINUES "
+                        "→ AZURE FALLBACK "
+                        "| JOB=%s "
+                        "| PAGE=%s/%s",
+                        self.id,
+                        self.current_page,
+                        total_pages,
+                    )
+
+                    self.last_known_state = (
+                        "azure_fallback"
+                    )
+
+                    self.state = (
+                        "azure_fallback"
+                    )
+
+                else:
+
+                    # ---------------------------------------------
+                    # EXISTING NORMAL AZURE EXTRACTION FLOW
+                    # ---------------------------------------------
+
+                    self.state = "pdf_extracting"
+
+           
+            else:
+
+                _logger.warning(
+                    "[AZURE EXTRACT] COMPLETE "
+                    "→ AZURE REVIEW "
+                    "| JOB=%s "
+                    "| PAGES=%s",
+                    self.id,
+                    total_pages,
+                )
+
+                self.last_known_state = "azure_review"
+
+                self.state = "azure_review"
+
 
 
             try:
@@ -3738,7 +5955,422 @@ class VendorImportJob(models.Model):
 
             return crop
 
-    #===========correct_variant_image_indexes================
+    #======================validate_variant_image_assignments===============
+    def _validate_variant_image_assignments(
+        self,
+        products,
+        page_images
+    ):
+        """
+        Deterministically validate and repair
+        variant -> image assignments.
+
+        AI proposes the mapping.
+
+        Structured Azure asset metadata is used to
+        correct obvious contradictory mappings.
+        """
+
+        if not isinstance(
+            products,
+            list
+        ):
+            return products
+
+        if not isinstance(
+            page_images,
+            list
+        ):
+            return products
+
+        # =========================================================
+        # BUILD ASSET INDEX
+        # =========================================================
+
+        assets_by_index = {}
+
+        for asset in page_images:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            index = asset.get(
+                "clean_index"
+            )
+
+            if index is None:
+                continue
+
+            try:
+                index = int(
+                    index
+                )
+            except (
+                TypeError,
+                ValueError
+            ):
+                continue
+
+            assets_by_index[
+                index
+            ] = asset
+
+        # =========================================================
+        # PROCESS PRODUCTS
+        # =========================================================
+
+        for product in products:
+
+            if not isinstance(
+                product,
+                dict
+            ):
+                continue
+
+            variants = product.get(
+                "variants",
+                []
+            )
+
+            if not isinstance(
+                variants,
+                list
+            ):
+                continue
+
+            product_name = str(
+                product.get(
+                    "name",
+                    ""
+                )
+            ).strip()
+
+            # =====================================================
+            # BUILD EXPLICIT COLOR ASSET MAP
+            # =====================================================
+
+            color_assets = {}
+
+            for index, asset in assets_by_index.items():
+
+                color = str(
+                    asset.get(
+                        "dominant_color",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                if not color:
+                    continue
+
+                crop_id = str(
+                    asset.get(
+                        "crop_id",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                role = str(
+                    asset.get(
+                        "role",
+                        ""
+                    )
+                    or asset.get(
+                        "image_role",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                product_reference = str(
+                    asset.get(
+                        "product_reference",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                # -------------------------------------------------
+                # NEVER USE SUPPORTING ASSETS AS VARIANT ASSETS
+                # -------------------------------------------------
+
+                supporting_words = (
+                    "supporting",
+                    "pouch",
+                    "folded",
+                    "accessory",
+                    "packaging",
+                    "detail",
+                    "lifestyle",
+                    "marketing",
+                )
+
+                if any(
+                    word in role
+                    or word in crop_id
+                    or word in product_reference
+                    for word in supporting_words
+                ):
+                    continue
+
+                color_assets.setdefault(
+                    color,
+                    []
+                ).append(
+                    (
+                        index,
+                        asset
+                    )
+                )
+
+            # =====================================================
+            # VALIDATE EACH VARIANT
+            # =====================================================
+
+            for variant in variants:
+
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+                attributes = variant.get(
+                    "attributes",
+                    {}
+                )
+
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    continue
+
+                variant_color = str(
+                    attributes.get(
+                        "Color",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                if not variant_color:
+                    continue
+
+                candidates = color_assets.get(
+                    variant_color,
+                    []
+                )
+
+                if not candidates:
+                    continue
+
+                # =================================================
+                # CURRENT AI IMAGE
+                # =================================================
+
+                current_index = variant.get(
+                    "image_index"
+                )
+
+                current_asset = None
+
+                try:
+
+                    if current_index is not None:
+
+                        current_asset = assets_by_index.get(
+                            int(
+                                current_index
+                            )
+                        )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    current_asset = None
+
+                current_color = ""
+
+                if current_asset:
+
+                    current_color = str(
+                        current_asset.get(
+                            "dominant_color",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                # =================================================
+                # AI ALREADY CORRECT
+                # =================================================
+
+                if (
+                    current_asset
+                    and current_color == variant_color
+                ):
+
+                    _logger.warning(
+                        "[VARIANT IMAGE VALID] "
+                        "PRODUCT=%s "
+                        "| COLOR=%s "
+                        "| IMAGE=%s",
+                        product_name,
+                        variant_color,
+                        current_index
+                    )
+
+                    continue
+
+                # =================================================
+                # PREFER EXPLICIT AZURE CROP
+                # =================================================
+
+                crop_candidates = [
+                    item
+                    for item in candidates
+                    if item[1].get(
+                        "crop_id"
+                    )
+                ]
+
+                if crop_candidates:
+
+                    best_index = (
+                        crop_candidates[0][0]
+                    )
+
+                else:
+
+                    best_index = (
+                        candidates[0][0]
+                    )
+
+                old_index = current_index
+
+                variant[
+                    "image_index"
+                ] = best_index
+
+                _logger.warning(
+                    "[VARIANT IMAGE CORRECTED] "
+                    "PRODUCT=%s "
+                    "| COLOR=%s "
+                    "| OLD=%s "
+                    "| NEW=%s",
+                    product_name,
+                    variant_color,
+                    old_index,
+                    best_index
+                )
+
+        # =========================================================
+        # FINAL ONE-TO-ONE CONFLICT AUDIT
+        # =========================================================
+
+        for product in products:
+
+            variants = product.get(
+                "variants",
+                []
+            )
+
+            if not isinstance(
+                variants,
+                list
+            ):
+                continue
+
+            used_images = {}
+
+            for variant in variants:
+
+                attributes = variant.get(
+                    "attributes",
+                    {}
+                )
+
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    continue
+
+                color = str(
+                    attributes.get(
+                        "Color",
+                        ""
+                    )
+                    or ""
+                ).strip().lower()
+
+                image_index = variant.get(
+                    "image_index"
+                )
+
+                if (
+                    not color
+                    or image_index is None
+                ):
+                    continue
+
+                try:
+
+                    image_index = int(
+                        image_index
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    continue
+
+                if image_index in used_images:
+
+                    previous_color = (
+                        used_images[
+                            image_index
+                        ]
+                    )
+
+                    if previous_color != color:
+
+                        _logger.warning(
+                            "[VARIANT IMAGE CONFLICT] "
+                            "PRODUCT=%s "
+                            "| IMAGE=%s "
+                            "| COLOR_A=%s "
+                            "| COLOR_B=%s",
+                            product.get(
+                                "name"
+                            ),
+                            image_index,
+                            previous_color,
+                            color
+                        )
+
+                else:
+
+                    used_images[
+                        image_index
+                    ] = color
+
+        return products
+
+
+    # =========================================================
+    # CORRECT VARIANT IMAGE INDEXES
+    # =========================================================
     def _correct_variant_image_indexes(
         self,
         product_data,
@@ -3747,91 +6379,314 @@ class VendorImportJob(models.Model):
 
         try:
 
+            product_name = (
+                product_data.get("name")
+                or ""
+            ).strip()
+
             _logger.warning(
-                f"[VARIANT CORRECTION START] "
-                f"product={product_data.get('name')}"
+                "[VARIANT CORRECTION START] "
+                "JOB=%s | PRODUCT=%s | ASSETS=%s",
+                self.id,
+                product_name,
+                len(asset_pool)
             )
+
+            # =====================================================
+            # BUILD COLOR -> ACTUAL CLEAN INDEX LOOKUP
+            # =====================================================
 
             color_lookup = {}
 
-            for idx, asset in enumerate(asset_pool):
+            for asset in asset_pool:
 
-                _logger.warning(
-                    f"[CORRECTION ASSET] "
-                    f"idx={idx} "
-                    f"color={asset.get('dominant_color')}"
+                if not isinstance(
+                    asset,
+                    dict
+                ):
+                    continue
+
+                clean_index = asset.get(
+                    "clean_index"
                 )
 
-                color = str(
+                dominant_color = str(
                     asset.get(
-                        "dominant_color"
+                        "dominant_color",
+                        ""
                     )
-                        or ""
+                    or ""
                 ).strip().lower()
 
-                if color:
+                product_reference = str(
+                    asset.get(
+                        "product_reference",
+                        ""
+                    )
+                    or ""
+                ).strip()
 
-                    color_lookup[color] = idx
+                crop_id = asset.get(
+                    "crop_id"
+                )
+
+                _logger.warning(
+                    "[CORRECTION ASSET] "
+                    "JOB=%s | "
+                    "CLEAN_INDEX=%s | "
+                    "COLOR=%s | "
+                    "PRODUCT=%s | "
+                    "CROP=%s",
+                    self.id,
+                    clean_index,
+                    dominant_color,
+                    product_reference,
+                    crop_id
+                )
+
+                if (
+                    clean_index is None
+                    or clean_index == ""
+                ):
+                    continue
+
+                if dominant_color:
+
+                    color_lookup[
+                        dominant_color
+                    ] = clean_index
 
             _logger.warning(
-                f"[COLOR LOOKUP] "
-                f"{color_lookup}"
+                "[COLOR LOOKUP] "
+                "JOB=%s | %s",
+                self.id,
+                color_lookup
             )
+
+            # =====================================================
+            # CORRECT EACH VARIANT
+            # =====================================================
 
             for variant in product_data.get(
                 "variants",
                 []
             ):
 
-                _logger.warning(
-                    f"[CORRECTION VARIANT] "
-                    f"color={variant.get('attributes', {}).get('Color')} "
-                    f"image_index={variant.get('image_index')}"
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+                attributes = variant.get(
+                    "attributes",
+                    {}
                 )
 
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    attributes = {}
 
                 variant_color = str(
-                    variant.get(
-                        "attributes",
-                        {}
-                    ).get(
-                        "Color"
+                    attributes.get(
+                        "Color",
+                        ""
                     )
                     or ""
                 ).strip().lower()
 
-                if variant_color in color_lookup:
+                old_index = variant.get(
+                    "image_index"
+                )
 
-                    old_index = variant.get(
-                        "image_index"
+                _logger.warning(
+                    "[CORRECTION VARIANT] "
+                    "JOB=%s | "
+                    "COLOR=%s | "
+                    "OLD_INDEX=%s",
+                    self.id,
+                    variant_color,
+                    old_index
+                )
+
+                if not variant_color:
+                    continue
+
+                # =================================================
+                # FIRST PRIORITY:
+                # FIND AZURE CROP WHOSE PRODUCT REFERENCE
+                # EXPLICITLY MATCHES THIS VARIANT COLOR.
+                #
+                # Example:
+                #
+                # Sling Eco - Grey
+                # Sling Eco - Black
+                #
+                # This is stronger than dominant_color alone.
+                # =================================================
+
+                explicit_match = None
+
+                for asset in asset_pool:
+
+                    if not isinstance(
+                        asset,
+                        dict
+                    ):
+                        continue
+
+                    clean_index = asset.get(
+                        "clean_index"
                     )
+
+                    if (
+                        clean_index is None
+                        or clean_index == ""
+                    ):
+                        continue
+
+                    product_reference = str(
+                        asset.get(
+                            "product_reference",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    crop_id = str(
+                        asset.get(
+                            "crop_id",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    # -------------------------------------------------
+                    # Do not use pouch/folded/supporting assets as the
+                    # explicit variant image.
+                    # -------------------------------------------------
+
+                    supporting_text = (
+                        f"{product_reference} "
+                        f"{crop_id}"
+                    )
+
+                    if any(
+                        keyword in supporting_text
+                        for keyword in (
+                            "pouch",
+                            "folded",
+                            "supporting",
+                            "gallery"
+                        )
+                    ):
+                        continue
+
+                    if (
+                        variant_color
+                        and
+                        variant_color in product_reference
+                    ):
+
+                        explicit_match = asset
+
+                        _logger.warning(
+                            "[CORRECTION EXPLICIT MATCH] "
+                            "JOB=%s | "
+                            "COLOR=%s | "
+                            "CLEAN_INDEX=%s | "
+                            "PRODUCT=%s | "
+                            "CROP=%s",
+                            self.id,
+                            variant_color,
+                            clean_index,
+                            asset.get(
+                                "product_reference"
+                            ),
+                            asset.get(
+                                "crop_id"
+                            )
+                        )
+
+                        break
+
+                # =================================================
+                # SECOND PRIORITY:
+                # MATCH BY DOMINANT COLOR
+                # =================================================
+
+                if explicit_match:
+
+                    new_index = explicit_match.get(
+                        "clean_index"
+                    )
+
+                elif variant_color in color_lookup:
 
                     new_index = color_lookup[
                         variant_color
                     ]
 
-                    variant["image_index"] = (
+                    _logger.warning(
+                        "[CORRECTION COLOR MATCH] "
+                        "JOB=%s | "
+                        "COLOR=%s | "
+                        "CLEAN_INDEX=%s",
+                        self.id,
+                        variant_color,
                         new_index
                     )
 
+                else:
+
                     _logger.warning(
-                        f"[CORRECTION APPLIED] "
-                        f"color={variant_color} "
-                        f"old={old_index} "
-                        f"new={new_index}"
+                        "[CORRECTION NO MATCH] "
+                        "JOB=%s | "
+                        "COLOR=%s | "
+                        "KEEPING_INDEX=%s",
+                        self.id,
+                        variant_color,
+                        old_index
                     )
+
+                    continue
+
+                # =================================================
+                # APPLY CORRECTED CLEAN INDEX
+                # =================================================
+
+                variant[
+                    "image_index"
+                ] = new_index
+
+                _logger.warning(
+                    "[CORRECTION APPLIED] "
+                    "JOB=%s | "
+                    "COLOR=%s | "
+                    "OLD=%s | "
+                    "NEW_CLEAN_INDEX=%s",
+                    self.id,
+                    variant_color,
+                    old_index,
+                    new_index
+                )
 
             return product_data
 
         except Exception as e:
 
             _logger.warning(
-                f"[VARIANT CORRECTION FAILED] "
-                f"{str(e)}"
+                "[VARIANT CORRECTION FAILED] "
+                "JOB=%s | %s",
+                self.id,
+                str(e),
+                exc_info=True
             )
 
             return product_data
-
+    
     #==========build_product_family========================
     def _build_product_family(
         self,
@@ -6318,7 +9173,6 @@ class VendorImportJob(models.Model):
 
 
     # =========== PDF OPENAI BACKUP ================================
-    # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
 
@@ -6614,23 +9468,21 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # BUILD PAGE DATA
+        # BUILD PAGE IMAGE ASSET POOL
         # =====================================================
-
-        page_text = "\n".join([
-
-            p.get("text", "")
-
-            for p in page_blocks
-
-        ])
-
 
         page_images = []
 
+        # =====================================================
+        # 1. LOAD ORIGINAL EXTRACTED IMAGES
+        # =====================================================
+
         for p in page_blocks:
 
-            raw_images = p.get("images", [])
+            raw_images = p.get(
+                "images",
+                []
+            )
 
             # =====================================
             # NORMALIZE STRUCTURED ASSETS
@@ -6642,7 +9494,9 @@ class VendorImportJob(models.Model):
 
                     if img.get("image"):
 
-                        page_images.append(img)
+                        page_images.append(
+                            img
+                        )
 
                 elif isinstance(img, str):
 
@@ -6654,6 +9508,198 @@ class VendorImportJob(models.Model):
 
                         "is_collage": False
                     })
+
+        # =========================================================
+        # PRESERVE ENRICHED AZURE CROP OBJECTS
+        # =========================================================
+        #
+        # Azure crops must retain ALL metadata.
+        #
+        # Do not reduce them to:
+        #
+        #     {"image": "..."}
+        #
+        # because PDF Create and variant correction need:
+        #
+        #     crop_id
+        #     product_reference
+        #     figure_id
+        #     purpose
+        #     azure_crop
+        #     color (when available)
+        #     clean_index
+        #
+        # The image itself is not enough to reliably map variants.
+        # =========================================================
+
+        azure_crop_assets = []
+
+        for asset in page_images:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            if not asset.get(
+                "azure_crop"
+            ):
+                continue
+
+            if not asset.get(
+                "crop_id"
+            ):
+                continue
+
+            # Keep the ORIGINAL dictionary.
+            # Do not create a reduced copy.
+
+            azure_crop_assets.append(
+                asset
+            )
+
+        _logger.warning(
+            "[PDF AI] AZURE CROP METADATA PRESERVED "
+            "| PAGE=%s "
+            "| COUNT=%s",
+            next_record.page_number,
+            len(
+                azure_crop_assets
+            )
+        )
+
+        for asset in azure_crop_assets:
+
+            _logger.warning(
+                "[PDF AI] AZURE CROP META "
+                "| PAGE=%s "
+                "| CROP=%s "
+                "| PRODUCT=%s "
+                "| COLOR=%s "
+                "| FIGURE=%s "
+                "| PURPOSE=%s "
+                "| CLEAN_INDEX=%s",
+                next_record.page_number,
+                asset.get(
+                    "crop_id"
+                ),
+                asset.get(
+                    "product_reference"
+                ),
+                asset.get(
+                    "color"
+                ),
+                asset.get(
+                    "figure_id"
+                ),
+                asset.get(
+                    "purpose"
+                ),
+                asset.get(
+                    "clean_index"
+                )
+            )
+
+        # =====================================================
+        # 2. LOAD PERSISTED AZURE CROP ASSETS
+        # =====================================================
+        #
+        # page_images_json contains persisted page assets.
+        #
+        # IMPORTANT:
+        # Do NOT blindly append every persisted asset because
+        # the original extracted images may already exist inside
+        # extracted_json.
+        #
+        # Only add assets explicitly marked as Azure crops.
+        # =====================================================
+
+        try:
+
+            persisted_assets = json.loads(
+                next_record.page_images_json
+                or "[]"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                "[PDF AI] PAGE IMAGE JSON LOAD FAILED "
+                "| PAGE=%s | %s",
+                next_record.page_number,
+                str(e)
+            )
+
+            persisted_assets = []
+
+
+        if not isinstance(
+            persisted_assets,
+            list
+        ):
+
+            persisted_assets = []
+
+
+        azure_crop_assets = []
+
+        for asset in persisted_assets:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+
+                continue
+
+            if not asset.get(
+                "image"
+            ):
+
+                continue
+
+            if asset.get(
+                "azure_crop"
+            ) is not True:
+
+                continue
+
+            azure_crop_assets.append(
+                asset
+            )
+
+
+        _logger.warning(
+            "[PDF AI] PERSISTED AZURE CROPS "
+            "| PAGE=%s | COUNT=%s",
+            next_record.page_number,
+            len(azure_crop_assets)
+        )
+
+
+        # =====================================================
+        # 3. ADD AZURE CROP ASSETS
+        # =====================================================
+
+        for asset in azure_crop_assets:
+
+            page_images.append(
+                asset
+            )
+
+
+        _logger.warning(
+            "[PDF AI] COMBINED PAGE ASSETS "
+            "| PAGE=%s "
+            "| ORIGINAL=%s "
+            "| AZURE_CROPS=%s "
+            "| TOTAL=%s",
+            next_record.page_number,
+            len(page_images) - len(azure_crop_assets),
+            len(azure_crop_assets),
+            len(page_images)
+        )
 
         # =====================================================
         # VALIDATE PAGE IMAGES
@@ -6724,6 +9770,96 @@ class VendorImportJob(models.Model):
 
 
         page_images = normalized_page_images
+
+        # =========================================================
+        # BUILD STRUCTURED IMAGE ASSET IDENTITY MAP
+        # =========================================================
+
+        asset_identity_lines = []
+
+        for asset in page_images:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            clean_index = asset.get(
+                "clean_index"
+            )
+
+            if clean_index is None:
+                continue
+
+            azure_figure_id = (
+                asset.get(
+                    "azure_figure_id"
+                )
+                or ""
+            )
+
+            crop_id = (
+                asset.get(
+                    "crop_id"
+                )
+                or ""
+            )
+
+            product_reference = (
+                asset.get(
+                    "product_reference"
+                )
+                or ""
+            )
+
+            dominant_color = (
+                asset.get(
+                    "dominant_color"
+                )
+                or ""
+            )
+
+            image_role = (
+                asset.get(
+                    "role"
+                )
+                or asset.get(
+                    "image_role"
+                )
+                or ""
+            )
+
+            azure_caption = (
+                asset.get(
+                    "azure_caption"
+                )
+                or ""
+            )
+
+            asset_identity_lines.append(
+                f"""
+        INDEX {clean_index}
+        - Azure Figure ID: {azure_figure_id}
+        - Crop ID: {crop_id}
+        - Product Reference: {product_reference}
+        - Color: {dominant_color}
+        - Image Role: {image_role}
+        - Azure Caption: {azure_caption}
+        """.strip()
+            )
+
+        asset_identity_map = "\n\n".join(
+            asset_identity_lines
+        )
+
+        _logger.warning(
+            "[PDF AI ASSET IDENTITY MAP] "
+            "PAGE=%s\n%s",
+            next_record.page_number,
+            asset_identity_map
+        )
+
         # =====================================
         # CLASSIFY IMAGES BEFORE AI
         # =====================================
@@ -6982,6 +10118,61 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
+        # VISUAL INPUT INSTRUCTIONS
+        # =====================================================
+
+        visual_reference_instruction = """
+
+        IMPORTANT VISUAL INPUT STRUCTURE:
+
+        The FIRST image supplied to you is the COMPLETE
+        ORIGINAL CATALOGUE PAGE.
+
+        The remaining images are Azure-detected catalogue
+        figure assets extracted from that page.
+
+        The original page is provided ONLY as a visual
+        reference for:
+
+        - product grouping
+        - spatial relationships
+        - variant relationships
+        - missing or partial figure context
+        - text/image relationships
+        - understanding the complete catalogue layout
+
+        IMPORTANT IMAGE INDEX RULE:
+
+        The original page is NOT part of the product image
+        index system.
+
+        When returning:
+
+        - hero_image_index
+        - gallery_image_indexes
+        - variant image_index
+
+        use indexes ONLY from the Azure figure assets.
+
+        Therefore:
+
+        image_index 0 = first Azure figure
+        image_index 1 = second Azure figure
+        image_index 2 = third Azure figure
+        and so on.
+
+        NEVER use the original full-page image as:
+        - hero_image_index
+        - gallery_image_indexes
+        - variant image_index
+
+        Use the original page to understand the page.
+        Use Azure figure images for product image references.
+
+        """
+
+
+        # =====================================================
         # PROMPT
         # =====================================================
         context_summary = f"""
@@ -7034,8 +10225,40 @@ class VendorImportJob(models.Model):
 
 
         prompt = context_summary + f"""
-        You are an AI ecommerce catalog extraction engine.
 
+        ==================================================
+        STRUCTURED IMAGE ASSET IDENTITY
+        ==================================================
+
+        The following metadata identifies the available image assets.
+
+        Use this information together with the visual images when assigning
+        hero_image_index, gallery_image_indexes, and variant image_index.
+
+        IMPORTANT:
+
+        The structured metadata identifies the known identity and purpose
+        of each asset.
+
+        If an asset is explicitly identified as belonging to a specific
+        variant/color, use that asset for that variant.
+
+        Do NOT replace a color-specific asset with a generic hero image.
+
+        Do NOT assign a Grey-specific asset to Black.
+
+        Do NOT assign a Black-specific asset to Grey.
+
+        Do NOT turn a supporting, folded, pouch, accessory, detail,
+        lifestyle, packaging, or marketing asset into a variant image.
+
+        AVAILABLE ASSETS:
+
+        {asset_identity_map}
+
+        ==================================================
+
+        You are an AI ecommerce catalog extraction engine.
 
         Analyze:
         - catalog page text
@@ -7101,21 +10324,252 @@ class VendorImportJob(models.Model):
         PRODUCT GROUPING RULES
         ==================================================
 
-        Group products as variants ONLY when:
-        - same product shape
-        - same structure
-        - same dimensions
-        - same branding
-        - same item or product fall on same page
-        - only color/material/size changes
+       1. Group products as variants ONLY when:
+            - same product shape
+            - same structure
+            - same dimensions
+            - same branding
+            - same item or product fall on same page
+            - only color/material/size changes
 
-        Examples:
-        - same cap in different colors
-        - same polo shirt in different colors
-        - same bottle in different colors
+            Examples:
+            - same cap in different colors
+            - same polo shirt in different colors
+            - same bottle in different colors
 
-        Otherwise:
-        create separate products.
+            Otherwise:
+            create separate products.
+
+
+        2. PRODUCT GROUPING AND ODOO VARIANT CREATION ARE SEPARATE
+        DECISIONS.
+
+        A product may contain multiple images without those images
+        representing multiple Odoo variants.
+
+        3. ONLY CREATE A VARIANT WHEN THE CATALOGUE CLEARLY INDICATES
+        THAT THE PRODUCT IS A REAL SELECTABLE VARIANT.
+
+        Examples include:
+        - explicitly listed colors
+        - explicitly listed sizes
+        - explicitly listed material/options
+        - clearly distinguishable product options that customers
+            would actually select when purchasing the product.
+
+        4. NEVER CREATE AN ODOO VARIANT MERELY BECAUSE MULTIPLE IMAGES
+        ARE ASSOCIATED WITH THE SAME PRODUCT.
+
+        5. NEVER CREATE AN ODOO VARIANT FROM A SUPPORTING IMAGE.
+
+        If an image is classified as:
+        - supporting_image
+        - gallery/supporting asset
+        - included accessory
+        - packaging
+        - pouch/carry case
+        - folded representation
+        - detail view
+        - usage/lifestyle image
+        - marketing image
+        - logo/icon/graphic
+
+        it MUST NOT become an Odoo variant merely because it is
+        visually different from the main product.
+
+        6. SUPPORTING IMAGES BELONG TO THE PRODUCT GALLERY.
+
+        If a supporting image is useful for representing the product,
+        retain it as a gallery/supporting image through the image
+        assignment structure, but do NOT create a variant from it.
+
+        7. A DIFFERENT VISUAL REPRESENTATION DOES NOT AUTOMATICALLY MEAN
+        A DIFFERENT VARIANT.
+
+        For example, the following may all belong to one product
+        without creating separate variants:
+
+        - front view
+        - rear view
+        - folded view
+        - pouch/carry case
+        - detail view
+        - product shown in use
+
+        8. DIFFERENT COLOR PRODUCTS REQUIRE SPECIAL CARE.
+
+        If Grey and Black versions are clearly shown as actual
+        selectable product options, they may be represented as
+        separate Color variants.
+
+        However, if one of the images is merely a supporting,
+        folded, detail, lifestyle, or marketing representation,
+        it MUST NOT be promoted to a variant.
+
+        9. DO NOT CREATE A VARIANT JUST TO GIVE AN IMAGE SOMEWHERE TO GO.
+
+        An image without a legitimate variant relationship must remain
+        a gallery/supporting image.
+
+        10. NEVER INVENT VARIANT ATTRIBUTES FROM IMAGE DIFFERENCES ALONE.
+
+        Do not infer a new Color, Size, Material, or Option solely
+        because two images look different.
+
+        11. THE NUMBER OF ODOO VARIANTS MUST BE JUSTIFIED BY PRODUCT
+            OPTIONS, NOT BY IMAGE COUNT.
+
+            For example:
+
+            4 images ≠ 4 variants
+            3 images ≠ 3 variants
+            2 colors + 4 supporting images ≠ 6 variants
+
+        12. Before creating a variant, ask:
+
+            "Would a customer actually select this as a product option
+            when purchasing this item?"
+
+            If NO, do not create a variant.
+
+        13. If an image represents an included accessory rather than a
+            selectable product option, keep it as a supporting/gallery
+            image and do not create a variant.
+
+        14. If the product has only one legitimate purchasable option,
+            do not manufacture additional variants from its images.
+
+        15. Preserve all useful images. Rejecting an image as a variant
+            does NOT mean discarding it. It should remain available as a
+            gallery/supporting asset where appropriate.
+
+        16. The final "variants" array must contain ONLY legitimate
+            purchasable product variants.
+
+        17. The final "images" array may contain additional supporting
+            and gallery images that are NOT variants.
+
+        18. NEVER use the variants array as a mechanism for assigning
+            every available image to the product.
+
+        19. If uncertain whether an image represents a variant or a
+            supporting/gallery image, prefer supporting/gallery image
+            rather than creating an unsupported Odoo variant.
+        
+
+        20. A variant must only reference an image that clearly and specifically
+            represents that variant.
+
+        21. Do NOT assign the same image_index to multiple color variants when
+            the image does not individually and clearly represent each variant.
+
+        22. In particular, never use a shared/group image, hero image, collage,
+            multi-color image, supporting image, lifestyle image, or another
+            variant's image as the image_index for multiple variants.
+
+        23. If multiple variants exist but a clean, variant-specific image is not
+            available, leave image_index unassigned rather than reusing an
+            incorrect image.
+
+        24. The existence of a variant does NOT imply that it must have an image.
+            Image assignment must be based on actual visual evidence.
+
+        25. If a single image visibly contains multiple color variants, treat it
+            as a shared/group or gallery image unless the image has already been
+            separated into individual variant assets by cropping.
+
+        26. VARIANT IMAGE OUTPUT RULE
+
+        27. For every variant:
+
+            - Use image_index only when a valid variant-specific image exists.
+            - Otherwise omit image_index from that variant object.
+
+            NEVER fabricate, duplicate, or reuse an image_index merely to ensure
+            that every variant has an image.
+
+        28. A variant image_index MUST identify an image that visually represents
+            that exact variant.
+
+        29. NEVER assign the same image_index to multiple color variants merely
+            because the image shows the same product family.
+
+        30. If separate images/crops exist for different colors, each color variant
+            MUST use its corresponding color-specific image.
+
+        31. A supporting image, folded image, pouch image, detail image, accessory
+            image, lifestyle image, or figure showing another representation MUST
+            NOT be used as a variant image.
+
+            Such images may only be assigned to gallery_image_indexes.
+
+        32. If the main product images clearly show separate color variants,
+            preserve those separate variant images even when they belong to the
+            same Azure figure.
+
+            Do not use hero_image_index as a variant image unless that exact image
+            visually represents the variant.
+
+       33. STRUCTURED IMAGE ASSET IDENTITY
+
+            Each available image asset may contain structured metadata such as:
+
+            - clean_index
+            - Azure figure ID
+            - crop ID
+            - product reference
+            - color
+            - image role
+            - Azure caption
+
+            Use this metadata when determining image ownership.
+
+            The structured asset metadata identifies the known purpose and identity
+            of the image. Do not ignore it and rely only on visual similarity.
+
+
+        34. COLOR-SPECIFIC ASSET PRIORITY
+
+            If a color-specific asset exists for a variant, that asset has priority
+            over a generic hero image or shared product image.
+
+            For example:
+
+            Grey variant → Grey-specific asset
+            Black variant → Black-specific asset
+
+            Never substitute the hero image merely because it is visually stronger.
+
+
+        35. SUPPORTING ASSET PRIORITY
+
+            An asset identified as supporting, folded, pouch, accessory, packaging,
+            detail, lifestyle, or marketing must remain a gallery/supporting asset.
+
+            Its visual similarity to a product variant does not override its
+            structured supporting role.
+
+
+        36. ONE-TO-ONE VARIANT IMAGE RULE
+
+            When separate color-specific assets exist, each color variant must use
+            its own corresponding asset.
+
+            Do not reuse one asset for multiple color variants when separate
+            variant-specific assets exist.
+
+
+        37. UNSAFE MAPPING RULE
+
+            If the correct variant-specific image cannot be established safely,
+            leave image_index as null.
+
+            Never solve uncertainty by:
+
+            - reusing the hero image
+            - reusing another variant's image
+            - assigning the same image to multiple colors
+            - assigning a supporting image to a variant
 
         ==================================================
         TITLE RULES
@@ -7352,7 +10806,7 @@ class VendorImportJob(models.Model):
         PAGE TEXT
         ==================================================
 
-        {page_text}
+        {page_context}
 
         ==================================================
         DETECTED PRICE
@@ -7368,6 +10822,12 @@ class VendorImportJob(models.Model):
 
         """
 
+        prompt = (
+            visual_reference_instruction
+            + "\n\n"
+            + prompt
+        )
+
         # =====================================================
         # AI CALL
         # =====================================================
@@ -7378,6 +10838,38 @@ class VendorImportJob(models.Model):
             MAX_IMAGES = 24
 
             image_inputs = []
+
+            # =====================================================
+            # ORIGINAL PAGE VISUAL REFERENCE
+            # =====================================================
+            #
+            # IMPORTANT:
+            # page_image is added to OpenAI input ONLY.
+            #
+            # It is NOT added to page_images.
+            # Therefore it does NOT affect image_index mapping.
+            # =====================================================
+
+            if page_image:
+
+                image_inputs.append({
+
+                    "type":
+                        "input_image",
+
+                    "image_url":
+                        (
+                            "data:image/png;base64,"
+                            + page_image
+                        )
+
+                })
+
+                _logger.warning(
+                    "[PDF AI] ORIGINAL PAGE "
+                    "ADDED AS VISUAL REFERENCE "
+                    f"| size={len(page_image)}"
+                )
 
 
             def ai_visibility_score(asset):
@@ -7690,6 +11182,7 @@ class VendorImportJob(models.Model):
                                 f"color={color} "
                                 f"image_index={image_index}"
                             )
+                            
 
                     #==========prevent variant duplicate==========
                     seen_colors = set()
@@ -7994,6 +11487,31 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
+        # FINAL VARIANT IMAGE VALIDATION
+        # =====================================================
+        #
+        # IMPORTANT:
+        #
+        # At this point:
+        #
+        # - OpenAI has already returned the JSON
+        # - `parsed` contains the products/variants
+        # - page_images contains the actual image assets
+        # - clean_index values have already been assigned
+        #
+        # We now validate/correct variant -> image mapping
+        # BEFORE the results are saved and sent to PDF creation.
+        #
+        # Do NOT use `products` here.
+        # The actual variable in this method is `parsed`.
+        # =====================================================
+
+        parsed = self._validate_variant_image_assignments(
+            parsed,
+            page_images
+        )
+
+        # =====================================================
         # SMART IMAGE MATCHING
         # =====================================================
 
@@ -8191,11 +11709,8035 @@ class VendorImportJob(models.Model):
         self.env.cr.commit()
 
         return
-   
 
-    # =====================================================
+    # ==========================================================
+    # AZURE / OPENAI VISUAL DEBUGGER
+    # ==========================================================
+
+    def _debug_save_visual_asset(
+        self,
+        *,
+        label,
+        image_bytes,
+        source,
+        figure_id=None,
+        page_number=None,
+        bbox=None,
+    ):
+        """
+        Diagnostic only.
+
+        Saves the exact image that is being inspected/sent to
+        OpenAI as an Odoo attachment and logs:
+
+            - source
+            - figure ID
+            - page
+            - byte size
+            - SHA256
+            - width
+            - height
+            - mime type
+            - Azure bbox
+
+        This does NOT modify the production extraction flow.
+        """
+
+        if not image_bytes:
+
+            _logger.warning(
+                "[AZURE DEBUG] EMPTY IMAGE | "
+                "JOB=%s | LABEL=%s | SOURCE=%s",
+                self.id,
+                label,
+                source,
+            )
+
+            return None
+
+        try:
+
+            image_hash = hashlib.sha256(
+                image_bytes
+            ).hexdigest()
+
+            image_size = len(
+                image_bytes
+            )
+
+            width = None
+            height = None
+            detected_format = None
+
+            try:
+
+                with Image.open(
+                    io.BytesIO(image_bytes)
+                ) as image:
+
+                    width, height = (
+                        image.size
+                    )
+
+                    detected_format = (
+                        image.format
+                    )
+
+            except Exception as image_error:
+
+                _logger.warning(
+                    "[AZURE DEBUG] "
+                    "IMAGE METADATA FAILED | "
+                    "JOB=%s | LABEL=%s | ERROR=%s",
+                    self.id,
+                    label,
+                    image_error,
+                )
+
+            _logger.warning(
+                "[AZURE DEBUG] "
+                "IMAGE | "
+                "JOB=%s | "
+                "LABEL=%s | "
+                "SOURCE=%s | "
+                "PAGE=%s | "
+                "FIGURE=%s | "
+                "WIDTH=%s | "
+                "HEIGHT=%s | "
+                "FORMAT=%s | "
+                "BYTES=%s | "
+                "SHA256=%s | "
+                "BBOX=%s",
+                self.id,
+                label,
+                source,
+                page_number,
+                figure_id,
+                width,
+                height,
+                detected_format,
+                image_size,
+                image_hash,
+                bbox,
+            )
+
+            # --------------------------------------------------
+            # Avoid creating duplicate attachments
+            # --------------------------------------------------
+
+            existing = self.env[
+                "ir.attachment"
+            ].sudo().search(
+                [
+                    (
+                        "res_model",
+                        "=",
+                        self._name,
+                    ),
+                    (
+                        "res_id",
+                        "=",
+                        self.id,
+                    ),
+                    (
+                        "checksum",
+                        "=",
+                        image_hash,
+                    ),
+                ],
+                limit=1,
+            )
+
+            if existing:
+
+                _logger.warning(
+                    "[AZURE DEBUG] "
+                    "ATTACHMENT EXISTS | "
+                    "JOB=%s | "
+                    "LABEL=%s | "
+                    "ATTACHMENT=%s",
+                    self.id,
+                    label,
+                    existing.id,
+                )
+
+                return existing
+
+            extension = (
+                "png"
+                if detected_format == "PNG"
+                else "jpg"
+            )
+
+            filename = (
+                "azure_debug_"
+                f"job_{self.id}_"
+                f"{label}_"
+                f"{image_hash[:12]}."
+                f"{extension}"
+            )
+
+            attachment = self.env[
+                "ir.attachment"
+            ].sudo().create({
+
+                "name": filename,
+
+                "type": "binary",
+
+                "datas": base64.b64encode(
+                    image_bytes
+                ).decode("ascii"),
+
+                "res_model": self._name,
+
+                "res_id": self.id,
+
+                "mimetype": (
+                    "image/png"
+                    if extension == "png"
+                    else "image/jpeg"
+                ),
+
+                "description": (
+                    "AZURE/OPENAI visual "
+                    "debug asset | "
+                    f"source={source} | "
+                    f"page={page_number} | "
+                    f"figure={figure_id} | "
+                    f"sha256={image_hash}"
+                ),
+            })
+
+            _logger.warning(
+                "[AZURE DEBUG] "
+                "ATTACHMENT CREATED | "
+                "JOB=%s | "
+                "LABEL=%s | "
+                "ATTACHMENT=%s | "
+                "NAME=%s",
+                self.id,
+                label,
+                attachment.id,
+                filename,
+            )
+
+            return attachment
+
+        except Exception as e:
+
+            _logger.exception(
+                "[AZURE DEBUG] "
+                "FAILED | "
+                "JOB=%s | "
+                "LABEL=%s | "
+                "ERROR=%s",
+                self.id,
+                label,
+                e,
+            )
+
+            return None
+
+    #===========image decoder============================================
+    def _debug_decode_image_base64(
+        self,
+        value,
+    ):
+        """
+        Convert either:
+
+            raw base64
+            data:image/png;base64,...
+
+        into bytes.
+        """
+
+        if not value:
+
+            return None
+
+        try:
+
+            value = str(
+                value
+            )
+
+            if value.startswith(
+                "data:"
+            ):
+
+                value = value.split(
+                    ",",
+                    1
+                )[1]
+
+            return base64.b64decode(
+                value
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                "[AZURE DEBUG] "
+                "BASE64 DECODE FAILED | "
+                "JOB=%s | ERROR=%s",
+                self.id,
+                e,
+            )
+
+            return None
+
+    #================Azure evidence debugger================================
+
+    def _debug_azure_audit_pages(
+        self,
+        audit_pages,
+    ):
+        """
+        Diagnostic inspection of the exact Azure evidence
+        already loaded by _review_azure_evidence_with_openai().
+
+        This does NOT modify audit_pages or image_inputs.
+        """
+
+        _logger.warning(
+            "[AZURE DEBUG] ======================================="
+        )
+
+        _logger.warning(
+            "[AZURE DEBUG] EVIDENCE INVENTORY START | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[AZURE DEBUG] TOTAL AUDIT PAGES=%s | JOB=%s",
+            len(audit_pages)
+            if isinstance(audit_pages, list)
+            else 0,
+            self.id,
+        )
+
+        if not isinstance(
+            audit_pages,
+            list,
+        ):
+            _logger.error(
+                "[AZURE DEBUG] "
+                "audit_pages is not a list | JOB=%s",
+                self.id,
+            )
+
+            return
+
+        # ======================================================
+        # PAGE-BY-PAGE INSPECTION
+        # ======================================================
+
+        for page_data in audit_pages:
+
+            if not isinstance(
+                page_data,
+                dict,
+            ):
+                continue
+
+            page_number = page_data.get(
+                "page"
+            )
+
+            page_width = page_data.get(
+                "page_width",
+                0,
+            )
+
+            page_height = page_data.get(
+                "page_height",
+                0,
+            )
+
+            original_index = page_data.get(
+                "original_page_visual_index"
+            )
+
+            figures = page_data.get(
+                "figures",
+                []
+            )
+
+            text = page_data.get(
+                "text",
+                ""
+            )
+
+            azure_evidence = page_data.get(
+                "azure_evidence",
+                {}
+            )
+
+            _logger.warning(
+                "[AZURE DEBUG] PAGE | "
+                "JOB=%s | "
+                "PAGE=%s | "
+                "PAGE_SIZE=%sx%s | "
+                "ORIGINAL_VISUAL_INDEX=%s | "
+                "FIGURE_COUNT=%s | "
+                "TEXT_LENGTH=%s",
+                self.id,
+                page_number,
+                page_width,
+                page_height,
+                original_index,
+                len(figures)
+                if isinstance(
+                    figures,
+                    list,
+                )
+                else 0,
+                len(text)
+                if isinstance(
+                    text,
+                    str,
+                )
+                else 0,
+            )
+
+            # ==================================================
+            # ORIGINAL PAGE VISUAL
+            # ==================================================
+
+            if original_index is not None:
+
+                _logger.warning(
+                    "[AZURE DEBUG] ORIGINAL PAGE | "
+                    "JOB=%s | "
+                    "PAGE=%s | "
+                    "IMAGE_INPUT_INDEX=%s",
+                    self.id,
+                    page_number,
+                    original_index,
+                )
+
+            # ==================================================
+            # AZURE FIGURES
+            # ==================================================
+
+            if not isinstance(
+                figures,
+                list,
+            ):
+                continue
+
+            for figure in figures:
+
+                if not isinstance(
+                    figure,
+                    dict,
+                ):
+                    continue
+
+                visual_index = figure.get(
+                    "visual_index"
+                )
+
+                figure_id = figure.get(
+                    "azure_figure_id"
+                )
+
+                x = figure.get(
+                    "x",
+                    0,
+                )
+
+                y = figure.get(
+                    "y",
+                    0,
+                )
+
+                width = figure.get(
+                    "width",
+                    0,
+                )
+
+                height = figure.get(
+                    "height",
+                    0,
+                )
+
+                azure_bbox = figure.get(
+                    "azure_bbox"
+                )
+
+                _logger.warning(
+                    "[AZURE DEBUG] FIGURE | "
+                    "JOB=%s | "
+                    "PAGE=%s | "
+                    "FIGURE=%s | "
+                    "VISUAL_INDEX=%s | "
+                    "X=%s | "
+                    "Y=%s | "
+                    "WIDTH=%s | "
+                    "HEIGHT=%s | "
+                    "AZURE_BBOX=%s",
+                    self.id,
+                    page_number,
+                    figure_id,
+                    visual_index,
+                    x,
+                    y,
+                    width,
+                    height,
+                    azure_bbox,
+                )
+
+            # ==================================================
+            # RAW AZURE EVIDENCE SUMMARY
+            # ==================================================
+
+            if isinstance(
+                azure_evidence,
+                dict,
+            ):
+
+                azure_pages = (
+                    azure_evidence.get(
+                        "pages",
+                        []
+                    )
+                )
+
+                azure_figures = (
+                    azure_evidence.get(
+                        "figures",
+                        []
+                    )
+                )
+
+                original_page_images = (
+                    azure_evidence.get(
+                        "original_page_images",
+                        []
+                    )
+                )
+
+                _logger.warning(
+                    "[AZURE DEBUG] RAW EVIDENCE | "
+                    "JOB=%s | "
+                    "PAGE=%s | "
+                    "AZURE_PAGES=%s | "
+                    "AZURE_FIGURES=%s | "
+                    "ORIGINAL_PAGE_IMAGES=%s",
+                    self.id,
+                    page_number,
+                    len(azure_pages)
+                    if isinstance(
+                        azure_pages,
+                        list,
+                    )
+                    else 0,
+                    len(azure_figures)
+                    if isinstance(
+                        azure_figures,
+                        list,
+                    )
+                    else 0,
+                    len(original_page_images)
+                    if isinstance(
+                        original_page_images,
+                        list,
+                    )
+                    else 0,
+                )
+
+        _logger.warning(
+            "[AZURE DEBUG] EVIDENCE INVENTORY COMPLETE | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[AZURE DEBUG] ======================================="
+        )
+
+    #======debug_openai_image_inputs========================================
+
+    def _debug_openai_image_inputs(
+        self,
+        image_inputs,
+    ):
+        """
+        Inspect the exact image_inputs list that will be
+        appended to the OpenAI user content.
+        """
+
+        _logger.warning(
+            "[OPENAI DEBUG] ======================================"
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] IMAGE INPUT INVENTORY START | JOB=%s",
+            self.id,
+        )
+
+        if not isinstance(
+            image_inputs,
+            list,
+        ):
+            _logger.error(
+                "[OPENAI DEBUG] "
+                "image_inputs is not a list | JOB=%s",
+                self.id,
+            )
+
+            return
+
+        _logger.warning(
+            "[OPENAI DEBUG] TOTAL IMAGE INPUTS=%s | JOB=%s",
+            len(image_inputs),
+            self.id,
+        )
+
+        for index, image_input in enumerate(
+            image_inputs
+        ):
+
+            if not isinstance(
+                image_input,
+                dict,
+            ):
+                continue
+
+            image_url = image_input.get(
+                "image_url",
+                ""
+            )
+
+            image_type = image_input.get(
+                "type"
+            )
+
+            image_bytes = None
+
+            try:
+
+                if isinstance(
+                    image_url,
+                    str,
+                ) and image_url.startswith(
+                    "data:image/"
+                ):
+
+                    encoded = (
+                        image_url.split(
+                            ",",
+                            1
+                        )[1]
+                    )
+
+                    image_bytes = (
+                        base64.b64decode(
+                            encoded
+                        )
+                    )
+
+            except Exception as e:
+
+                _logger.exception(
+                    "[OPENAI DEBUG] "
+                    "IMAGE DECODE FAILED | "
+                    "JOB=%s | "
+                    "INDEX=%s | ERROR=%s",
+                    self.id,
+                    index,
+                    e,
+                )
+
+            if not image_bytes:
+
+                _logger.warning(
+                    "[OPENAI DEBUG] IMAGE | "
+                    "JOB=%s | "
+                    "INDEX=%s | "
+                    "TYPE=%s | "
+                    "BYTES=0",
+                    self.id,
+                    index,
+                    image_type,
+                )
+
+                continue
+
+            image_hash = hashlib.sha256(
+                image_bytes
+            ).hexdigest()
+
+            width = None
+            height = None
+            image_format = None
+
+            try:
+
+                with Image.open(
+                    io.BytesIO(
+                        image_bytes
+                    )
+                ) as image:
+
+                    width = image.width
+                    height = image.height
+                    image_format = image.format
+
+            except Exception as e:
+
+                _logger.warning(
+                    "[OPENAI DEBUG] "
+                    "IMAGE METADATA FAILED | "
+                    "JOB=%s | "
+                    "INDEX=%s | ERROR=%s",
+                    self.id,
+                    index,
+                    e,
+                )
+
+            _logger.warning(
+                "[OPENAI DEBUG] IMAGE | "
+                "JOB=%s | "
+                "INDEX=%s | "
+                "TYPE=%s | "
+                "WIDTH=%s | "
+                "HEIGHT=%s | "
+                "FORMAT=%s | "
+                "BYTES=%s | "
+                "SHA256=%s",
+                self.id,
+                index,
+                image_type,
+                width,
+                height,
+                image_format,
+                len(image_bytes),
+                image_hash,
+            )
+
+        _logger.warning(
+            "[OPENAI DEBUG] IMAGE INPUT INVENTORY COMPLETE | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] ======================================"
+        )
+
+    #====================OpenAI payload debugger============================
+
+    def _debug_openai_input_images(
+        self,
+        openai_input,
+    ):
+        """
+        Inspect the exact payload that is about to be
+        sent to OpenAI.
+
+        This is deliberately recursive because the
+        Responses API input can contain nested lists
+        and dictionaries.
+
+        We identify:
+
+            data:image/...;base64,...
+
+        and:
+
+            image_base64
+
+        values.
+
+        This proves exactly what OpenAI received.
+        """
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "======================================="
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "INPUT INSPECTION START | JOB=%s",
+            self.id,
+        )
+
+        found_images = []
+
+        def walk(
+            value,
+            path="root",
+        ):
+
+            if isinstance(
+                value,
+                dict
+            ):
+
+                for key, child in value.items():
+
+                    key_text = str(
+                        key
+                    )
+
+                    # --------------------------------------
+                    # Direct image_base64
+                    # --------------------------------------
+
+                    if key_text == (
+                        "image_base64"
+                    ):
+
+                        if child:
+
+                            found_images.append({
+                                "path": (
+                                    f"{path}."
+                                    f"{key_text}"
+                                ),
+                                "value": child,
+                                "source": (
+                                    "image_base64"
+                                ),
+                            })
+
+                    # --------------------------------------
+                    # image_url
+                    # --------------------------------------
+
+                    elif key_text in (
+                        "image_url",
+                        "image",
+                    ):
+
+                        if isinstance(
+                            child,
+                            str
+                        ):
+
+                            if child.startswith(
+                                "data:image/"
+                            ):
+
+                                found_images.append({
+                                    "path": (
+                                        f"{path}."
+                                        f"{key_text}"
+                                    ),
+                                    "value": child,
+                                    "source": (
+                                        "data_image_url"
+                                    ),
+                                })
+
+                    walk(
+                        child,
+                        (
+                            f"{path}."
+                            f"{key_text}"
+                        ),
+                    )
+
+            elif isinstance(
+                value,
+                (list, tuple)
+            ):
+
+                for index, child in enumerate(
+                    value
+                ):
+
+                    walk(
+                        child,
+                        (
+                            f"{path}[{index}]"
+                        ),
+                    )
+
+        walk(
+            openai_input
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "TOTAL IMAGE PAYLOADS=%s | JOB=%s",
+            len(found_images),
+            self.id,
+        )
+
+        # ==================================================
+        # SAVE EVERY EXACT OPENAI IMAGE
+        # ==================================================
+
+        for index, item in enumerate(
+            found_images,
+            start=1
+        ):
+
+            value = item[
+                "value"
+            ]
+
+            image_bytes = (
+                self._debug_decode_image_base64(
+                    value
+                )
+            )
+
+            self._debug_save_visual_asset(
+
+                label=(
+                    f"openai_input_"
+                    f"{index:02d}"
+                ),
+
+                image_bytes=image_bytes,
+
+                source=(
+                    "openai_exact_payload"
+                ),
+
+                page_number=None,
+
+                figure_id=None,
+
+                bbox=None,
+            )
+
+            if image_bytes:
+
+                image_hash = (
+                    hashlib.sha256(
+                        image_bytes
+                    ).hexdigest()
+                )
+
+                width = None
+                height = None
+
+                try:
+
+                    with Image.open(
+                        io.BytesIO(
+                            image_bytes
+                        )
+                    ) as image:
+
+                        width, height = (
+                            image.size
+                        )
+
+                except Exception:
+                    pass
+
+                _logger.warning(
+                    "[OPENAI DEBUG] "
+                    "IMAGE #%s | "
+                    "PATH=%s | "
+                    "SOURCE=%s | "
+                    "WIDTH=%s | "
+                    "HEIGHT=%s | "
+                    "BYTES=%s | "
+                    "SHA256=%s",
+                    index,
+                    item["path"],
+                    item["source"],
+                    width,
+                    height,
+                    len(image_bytes),
+                    image_hash,
+                )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "INPUT INSPECTION COMPLETE | JOB=%s",
+            self.id,
+        )
+
+        _logger.warning(
+            "[OPENAI DEBUG] "
+            "======================================="
+        )
+
+        return found_images
+
+    # =========== PDF OPENAI PRODUCT REVIEW ================================
+    def _review_azure_evidence_with_openai(self):
+        """
+        Interception gate between Azure extraction and the
+        existing PDF production AI pipeline.
+
+        PASS:
+            Azure evidence is sufficiently clear.
+            Existing production PDF AI can continue.
+
+        FAIL:
+            OpenAI identifies ambiguous/composite figures and
+            returns instructions for image separation/cropping.
+
+        IMPORTANT:
+            This method does NOT create products.
+            This method does NOT replace send_to_openai_pdf().
+        """
+
+        self.ensure_one()
+
+        # ========================================================
+        # TEMPORARY VISUAL DEBUG
+        # ========================================================
+
+        DEBUG_AZURE_VISUAL_AUDIT = True
+
+        _logger.warning(
+            "[AZURE AUDIT] ======================================="
+        )
+
+        _logger.warning(
+            "[AZURE AUDIT] START "
+            f"| JOB={self.id}"
+        )
+
+        # ========================================================
+        # LOAD SAVED AZURE PAGES
+        # ========================================================
+
+        page_records = self.env[
+            "vendor.import.page"
+        ].search(
+            [
+                ("job_id", "=", self.id)
+            ],
+            order="page_number asc"
+        )
+
+        if not page_records:
+
+            _logger.warning(
+                "[AZURE AUDIT] No page records found "
+                f"| JOB={self.id}"
+            )
+
+            return {
+                "status": "FAIL",
+                "reason": "No extracted pages found",
+                "pages": []
+            }
+
+        audit_pages = []
+
+        # ========================================================
+        # BUILD OPENAI VISUAL INPUT
+        # ========================================================
+
+        image_inputs = []
+
+        for record in page_records:
+
+            try:
+
+                page_blocks = json.loads(
+                    record.extracted_json
+                    or "[]"
+                )
+
+            except Exception:
+
+                _logger.exception(
+                    "[AZURE AUDIT] Invalid extracted_json "
+                    f"| PAGE={record.page_number}"
+                )
+
+                continue
+
+            if not isinstance(
+                page_blocks,
+                list
+            ):
+
+                continue
+
+            for block in page_blocks:
+
+                if not isinstance(
+                    block,
+                    dict
+                ):
+                    continue
+
+                if not block.get(
+                    "azure_evidence"
+                ):
+                    continue
+
+                page_number = block.get(
+                    "page",
+                    record.page_number
+                )
+
+                page_image = block.get(
+                    "page_image"
+                )
+
+                images = block.get(
+                    "images",
+                    []
+                )
+
+                # =================================================
+                # ORIGINAL PAGE
+                # =================================================
+
+                page_visual_index = None
+
+                if page_image:
+
+                    page_visual_index = (
+                        len(image_inputs)
+                    )
+
+                    _logger.warning(
+                        "[OPENAI DEBUG] "
+                        "ADDING ORIGINAL PAGE | "
+                        "JOB=%s | "
+                        "PAGE=%s | "
+                        "VISUAL_INDEX=%s | "
+                        "PAGE_SIZE=%sx%s",
+                        self.id,
+                        page_number,
+                        page_visual_index,
+                        block.get(
+                            "page_width",
+                            0
+                        ),
+                        block.get(
+                            "page_height",
+                            0
+                        ),
+                    )
+
+                    image_inputs.append({
+
+                        "type":
+                            "input_image",
+
+                        "image_url":
+                            (
+                                "data:image/png;base64,"
+                                + page_image
+                            )
+
+                    })
+
+                # =================================================
+                # FIGURE IMAGES
+                # =================================================
+
+                figure_visual_indexes = []
+
+                for image in images:
+
+                    if not isinstance(
+                        image,
+                        dict
+                    ):
+                        continue
+
+                    image_data = image.get(
+                        "image"
+                    )
+
+                    if not image_data:
+                        continue
+
+                    # visual_index = (
+                    #     len(image_inputs)
+                    # )
+
+                    visual_index = (
+                        len(image_inputs)
+                    )
+
+                    _logger.warning(
+                        "[OPENAI DEBUG] "
+                        "ADDING AZURE FIGURE | "
+                        "JOB=%s | "
+                        "PAGE=%s | "
+                        "FIGURE=%s | "
+                        "VISUAL_INDEX=%s | "
+                        "X=%s | "
+                        "Y=%s | "
+                        "WIDTH=%s | "
+                        "HEIGHT=%s | "
+                        "AZURE_BBOX=%s",
+                        self.id,
+                        page_number,
+                        image.get(
+                            "azure_figure_id"
+                        ),
+                        visual_index,
+                        image.get(
+                            "x",
+                            0
+                        ),
+                        image.get(
+                            "y",
+                            0
+                        ),
+                        image.get(
+                            "width",
+                            0
+                        ),
+                        image.get(
+                            "height",
+                            0
+                        ),
+                        image.get(
+                            "azure_bbox"
+                        ),
+                    )
+
+                    image_inputs.append({
+
+                        "type":
+                            "input_image",
+
+                        "image_url":
+                            (
+                                "data:image/png;base64,"
+                                + image_data
+                            )
+
+                    })
+
+                    figure_visual_indexes.append({
+
+                        "visual_index":
+                            visual_index,
+
+                        "azure_figure_id":
+                            image.get(
+                                "azure_figure_id"
+                            ),
+
+                        "x":
+                            image.get(
+                                "x",
+                                0
+                            ),
+
+                        "y":
+                            image.get(
+                                "y",
+                                0
+                            ),
+
+                        "width":
+                            image.get(
+                                "width",
+                                0
+                            ),
+
+                        "height":
+                            image.get(
+                                "height",
+                                0
+                            ),
+
+                        "azure_bbox":
+                            image.get(
+                                "azure_bbox"
+                            )
+
+                    })
+
+                # =================================================
+                # PAGE AUDIT DATA
+                # =================================================
+
+                audit_pages.append({
+
+                    "page":
+                        page_number,
+
+                    "page_width":
+                        block.get(
+                            "page_width",
+                            0
+                        ),
+
+                    "page_height":
+                        block.get(
+                            "page_height",
+                            0
+                        ),
+
+                    "original_page_visual_index":
+                        page_visual_index,
+
+                    "figures":
+                        figure_visual_indexes,
+
+                    "text":
+                        block.get(
+                            "text",
+                            ""
+                        ),
+
+                    "azure_evidence":
+                        block.get(
+                            "azure_evidence",
+                            {}
+                        )
+
+                })
+
+        # ========================================================
+        # DEBUG — AZURE EVIDENCE INVENTORY
+        # ========================================================
+
+        self._debug_azure_audit_pages(
+            audit_pages
+        )
+
+        # ========================================================
+        # TEMPORARY OPENAI VISUAL CONTACT SHEET
+        # ========================================================
+        #
+        # IMPORTANT:
+        # This uses the EXACT image_inputs already prepared
+        # for OpenAI.
+        #
+        # Therefore this proves what OpenAI is actually receiving.
+        #
+        # It does NOT alter image_inputs.
+        # It does NOT add the contact sheet to OpenAI.
+        # It only creates a temporary Odoo attachment for inspection.
+        # ========================================================
+
+        if DEBUG_AZURE_VISUAL_AUDIT:
+
+            try:
+
+                import base64
+                import io
+
+                from PIL import Image
+                from PIL import ImageDraw
+                from PIL import ImageFont
+
+                _logger.warning(
+                    "[OPENAI VISUAL DEBUG] "
+                    "BUILDING CONTACT SHEETS "
+                    f"| JOB={self.id}"
+                )
+
+                for audit_page in audit_pages:
+
+                    page_number = audit_page.get(
+                        "page"
+                    )
+
+                    original_index = audit_page.get(
+                        "original_page_visual_index"
+                    )
+
+                    figures = audit_page.get(
+                        "figures",
+                        []
+                    )
+
+                    visual_items = []
+
+                    # =================================================
+                    # ORIGINAL PAGE
+                    # =================================================
+
+                    if (
+                        original_index is not None
+                        and original_index < len(image_inputs)
+                    ):
+
+                        visual_items.append({
+                            "label": (
+                                f"PAGE {page_number} "
+                                f"| ORIGINAL PAGE "
+                                f"| INDEX={original_index}"
+                            ),
+                            "input_index":
+                                original_index,
+                        })
+
+                    # =================================================
+                    # AZURE FIGURES
+                    # =================================================
+
+                    for figure in figures:
+
+                        visual_index = figure.get(
+                            "visual_index"
+                        )
+
+                        if (
+                            visual_index is None
+                            or visual_index >= len(
+                                image_inputs
+                            )
+                        ):
+                            continue
+
+                        visual_items.append({
+                            "label": (
+                                f"PAGE {page_number} "
+                                f"| FIGURE "
+                                f"{figure.get('azure_figure_id')} "
+                                f"| INDEX={visual_index} "
+                                f"| X={figure.get('x')} "
+                                f"| Y={figure.get('y')} "
+                                f"| W={figure.get('width')} "
+                                f"| H={figure.get('height')}"
+                            ),
+                            "input_index":
+                                visual_index,
+                        })
+
+                    if not visual_items:
+
+                        _logger.warning(
+                            "[OPENAI VISUAL DEBUG] "
+                            "NO VISUAL ITEMS "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number}"
+                        )
+
+                        continue
+
+                    # =================================================
+                    # LOAD IMAGES
+                    # =================================================
+
+                    loaded_images = []
+
+                    for item in visual_items:
+
+                        input_index = item[
+                            "input_index"
+                        ]
+
+                        image_input = image_inputs[
+                            input_index
+                        ]
+
+                        image_url = image_input.get(
+                            "image_url",
+                            ""
+                        )
+
+                        if not image_url:
+                            continue
+
+                        try:
+
+                            encoded = (
+                                image_url
+                                .split(
+                                    ",",
+                                    1
+                                )[1]
+                            )
+
+                            image_bytes = (
+                                base64.b64decode(
+                                    encoded
+                                )
+                            )
+
+                            image = Image.open(
+                                io.BytesIO(
+                                    image_bytes
+                                )
+                            ).convert(
+                                "RGB"
+                            )
+
+                            # ========================================================
+                            # DEBUG — SAVE INDIVIDUAL AZURE FIGURE
+                            # ========================================================
+
+                            figure_buffer = io.BytesIO()
+
+                            image.save(
+                                figure_buffer,
+                                format="PNG"
+                            )
+
+                            figure_buffer.seek(0)
+
+                            figure_attachment_data = (
+                                base64.b64encode(
+                                    figure_buffer.read()
+                                )
+                            )
+
+                            figure_id = item.get(
+                                "azure_figure_id"
+                            )
+
+                            figure_attachment_name = (
+                                "azure_figure_"
+                                f"{figure_id}_"
+                                f"job_{self.id}_"
+                                f"page_{page_number}.png"
+                            )
+
+                            figure_attachment = self.env[
+                                "ir.attachment"
+                            ].sudo().create({
+
+                                "name":
+                                    figure_attachment_name,
+
+                                "type":
+                                    "binary",
+
+                                "datas":
+                                    figure_attachment_data,
+
+                                "mimetype":
+                                    "image/png",
+
+                                "res_model":
+                                    self._name,
+
+                                "res_id":
+                                    self.id,
+
+                            })
+
+                            self.env["mail.message"].sudo().create({
+                                "model": self._name,
+                                "res_id": self.id,
+                                "body": (
+                                    "<b>OPENAI CROP VISUAL DEBUG</b><br/>"
+                                    f"Job: {self.id}<br/>"
+                                    f"Page: {page_number}<br/>"
+                                    "Red boxes = OpenAI requested crops<br/>"
+                                    "Blue boxes = Azure figures"
+                                ),
+                                "message_type": "comment",
+                                "subtype_id": self.env.ref(
+                                    "mail.mt_note"
+                                ).id,
+                                "attachment_ids": [
+                                    (4, figure_attachment.id)
+                                ],
+                            })
+
+                            loaded_images.append({
+                                "label":
+                                    item["label"],
+                                "image":
+                                    image,
+                            })
+
+                            _logger.warning(
+                                "[OPENAI VISUAL DEBUG] "
+                                "CONTACT IMAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s "
+                                "| INDEX=%s "
+                                "| SIZE=%sx%s",
+                                self.id,
+                                page_number,
+                                input_index,
+                                image.width,
+                                image.height
+                            )
+
+                        except Exception:
+
+                            _logger.exception(
+                                "[OPENAI VISUAL DEBUG] "
+                                "FAILED TO LOAD IMAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s "
+                                "| INDEX=%s",
+                                self.id,
+                                page_number,
+                                input_index
+                            )
+
+                    if not loaded_images:
+                        continue
+
+                    # =================================================
+                    # CONTACT SHEET SETTINGS
+                    # =================================================
+
+                    thumbnail_width = 700
+                    label_height = 55
+                    margin = 20
+
+                    rendered = []
+
+                    total_height = margin
+
+                    for item in loaded_images:
+
+                        image = item["image"]
+
+                        scale = (
+                            thumbnail_width
+                            / float(image.width)
+                        )
+
+                        thumbnail_height = int(
+                            image.height * scale
+                        )
+
+                        thumbnail = image.copy()
+
+                        thumbnail.thumbnail(
+                            (
+                                thumbnail_width,
+                                900
+                            ),
+                            Image.Resampling.LANCZOS
+                        )
+
+                        rendered.append({
+                            "label":
+                                item["label"],
+                            "image":
+                                thumbnail,
+                        })
+
+                        total_height += (
+                            label_height
+                            + thumbnail.height
+                            + margin
+                        )
+
+                    # =================================================
+                    # CREATE CANVAS
+                    # =================================================
+
+                    canvas_width = (
+                        thumbnail_width
+                        + (margin * 2)
+                    )
+
+                    canvas = Image.new(
+                        "RGB",
+                        (
+                            canvas_width,
+                            total_height
+                        ),
+                        "white"
+                    )
+
+                    draw = ImageDraw.Draw(
+                        canvas
+                    )
+
+                    current_y = margin
+
+                    for item in rendered:
+
+                        label = item["label"]
+                        image = item["image"]
+
+                        draw.rectangle(
+                            (
+                                margin,
+                                current_y,
+                                canvas_width - margin,
+                                current_y
+                                + label_height
+                            ),
+                            fill="black"
+                        )
+
+                        draw.text(
+                            (
+                                margin + 10,
+                                current_y + 10
+                            ),
+                            label,
+                            fill="white"
+                        )
+
+                        current_y += (
+                            label_height
+                        )
+
+                        canvas.paste(
+                            image,
+                            (
+                                margin,
+                                current_y
+                            )
+                        )
+
+                        current_y += (
+                            image.height
+                            + margin
+                        )
+
+                    # =================================================
+                    # ENCODE CONTACT SHEET
+                    # =================================================
+
+                    output_buffer = io.BytesIO()
+
+                    canvas.save(
+                        output_buffer,
+                        format="PNG"
+                    )
+
+                    output_buffer.seek(0)
+
+                    attachment_data = (
+                        base64.b64encode(
+                            output_buffer.read()
+                        )
+                    )
+
+                    attachment_name = (
+                        "azure_visual_debug_"
+                        f"job_{self.id}_"
+                        f"page_{page_number}.png"
+                    )
+
+                    attachment = self.env[
+                        "ir.attachment"
+                    ].sudo().create({
+
+                        "name":
+                            attachment_name,
+
+                        "type":
+                            "binary",
+
+                        "datas":
+                            attachment_data,
+
+                        "mimetype":
+                            "image/png",
+
+                        "res_model":
+                            self._name,
+
+                        "res_id":
+                            self.id,
+
+                    })
+
+                    debug_url = (
+                        f"/web/content/{attachment.id}"
+                    )
+
+                    _logger.warning(
+                        "[OPENAI VISUAL DEBUG] "
+                        "ATTACHMENT READY "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| INDEX=%s "
+                        "| ATTACHMENT_ID=%s "
+                        "| URL=%s",
+                        self.id,
+                        page_number,
+                        original_index,
+                        attachment.id,
+                        debug_url,
+                    )
+
+                    _logger.warning(
+                        "[OPENAI VISUAL DEBUG] "
+                        "CONTACT SHEET CREATED "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| ATTACHMENT_ID=%s "
+                        "| NAME=%s",
+                        self.id,
+                        page_number,
+                        attachment.id,
+                        attachment_name
+                    )
+
+            except Exception:
+
+                _logger.exception(
+                    "[OPENAI VISUAL DEBUG] "
+                    "CONTACT SHEET FAILED "
+                    f"| JOB={self.id}"
+                )
+
+        # ========================================================
+        # NO AZURE DATA
+        # ========================================================
+
+        if not audit_pages:
+
+            _logger.warning(
+                "[AZURE AUDIT] No Azure pages available"
+            )
+
+            return {
+
+                "status":
+                    "FAIL",
+
+                "reason":
+                    "No Azure evidence available",
+
+                "pages":
+                    []
+
+            }
+
+        # ========================================================
+        # OPENAI REVIEW PROMPT
+        # ========================================================
+
+        audit_prompt = """
+        You are the visual quality-control layer between
+        Azure Document Intelligence and an existing product
+        catalogue extraction pipeline.
+
+        Your job is NOT to create products.
+
+        Your job is to inspect the COMPLETE ORIGINAL PAGE
+        and the Azure-detected figure images and determine
+        whether the extraction is safe to pass to the existing
+        production pipeline.
+
+        IMPORTANT:
+
+        The ORIGINAL PAGE is the authoritative visual reference.
+
+        Azure figures are detected visual regions from that page.
+
+        A single Azure figure may contain:
+
+        - multiple products
+        - multiple variants
+        - several images of one product
+        - lifestyle/supporting images
+        - a product plus a marketing object
+        - a composite catalogue layout
+
+        Do NOT assume:
+
+        one figure = one product.
+
+        You must visually inspect the original page and determine
+        the actual product/image relationships.
+
+        For example, a wallet deliberately displayed beside a
+        ballpoint pen may still represent one promoted wallet
+        product, with the pen being a supporting marketing object.
+
+        Likewise, a bag shown in Grey, Black and Folded states may
+        represent ONE product with multiple variants/images.
+
+        COLOR-ONLY VARIANTS:
+
+        If the catalogue indicates a variant only through visual
+        appearance without explicitly naming the color, preserve
+        the visual variant. Do not reject it merely because the
+        color name is absent.
+
+        YOUR DECISION:
+
+        PASS if the Azure figures and original page provide enough
+        information for the existing production pipeline to proceed
+        without requiring additional image cropping.
+
+        FAIL if one or more figures contain multiple individual
+        product images that must be separated before production.
+
+        If FAIL, provide exact crop coordinates relative to the
+        ORIGINAL PAGE IMAGE.
+        
+
+        Return ONLY valid JSON:
+
+        {
+            "decision": "PASS" or "FAIL",
+
+            "confidence": 0.0,
+
+            "reason": "...",
+
+            "pages": [
+                {
+                    "page": 1,
+
+                    "products": [
+                        {
+                            "product_reference": "...",
+
+                            "figure_ids": [
+                                "1.1"
+                            ],
+
+                            "role": "primary_product"
+                            or "supporting_image"
+                            or "variant_group"
+                            or "ambiguous",
+
+                            "reason": "..."
+                        }
+                    ],
+
+                    "crop_required": false,
+
+                    "crops": [
+                        {
+                            "crop_id": "crop_1",
+
+                            "figure_id": "1.3",
+
+                            "x": 0,
+
+                            "y": 0,
+
+                            "width": 0,
+
+                            "height": 0,
+
+                            "purpose": "...",
+
+                            "product_reference": "...",
+
+                            "confidence": 0.0
+                        }
+                    ]
+                }
+            ]
+        }
+
+
+        Rules:
+
+        1. Use pixel coordinates relative to the ORIGINAL PAGE IMAGE.
+
+        2. Do not invent coordinates.
+
+        3. Only request crops when genuinely necessary.
+
+        4. Do not crop the original page merely because an
+        Azure figure contains multiple visual elements.
+
+        5. Preserve grouped variants when they are visually and
+        contextually one product AND each required production
+        image is already available as a separate usable image.
+
+        6. Supporting marketing objects must not automatically
+        become independent products.
+
+        7. Every product decision must be based on both the
+        original page and Azure evidence.
+
+        8. IMPORTANT FIGURE IDENTITY RULE:
+        Each Azure figure image supplied to you is a separate
+        visual input.
+
+        When analyzing Figure 1.3, inspect the actual image
+        supplied for Figure 1.3.
+
+        Do NOT transfer an object seen in Figure 1.2 into
+        Figure 1.3 merely because the objects are spatially
+        close on the original page.
+
+        9. If you say that Figure X contains multiple individual
+        images, every object you identify must actually be
+        visible inside the supplied Figure X image.
+
+        10. CROP COORDINATE CONSISTENCY:
+            A crop assigned to Figure X must lie completely
+            inside Figure X's Azure bounding rectangle on the
+            original page.
+
+        11. Before returning a crop instruction, verify:
+
+            crop_x >= figure_x
+            crop_y >= figure_y
+
+            crop_x + crop_width
+                <= figure_x + figure_width
+
+            crop_y + crop_height
+                <= figure_y + figure_height
+
+        12. If a requested crop would fall outside its assigned
+            figure, do not return that crop. Re-evaluate the
+            figure assignment first.
+
+
+        13. PRODUCT GROUPING AND IMAGE SEPARATION ARE SEPARATE
+            DECISIONS.
+
+            A figure may belong to ONE product or variant group
+            and STILL require cropping.
+
+            Product grouping does NOT by itself determine whether
+            cropping is required.
+
+
+        14. If a single figure contains TWO OR MORE visually
+            distinct, individually marketable product
+            representations that are embedded together in the
+            SAME image, they MUST be identified separately for
+            production image extraction.
+
+
+        15. This includes DIFFERENT COLOR VARIANTS shown together
+            in one figure.
+
+            For example, if one figure contains a Grey product
+            and a Black product inside the same image, do NOT
+            treat the figure as a single usable image for both
+            variants.
+
+            Identify and crop the Grey and Black product
+            representations separately.
+
+
+        16. Different physical forms of the same product must be
+            evaluated separately when they are shown as distinct
+            product representations.
+
+            However, do NOT automatically crop every different
+            angle, folded state, detail view, or feature view.
+
+            Only request a separate crop when the visual
+            representation is useful as an individual production
+            image and is not already available separately.
+
+
+        17. Lifestyle or usage scenes are NOT automatically
+            product variants.
+
+            Do not crop people, usage scenes, or contextual
+            lifestyle imagery as product variants unless the image
+            clearly contains a standalone marketable product
+            representation.
+
+
+        18. Logos, recycling symbols, icons, text, badges, and
+            marketing graphics are NOT product variants.
+
+            Treat them as supporting or marketing assets.
+
+
+        19. A figure containing multiple product representations
+            MUST set:
+
+                "crop_required": true
+
+            when those representations are embedded together
+            in the same figure image and cannot be supplied to
+            the production pipeline as separate image assets.
+
+
+        20. When crop_required is true, provide a separate crop
+            entry for EACH individually useful product
+            representation that needs to be separated.
+
+
+        21. Do NOT use the fact that several images belong to the
+            same product group as a reason to set
+            crop_required=false.
+
+            First determine whether the required individual
+            production images already exist separately.
+
+            If they do not, and multiple useful product
+            representations are embedded together in one figure,
+            cropping is required.
+
+
+        22. The goal is to provide the production pipeline with
+            CLEAN, INDIVIDUAL PRODUCT IMAGES.
+
+            Do not leave multiple marketable products or color
+            variants embedded together inside one image when
+            they can be separated by cropping.
+
+            At the same time, do not create unnecessary crops
+            when clean individual images already exist.
+
+        ========================================================
+        SUPPORTING IMAGE vs VARIANT — ABSOLUTE RULE
+        ========================================================
+
+        23. SUPPORTING IMAGES MUST NEVER BECOME VARIANTS.
+
+            A figure classified as "supporting_image" MUST NOT be
+            classified as a product variant.
+
+            A supporting image may be retained as a clean gallery
+            image, but it must NEVER be assigned to a variant.
+
+        24. A "supporting_image" entry is an IMAGE REFERENCE ONLY.
+
+            It MUST NOT:
+
+            - create a new product;
+            - create a new variant;
+            - increase the expected product count;
+            - increase the expected variant count;
+            - be assigned to an existing variant;
+            - appear in a variant's figure_ids.
+
+        25. Do NOT infer variant membership from:
+
+            - visual similarity;
+            - color similarity;
+            - image order;
+            - figure numbering;
+            - physical proximity on the page;
+            - proximity to product text;
+            - descriptive proximity;
+            - the fact that an item is included with the main product.
+
+        26. Only classify an image as a variant image when the
+            source clearly establishes that the image represents
+            a distinct sellable variant of the same product.
+
+        27. Accessories, pouches, cases, packaging, included
+            components, detail images, supporting views, lifestyle
+            images, logos, icons, badges, recycling symbols and
+            marketing graphics are NOT variants merely because they
+            appear together with a product.
+
+        28. If such an image is useful and individually available,
+            classify it as:
+
+            "supporting_image"
+
+            and preserve it as a GENERAL PRODUCT GALLERY IMAGE.
+
+        29. A supporting image MUST NOT be discarded merely because
+            it is not a variant.
+
+            The objective is:
+
+                VARIANT IMAGE → variant
+                SUPPORTING IMAGE → gallery
+                MARKETING GRAPHIC → supporting/gallery asset
+                LIFESTYLE IMAGE → supporting/gallery asset
+
+        30. IMPORTANT:
+
+            PRODUCT GROUPING and IMAGE ROLE are separate decisions.
+
+            Multiple figures may belong to the same product group
+            while having different image roles.
+
+            Example:
+
+                Figure 1.1 → primary_product
+                Figure 1.2 → supporting_image
+                Figure 1.3 → primary_product
+
+            In this example, Figure 1.2 belongs to the same product
+            group but MUST NOT be assigned to a variant.
+
+        31. If a figure contains two or more individually marketable
+            product representations, apply the existing cropping
+            rules first.
+
+            Each individually useful product representation must
+            receive its own crop when necessary.
+
+            Do NOT use "supporting_image" as a reason to avoid
+            cropping an actual product representation.
+
+        32. The final objective is to provide the production pipeline
+            with:
+
+                - clean individual variant images for variants;
+                - clean supporting images for the product gallery;
+                - no supporting image incorrectly assigned as a variant;
+                - no marketable product representation lost because
+                it was classified as supporting imagery.
+            
+        """
+
+        # ========================================================
+        # PAGE METADATA FOR OPENAI
+        # ========================================================
+
+        audit_context = json.dumps(
+            audit_pages,
+            ensure_ascii=False
+        )
+
+        # ========================================================
+        # OPENAI CALL
+        # ========================================================
+
+        try:
+
+            api_key = self.env[
+                'ir.config_parameter'
+            ].sudo().get_param(
+                'openai.api.key'
+            )
+
+            if not api_key:
+
+                raise Exception(
+                    "OpenAI API key not configured"
+                )
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            _logger.warning(
+                "[AZURE AUDIT] START "
+                f"| JOB={self.id}"
+            )
+
+             # ========================================================
+            # DEBUG — EXACT OPENAI IMAGE INPUTS
+            # ========================================================
+
+            self._debug_openai_image_inputs(
+                image_inputs
+            )
+
+            #========================================================
+            # OPENAI CALL
+            # ========================================================
+            response = client.responses.create(
+
+                model="gpt-4.1",
+
+                input=[{
+
+                    "role":
+                        "user",
+
+                    "content": [
+
+                        {
+                            "type":
+                                "input_text",
+
+                            "text":
+                                (
+                                    audit_prompt
+                                    + "\n\n"
+                                    + "PAGE EVIDENCE:\n"
+                                    + audit_context
+                                )
+                        }
+
+                    ] + image_inputs
+
+                }],
+
+                timeout=90
+
+            )
+
+            raw_output = (
+                response.output_text
+                or ""
+            )
+
+            _logger.warning(
+                "[AZURE AUDIT] OPENAI RESPONSE "
+                f"| JOB={self.id} "
+                f"| LENGTH={len(raw_output)}"
+            )
+
+
+            # ====================================================
+            # PARSE JSON
+            # ====================================================
+
+            cleaned = raw_output.strip()
+
+            # ----------------------------------------------------
+            # REMOVE MARKDOWN JSON FENCE IF PRESENT
+            # ----------------------------------------------------
+
+            if cleaned.startswith("```"):
+
+                if cleaned.startswith("```json"):
+
+                    cleaned = cleaned[
+                        len("```json"):
+                    ]
+
+                else:
+
+                    cleaned = cleaned[
+                        len("```"):
+                    ]
+
+                if cleaned.endswith("```"):
+
+                    cleaned = cleaned[
+                        :-len("```")
+                    ]
+
+                cleaned = cleaned.strip()
+
+            # ----------------------------------------------------
+            # RAW RESPONSE
+            # ----------------------------------------------------
+
+            _logger.warning(
+                "[AZURE AUDIT] RAW RESPONSE | "
+                "JOB=%s | LENGTH=%s\n%s",
+                self.id,
+                len(cleaned),
+                cleaned
+            )
+
+            # ----------------------------------------------------
+            # STRICT JSON PARSE
+            # ----------------------------------------------------
+
+            try:
+
+                audit_result = json.loads(
+                    cleaned
+                )
+
+            except json.JSONDecodeError as e:
+
+                _logger.error(
+                    "[AZURE AUDIT] JSON PARSE FAILED "
+                    "| JOB=%s "
+                    "| LINE=%s "
+                    "| COLUMN=%s "
+                    "| POSITION=%s",
+                    self.id,
+                    e.lineno,
+                    e.colno,
+                    e.pos
+                )
+
+                # Show the exact area around the
+                # malformed character instead of flooding
+                # the Odoo log with the entire response again.
+
+                context_start = max(
+                    0,
+                    e.pos - 400
+                )
+
+                context_end = min(
+                    len(cleaned),
+                    e.pos + 400
+                )
+
+                _logger.error(
+                    "[AZURE AUDIT] RESPONSE AROUND "
+                    "PARSE ERROR | JOB=%s\n%s",
+                    self.id,
+                    cleaned[
+                        context_start:context_end
+                    ]
+                )
+
+                raise
+
+            # ----------------------------------------------------
+            # VALIDATE TOP-LEVEL RESPONSE
+            # ----------------------------------------------------
+
+            if not isinstance(
+                audit_result,
+                dict
+            ):
+
+                raise ValueError(
+                    "Azure audit response must "
+                    "be a JSON object"
+                )
+
+            # ====================================================
+            # NORMALIZE AZURE AUDIT DECISION
+            # ====================================================
+
+            raw_decision = (
+                str(
+                    audit_result.get(
+                        "decision",
+                        ""
+                    )
+                )
+                .upper()
+                .strip()
+            )
+
+            # ====================================================
+            # EXTRACT CROP INSTRUCTIONS
+            # ====================================================
+            #
+            # OpenAI may return crop_required/crops either:
+            #
+            # 1. At the top level
+            #
+            # OR
+            #
+            # 2. Inside pages[]
+            #
+            # Family-A-compatible responses currently use
+            # the second structure.
+            # ====================================================
+
+            crop_required = bool(
+                audit_result.get(
+                    "crop_required",
+                    False
+                )
+            )
+
+            crops = audit_result.get(
+                "crops",
+                []
+            )
+
+            # ----------------------------------------------------
+            # FALLBACK TO PAGE-LEVEL CROP DATA
+            # ----------------------------------------------------
+
+            if not crop_required:
+
+                for audit_page in audit_result.get(
+                    "pages",
+                    []
+                ):
+
+                    if not isinstance(
+                        audit_page,
+                        dict
+                    ):
+                        continue
+
+                    if audit_page.get(
+                        "crop_required",
+                        False
+                    ):
+
+                        crop_required = True
+
+                    page_crops = audit_page.get(
+                        "crops",
+                        []
+                    )
+
+                    if isinstance(
+                        page_crops,
+                        list
+                    ):
+
+                        for page_crop in page_crops:
+
+                            if not isinstance(
+                                page_crop,
+                                dict
+                            ):
+                                continue
+
+                            # Preserve the page that owns this crop.
+                            page_crop = dict(
+                                page_crop
+                            )
+
+                            page_crop.setdefault(
+                                "page",
+                                audit_page.get(
+                                    "page"
+                                )
+                            )
+
+                            crops.append(
+                                page_crop
+                            )
+
+            _logger.warning(
+                "[AZURE AUDIT] "
+                "CROP DATA EXTRACTED "
+                "| JOB=%s "
+                "| CROP_REQUIRED=%s "
+                "| CROPS=%s",
+                self.id,
+                crop_required,
+                len(crops)
+                if isinstance(
+                    crops,
+                    list
+                )
+                else 0
+            )
+
+            # =========================================================
+            # DETERMINE FIGURES CONTAINING MULTIPLE CROPS
+            # =========================================================
+            #
+            # A figure containing multiple Azure crop instructions
+            # represents multiple visual products/variants.
+            #
+            # IMPORTANT:
+            # We must NOT perform whitespace expansion on such
+            # figures because the whitespace between products can
+            # be mistaken for available expansion space.
+            # =========================================================
+
+            figure_crop_counts = {}
+
+            for crop in crops:
+
+                if not isinstance(
+                    crop,
+                    dict
+                ):
+                    continue
+
+                figure_id = str(
+                    crop.get(
+                        "figure_id",
+                        ""
+                    )
+                ).strip()
+
+                if not figure_id:
+                    continue
+
+                figure_crop_counts[
+                    figure_id
+                ] = (
+                    figure_crop_counts.get(
+                        figure_id,
+                        0
+                    )
+                    + 1
+                )
+
+            multi_product_figures = {
+                figure_id
+                for figure_id, count
+                in figure_crop_counts.items()
+                if count > 1
+            }
+
+            _logger.warning(
+                "[AZURE CROP] FIGURE CROP COUNTS "
+                "| JOB=%s "
+                "| COUNTS=%s "
+                "| MULTI_PRODUCT=%s",
+                self.id,
+                figure_crop_counts,
+                sorted(
+                    multi_product_figures
+                )
+            )
+
+            # =========================================================
+            # ATTACH AUTHORITATIVE AZURE FIGURE BOUNDS TO EACH CROP
+            # =========================================================
+            #
+            # IMPORTANT:
+            #
+            # audit_pages contains the ORIGINAL Azure figure geometry.
+            #
+            # audit_result contains OpenAI's crop instructions.
+            #
+            # Do NOT try to reconstruct Azure figure bounds from
+            # audit_result["pages"]["figures"] later.
+            #
+            # We attach the exact Azure bounds to each crop now so
+            # _process_azure_crop_request() receives authoritative
+            # geometry together with the crop instruction.
+            # =========================================================
+
+            if isinstance(crops, list):
+
+                for crop in crops:
+
+                    if not isinstance(crop, dict):
+                        continue
+
+                    crop_figure_id = str(
+                        crop.get(
+                            "figure_id",
+                            ""
+                        )
+                    ).strip()
+
+                    if not crop_figure_id:
+                        _logger.warning(
+                            "[AZURE CROP] CROP HAS NO FIGURE ID "
+                            "| JOB=%s "
+                            "| CROP=%s",
+                            self.id,
+                            crop.get(
+                                "crop_id",
+                                "unknown"
+                            )
+                        )
+
+                        continue
+
+                    crop_page = crop.get(
+                        "page"
+                    )
+
+                    matched_figure = None
+
+                    # -----------------------------------------------------
+                    # FIRST: match by page + figure ID
+                    # -----------------------------------------------------
+
+                    for audit_page in audit_pages:
+
+                        if not isinstance(
+                            audit_page,
+                            dict
+                        ):
+                            continue
+
+                        audit_page_number = audit_page.get(
+                            "page"
+                        )
+
+                        if (
+                            crop_page is not None
+                            and audit_page_number != crop_page
+                        ):
+                            continue
+
+                        for figure in audit_page.get(
+                            "figures",
+                            []
+                        ):
+
+                            if not isinstance(
+                                figure,
+                                dict
+                            ):
+                                continue
+
+                            figure_id = str(
+                                figure.get(
+                                    "azure_figure_id",
+                                    ""
+                                )
+                            ).strip()
+
+                            if figure_id == crop_figure_id:
+
+                                matched_figure = figure
+
+                                break
+
+                        if matched_figure:
+                            break
+
+                    # -----------------------------------------------------
+                    # SECOND: fallback to figure ID only
+                    # -----------------------------------------------------
+
+                    if not matched_figure:
+
+                        for audit_page in audit_pages:
+
+                            if not isinstance(
+                                audit_page,
+                                dict
+                            ):
+                                continue
+
+                            for figure in audit_page.get(
+                                "figures",
+                                []
+                            ):
+
+                                if not isinstance(
+                                    figure,
+                                    dict
+                                ):
+                                    continue
+
+                                figure_id = str(
+                                    figure.get(
+                                        "azure_figure_id",
+                                        ""
+                                    )
+                                ).strip()
+
+                                if figure_id == crop_figure_id:
+
+                                    matched_figure = figure
+
+                                    break
+
+                            if matched_figure:
+                                break
+
+                    # -----------------------------------------------------
+                    # NO MATCH
+                    # -----------------------------------------------------
+
+                    if not matched_figure:
+
+                        _logger.error(
+                            "[AZURE CROP] FIGURE BOUNDS NOT FOUND "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| FIGURE=%s "
+                            "| CROP=%s",
+                            self.id,
+                            crop_page,
+                            crop_figure_id,
+                            crop.get(
+                                "crop_id",
+                                "unknown"
+                            )
+                        )
+
+                        continue
+
+                    # -----------------------------------------------------
+                    # COPY ONLY THE AUTHORITATIVE GEOMETRY
+                    # -----------------------------------------------------
+
+                    try:
+
+                        azure_bounds = {
+                            "x": float(
+                                matched_figure.get(
+                                    "x",
+                                    0
+                                )
+                            ),
+                            "y": float(
+                                matched_figure.get(
+                                    "y",
+                                    0
+                                )
+                            ),
+                            "width": float(
+                                matched_figure.get(
+                                    "width",
+                                    0
+                                )
+                            ),
+                            "height": float(
+                                matched_figure.get(
+                                    "height",
+                                    0
+                                )
+                            ),
+                        }
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        _logger.error(
+                            "[AZURE CROP] INVALID FIGURE BOUNDS "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| FIGURE=%s",
+                            self.id,
+                            crop_page,
+                            crop_figure_id
+                        )
+
+                        continue
+
+                    crop[
+                        "azure_figure_bounds"
+                    ] = azure_bounds
+
+                    _logger.warning(
+                        "[AZURE CROP] FIGURE BOUNDS ATTACHED "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| CROP=%s "
+                        "| FIGURE=%s "
+                        "| X=%s "
+                        "| Y=%s "
+                        "| W=%s "
+                        "| H=%s",
+                        self.id,
+                        crop_page,
+                        crop.get(
+                            "crop_id",
+                            "unknown"
+                        ),
+                        crop_figure_id,
+                        azure_bounds["x"],
+                        azure_bounds["y"],
+                        azure_bounds["width"],
+                        azure_bounds["height"]
+                    )
+
+            # =========================================================
+            # DEBUG — VISUALIZE OPENAI CROP REQUESTS
+            # =========================================================
+            #
+            # IMPORTANT:
+            # OpenAI crop coordinates are supposed to be relative
+            # to the ORIGINAL PAGE IMAGE.
+            #
+            # This debug image draws:
+            #
+            #   1. Azure figure bounding boxes
+            #   2. OpenAI requested crop boxes
+            #
+            # directly on the ORIGINAL PAGE IMAGE.
+            #
+            # This allows us to visually verify exactly what
+            # OpenAI is asking us to crop.
+            # ========================================================
+
+            if DEBUG_AZURE_VISUAL_AUDIT and isinstance(
+                crops,
+                list
+            ) and crops:
+
+                try:
+
+                    _logger.warning(
+                        "[OPENAI CROP VISUAL DEBUG] "
+                        "START "
+                        "| JOB=%s "
+                        "| CROPS=%s",
+                        self.id,
+                        len(crops)
+                    )
+
+                    # ====================================================
+                    # PROCESS EACH PAGE
+                    # ====================================================
+
+                    for audit_page in audit_pages:
+
+                        page_number = audit_page.get(
+                            "page"
+                        )
+
+                        original_index = audit_page.get(
+                            "original_page_visual_index"
+                        )
+
+                        if original_index is None:
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "NO ORIGINAL PAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s",
+                                self.id,
+                                page_number
+                            )
+
+                            continue
+
+                        if (
+                            original_index < 0
+                            or original_index >= len(
+                                image_inputs
+                            )
+                        ):
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "INVALID ORIGINAL INDEX "
+                                "| JOB=%s "
+                                "| PAGE=%s "
+                                "| INDEX=%s",
+                                self.id,
+                                page_number,
+                                original_index
+                            )
+
+                            continue
+
+                        # =================================================
+                        # LOAD EXACT ORIGINAL PAGE SENT TO OPENAI
+                        # =================================================
+
+                        image_input = image_inputs[
+                            original_index
+                        ]
+
+                        image_url = image_input.get(
+                            "image_url",
+                            ""
+                        )
+
+                        if not image_url:
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "EMPTY ORIGINAL PAGE IMAGE "
+                                "| JOB=%s "
+                                "| PAGE=%s",
+                                self.id,
+                                page_number
+                            )
+
+                            continue
+
+                        encoded = image_url.split(
+                            ",",
+                            1
+                        )[1]
+
+                        image_bytes = base64.b64decode(
+                            encoded
+                        )
+
+                        original_image = Image.open(
+                            io.BytesIO(
+                                image_bytes
+                            )
+                        ).convert(
+                            "RGB"
+                        )
+
+                        # =======================================================
+                        # DEBUG — SAVE ORIGINAL PAGE AS SEPARATE ATTACHMENT
+                        # =======================================================
+
+                        original_buffer = io.BytesIO()
+
+                        original_image.save(
+                            original_buffer,
+                            format="PNG"
+                        )
+
+                        original_buffer.seek(0)
+
+                        original_attachment_data = (
+                            base64.b64encode(
+                                original_buffer.read()
+                            )
+                        )
+
+                        original_attachment_name = (
+                            "azure_original_page_"
+                            f"job_{self.id}_"
+                            f"page_{page_number}.png"
+                        )
+
+                        original_attachment = self.env[
+                            "ir.attachment"
+                        ].sudo().create({
+
+                            "name":
+                                original_attachment_name,
+
+                            "type":
+                                "binary",
+
+                            "datas":
+                                original_attachment_data,
+
+                            "mimetype":
+                                "image/png",
+
+                            "res_model":
+                                self._name,
+
+                            "res_id":
+                                self.id,
+
+                        })
+
+                        self.env["mail.message"].sudo().create({
+                            "model": self._name,
+                            "res_id": self.id,
+                            "body": (
+                                "<b>OPENAI ORIGINAL PAGE DEBUG</b><br/>"
+                                f"Job: {self.id}<br/>"
+                                f"Page: {page_number}<br/>"
+                                f"Image index: {original_index}<br/>"
+                                f"Image size: "
+                                f"{original_image.width} × "
+                                f"{original_image.height}"
+                            ),
+                            "message_type": "comment",
+                            "subtype_id": self.env.ref(
+                                "mail.mt_note"
+                            ).id,
+                            "attachment_ids": [
+                                (4, original_attachment.id)
+                            ],
+                        })
+
+                        _logger.warning(
+                            "[OPENAI VISUAL DEBUG] "
+                            "ORIGINAL PAGE ATTACHED "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| ATTACHMENT_ID=%s "
+                            "| SIZE=%sx%s",
+                            self.id,
+                            page_number,
+                            original_attachment.id,
+                            original_image.width,
+                            original_image.height
+                        )
+
+                        # =================================================
+                        # CREATE DRAWING CANVAS
+                        # =================================================
+
+                        canvas = original_image.copy()
+
+                        draw = ImageDraw.Draw(
+                            canvas
+                        )
+
+                        # =================================================
+                        # FONT
+                        # =================================================
+
+                        try:
+
+                            font = ImageFont.truetype(
+                                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                                24
+                            )
+
+                        except Exception:
+
+                            font = ImageFont.load_default()
+
+                        # =================================================
+                        # DRAW AZURE FIGURE BOUNDARIES
+                        # =================================================
+
+                        for figure in audit_page.get(
+                            "figures",
+                            []
+                        ):
+
+                            figure_id = figure.get(
+                                "azure_figure_id"
+                            )
+
+                            try:
+
+                                fx = float(
+                                    figure.get(
+                                        "x",
+                                        0
+                                    )
+                                )
+
+                                fy = float(
+                                    figure.get(
+                                        "y",
+                                        0
+                                    )
+                                )
+
+                                fw = float(
+                                    figure.get(
+                                        "width",
+                                        0
+                                    )
+                                )
+
+                                fh = float(
+                                    figure.get(
+                                        "height",
+                                        0
+                                    )
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                continue
+
+                            figure_right = (
+                                fx + fw
+                            )
+
+                            figure_bottom = (
+                                fy + fh
+                            )
+
+                            # ---------------------------------------------
+                            # AZURE FIGURE BOX
+                            # ---------------------------------------------
+
+                            draw.rectangle(
+                                (
+                                    fx,
+                                    fy,
+                                    figure_right,
+                                    figure_bottom
+                                ),
+                                outline="blue",
+                                width=6
+                            )
+
+                            # ---------------------------------------------
+                            # FIGURE LABEL
+                            # ---------------------------------------------
+
+                            label = (
+                                f"AZURE FIGURE {figure_id}"
+                            )
+
+                            label_x = fx
+                            label_y = max(
+                                0,
+                                fy - 32
+                            )
+
+                            draw.rectangle(
+                                (
+                                    label_x,
+                                    label_y,
+                                    label_x + 260,
+                                    label_y + 32
+                                ),
+                                fill="blue"
+                            )
+
+                            draw.text(
+                                (
+                                    label_x + 6,
+                                    label_y + 4
+                                ),
+                                label,
+                                fill="white",
+                                font=font
+                            )
+
+                        # =================================================
+                        # DRAW OPENAI CROP REQUESTS
+                        # =================================================
+
+                        for crop in crops:
+
+                            if not isinstance(
+                                crop,
+                                dict
+                            ):
+
+                                continue
+
+                            crop_id = crop.get(
+                                "crop_id",
+                                "unknown"
+                            )
+
+                            figure_id = crop.get(
+                                "figure_id",
+                                "unknown"
+                            )
+
+                            try:
+
+                                crop_x = float(
+                                    crop.get(
+                                        "x",
+                                        0
+                                    )
+                                )
+
+                                crop_y = float(
+                                    crop.get(
+                                        "y",
+                                        0
+                                    )
+                                )
+
+                                crop_width = float(
+                                    crop.get(
+                                        "width",
+                                        0
+                                    )
+                                )
+
+                                crop_height = float(
+                                    crop.get(
+                                        "height",
+                                        0
+                                    )
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                continue
+
+                            crop_right = (
+                                crop_x
+                                + crop_width
+                            )
+
+                            crop_bottom = (
+                                crop_y
+                                + crop_height
+                            )
+
+                            # ---------------------------------------------
+                            # DETERMINE WHICH AZURE FIGURES CONTAIN
+                            # THIS CROP
+                            # ---------------------------------------------
+
+                            containing_figures = []
+
+                            for figure in audit_page.get(
+                                "figures",
+                                []
+                            ):
+
+                                candidate_id = str(
+                                    figure.get(
+                                        "azure_figure_id"
+                                    )
+                                )
+
+                                try:
+
+                                    fx = float(
+                                        figure.get(
+                                            "x",
+                                            0
+                                        )
+                                    )
+
+                                    fy = float(
+                                        figure.get(
+                                            "y",
+                                            0
+                                        )
+                                    )
+
+                                    fw = float(
+                                        figure.get(
+                                            "width",
+                                            0
+                                        )
+                                    )
+
+                                    fh = float(
+                                        figure.get(
+                                            "height",
+                                            0
+                                        )
+                                    )
+
+                                except (
+                                    TypeError,
+                                    ValueError
+                                ):
+
+                                    continue
+
+                                if (
+                                    crop_x >= fx
+                                    and crop_y >= fy
+                                    and crop_right
+                                        <= fx + fw
+                                    and crop_bottom
+                                        <= fy + fh
+                                ):
+
+                                    containing_figures.append(
+                                        candidate_id
+                                    )
+
+                            # ---------------------------------------------
+                            # LOG EXACT GEOMETRY
+                            # ---------------------------------------------
+
+                            _logger.warning(
+                                "[OPENAI CROP VISUAL DEBUG] "
+                                "CROP=%s "
+                                "| REQUESTED_FIGURE=%s "
+                                "| CROP=(%s,%s,%s,%s) "
+                                "| CONTAINED_BY=%s "
+                                "| PURPOSE=%s "
+                                "| PRODUCT=%s",
+                                crop_id,
+                                figure_id,
+                                crop_x,
+                                crop_y,
+                                crop_width,
+                                crop_height,
+                                containing_figures,
+                                crop.get(
+                                    "purpose",
+                                    ""
+                                ),
+                                crop.get(
+                                    "product_reference",
+                                    ""
+                                )
+                            )
+
+                            # ---------------------------------------------
+                            # CROP BOX
+                            # ---------------------------------------------
+
+                            draw.rectangle(
+                                (
+                                    crop_x,
+                                    crop_y,
+                                    crop_right,
+                                    crop_bottom
+                                ),
+                                outline="red",
+                                width=8
+                            )
+
+                            # ---------------------------------------------
+                            # CROP LABEL
+                            # ---------------------------------------------
+
+                            label = (
+                                f"{crop_id} "
+                                f"→ FIGURE {figure_id}"
+                            )
+
+                            label_x = crop_x
+
+                            label_y = max(
+                                0,
+                                crop_y - 34
+                            )
+
+                            draw.rectangle(
+                                (
+                                    label_x,
+                                    label_y,
+                                    label_x + 300,
+                                    label_y + 34
+                                ),
+                                fill="red"
+                            )
+
+                            draw.text(
+                                (
+                                    label_x + 6,
+                                    label_y + 5
+                                ),
+                                label,
+                                fill="white",
+                                font=font
+                            )
+
+                        # =================================================
+                        # SAVE DEBUG IMAGE
+                        # =================================================
+
+                        output_buffer = io.BytesIO()
+
+                        canvas.save(
+                            output_buffer,
+                            format="PNG"
+                        )
+
+                        output_buffer.seek(0)
+
+                        attachment_data = (
+                            base64.b64encode(
+                                output_buffer.read()
+                            )
+                        )
+
+                        attachment_name = (
+                            "azure_crop_debug_"
+                            f"job_{self.id}_"
+                            f"page_{page_number}.png"
+                        )
+
+                        attachment = self.env[
+                            "ir.attachment"
+                        ].sudo().create({
+
+                            "name":
+                                attachment_name,
+
+                            "type":
+                                "binary",
+
+                            "datas":
+                                attachment_data,
+
+                            "mimetype":
+                                "image/png",
+
+                            "res_model":
+                                self._name,
+
+                            "res_id":
+                                self.id,
+
+                        })
+
+                        # ========================================================
+                        # POST DEBUG IMAGE INTO JOB CHATTER
+                        # ========================================================
+
+                        self.env["mail.message"].sudo().create({
+                            "model": self._name,
+                            "res_id": self.id,
+                            "body": (
+                                "<b>AZURE FIGURE VISUAL DEBUG</b><br/>"
+                                f"Job: {self.id}<br/>"
+                                f"Page: {page_number}<br/>"
+                                f"Figure: {figure_id}<br/>"
+                                f"Input index: {input_index}<br/>"
+                                f"Resolution: "
+                                f"{image.width} × {image.height}"
+                            ),
+                            "message_type": "comment",
+                            "subtype_id": self.env.ref(
+                                "mail.mt_note"
+                            ).id,
+                            "attachment_ids": [
+                                (4, figure_attachment.id)
+                            ],
+                        })
+
+                        _logger.warning(
+                            "[OPENAI CROP VISUAL DEBUG] "
+                            "IMAGE CREATED "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| ATTACHMENT_ID=%s "
+                            "| NAME=%s",
+                            self.id,
+                            page_number,
+                            attachment.id,
+                            attachment_name
+                        )
+
+                    _logger.warning(
+                        "[OPENAI CROP VISUAL DEBUG] "
+                        "COMPLETE "
+                        "| JOB=%s",
+                        self.id
+                    )
+
+                except Exception:
+
+                    _logger.exception(
+                        "[OPENAI CROP VISUAL DEBUG] "
+                        "FAILED "
+                        f"| JOB={self.id}"
+                    )
+
+            # ----------------------------------------------------
+            # INTERNAL DECISION CONTRACT
+            #
+            # PASS = existing assets can go directly
+            #        to Family A / production.
+            #
+            # CROP = Render must crop individual assets
+            #        before production.
+            # ----------------------------------------------------
+
+            if raw_decision == "PASS":
+
+                decision = "PASS"
+
+            elif raw_decision == "CROP":
+
+                decision = "CROP"
+
+            elif (
+                raw_decision == "FAIL"
+                and crop_required
+                and isinstance(crops, list)
+                and len(crops) > 0
+            ):
+
+                # OpenAI currently uses FAIL to mean:
+                # "current figure assets are not production-ready".
+                #
+                # Because it also supplied explicit crop
+                # instructions, translate that into the
+                # state-machine decision CROP.
+
+                decision = "CROP"
+
+                _logger.warning(
+                    "[AZURE AUDIT] "
+                    "FAIL + CROP INSTRUCTIONS "
+                    "→ NORMALIZED TO CROP "
+                    "| JOB=%s | CROPS=%s",
+                    self.id,
+                    len(crops)
+                )
+
+            else:
+
+                decision = ""
+
+            _logger.warning(
+                "[AZURE AUDIT] DECISION | "
+                "JOB=%s | RAW=%s | "
+                "CROP_REQUIRED=%s | "
+                "CROPS=%s | NORMALIZED=%s",
+                self.id,
+                raw_decision,
+                crop_required,
+                len(crops)
+                    if isinstance(crops, list)
+                    else 0,
+                decision or "INVALID"
+            )
+
+            # ====================================================
+            # VALIDATE CROP COORDINATES AGAINST AZURE FIGURES
+            # ====================================================
+
+            valid_crops = []
+
+            if isinstance(
+                crops,
+                list
+            ):
+
+                # ------------------------------------------------
+                # Build lookup:
+                #
+                # figure_id
+                #     →
+                # Azure original-page bounds
+                # ------------------------------------------------
+
+                figure_bounds = {}
+
+                for audit_page in audit_pages:
+
+                    for figure in audit_page.get(
+                        "figures",
+                        []
+                    ):
+
+                        figure_id = figure.get(
+                            "azure_figure_id"
+                        )
+
+                        if not figure_id:
+                            continue
+
+                        figure_bounds[
+                            str(figure_id)
+                        ] = {
+                            "x":
+                                float(
+                                    figure.get(
+                                        "x",
+                                        0
+                                    )
+                                ),
+
+                            "y":
+                                float(
+                                    figure.get(
+                                        "y",
+                                        0
+                                    )
+                                ),
+
+                            "width":
+                                float(
+                                    figure.get(
+                                        "width",
+                                        0
+                                    )
+                                ),
+
+                            "height":
+                                float(
+                                    figure.get(
+                                        "height",
+                                        0
+                                    )
+                                ),
+                        }
+
+                # ------------------------------------------------
+                # Validate every crop
+                # ------------------------------------------------
+
+                for crop in crops:
+
+                    if not isinstance(
+                        crop,
+                        dict
+                    ):
+                        continue
+
+                    crop_id = crop.get(
+                        "crop_id",
+                        "unknown"
+                    )
+
+                    figure_id = str(
+                        crop.get(
+                            "figure_id",
+                            ""
+                        )
+                    )
+
+                    if figure_id not in figure_bounds:
+
+                        _logger.error(
+                            "[AZURE AUDIT] "
+                            "INVALID CROP FIGURE "
+                            "| JOB=%s "
+                            "| CROP=%s "
+                            "| FIGURE=%s",
+                            self.id,
+                            crop_id,
+                            figure_id
+                        )
+
+                        continue
+
+                    bounds = figure_bounds[
+                        figure_id
+                    ]
+
+                    try:
+
+                        crop_x = float(
+                            crop.get(
+                                "x",
+                                0
+                            )
+                        )
+
+                        crop_y = float(
+                            crop.get(
+                                "y",
+                                0
+                            )
+                        )
+
+                        crop_width = float(
+                            crop.get(
+                                "width",
+                                0
+                            )
+                        )
+
+                        crop_height = float(
+                            crop.get(
+                                "height",
+                                0
+                            )
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        _logger.error(
+                            "[AZURE AUDIT] "
+                            "INVALID CROP NUMBERS "
+                            "| JOB=%s "
+                            "| CROP=%s",
+                            self.id,
+                            crop_id
+                        )
+
+                        continue
+
+                    crop_right = (
+                        crop_x
+                        + crop_width
+                    )
+
+                    crop_bottom = (
+                        crop_y
+                        + crop_height
+                    )
+
+                    figure_right = (
+                        bounds["x"]
+                        + bounds["width"]
+                    )
+
+                    figure_bottom = (
+                        bounds["y"]
+                        + bounds["height"]
+                    )
+
+                    inside_figure = (
+                        crop_x >= bounds["x"]
+                        and crop_y >= bounds["y"]
+                        and crop_right <= figure_right
+                        and crop_bottom <= figure_bottom
+                    )
+
+                    if not inside_figure:
+
+                        _logger.error(
+                            "[AZURE AUDIT] "
+                            "CROP OUTSIDE FIGURE "
+                            "| JOB=%s "
+                            "| CROP=%s "
+                            "| FIGURE=%s "
+                            "| CROP=(%s,%s,%s,%s) "
+                            "| FIGURE=(%s,%s,%s,%s)",
+                            self.id,
+                            crop_id,
+                            figure_id,
+                            crop_x,
+                            crop_y,
+                            crop_width,
+                            crop_height,
+                            bounds["x"],
+                            bounds["y"],
+                            bounds["width"],
+                            bounds["height"]
+                        )
+
+                        continue
+
+                    _logger.warning(
+                        "[AZURE AUDIT] "
+                        "CROP VALID "
+                        "| JOB=%s "
+                        "| CROP=%s "
+                        "| FIGURE=%s",
+                        self.id,
+                        crop_id,
+                        figure_id
+                    )
+
+                    valid_crops.append(
+                        crop
+                    )
+
+            crops = valid_crops
+
+            # ----------------------------------------------------
+            # A crop request is actionable only when at least
+            # one valid crop survives validation.
+            # ----------------------------------------------------
+
+            crop_required = (
+                crop_required
+                and len(crops) > 0
+            )
+
+            _logger.warning(
+                "[AZURE AUDIT] "
+                "CROP VALIDATION COMPLETE "
+                "| JOB=%s "
+                "| VALID_CROPS=%s "
+                "| CROP_REQUIRED=%s",
+                self.id,
+                len(crops),
+                crop_required
+            )
+
+            # ====================================================
+            # IMPORTANT:
+            # Return the NORMALIZED internal decision.
+            #
+            # OpenAI may return:
+            #
+            #     decision = FAIL
+            #     crop_required = True
+            #     crops = [...]
+            #
+            # Internally we normalize that to:
+            #
+            #     decision = CROP
+            #
+            # The caller reads audit_result["decision"],
+            # therefore the normalized decision MUST be written
+            # back into the returned dictionary.
+            # ====================================================
+
+            if decision:
+                audit_result["decision"] = decision
+
+            audit_result["crop_required"] = (
+                crop_required
+            )
+
+            audit_result["crops"] = crops
+
+            # ====================================================
+            # STORE NORMALIZED AUDIT RESULT
+            # ====================================================
+
+            self.azure_review_json = (
+                json.dumps(
+                    audit_result,
+                    ensure_ascii=False
+                )
+            ) if hasattr(
+                self,
+                "azure_review_json"
+            ) else False
+
+
+            return audit_result
+
+        except Exception as e:
+
+            _logger.exception(
+                "[AZURE AUDIT] FAILED "
+                f"| JOB={self.id}"
+            )
+
+            return {
+
+                "decision":
+                    "FAIL",
+
+                "confidence":
+                    0,
+
+                "reason":
+                    str(e),
+
+                "pages":
+                    [],
+
+                "audit_error":
+                    True
+
+            }
+
+
+    # =========================================================
+    # FAMILY A VISUAL QUALITY GATE
+    # =========================================================
+
+    def _review_family_a_extraction_with_openai(self):
+
+        self.ensure_one()
+
+        _logger.warning(
+            "[FAMILY A REVIEW] START | JOB=%s",
+            self.id
+        )
+
+        # =====================================================
+        # LOAD NORMALIZED FAMILY A EXTRACTION
+        # =====================================================
+
+        page_records = self.env[
+            "vendor.import.page"
+        ].search(
+            [
+                ("job_id", "=", self.id)
+            ],
+            order="page_number asc"
+        )
+
+        if not page_records:
+
+            _logger.warning(
+                "[FAMILY A REVIEW] NO PAGE RECORDS | JOB=%s",
+                self.id
+            )
+
+            return {
+                "decision": "FAIL",
+                "reason": "No extracted page records",
+                "pages": [],
+            }
+
+        image_inputs = []
+
+        review_pages = []
+
+        # =====================================================
+        # BUILD VISUAL INPUT FROM FAMILY A EXTRACTION
+        # =====================================================
+
+        for record in page_records:
+
+            try:
+
+                page_blocks = json.loads(
+                    record.extracted_json
+                    or "[]"
+                )
+
+            except Exception:
+
+                _logger.exception(
+                    "[FAMILY A REVIEW] INVALID extracted_json "
+                    "| JOB=%s | PAGE=%s",
+                    self.id,
+                    record.page_number
+                )
+
+                continue
+
+            if not isinstance(
+                page_blocks,
+                list
+            ):
+                continue
+
+            for block in page_blocks:
+
+                if not isinstance(
+                    block,
+                    dict
+                ):
+                    continue
+
+                page_number = block.get(
+                    "page",
+                    record.page_number
+                )
+
+                page_image = block.get(
+                    "page_image",
+                    ""
+                )
+
+                images = block.get(
+                    "images",
+                    []
+                )
+
+                # =================================================
+                # ORIGINAL PAGE
+                # =================================================
+
+                original_page_index = None
+
+                if page_image:
+
+                    # -------------------------------------------------
+                    # Explicit visual label for OpenAI
+                    # -------------------------------------------------
+
+                    image_inputs.append({
+                        "type": "input_text",
+                        "text": (
+                            f"PAGE {page_number} - "
+                            "ORIGINAL CATALOGUE PAGE. "
+                            "This image is the authoritative source "
+                            "for this page."
+                        )
+                    })
+
+                    original_page_index = (
+                        len(image_inputs)
+                    )
+
+                    image_inputs.append({
+                        "type":
+                            "input_image",
+
+                        "image_url":
+                            (
+                                "data:image/png;base64,"
+                                + page_image
+                            )
+                    })
+
+                # =================================================
+                # FAMILY A EXTRACTED IMAGES
+                # =================================================
+
+                extracted_indexes = []
+
+                if isinstance(
+                    images,
+                    list
+                ):
+
+                    for image in images:
+
+                        if not isinstance(
+                            image,
+                            dict
+                        ):
+                            continue
+
+                        image_data = image.get(
+                            "image"
+                        )
+
+                        if not image_data:
+                            continue
+
+                        visual_index = (
+                            len(image_inputs)
+                        )
+
+                        image_inputs.append({
+                            "type": "input_text",
+                            "text": (
+                                f"PAGE {page_number} - "
+                                f"FAMILY A EXTRACTED IMAGE "
+                                f"INDEX={image.get('index', len(extracted_indexes))}. "
+                                "Compare this image directly against "
+                                "the ORIGINAL CATALOGUE PAGE for the same page."
+                            )
+                        })
+
+                        image_inputs.append({
+                            "type":
+                                "input_image",
+
+                            "image_url":
+                                (
+                                    "data:image/png;base64,"
+                                    + image_data
+                                )
+                        })
+
+
+                        extracted_indexes.append({
+                            "visual_index":
+                                visual_index,
+                            "image_index":
+                                image.get(
+                                    "index",
+                                    len(
+                                        extracted_indexes
+                                    )
+                                ),
+                            "width":
+                                image.get(
+                                    "width",
+                                    0
+                                ),
+                            "height":
+                                image.get(
+                                    "height",
+                                    0
+                                ),
+                            "x":
+                                image.get(
+                                    "x",
+                                    0
+                                ),
+                            "y":
+                                image.get(
+                                    "y",
+                                    0
+                                ),
+                            "is_lifestyle":
+                                image.get(
+                                    "is_lifestyle",
+                                    False
+                                ),
+                            "score":
+                                image.get(
+                                    "score",
+                                    0
+                                ),
+                            "extractor_score":
+                                image.get(
+                                    "extractor_score",
+                                    0
+                                ),
+                            "azure_figure_id":
+                                image.get(
+                                    "azure_figure_id"
+                                ),
+                        })
+
+                review_pages.append({
+
+                    "page":
+                        page_number,
+
+                    "original_page_visual_index":
+                        original_page_index,
+
+                    "extracted_images":
+                        extracted_indexes,
+
+                })
+
+        # =====================================================
+        # NO VISUAL EVIDENCE
+        # =====================================================
+
+        if not image_inputs:
+
+            _logger.warning(
+                "[FAMILY A REVIEW] NO VISUAL INPUT "
+                "| JOB=%s",
+                self.id
+            )
+
+            return {
+                "decision": "FAIL",
+                "reason": "No Family A visual evidence available",
+                "pages": review_pages,
+            }
+
+        # =====================================================
+        # FAMILY A VISUAL QUALITY PROMPT
+        # =====================================================
+
+        review_prompt = """
+        You are the FINAL visual quality-control gate between
+        Family A PDF extraction and the production PDF AI.
+
+        Family A has already extracted product images from the catalogue.
+
+        YOUR MOST IMPORTANT RULE:
+
+        THE ORIGINAL CATALOGUE PAGE IS THE AUTHORITATIVE SOURCE OF TRUTH.
+
+        Do NOT judge Family A extracted images in isolation.
+
+        For EVERY PAGE independently, compare:
+
+        1. The ORIGINAL CATALOGUE PAGE.
+        2. ALL FAMILY A EXTRACTED IMAGES belonging to that SAME PAGE.
+
+        The purpose of this review is to determine whether Family A has
+        faithfully represented everything important that is visibly present
+        on the original page.
+
+        ================================================================
+        PAGE-BY-PAGE RULE
+        ================================================================
+
+        Evaluate every supplied page independently.
+
+        One page passing MUST NOT cause another page to pass.
+
+        One page failing MUST NOT cause another page to fail.
+
+        Do NOT make a global decision based on the majority of pages.
+
+        A catalogue may contain:
+
+        - pages that Family A handles perfectly;
+        - pages that Family A partially handles;
+        - pages that require Azure recovery.
+
+        The review must identify the exact pages requiring recovery.
+
+        ================================================================
+        ORIGINAL PAGE COMPARISON
+        ================================================================
+
+        For every page, compare the original page against EVERY Family A
+        extracted image.
+
+        Determine:
+
+        1. What products are visibly present on the original page?
+
+        2. What colour variants are visibly present?
+
+        3. Which images represent the primary product?
+
+        4. Which images are gallery/detail/folded/supporting images?
+
+        5. Which extracted image corresponds to which visible product?
+
+        6. Is any product or variant visible on the original page missing
+           from Family A extraction?
+
+        7. Has Family A extracted only part of a product?
+
+        8. Has Family A merged two separate products into one image?
+
+        9. Has Family A incorrectly treated multiple independent products
+           as variants of one product?
+
+        10. Has Family A incorrectly treated gallery/detail/folded images
+            as separate colour variants?
+
+        ================================================================
+        MISSING PRODUCT / VARIANT RULE
+        ================================================================
+
+        A CLEAN EXTRACTED IMAGE IS NOT SUFFICIENT FOR PASS.
+
+        If something important is clearly visible on the ORIGINAL PAGE
+        but Family A did not extract it, the page MUST FAIL.
+
+        Example:
+
+        ORIGINAL PAGE:
+            Black bag
+            Grey bag
+            Folded bag
+
+        FAMILY A:
+            Black bag
+            Folded bag
+
+        RESULT:
+
+            FAIL
+
+        because the Grey bag is missing.
+
+        Do NOT allow the page to PASS merely because the surviving
+        extracted images are individually clean.
+
+        This rule is especially important for colour variants.
+
+        ================================================================
+        PRODUCT STRUCTURE RULE
+        ================================================================
+
+        Do NOT assume that visually similar images belong to the same
+        product.
+
+        A catalogue page may contain:
+
+        - one product with multiple colour variants;
+        - multiple independent products;
+        - one product with several gallery images;
+        - one product with folded/detail images;
+        - multiple products with their own variants;
+        - a mixture of these structures.
+
+        Determine the structure from the ORIGINAL PAGE.
+
+        Multiple independent products MUST remain separate products.
+
+        Colour versions of the SAME product should be identified as
+        variants.
+
+        Gallery/detail/folded images should NOT automatically become
+        variants.
+
+        ================================================================
+        FAMILY A IMAGE MAPPING
+        ================================================================
+
+        Every Family A extracted image must be mapped to the original page.
+
+        For every extracted image report:
+
+        - image index;
+        - product group;
+        - colour when visually identifiable;
+        - image role;
+        - whether it matches something visible on the original page.
+
+        If an extracted image cannot be confidently matched to the
+        original page, mark it as suspicious.
+
+        If something visible on the original page has no corresponding
+        Family A image, record it under missing_items.
+
+        ================================================================
+        WHEN TO PASS
+        ================================================================
+
+        PASS a page only when:
+
+        1. All important products visible on the original page are
+           represented.
+
+        2. All important colour/variant products visible on the original
+           page are represented.
+
+        3. Product bodies are substantially complete.
+
+        4. No important product has been lost.
+
+        5. Separate products are not incorrectly merged.
+
+        6. Variants are not incorrectly represented as separate products.
+
+        7. Gallery/detail/folded images are correctly distinguished.
+
+        8. Extracted images correspond to the original catalogue page.
+
+        9. The resulting evidence is sufficiently reliable for the
+           production PDF AI.
+
+        Minor cosmetic imperfections alone do NOT require FAIL.
+
+        ================================================================
+        WHEN TO FAIL
+        ================================================================
+
+        FAIL a page when any important extraction problem exists,
+        including:
+
+        - missing product;
+        - missing colour variant;
+        - missing required product image;
+        - substantially cropped product;
+        - major product portion missing;
+        - incorrect image/product correspondence;
+        - merged independent products;
+        - incorrect product/variant grouping;
+        - unusable product evidence.
+
+        ================================================================
+        IMPORTANT DISTINCTION
+        ================================================================
+
+        A page can contain MULTIPLE PRODUCTS and still PASS.
+
+        Do NOT automatically send a multiple-product page to Azure.
+
+        If Family A extracted all products correctly, PASS the page and
+        describe the separate product groups clearly in the returned
+        structure.
+
+        If Family A incorrectly merged the products, FAIL the page.
+
+        ================================================================
+        DO NOT PERFORM THESE TASKS
+        ================================================================
+
+        Do NOT create products.
+
+        Do NOT provide crop coordinates.
+
+        Do NOT perform Azure processing.
+
+        Do NOT judge product descriptions, prices or marketing text
+        unless the visual extraction itself is affected.
+
+        ================================================================
+        RETURN FORMAT
+        ================================================================
+
+        Return ONLY valid JSON:
+
+        {
+            "decision": "PASS" or "FAIL",
+
+            "confidence": 0.0,
+
+            "reason": "overall routing summary",
+
+            "pages": [
+                {
+                    "page": 1,
+
+                    "decision": "PASS" or "FAIL",
+
+                    "confidence": 0.0,
+
+                    "reason":
+                        "specific page-level explanation",
+
+                    "product_structure":
+                        "SINGLE_PRODUCT"
+                        or
+                        "MULTIPLE_PRODUCTS"
+                        or
+                        "MIXED",
+
+                    "product_groups": [
+                        {
+                            "group_id": "product_1",
+
+                            "relationship":
+                                "SINGLE_PRODUCT"
+                                or
+                                "VARIANTS"
+                                or
+                                "SEPARATE_PRODUCT",
+
+                            "description":
+                                "short visual description",
+
+                            "variants": [
+                                {
+                                    "color": "Black",
+
+                                    "extracted_image_indexes": [
+                                        0
+                                    ],
+
+                                    "image_role":
+                                        "PRIMARY"
+                                        or
+                                        "GALLERY"
+                                        or
+                                        "FOLDED"
+                                        or
+                                        "DETAIL"
+                                }
+                            ]
+                        }
+                    ],
+
+                    "missing_items": [
+                        {
+                            "description":
+                                "Grey version of the sling bag",
+
+                            "type":
+                                "MISSING_VARIANT"
+                                or
+                                "MISSING_PRODUCT"
+                                or
+                                "MISSING_IMAGE",
+
+                            "reason":
+                                "Visible on original page but absent from Family A extraction."
+                        }
+                    ],
+
+                    "extracted_asset_mapping": [
+                        {
+                            "image_index": 0,
+
+                            "product_group":
+                                "product_1",
+
+                            "color":
+                                "Black",
+
+                            "image_role":
+                                "PRIMARY",
+
+                            "matches_original":
+                                true,
+
+                            "reason":
+                                "Matches the black product visible on the original page."
+                        }
+                    ]
+                }
+            ]
+        }
+
+        ================================================================
+        CRITICAL OUTPUT RULES
+        ================================================================
+
+        Every supplied page MUST appear exactly once.
+
+        The page-level decision is authoritative.
+
+        The top-level decision MUST be:
+
+        PASS only when ALL supplied pages are PASS.
+
+        FAIL when ANY supplied page is FAIL.
+
+        Do NOT omit pages.
+
+        Do NOT invent products or variants that are not visible on the
+        original page.
+
+        missing_items MUST identify important products, variants or images
+        visible on the original page but absent from Family A.
+
+        product_groups MUST distinguish separate products from variants.
+
+        extracted_asset_mapping MUST explain what each Family A image
+        represents relative to the original page.
+        """
+
+        # =====================================================
+        # PAGE CONTEXT
+        # =====================================================
+
+        review_context = json.dumps(
+            review_pages,
+            ensure_ascii=False
+        )
+
+        _logger.warning(
+            "[FAMILY A REVIEW] CONTEXT SIZE "
+            "| JOB=%s | CHARS=%s | KB=%.2f",
+            self.id,
+            len(review_context),
+            len(review_context.encode("utf-8")) / 1024,
+        )
+
+        # =====================================================
+        # OPENAI CALL
+        # =====================================================
+
+        try:
+
+            api_key = self.env[
+                "ir.config_parameter"
+            ].sudo().get_param(
+                "openai.api.key"
+            )
+
+            if not api_key:
+
+                raise Exception(
+                    "OpenAI API key not configured"
+                )
+
+            client = OpenAI(
+                api_key=api_key
+            )
+
+            _logger.warning(
+                "[FAMILY A REVIEW] OPENAI CALL "
+                "| JOB=%s | IMAGES=%s",
+                self.id,
+                len(image_inputs)
+            )
+
+            response = client.responses.create(
+
+                model="gpt-4.1",
+
+                input=[{
+
+                    "role":
+                        "user",
+
+                    "content": [
+
+                        {
+                            "type":
+                                "input_text",
+
+                            "text":
+                                (
+                                    review_prompt
+                                    + "\n\n"
+                                    + "EXTRACTION CONTEXT:\n"
+                                    + review_context
+                                )
+                        }
+
+                    ] + image_inputs
+
+                }],
+
+                timeout=90
+            )
+
+            raw_output = (
+                response.output_text
+                or ""
+            )
+
+            _logger.warning(
+                "[FAMILY A REVIEW] RESPONSE "
+                "| JOB=%s | LENGTH=%s",
+                self.id,
+                len(raw_output)
+            )
+
+            # =================================================
+            # CLEAN JSON
+            # =================================================
+
+            cleaned = raw_output.strip()
+
+            if cleaned.startswith("```"):
+
+                if cleaned.startswith(
+                    "```json"
+                ):
+
+                    cleaned = cleaned[
+                        len("```json"):
+                    ]
+
+                else:
+
+                    cleaned = cleaned[
+                        len("```"):
+                    ]
+
+                if cleaned.endswith(
+                    "```"
+                ):
+
+                    cleaned = cleaned[
+                        :-len("```")
+                    ]
+
+                cleaned = cleaned.strip()
+
+            # =================================================
+            # PARSE
+            # =================================================
+
+            result = json.loads(
+                cleaned
+            )
+
+            if not isinstance(
+                result,
+                dict
+            ):
+
+                raise ValueError(
+                    "Family A review response "
+                    "must be a JSON object"
+                )
+
+            # =================================================
+            # VALIDATE PAGE-LEVEL REVIEW RESULT
+            # =================================================
+
+            reviewed_pages = result.get(
+                "pages",
+                []
+            )
+
+            if not isinstance(
+                reviewed_pages,
+                list
+            ):
+
+                raise ValueError(
+                    "Family A review did not return "
+                    "a valid pages list"
+                )
+
+
+            expected_pages = {
+                int(record.page_number)
+                for record in page_records
+            }
+
+
+            reviewed_page_numbers = set()
+
+
+            normalized_pages = []
+
+
+            for page_result in reviewed_pages:
+
+                if not isinstance(
+                    page_result,
+                    dict
+                ):
+                    continue
+
+                try:
+
+                    page_number = int(
+                        page_result.get(
+                            "page"
+                        )
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    continue
+
+                if page_number not in expected_pages:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] UNKNOWN PAGE "
+                        "| JOB=%s | PAGE=%s",
+                        self.id,
+                        page_number
+                    )
+
+                    continue
+
+                if page_number in reviewed_page_numbers:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] DUPLICATE PAGE "
+                        "| JOB=%s | PAGE=%s",
+                        self.id,
+                        page_number
+                    )
+
+                    continue
+
+                page_decision = str(
+                    page_result.get(
+                        "decision",
+                        "FAIL"
+                    )
+                ).upper().strip()
+
+                if page_decision not in (
+                    "PASS",
+                    "FAIL"
+                ):
+
+                    page_decision = "FAIL"
+
+                normalized_page = {
+                    "page":
+                        page_number,
+
+                    "decision":
+                        page_decision,
+
+                    "confidence":
+                        page_result.get(
+                            "confidence",
+                            0
+                        ),
+
+                    "reason":
+                        str(
+                            page_result.get(
+                                "reason",
+                                ""
+                            )
+                        ),
+
+                    # =================================================
+                    # PRESERVE VISUAL PRODUCT STRUCTURE
+                    # =================================================
+
+                    "product_structure":
+                        page_result.get(
+                            "product_structure",
+                            "UNKNOWN"
+                        ),
+
+                    "product_groups":
+                        page_result.get(
+                            "product_groups",
+                            []
+                        ),
+
+                    "missing_items":
+                        page_result.get(
+                            "missing_items",
+                            []
+                        ),
+
+                    "extracted_asset_mapping":
+                        page_result.get(
+                            "extracted_asset_mapping",
+                            []
+                        ),
+                }
+
+                normalized_pages.append(
+                    normalized_page
+                )
+
+                reviewed_page_numbers.add(
+                    page_number
+                )
+
+
+            # =================================================
+            # NEVER ALLOW AN UNREVIEWED PAGE INTO PRODUCTION
+            # =================================================
+
+            missing_pages = (
+                expected_pages
+                - reviewed_page_numbers
+            )
+
+
+            for page_number in sorted(
+                missing_pages
+            ):
+
+                normalized_pages.append({
+
+                    "page":
+                        page_number,
+
+                    "decision":
+                        "FAIL",
+
+                    "confidence":
+                        0,
+
+                    "reason":
+                        "Review AI did not return a decision "
+                        "for this page."
+
+                })
+
+
+            normalized_pages.sort(
+                key=lambda item:
+                    item["page"]
+            )
+
+
+            # =================================================
+            # CALCULATE AUTHORITATIVE GLOBAL DECISION
+            # =================================================
+
+            failed_pages = [
+
+                item
+                for item in normalized_pages
+
+                if item["decision"] == "FAIL"
+
+            ]
+
+
+            passed_pages = [
+
+                item
+                for item in normalized_pages
+
+                if item["decision"] == "PASS"
+
+            ]
+
+
+            decision = (
+                "FAIL"
+                if failed_pages
+                else "PASS"
+            )
+
+
+            result["decision"] = decision
+
+            result["pages"] = normalized_pages
+
+            result["passed_pages"] = [
+                item["page"]
+                for item in passed_pages
+            ]
+
+            result["failed_pages"] = [
+                item["page"]
+                for item in failed_pages
+            ]
+
+            # =================================================
+            # AUTHORITATIVE ROUTING SUMMARY
+            # =================================================
+
+            if failed_pages:
+
+                result["reason"] = (
+                    f"{len(failed_pages)} page(s) failed "
+                    "Family A visual quality review."
+                )
+
+            else:
+
+                result["reason"] = (
+                    "All pages passed Family A visual quality review."
+                )
+
+            result["summary"] = {
+
+                "total_pages":
+                    len(normalized_pages),
+
+                "passed":
+                    len(passed_pages),
+
+                "failed":
+                    len(failed_pages),
+
+            }
+
+            _logger.warning(
+                "[FAMILY A REVIEW] DECISION "
+                "| JOB=%s | DECISION=%s | CONFIDENCE=%s "
+                "| REASON=%s",
+                self.id,
+                decision,
+                result.get(
+                    "confidence",
+                    0
+                ),
+                result.get(
+                    "reason",
+                    ""
+                )
+            )
+
+            return result
+
+        except Exception as e:
+
+            _logger.exception(
+                "[FAMILY A REVIEW] FAILED "
+                "| JOB=%s",
+                self.id
+            )
+
+            # =================================================
+            # TECHNICAL FAILURE — DO NOT RETURN A REVIEW
+            # =================================================
+            #
+            # OpenAI did not successfully perform the Family A
+            # visual review.
+            #
+            # Therefore this result MUST NOT be interpreted as
+            # "all pages passed".
+            #
+            # Re-raise so the caller's technical-failure handler
+            # can route the job to Azure fallback.
+            # =================================================
+
+            raise
+
+    # =========================================================
+    # AZURE OPENAI CROP PROCESSOR
+    # =========================================================
+    def _process_azure_crop_request(self):
+
+        self.ensure_one()
+
+        _logger.warning(
+            "[AZURE CROP] START | JOB=%s",
+            self.id
+        )
+
+        # ===========================================================
+        # LOAD STORED AZURE AUDIT
+        # ===========================================================
+
+        audit_json = self.azure_review_json
+
+        if not audit_json:
+
+            _logger.warning(
+                "[AZURE CROP] NO AUDIT JSON | JOB=%s",
+                self.id
+            )
+
+            self.state = "pdf_ai"
+
+            self._safe_commit_progress()
+
+            return {
+                "success": True,
+                "created": 0,
+            }
+
+        try:
+
+            audit_result = json.loads(
+                audit_json
+            )
+
+        except Exception:
+
+            _logger.exception(
+                "[AZURE CROP] INVALID STORED AUDIT JSON "
+                "| JOB=%s",
+                self.id
+            )
+
+            self.state = "failed"
+
+            self._safe_commit_progress()
+
+            return {
+                "success": True,
+                "created": 0,
+            }
+
+        # =========================================================
+        # COLLECT CROPS
+        # =========================================================
+
+        crops = []
+
+        top_crops = audit_result.get(
+            "crops",
+            []
+        )
+
+        if isinstance(
+            top_crops,
+            list
+        ):
+
+            crops.extend(
+                top_crops
+            )
+
+        for audit_page in audit_result.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                audit_page,
+                dict
+            ):
+                continue
+
+            page_crops = audit_page.get(
+                "crops",
+                []
+            )
+
+            if isinstance(
+                page_crops,
+                list
+            ):
+
+                crops.extend(
+                    page_crops
+                )
+
+        # =========================================================
+        # DEDUPLICATE CROPS
+        # =========================================================
+        #
+        # The audit response may expose the same crop both at the
+        # top level and inside page["crops"].
+        #
+        # crop_id is the authoritative identity.
+        # =========================================================
+
+        unique_crops = []
+        seen_crop_ids = set()
+
+        for crop in crops:
+
+            if not isinstance(
+                crop,
+                dict
+            ):
+                continue
+
+            crop_id = str(
+                crop.get(
+                    "crop_id",
+                    ""
+                )
+            ).strip()
+
+            if not crop_id:
+                unique_crops.append(
+                    crop
+                )
+                continue
+
+            if crop_id in seen_crop_ids:
+
+                _logger.warning(
+                    "[AZURE CROP] DUPLICATE CROP REMOVED "
+                    "| JOB=%s "
+                    "| CROP=%s",
+                    self.id,
+                    crop_id
+                )
+
+                continue
+
+            seen_crop_ids.add(
+                crop_id
+            )
+
+            unique_crops.append(
+                crop
+            )
+
+        crops = unique_crops
+
+        _logger.warning(
+            "[AZURE CROP] UNIQUE CROP REQUESTS "
+            "| JOB=%s "
+            "| CROPS=%s "
+            "| IDS=%s",
+            self.id,
+            len(crops),
+            sorted(
+                seen_crop_ids
+            )
+        )
+
+        # =========================================================
+        # DETERMINE FIGURES CONTAINING MULTIPLE PRODUCT CROPS
+        # =========================================================
+
+        figure_crop_counts = {}
+
+        for crop in crops:
+
+            if not isinstance(
+                crop,
+                dict
+            ):
+                continue
+
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            ).strip()
+
+            if not figure_id:
+                continue
+
+            figure_crop_counts[figure_id] = (
+                figure_crop_counts.get(
+                    figure_id,
+                    0
+                ) + 1
+            )
+
+        multi_product_figures = {
+            figure_id
+            for figure_id, count
+            in figure_crop_counts.items()
+            if count > 1
+        }
+
+        _logger.warning(
+            "[AZURE CROP] MULTI-PRODUCT FIGURES "
+            "| JOB=%s "
+            "| COUNTS=%s "
+            "| MULTI=%s",
+            self.id,
+            figure_crop_counts,
+            sorted(
+                multi_product_figures
+            )
+        )
+
+        _logger.warning(
+            "[AZURE CROP] REQUESTS=%s | JOB=%s",
+            len(crops),
+            self.id
+        )
+
+        if not crops:
+
+            _logger.warning(
+                "[AZURE CROP] NOTHING TO CROP "
+                "| JOB=%s",
+                self.id
+            )
+
+            self.state = "pdf_ai"
+
+            self._safe_commit_progress()
+
+            return {
+                "success": True,
+                "created": 0,
+            }
+
+        # =========================================================
+        # LOAD PDF PAGE RECORDS
+        # =========================================================
+
+        page_records = self.env[
+            'vendor.import.page'
+        ].search([
+            ('job_id', '=', self.id)
+        ], order='page_number asc')
+
+        if not page_records:
+            _logger.error(
+                "[AZURE CROP] NO PAGE RECORDS | JOB=%s",
+                self.id
+            )
+
+            self.state = "failed"
+            self._safe_commit_progress()
+          
+            return {
+                "success": True,
+                "created": 0,
+            }
+
+        created_assets = []
+
+        # =========================================================
+        # BUILD AUTHORITATIVE AZURE FIGURE BOUNDS
+        # =========================================================
+        #
+        # IMPORTANT:
+        #
+        # OpenAI crop instructions identify the Azure figure using:
+        #
+        #     figure_id
+        #
+        # The authoritative figure geometry is stored in:
+        #
+        #     audit_result["pages"][...]["figures"]
+        #
+        # We build the lookup using BOTH:
+        #
+        #     page number
+        #     figure ID
+        #
+        # because figure IDs must not be assumed globally unique.
+        # =========================================================
+
+        figure_bounds_by_page = {}
+
+        for audit_page in audit_result.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                audit_page,
+                dict
+            ):
+                continue
+
+            page_number = audit_page.get(
+                "page"
+            )
+
+            if page_number is None:
+                continue
+
+            try:
+
+                page_number = int(
+                    page_number
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+            for figure in audit_page.get(
+                "figures",
+                []
+            ):
+
+                if not isinstance(
+                    figure,
+                    dict
+                ):
+                    continue
+
+                figure_id = str(
+                    figure.get(
+                        "azure_figure_id",
+                        figure.get(
+                            "figure_id",
+                            ""
+                        )
+                    )
+                ).strip()
+
+                if not figure_id:
+                    continue
+
+                try:
+
+                    figure_x = float(
+                        figure.get(
+                            "x",
+                            0
+                        )
+                    )
+
+                    figure_y = float(
+                        figure.get(
+                            "y",
+                            0
+                        )
+                    )
+
+                    figure_width = float(
+                        figure.get(
+                            "width",
+                            0
+                        )
+                    )
+
+                    figure_height = float(
+                        figure.get(
+                            "height",
+                            0
+                        )
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    _logger.warning(
+                        "[AZURE CROP] INVALID FIGURE BOUNDS "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| FIGURE=%s",
+                        self.id,
+                        page_number,
+                        figure_id
+                    )
+
+                    continue
+
+                if (
+                    figure_width <= 0
+                    or figure_height <= 0
+                ):
+
+                    _logger.warning(
+                        "[AZURE CROP] EMPTY FIGURE BOUNDS "
+                        "| JOB=%s "
+                        "| PAGE=%s "
+                        "| FIGURE=%s",
+                        self.id,
+                        page_number,
+                        figure_id
+                    )
+
+                    continue
+
+                figure_bounds_by_page[
+                    (
+                        page_number,
+                        figure_id
+                    )
+                ] = {
+                    "x": figure_x,
+                    "y": figure_y,
+                    "width": figure_width,
+                    "height": figure_height,
+                }
+
+                _logger.warning(
+                    "[AZURE CROP] REGISTER FIGURE BOUNDS "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| FIGURE=%s "
+                    "| X=%s "
+                    "| Y=%s "
+                    "| W=%s "
+                    "| H=%s",
+                    self.id,
+                    page_number,
+                    figure_id,
+                    figure_x,
+                    figure_y,
+                    figure_width,
+                    figure_height
+                )
+
+
+        _logger.warning(
+            "[AZURE CROP] AUTHORITATIVE FIGURE BOUNDS "
+            "| JOB=%s "
+            "| BOUNDS=%s",
+            self.id,
+            json.dumps(
+                {
+                    f"{page}:{figure}": bounds
+                    for (
+                        page,
+                        figure
+                    ), bounds
+                    in figure_bounds_by_page.items()
+                },
+                ensure_ascii=False,
+                default=str
+            )
+        )
+
+
+        # =========================================================
+        # ENRICH CROPS WITH FIGURE BOUNDS
+        # =========================================================
+
+        enriched_crops = []
+
+        for crop in crops:
+
+            if not isinstance(
+                crop,
+                dict
+            ):
+                continue
+
+            # -----------------------------------------------
+            # KEEP THE ORIGINAL CROP DATA
+            # -----------------------------------------------
+
+            enriched_crop = dict(
+                crop
+            )
+
+            figure_id = str(
+                enriched_crop.get(
+                    "figure_id",
+                    ""
+                )
+            ).strip()
+
+            try:
+
+                crop_page = int(
+                    enriched_crop.get(
+                        "page",
+                        1
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                crop_page = 1
+
+            bounds = figure_bounds_by_page.get(
+                (
+                    crop_page,
+                    figure_id
+                )
+            )
+
+            # =====================================================
+            # FALLBACK TO BOUNDS ALREADY EMBEDDED IN CROP
+            # =====================================================
+            #
+            # Some Azure/OpenAI audit responses do not reproduce
+            # the original Azure figure list under:
+            #
+            #     audit_result["pages"][...]["figures"]
+            #
+            # However, the crop object may already carry the
+            # authoritative figure geometry.
+            #
+            # Prefer the page/figure lookup when available.
+            # Otherwise preserve the crop's own embedded bounds.
+            # =====================================================
+
+            if not bounds:
+
+                embedded_bounds = (
+                    enriched_crop.get(
+                        "azure_figure_bounds"
+                    )
+                )
+
+                if isinstance(
+                    embedded_bounds,
+                    dict
+                ):
+
+                    try:
+
+                        embedded_width = float(
+                            embedded_bounds.get(
+                                "width",
+                                0
+                            )
+                        )
+
+                        embedded_height = float(
+                            embedded_bounds.get(
+                                "height",
+                                0
+                            )
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        embedded_width = 0
+                        embedded_height = 0
+
+                    if (
+                        embedded_width > 0
+                        and embedded_height > 0
+                    ):
+
+                        bounds = {
+                            "x": float(
+                                embedded_bounds.get(
+                                    "x",
+                                    0
+                                )
+                            ),
+                            "y": float(
+                                embedded_bounds.get(
+                                    "y",
+                                    0
+                                )
+                            ),
+                            "width": embedded_width,
+                            "height": embedded_height,
+                        }
+
+                        _logger.warning(
+                            "[AZURE CROP] USING EMBEDDED "
+                            "FIGURE BOUNDS "
+                            "| JOB=%s "
+                            "| CROP=%s "
+                            "| PAGE=%s "
+                            "| FIGURE=%s "
+                            "| BOUNDS=%s",
+                            self.id,
+                            enriched_crop.get(
+                                "crop_id",
+                                "unknown"
+                            ),
+                            crop_page,
+                            figure_id,
+                            json.dumps(
+                                bounds,
+                                ensure_ascii=False,
+                                default=str
+                            )
+                        )
+
+                if not bounds:
+
+                    _logger.error(
+                        "[AZURE CROP] FIGURE BOUNDS NOT FOUND "
+                        "| JOB=%s "
+                        "| CROP=%s "
+                        "| PAGE=%s "
+                        "| FIGURE=%s "
+                        "| CROP_KEYS=%s",
+                        self.id,
+                        enriched_crop.get(
+                            "crop_id",
+                            "unknown"
+                        ),
+                        crop_page,
+                        figure_id,
+                        list(
+                            enriched_crop.keys()
+                        )
+                    )
+
+                    # Keep the crop. It will be handled by the
+                    # safe fallback below rather than crashing.
+                    enriched_crops.append(
+                        enriched_crop
+                    )
+
+                    continue
+
+            # -----------------------------------------------
+            # ATTACH AUTHORITATIVE FIGURE BOUNDS
+            # -----------------------------------------------
+
+            enriched_crop[
+                "azure_figure_bounds"
+            ] = dict(
+                bounds
+            )
+
+            _logger.warning(
+                "[AZURE CROP] FIGURE BOUNDS ATTACHED "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| PAGE=%s "
+                "| FIGURE=%s "
+                "| X=%s "
+                "| Y=%s "
+                "| W=%s "
+                "| H=%s",
+                self.id,
+                enriched_crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                crop_page,
+                figure_id,
+                bounds["x"],
+                bounds["y"],
+                bounds["width"],
+                bounds["height"]
+            )
+
+            enriched_crops.append(
+                enriched_crop
+            )
+
+
+        # =========================================================
+        # IMPORTANT:
+        # FROM THIS POINT FORWARD USE THE ENRICHED CROP OBJECTS.
+        # =========================================================
+
+        crops = enriched_crops
+
+        _logger.warning(
+            "[AZURE CROP] USING ENRICHED CROPS "
+            "| JOB=%s "
+            "| CROPS=%s",
+            self.id,
+            len(crops)
+        )
+
+        # =========================================================
+        # MAKE ENRICHED CROPS AUTHORITATIVE
+        # =========================================================
+        #
+        # The enrichment pass attaches azure_figure_bounds and
+        # other authoritative metadata to each crop.
+        #
+        # From this point onward, the processing loop MUST use
+        # those enriched crop dictionaries.
+        # =========================================================
+
+        crops = enriched_crops
+
+        _logger.warning(
+            "[AZURE CROP] ENRICHED CROPS ACTIVATED "
+            "| JOB=%s "
+            "| CROPS=%s",
+            self.id,
+            len(crops)
+        )
+
+        # =========================================================
+        # PROCESS EACH CROP
+        # =========================================================
+
+        # =========================================================
+        # BUILD PRODUCT SEED BOXES FOR MULTI-PRODUCT PROTECTION
+        # =========================================================
+        #
+        # These are the AI-provided product regions.
+        #
+        # They are NOT used as the final crop.
+        # They are used only to prevent one product from expanding
+        # into another product's region.
+        # =========================================================
+
+        crop_seed_boxes = []
+
+        for other_crop in crops:
+
+            if not isinstance(
+                other_crop,
+                dict
+            ):
+                continue
+
+            try:
+
+                other_x = float(
+                    other_crop.get(
+                        "x",
+                        0
+                    )
+                )
+
+                other_y = float(
+                    other_crop.get(
+                        "y",
+                        0
+                    )
+                )
+
+                other_width = float(
+                    other_crop.get(
+                        "width",
+                        0
+                    )
+                )
+
+                other_height = float(
+                    other_crop.get(
+                        "height",
+                        0
+                    )
+                )
+
+                if (
+                    other_width <= 0
+                    or other_height <= 0
+                ):
+                    continue
+
+                crop_seed_boxes.append({
+                    "crop_id": str(
+                        other_crop.get(
+                            "crop_id",
+                            ""
+                        )
+                    ),
+                    "figure_id": str(
+                        other_crop.get(
+                            "figure_id",
+                            ""
+                        )
+                    ),
+                    "box": (
+                        other_x,
+                        other_y,
+                        other_x + other_width,
+                        other_y + other_height
+                    ),
+                })
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+        _logger.warning(
+            "[AZURE CROP] PRODUCT SEED BOXES "
+            "| JOB=%s "
+            "| COUNT=%s",
+            self.id,
+            len(
+                crop_seed_boxes
+            )
+        )
+
+        for crop in crops:
+
+            if not isinstance(
+                crop,
+                dict
+            ):
+                continue
+
+            crop_id = crop.get(
+                "crop_id"
+            )
+
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            )
+
+            page_number = int(
+                crop.get(
+                    "page",
+                    1
+                )
+            )
+
+
+            # =========================================================
+            #  READ ORIGINAL-PAGE CROP COORDINATES
+            # =========================================================
+
+            crop_x = float(
+                crop.get(
+                    "x",
+                    0
+                )
+            )
+
+            crop_y = float(
+                crop.get(
+                    "y",
+                    0
+                )
+            )
+
+            width = float(
+                crop.get(
+                    "width",
+                    0
+                )
+            )
+
+            height = float(
+                crop.get(
+                    "height",
+                    0
+                )
+            )
+
+            product_reference = crop.get(
+                "product_reference",
+                ""
+            )
+
+            purpose = crop.get(
+                "purpose",
+                ""
+            )
+
+            _logger.warning(
+                "[AZURE CROP] REQUEST "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| PAGE=%s "
+                "| FIGURE=%s "
+                "| X=%s "
+                "| Y=%s "
+                "| W=%s "
+                "| H=%s "
+                "| PRODUCT=%s",
+                self.id,
+                crop_id,
+                page_number,
+                figure_id,
+                crop_x,
+                crop_y,
+                width,
+                height,
+                product_reference
+            )
+
+            # =====================================================
+            # BASIC VALIDATION
+            # =====================================================
+
+            if width <= 0 or height <= 0:
+
+                _logger.error(
+                    "[AZURE CROP] INVALID SIZE "
+                    "| JOB=%s | CROP=%s",
+                    self.id,
+                    crop_id
+                )
+
+                continue
+
+            # =====================================================
+            # FIND ORIGINAL PAGE
+            # =====================================================
+
+            page_record = page_records.filtered(
+                lambda p:
+                    int(
+                        getattr(
+                            p,
+                            "page_number",
+                            0
+                        )
+                    ) == page_number
+            )[:1]
+
+            if not page_record:
+
+                _logger.error(
+                    "[AZURE CROP] PAGE NOT FOUND "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| PAGE=%s",
+                    self.id,
+                    crop_id,
+                    page_number
+                )
+
+                continue
+
+            page_record = page_record[0]
+
+            # =====================================================
+            # GET ORIGINAL PAGE IMAGE
+            # =====================================================
+
+            page_image_b64 = False
+
+            try:
+
+                page_blocks = json.loads(
+                    page_record.extracted_json or "[]"
+                )
+
+                for block in page_blocks:
+
+                    if not isinstance(
+                        block,
+                        dict
+                    ):
+                        continue
+
+                    if block.get(
+                        "page_image"
+                    ):
+
+                        page_image_b64 = (
+                            block.get(
+                                "page_image"
+                            )
+                        )
+
+                        break
+
+            except Exception as e:
+
+                _logger.exception(
+                    "[AZURE CROP] FAILED TO READ "
+                    "PAGE EXTRACTED JSON "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| ERROR=%s",
+                    self.id,
+                    page_number,
+                    str(e)
+                )
+
+            if not page_image_b64:
+
+                _logger.error(
+                    "[AZURE CROP] ORIGINAL PAGE IMAGE MISSING "
+                    "| JOB=%s "
+                    "| PAGE=%s",
+                    self.id,
+                    page_number
+                )
+
+                continue
+
+            try:
+
+                original_bytes = base64.b64decode(
+                    page_image_b64
+                )
+
+                original_image = Image.open(
+                    io.BytesIO(
+                        original_bytes
+                    )
+                ).convert(
+                    "RGB"
+                )
+
+            except Exception:
+
+                _logger.exception(
+                    "[AZURE CROP] FAILED TO LOAD ORIGINAL PAGE "
+                    "| JOB=%s "
+                    "| PAGE=%s",
+                    self.id,
+                    page_number
+                )
+
+                continue
+
+            page_width, page_height = (
+                original_image.size
+            )
+
+            _logger.warning(
+                "[AZURE CROP] ORIGINAL PAGE "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| WIDTH=%s "
+                "| HEIGHT=%s",
+                self.id,
+                page_number,
+                page_width,
+                page_height
+            )
+
+            # =========================================================
+            # GET FIGURE BOUNDS
+            # =========================================================
+
+            azure_bounds = crop.get(
+                "azure_figure_bounds"
+            )
+
+
+            if not isinstance(
+                azure_bounds,
+                dict
+            ):
+
+                # =====================================================
+                # BACKWARD-COMPATIBLE PAGE BOUNDARY FALLBACK
+                # =====================================================
+                #
+                # Some catalogues may have valid ORIGINAL-PAGE crop
+                # coordinates without embedded Azure figure metadata.
+                #
+                # Do NOT discard the crop.
+                #
+                # The crop coordinates are already page coordinates.
+                # Therefore the original page becomes the outer safety
+                # boundary when a figure boundary is unavailable.
+                # =====================================================
+
+                azure_bounds = {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": float(
+                        page_width
+                    ),
+                    "height": float(
+                        page_height
+                    ),
+                }
+
+                crop[
+                    "azure_figure_bounds"
+                ] = dict(
+                    azure_bounds
+                )
+
+                _logger.warning(
+                    "[AZURE CROP] FIGURE BOUNDS UNAVAILABLE "
+                    "→ USING PAGE BOUNDARY FALLBACK "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s "
+                    "| PAGE=%sx%s",
+                    self.id,
+                    crop.get(
+                        "crop_id",
+                        "unknown"
+                    ),
+                    figure_id,
+                    page_width,
+                    page_height
+                )
+
+            figure_x = float(
+                azure_bounds.get(
+                    "x",
+                    0
+                )
+            )
+
+            figure_y = float(
+                azure_bounds.get(
+                    "y",
+                    0
+                )
+            )
+
+            figure_width = float(
+                azure_bounds.get(
+                    "width",
+                    0
+                )
+            )
+
+            figure_height = float(
+                azure_bounds.get(
+                    "height",
+                    0
+                )
+            )
+
+            if (
+                figure_width <= 0
+                or figure_height <= 0
+            ):
+
+                _logger.error(
+                    "[AZURE CROP] INVALID FIGURE BOUNDS "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s "
+                    "| BOUNDS=%s",
+                    self.id,
+                    crop.get(
+                        "crop_id",
+                        "unknown"
+                    ),
+                    figure_id,
+                    json.dumps(
+                        azure_bounds,
+                        ensure_ascii=False,
+                        default=str
+                    )
+                )
+
+                continue
+
+
+            # =========================================================
+            # CROP COORDINATES ARE ALREADY PAGE COORDINATES
+            # =========================================================
+            #
+            # IMPORTANT:
+            #
+            # The OpenAI crop x/y values are already expressed relative
+            # to the original PDF page.
+            #
+            # DO NOT add figure_x / figure_y again.
+            # =========================================================
+
+            x = crop_x
+            y = crop_y
+
+            _logger.warning(
+                "[AZURE CROP] PAGE COORDINATES "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| PAGE_X=%s "
+                "| PAGE_Y=%s "
+                "| W=%s "
+                "| H=%s",
+                self.id,
+                crop_id,
+                figure_id,
+                x,
+                y,
+                width,
+                height
+            )
+           
+
+            _logger.warning(
+                "[AZURE CROP] PAGE COORDINATES CONFIRMED "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| PAGE=(%s,%s,%s,%s) "
+                "| FIGURE_BOUNDS=(%s,%s,%s,%s)",
+                self.id,
+                crop_id,
+                figure_id,
+                x,
+                y,
+                width,
+                height,
+                figure_x,
+                figure_y,
+                figure_width,
+                figure_height
+            )
+
+            # =====================================================
+            # COORDINATE VALIDATION
+            # =====================================================
+
+            if (
+                x < 0
+                or y < 0
+                or x + width > page_width
+                or y + height > page_height
+            ):
+
+                _logger.error(
+                    "[AZURE CROP] OUTSIDE ORIGINAL PAGE "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| CROP=(%s,%s,%s,%s) "
+                    "| PAGE=(0,0,%s,%s)",
+                    self.id,
+                    crop_id,
+                    x,
+                    y,
+                    width,
+                    height,
+                    page_width,
+                    page_height
+                )
+
+                continue
+
+           
+            # =========================================================
+            # BUILD FIGURE BOUNDS FOR SAFE CROP
+            # =========================================================
+            #
+            # azure_bounds was already validated above.
+            #
+            # Reuse it here to provide the structure expected by
+            # _build_safe_product_crop().
+            # =========================================================
+
+            figure_bounds = {
+                figure_id: azure_bounds
+            }
+
+            _logger.warning(
+                "[AZURE CROP] SAFE CROP FIGURE BOUNDS "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| BOUNDS=%s",
+                self.id,
+                crop_id,
+                figure_id,
+                json.dumps(
+                    figure_bounds,
+                    ensure_ascii=False,
+                    default=str
+                )
+            )
+
+
+            # =========================================================
+            # EXPANSION POLICY
+            # =========================================================
+
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                        ""
+                )
+            ).strip()
+            
+
+            allow_expansion = (
+                figure_id
+                not in multi_product_figures
+            )
+
+            _logger.warning(
+                "[AZURE CROP] EXPANSION POLICY "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| ALLOW_EXPANSION=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                figure_id,
+                allow_expansion
+            )
+
+
+            # safe_crop = self._build_safe_product_crop(
+            #     original_image,
+            #     crop,
+            #     figure_bounds,
+            #     allow_expansion=True,
+            #     crop_seed_boxes=crop_seed_boxes,
+            # )
+
+            safe_crop = self._build_safe_product_crop(
+                original_image,
+                crop,
+                figure_bounds,
+                allow_expansion=allow_expansion,
+                crop_seed_boxes=crop_seed_boxes,
+            )
+
+            if not safe_crop:
+
+                _logger.error(
+                    "[AZURE CROP] SAFE CROP FAILED "
+                    "| JOB=%s "
+                    "| CROP=%s "
+                    "| FIGURE=%s "
+                    "| PRODUCT=%s",
+                    self.id,
+                    crop_id,
+                    figure_id,
+                    product_reference
+                )
+
+                continue
+
+
+            left = safe_crop[
+                "left"
+            ]
+
+            top = safe_crop[
+                "top"
+            ]
+
+            right = safe_crop[
+                "right"
+            ]
+
+            bottom = safe_crop[
+                "bottom"
+            ]
+
+
+            # ====================================================
+            # ACTUAL SAFE CROP
+            # ====================================================
+
+            cropped_image = original_image.crop(
+                (
+                    left,
+                    top,
+                    right,
+                    bottom
+                )
+            )
+
+            output = io.BytesIO()
+
+            cropped_image.save(
+                output,
+                format="PNG",
+                optimize=True
+            )
+
+            cropped_bytes = output.getvalue()
+
+            cropped_b64 = base64.b64encode(
+                cropped_bytes
+            ).decode(
+                "ascii"
+            )
+
+            _logger.warning(
+                "[AZURE CROP] CREATED "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| SIZE=%sx%s "
+                "| PRODUCT=%s",
+                self.id,
+                crop_id,
+                cropped_image.width,
+                cropped_image.height,
+                product_reference
+            )
+
+            # =====================================================
+            # BUILD CLEAN ASSET
+            # =====================================================
+
+            created_assets.append(
+                {
+                    "crop_id": crop_id,
+                    "page": page_number,
+                    "figure_id": figure_id,
+                    "image": cropped_b64,
+                    "width": cropped_image.width,
+                    "height": cropped_image.height,
+                    "x": left,
+                    "y": top,
+                    "product_reference": product_reference,
+                    "purpose": purpose,
+
+                    # Preserve Azure's semantic color metadata
+                    # if it exists on the crop object.
+                    "color": crop.get(
+                        "color",
+                        ""
+                    ),
+
+                    "is_lifestyle": False,
+                    "azure_crop": True,
+                }
+            )
+
+        # =========================================================
+        # NOTHING CREATED
+        # =========================================================
+
+        if not created_assets:
+
+            _logger.error(
+                "[AZURE CROP] ZERO CROPS CREATED "
+                "| JOB=%s",
+                self.id
+            )
+
+            self.state = "failed"
+
+            self._safe_commit_progress()
+
+            return {
+                "success": False,
+                "created": 0,
+                "error": "No Azure crops were created"
+            }
+
+
+        # =========================================================
+        # ADD CROPS TO EXISTING PAGE ASSETS
+        # =========================================================
+
+        for asset in created_assets:
+
+            page_number = asset[
+                "page"
+            ]
+
+            page_record = page_records.filtered(
+                lambda p:
+                    int(
+                        getattr(
+                            p,
+                            "page_number",
+                            0
+                        )
+                    ) == page_number
+            )[:1]
+
+            if not page_record:
+
+                continue
+
+            page_record = page_record[0]
+
+            # -----------------------------------------------------
+            # Use the actual JSON asset field defined on
+            # vendor.import.page.
+            #
+            # Model field:
+            #     page_images_json = fields.Text()
+            # -----------------------------------------------------
+
+            existing_images = (
+                page_record.page_images_json
+                or "[]"
+            )
+
+            try:
+
+                image_assets = json.loads(
+                    existing_images
+                )
+
+            except Exception:
+
+                image_assets = []
+
+            if not isinstance(
+                image_assets,
+                list
+            ):
+
+                image_assets = []
+
+            # -----------------------------------------------------
+            # Assign a clean index.
+            # -----------------------------------------------------
+
+            asset["clean_index"] = len(
+                image_assets
+            )
+
+            image_assets.append(
+                asset
+            )
+
+            page_record.page_images_json = json.dumps(
+                image_assets
+            )
+
+            _logger.warning(
+                "[AZURE CROP] ASSET ADDED "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| CLEAN_INDEX=%s "
+                "| CROP=%s "
+                "| PRODUCT=%s",
+                self.id,
+                page_number,
+                asset["clean_index"],
+                asset["crop_id"],
+                asset["product_reference"]
+            )
+
+
+        # =========================================================
+        # COMPLETE
+        # =========================================================
+
+        _logger.warning(
+            "[AZURE CROP] COMPLETE "
+            "| JOB=%s "
+            "| CREATED=%s",
+            self.id,
+            len(created_assets)
+        )
+
+
+        self.last_known_state = "azure_crop"
+
+        # =========================================================
+        # VERIFY CROPS WERE ACTUALLY PERSISTED
+        # =========================================================
+
+        for page_record in page_records:
+
+            try:
+                stored_assets = json.loads(
+                    page_record.page_images_json or "[]"
+                )
+            except Exception:
+                stored_assets = []
+
+            crop_assets = [
+                asset
+                for asset in stored_assets
+                if isinstance(asset, dict)
+                and asset.get("azure_crop") is True
+            ]
+
+            _logger.warning(
+                "[AZURE CROP] PERSISTENCE CHECK "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| TOTAL_ASSETS=%s "
+                "| AZURE_CROPS=%s",
+                self.id,
+                page_record.page_number,
+                len(stored_assets),
+                len(crop_assets),
+            )
+
+            for asset in crop_assets:
+
+                _logger.warning(
+                    "[AZURE CROP] STORED CROP "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| CROP=%s "
+                    "| PRODUCT=%s "
+                    "| IMAGE_BYTES=%s "
+                    "| CLEAN_INDEX=%s",
+                    self.id,
+                    page_record.page_number,
+                    asset.get("crop_id"),
+                    asset.get("product_reference"),
+                    len(asset.get("image") or ""),
+                    asset.get("clean_index"),
+                )
+
+        self.state = "pdf_ai"
+
+        self._safe_commit_progress()
+
+        return {
+            "success": True,
+            "created": len(
+                created_assets
+            )
+        }
+
+    # =========================================================
+    # SAFE CROP / WHITESPACE EXPANSION
+    # =========================================================
+
+    def _safe_crop_visual_score(
+        self,
+        image,
+        box
+    ):
+        """
+        Estimate how visually occupied a region is.
+
+        IMPORTANT:
+
+        This does NOT assume a white background.
+
+        The region is evaluated both globally and locally.
+
+        Local tile analysis is important because a product edge,
+        strap, handle, corner, or other product detail may occupy
+        only a small portion of the scanned band.
+
+        Returns:
+            float:
+                0.0 = visually simple / likely separation
+                1.0 = visually occupied / structured
+        """
+
+        try:
+
+            left, top, right, bottom = [
+                int(
+                    round(v)
+                )
+                for v in box
+            ]
+
+            if (
+                right <= left
+                or bottom <= top
+            ):
+
+                return 0.0
+
+            region = image.crop(
+                (
+                    left,
+                    top,
+                    right,
+                    bottom
+                )
+            ).convert(
+                "L"
+            )
+
+            # -----------------------------------------------------
+            # KEEP PROCESSING CHEAP
+            # -----------------------------------------------------
+
+            region.thumbnail(
+                (
+                    96,
+                    96
+                ),
+                Image.Resampling.BILINEAR
+            )
+
+            if (
+                region.width < 4
+                or region.height < 4
+            ):
+
+                return 0.0
+
+            # -----------------------------------------------------
+            # GLOBAL EDGE SCORE
+            # -----------------------------------------------------
+
+            edges = region.filter(
+                ImageFilter.FIND_EDGES
+            )
+
+            histogram = (
+                edges.histogram()
+            )
+
+            total_pixels = (
+                region.width
+                * region.height
+            )
+
+            if total_pixels <= 0:
+
+                return 0.0
+
+            meaningful_edges = sum(
+                histogram[32:]
+            )
+
+            global_score = (
+                meaningful_edges
+                / float(
+                    total_pixels
+                )
+            )
+
+            # -----------------------------------------------------
+            # LOCAL TILE ANALYSIS
+            # -----------------------------------------------------
+            #
+            # A product may occupy only a small part of the band.
+            #
+            # Example:
+            #
+            #       background
+            #       background
+            #       ███████
+            #       ███████
+            #
+            # Global averaging can hide this.
+            #
+            # Tile analysis allows us to detect that local structure.
+            # -----------------------------------------------------
+
+            tile_scores = []
+
+            tile_columns = 4
+            tile_rows = 4
+
+            tile_width = max(
+                1,
+                region.width
+                // tile_columns
+            )
+
+            tile_height = max(
+                1,
+                region.height
+                // tile_rows
+            )
+
+            for row in range(
+                tile_rows
+            ):
+
+                for col in range(
+                    tile_columns
+                ):
+
+                    tile_left = (
+                        col
+                        * tile_width
+                    )
+
+                    tile_top = (
+                        row
+                        * tile_height
+                    )
+
+                    tile_right = (
+                        region.width
+                        if col
+                        == tile_columns - 1
+                        else
+                        min(
+                            region.width,
+                            (
+                                col + 1
+                            )
+                            * tile_width
+                        )
+                    )
+
+                    tile_bottom = (
+                        region.height
+                        if row
+                        == tile_rows - 1
+                        else
+                        min(
+                            region.height,
+                            (
+                                row + 1
+                            )
+                            * tile_height
+                        )
+                    )
+
+                    if (
+                        tile_right
+                        <= tile_left
+                        or
+                        tile_bottom
+                        <= tile_top
+                    ):
+
+                        continue
+
+                    tile = edges.crop(
+                        (
+                            tile_left,
+                            tile_top,
+                            tile_right,
+                            tile_bottom
+                        )
+                    )
+
+                    tile_histogram = (
+                        tile.histogram()
+                    )
+
+                    tile_pixels = (
+                        tile.width
+                        * tile.height
+                    )
+
+                    if tile_pixels <= 0:
+                        continue
+
+                    tile_edges = sum(
+                        tile_histogram[32:]
+                    )
+
+                    tile_score = (
+                        tile_edges
+                        / float(
+                            tile_pixels
+                        )
+                    )
+
+                    tile_scores.append(
+                        max(
+                            0.0,
+                            min(
+                                1.0,
+                                tile_score
+                            )
+                        )
+                    )
+
+            if not tile_scores:
+
+                return max(
+                    0.0,
+                    min(
+                        1.0,
+                        global_score
+                    )
+                )
+
+            # -----------------------------------------------------
+            # LOCAL OCCUPANCY SCORE
+            # -----------------------------------------------------
+            #
+            # We don't use the absolute maximum because one isolated
+            # compression/noise pixel should not make the whole band
+            # look occupied.
+            #
+            # Instead use the strongest local tile scores.
+            # -----------------------------------------------------
+
+            sorted_tiles = sorted(
+                tile_scores,
+                reverse=True
+            )
+
+            strong_tile_count = max(
+                1,
+                int(
+                    len(
+                        sorted_tiles
+                    )
+                    * 0.25
+                )
+            )
+
+            strong_tiles = (
+                sorted_tiles[
+                    :strong_tile_count
+                ]
+            )
+
+            local_score = (
+                sum(
+                    strong_tiles
+                )
+                / float(
+                    len(
+                        strong_tiles
+                    )
+                )
+            )
+
+            # -----------------------------------------------------
+            # COMBINE GLOBAL + LOCAL
+            # -----------------------------------------------------
+            #
+            # Global score protects against broad visual structure.
+            #
+            # Local score protects against thin product details,
+            # straps, handles, corners, edges, etc.
+            # -----------------------------------------------------
+
+            combined_score = (
+                (
+                    global_score
+                    * 0.40
+                )
+                +
+                (
+                    local_score
+                    * 0.60
+                )
+            )
+
+            return max(
+                0.0,
+                min(
+                    1.0,
+                    combined_score
+                )
+            )
+
+        except Exception:
+
+            _logger.exception(
+                "[SAFE CROP] VISUAL SCORE FAILED "
+                "| JOB=%s",
+                self.id
+            )
+
+            return 0.0
+
+    #=========safe crop real=================
+
+    def _safe_crop_background_score(
+        self,
+        image,
+        box,
+    ):
+        """
+        Estimate how background-like a region is.
+
+        This is deliberately based on local visual complexity,
+        NOT on RGB whiteness.
+
+        A low score means the region is visually simple and is
+        therefore more likely to be separation/background.
+
+        A high score means the region contains more visual structure.
+        """
+
+        return self._safe_crop_visual_score(
+            image,
+            box
+        )
+
+
+    # =========================================================
+    # SAFE CROP / DIRECTIONAL EXPANSION
+    # =========================================================
+
+    def _safe_crop_expand_direction(
+        self,
+        image,
+        seed_box,
+        allowed_box,
+        direction,
+    ):
+        """
+        Expand one side of a crop into visually safe space.
+
+        IMPORTANT:
+
+        The AI crop is only the starting point.
+
+        The scanner moves outward one band at a time.
+
+        Behaviour:
+
+            PRODUCT
+                ↓
+            occupied bands
+                ↓
+            gap
+                ↓
+            gap
+                ↓
+            figure/page edge
+
+        → expand through the entire safe gap.
+
+        But:
+
+            PRODUCT
+                ↓
+            gap
+                ↓
+            another occupied object
+
+        → stop at the end of the safe gap.
+
+        The crop NEVER exceeds allowed_box.
+        """
+
+        try:
+
+            image_width, image_height = (
+                image.size
+            )
+
+            seed_left = float(
+                seed_box[0]
+            )
+
+            seed_top = float(
+                seed_box[1]
+            )
+
+            seed_right = float(
+                seed_box[2]
+            )
+
+            seed_bottom = float(
+                seed_box[3]
+            )
+
+            allowed_left = float(
+                allowed_box[0]
+            )
+
+            allowed_top = float(
+                allowed_box[1]
+            )
+
+            allowed_right = float(
+                allowed_box[2]
+            )
+
+            allowed_bottom = float(
+                allowed_box[3]
+            )
+
+            # =====================================================
+            # SEED DIMENSIONS
+            # =====================================================
+
+            seed_width = max(
+                1.0,
+                seed_right - seed_left
+            )
+
+            seed_height = max(
+                1.0,
+                seed_bottom - seed_top
+            )
+
+            # =====================================================
+            # STEP SIZE
+            # =====================================================
+
+            if direction in (
+                "left",
+                "right"
+            ):
+
+                step = max(
+                    4,
+                    int(
+                        round(
+                            seed_width
+                            * 0.025
+                        )
+                    )
+                )
+
+            else:
+
+                step = max(
+                    4,
+                    int(
+                        round(
+                            seed_height
+                            * 0.025
+                        )
+                    )
+                )
+
+            step = max(
+                4,
+                min(
+                    step,
+                    32
+                )
+            )
+
+            # =====================================================
+            # MAXIMUM AVAILABLE EXPANSION
+            # =====================================================
+
+            if direction == "left":
+
+                maximum = max(
+                    0,
+                    int(
+                        seed_left
+                        - allowed_left
+                    )
+                )
+
+            elif direction == "right":
+
+                maximum = max(
+                    0,
+                    int(
+                        allowed_right
+                        - seed_right
+                    )
+                )
+
+            elif direction == "top":
+
+                maximum = max(
+                    0,
+                    int(
+                        seed_top
+                        - allowed_top
+                    )
+                )
+
+            else:
+
+                maximum = max(
+                    0,
+                    int(
+                        allowed_bottom
+                        - seed_bottom
+                    )
+                )
+
+            if maximum <= 0:
+
+                return (
+                    seed_box,
+                    0
+                )
+
+            # =====================================================
+            # BUILD SCAN BANDS
+            # =====================================================
+
+            bands = []
+
+            distance = 0
+
+            while distance < maximum:
+
+                next_distance = min(
+                    distance + step,
+                    maximum
+                )
+
+                # -------------------------------------------------
+                # BUILD BAND
+                # -------------------------------------------------
+
+                if direction == "left":
+
+                    band = (
+                        seed_left - next_distance,
+                        seed_top,
+                        seed_left - distance,
+                        seed_bottom
+                    )
+
+                elif direction == "right":
+
+                    band = (
+                        seed_right + distance,
+                        seed_top,
+                        seed_right + next_distance,
+                        seed_bottom
+                    )
+
+                elif direction == "top":
+
+                    band = (
+                        seed_left,
+                        seed_top - next_distance,
+                        seed_right,
+                        seed_top - distance
+                    )
+
+                else:
+
+                    band = (
+                        seed_left,
+                        seed_bottom + distance,
+                        seed_right,
+                        seed_bottom + next_distance
+                    )
+
+                # -------------------------------------------------
+                # CLAMP BAND TO IMAGE
+                # -------------------------------------------------
+
+                band = (
+                    max(
+                        0,
+                        band[0]
+                    ),
+                    max(
+                        0,
+                        band[1]
+                    ),
+                    min(
+                        image_width,
+                        band[2]
+                    ),
+                    min(
+                        image_height,
+                        band[3]
+                    )
+                )
+
+                if (
+                    band[2] <= band[0]
+                    or band[3] <= band[1]
+                ):
+
+                    break
+
+                score = (
+                    self._safe_crop_background_score(
+                        image,
+                        band
+                    )
+                )
+
+                bands.append({
+                    "start": distance,
+                    "end": next_distance,
+                    "score": score,
+                })
+
+                distance = next_distance
+
+            if not bands:
+
+                return (
+                    seed_box,
+                    0
+                )
+
+            # =====================================================
+            # LOCAL BACKGROUND BASELINE
+            # =====================================================
+
+            scores = [
+                band["score"]
+                for band in bands
+            ]
+
+            sorted_scores = sorted(
+                scores
+            )
+
+            baseline_count = max(
+                1,
+                int(
+                    len(
+                        sorted_scores
+                    )
+                    * 0.25
+                )
+            )
+
+            baseline_values = (
+                sorted_scores[
+                    :baseline_count
+                ]
+            )
+
+            background_baseline = (
+                sum(
+                    baseline_values
+                )
+                / float(
+                    len(
+                        baseline_values
+                    )
+                )
+            )
+
+            # =====================================================
+            # OCCUPANCY THRESHOLD
+            # =====================================================
+
+            occupancy_threshold = max(
+                0.055,
+                background_baseline * 1.65
+            )
+
+            # =====================================================
+            # SCAN STATE
+            # =====================================================
+            #
+            # IMPORTANT:
+            #
+            # We DO NOT stop at the first gap.
+            #
+            # We continue scanning.
+            #
+            # This gives us:
+            #
+            #   PRODUCT → GAP → GAP → EDGE
+            #
+            # the ability to expand all the way to EDGE.
+            #
+            # But:
+            #
+            #   PRODUCT → GAP → PRODUCT
+            #
+            # stops before the second product.
+            # =====================================================
+
+            expanded_distance = 0
+
+            saw_gap = False
+
+            gap_end_distance = 0
+
+            occupied_before_gap = False
+
+            for band in bands:
+
+                score = band[
+                    "score"
+                ]
+
+                # =================================================
+                # OCCUPIED BAND
+                # =================================================
+
+                if (
+                    score
+                    >= occupancy_threshold
+                ):
+
+                    # ---------------------------------------------
+                    # CASE 1:
+                    # Product/detail continues immediately outside
+                    # the AI crop.
+                    # ---------------------------------------------
+
+                    if not saw_gap:
+
+                        expanded_distance = (
+                            band["end"]
+                        )
+
+                        occupied_before_gap = True
+
+                        continue
+
+                    # ---------------------------------------------
+                    # CASE 2:
+                    #
+                    # We already crossed a separation gap and have
+                    # now found another occupied region.
+                    #
+                    # This is most likely:
+                    #
+                    #     PRODUCT → GAP → NEXT PRODUCT
+                    #
+                    # STOP at the end of the gap.
+                    # ---------------------------------------------
+
+                    expanded_distance = (
+                        gap_end_distance
+                    )
+
+                    _logger.warning(
+                        "[SAFE CROP] "
+                        "NEIGHBORING OBJECT DETECTED "
+                        "| JOB=%s "
+                        "| DIRECTION=%s "
+                        "| GAP_END=%s "
+                        "| SCORE=%s "
+                        "| THRESHOLD=%s",
+                        self.id,
+                        direction,
+                        gap_end_distance,
+                        score,
+                        occupancy_threshold
+                    )
+
+                    break
+
+                # =================================================
+                # BACKGROUND / GAP BAND
+                # =================================================
+
+                else:
+
+                    saw_gap = True
+
+                    gap_end_distance = (
+                        band["end"]
+                    )
+
+                    # ---------------------------------------------
+                    # Keep expanding through the gap.
+                    #
+                    # If this eventually reaches the figure/page
+                    # edge without another occupied region, the
+                    # final crop will reach that edge.
+                    # ---------------------------------------------
+
+                    expanded_distance = (
+                        band["end"]
+                    )
+
+                    continue
+
+            # =====================================================
+            # NO EXPANSION
+            # =====================================================
+
+            if expanded_distance <= 0:
+
+                return (
+                    seed_box,
+                    0
+                )
+
+            # =====================================================
+            # FINAL DIRECTIONAL BOX
+            # =====================================================
+
+            if direction == "left":
+
+                new_left = max(
+                    allowed_left,
+                    seed_left
+                    - expanded_distance
+                )
+
+                new_box = (
+                    new_left,
+                    seed_top,
+                    seed_right,
+                    seed_bottom
+                )
+
+            elif direction == "right":
+
+                new_right = min(
+                    allowed_right,
+                    seed_right
+                    + expanded_distance
+                )
+
+                new_box = (
+                    seed_left,
+                    seed_top,
+                    new_right,
+                    seed_bottom
+                )
+
+            elif direction == "top":
+
+                new_top = max(
+                    allowed_top,
+                    seed_top
+                    - expanded_distance
+                )
+
+                new_box = (
+                    seed_left,
+                    new_top,
+                    seed_right,
+                    seed_bottom
+                )
+
+            else:
+
+                new_bottom = min(
+                    allowed_bottom,
+                    seed_bottom
+                    + expanded_distance
+                )
+
+                new_box = (
+                    seed_left,
+                    seed_top,
+                    seed_right,
+                    new_bottom
+                )
+
+            # =====================================================
+            # FINAL SAFETY CLAMP
+            # =====================================================
+
+            new_box = (
+                max(
+                    allowed_left,
+                    new_box[0]
+                ),
+                max(
+                    allowed_top,
+                    new_box[1]
+                ),
+                min(
+                    allowed_right,
+                    new_box[2]
+                ),
+                min(
+                    allowed_bottom,
+                    new_box[3]
+                )
+            )
+
+            _logger.warning(
+                "[SAFE CROP] DIRECTION EXPANDED "
+                "| JOB=%s "
+                "| DIRECTION=%s "
+                "| EXPANSION=%s "
+                "| MAX=%s "
+                "| SAW_GAP=%s "
+                "| GAP_END=%s "
+                "| FINAL_BOX=%s",
+                self.id,
+                direction,
+                expanded_distance,
+                maximum,
+                saw_gap,
+                gap_end_distance,
+                new_box
+            )
+
+            return (
+                new_box,
+                expanded_distance
+            )
+
+        except Exception:
+
+            _logger.exception(
+                "[SAFE CROP] EXPANSION FAILED "
+                "| JOB=%s "
+                "| DIRECTION=%s",
+                self.id,
+                direction
+            )
+
+            return (
+                seed_box,
+                0
+            )
+
+
+    #===========build_safe_product_crop================================
+    def _build_safe_product_crop(
+        self,
+        original_image,
+        crop,
+        figure_bounds,
+        allow_expansion=True,
+        crop_seed_boxes=None,
+    ):
+        """
+        Convert an AI crop proposal into a safer production crop.
+
+        IMPORTANT:
+
+        The AI coordinates remain the seed.
+
+        We expand them into available visual separation rather
+        than trusting the AI rectangle as the final product boundary.
+
+        The crop is NEVER allowed outside its Azure figure.
+        """
+
+        try:
+
+            figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            )
+
+            bounds = figure_bounds.get(
+                figure_id
+            )
+
+            if not bounds:
+                _logger.warning(
+                    "[SAFE CROP] NO FIGURE BOUNDS "
+                    "| JOB=%s | FIGURE=%s",
+                    self.id,
+                    figure_id
+                )
+
+                return None
+
+            x = float(
+                crop.get(
+                    "x",
+                    0
+                )
+            )
+
+            y = float(
+                crop.get(
+                    "y",
+                    0
+                )
+            )
+
+            width = float(
+                crop.get(
+                    "width",
+                    0
+                )
+            )
+
+            height = float(
+                crop.get(
+                    "height",
+                    0
+                )
+            )
+
+            if (
+                width <= 0
+                or height <= 0
+            ):
+                return None
+
+            image_width, image_height = (
+                original_image.size
+            )
+
+            # -----------------------------------------------------
+            # HARD FIGURE BOUNDARY
+            # -----------------------------------------------------
+
+            figure_left = max(
+                0.0,
+                float(
+                    bounds["x"]
+                )
+            )
+
+            figure_top = max(
+                0.0,
+                float(
+                    bounds["y"]
+                )
+            )
+
+            figure_right = min(
+                float(image_width),
+                float(
+                    bounds["x"]
+                    + bounds["width"]
+                )
+            )
+
+            figure_bottom = min(
+                float(image_height),
+                float(
+                    bounds["y"]
+                    + bounds["height"]
+                )
+            )
+
+            # -----------------------------------------------------
+            # INITIAL AI BOX
+            # -----------------------------------------------------
+
+            seed_left = max(
+                figure_left,
+                x
+            )
+
+            seed_top = max(
+                figure_top,
+                y
+            )
+
+            seed_right = min(
+                figure_right,
+                x + width
+            )
+
+            seed_bottom = min(
+                figure_bottom,
+                y + height
+            )
+
+            if (
+                seed_right <= seed_left
+                or seed_bottom <= seed_top
+            ):
+                return None
+
+            seed_box = (
+                seed_left,
+                seed_top,
+                seed_right,
+                seed_bottom
+            )
+
+
+            # -----------------------------------------------------
+            # SAFE EXPANSION POLICY
+            # -----------------------------------------------------
+            #
+            # Expansion is allowed even when several products share
+            # the same Azure figure.
+            #
+            # The important protection is that expansion must not
+            # cross into another product's seed region.
+            # -----------------------------------------------------
+
+            current_box = seed_box
+
+            total_expansion = {
+                "left": 0,
+                "right": 0,
+                "top": 0,
+                "bottom": 0,
+            }
+
+            # =====================================================
+            # BUILD PRODUCT-SPECIFIC SAFE BOUNDARY
+            # =====================================================
+
+            safe_left = figure_left
+            safe_top = figure_top
+            safe_right = figure_right
+            safe_bottom = figure_bottom
+
+            current_crop_id = str(
+                crop.get(
+                    "crop_id",
+                    ""
+                )
+            )
+
+            current_figure_id = str(
+                crop.get(
+                    "figure_id",
+                    ""
+                )
+            )
+
+            for other in (
+                crop_seed_boxes
+                or []
+            ):
+
+                if not isinstance(
+                    other,
+                    dict
+                ):
+                    continue
+
+                other_crop_id = str(
+                    other.get(
+                        "crop_id",
+                        ""
+                    )
+                )
+
+                other_figure_id = str(
+                    other.get(
+                        "figure_id",
+                        ""
+                    )
+                )
+
+                if (
+                    other_crop_id
+                    == current_crop_id
+                ):
+                    continue
+
+                if (
+                    other_figure_id
+                    != current_figure_id
+                ):
+                    continue
+
+                other_box = other.get(
+                    "box"
+                )
+
+                if not other_box:
+                    continue
+
+                other_left = float(
+                    other_box[0]
+                )
+
+                other_top = float(
+                    other_box[1]
+                )
+
+                other_right = float(
+                    other_box[2]
+                )
+
+                other_bottom = float(
+                    other_box[3]
+                )
+
+                # =================================================
+                # NEIGHBOUR TO THE RIGHT
+                # =================================================
+
+                if (
+                    other_left >= seed_right
+                    and
+                    other_top < seed_bottom
+                    and
+                    other_bottom > seed_top
+                ):
+
+                    separation = (
+                        other_left
+                        - seed_right
+                    )
+
+                    if separation >= 0:
+
+                        safe_right = min(
+                            safe_right,
+                            seed_right
+                            + (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+                # =================================================
+                # NEIGHBOUR TO THE LEFT
+                # =================================================
+
+                if (
+                    other_right <= seed_left
+                    and
+                    other_top < seed_bottom
+                    and
+                    other_bottom > seed_top
+                ):
+
+                    separation = (
+                        seed_left
+                        - other_right
+                    )
+
+                    if separation >= 0:
+
+                        safe_left = max(
+                            safe_left,
+                            seed_left
+                            - (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+                # =================================================
+                # NEIGHBOUR ABOVE
+                # =================================================
+
+                if (
+                    other_bottom <= seed_top
+                    and
+                    other_left < seed_right
+                    and
+                    other_right > seed_left
+                ):
+
+                    separation = (
+                        seed_top
+                        - other_bottom
+                    )
+
+                    if separation >= 0:
+
+                        safe_top = max(
+                            safe_top,
+                            seed_top
+                            - (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+                # =================================================
+                # NEIGHBOUR BELOW
+                # =================================================
+
+                if (
+                    other_top >= seed_bottom
+                    and
+                    other_left < seed_right
+                    and
+                    other_right > seed_left
+                ):
+
+                    separation = (
+                        other_top
+                        - seed_bottom
+                    )
+
+                    if separation >= 0:
+
+                        safe_bottom = min(
+                            safe_bottom,
+                            seed_bottom
+                            + (
+                                separation
+                                / 2.0
+                            )
+                        )
+
+            safe_allowed_box = (
+                safe_left,
+                safe_top,
+                safe_right,
+                safe_bottom
+            )
+
+            _logger.warning(
+                "[SAFE CROP] PRODUCT SAFE BOUNDARY "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| SEED=%s "
+                "| SAFE=%s",
+                self.id,
+                current_crop_id,
+                current_figure_id,
+                seed_box,
+                safe_allowed_box
+            )
+
+            # =====================================================
+            # EXPAND INSIDE PRODUCT-SAFE BOUNDARY
+            # =====================================================
+
+            if allow_expansion:
+
+                for direction in (
+                    "left",
+                    "right",
+                    "top",
+                    "bottom"
+                ):
+
+                    current_box, expansion = (
+                        self._safe_crop_expand_direction(
+                            original_image,
+                            current_box,
+                            safe_allowed_box,
+                            direction
+                        )
+                    )
+
+                    total_expansion[
+                        direction
+                    ] = expansion
+
+            # -----------------------------------------------------
+            # FINAL CLAMP
+            # -----------------------------------------------------
+
+            left = max(
+                0,
+                min(
+                    image_width,
+                    int(
+                        round(
+                            current_box[0]
+                        )
+                    )
+                )
+            )
+
+            top = max(
+                0,
+                min(
+                    image_height,
+                    int(
+                        round(
+                            current_box[1]
+                        )
+                    )
+                )
+            )
+
+            right = max(
+                left + 1,
+                min(
+                    image_width,
+                    int(
+                        round(
+                            current_box[2]
+                        )
+                    )
+                )
+            )
+
+            bottom = max(
+                top + 1,
+                min(
+                    image_height,
+                    int(
+                        round(
+                            current_box[3]
+                        )
+                    )
+                )
+            )
+
+            final_box = (
+                left,
+                top,
+                right,
+                bottom
+            )
+
+            _logger.warning(
+                "[SAFE CROP] FINAL DECISION "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| EXPANSION_ALLOWED=%s "
+                "| SEED=%s "
+                "| FINAL=%s "
+                "| EXPANSION=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                figure_id,
+                allow_expansion,
+                seed_box,
+                final_box,
+                total_expansion
+            )
+
+            _logger.warning(
+                "[SAFE CROP] EXPANDED "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| AI=(%s,%s,%s,%s) "
+                "| FINAL=(%s,%s,%s,%s) "
+                "| EXPANSION=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                ),
+                figure_id,
+                x,
+                y,
+                width,
+                height,
+                left,
+                top,
+                right,
+                bottom,
+                total_expansion
+            )
+
+            return {
+                "left": left,
+                "top": top,
+                "right": right,
+                "bottom": bottom,
+                "ai_box": seed_box,
+                "expansion": total_expansion,
+            }
+
+        except Exception:
+            _logger.exception(
+                "[SAFE CROP] FAILED "
+                "| JOB=%s "
+                "| CROP=%s",
+                self.id,
+                crop.get(
+                    "crop_id",
+                    "unknown"
+                )
+            )
+
+            return None
+
+    # =======================================================
     # REMOVE TEXT AREAS
-    # =====================================================
+    # ======================================================
 
     def _trim_catalog_whitespace(self, pil_image):
         
@@ -9698,67 +21240,93 @@ class VendorImportJob(models.Model):
                     f"color={dominant_color}"
                 )
 
+
                 # =====================================
                 # REJECT LIFESTYLE / HUMAN IMAGES
                 # =====================================
 
                 width = (
-
                     asset.get("width", 0)
-
                     if isinstance(asset, dict)
-
                     else 0
                 )
 
                 height = (
-
                     asset.get("height", 0)
-
                     if isinstance(asset, dict)
-
                     else 0
                 )
 
                 ratio = width / float(max(height, 1))
 
                 recovered = (
-
                     asset.get(
                         "recovered",
                         False
                     )
-
                     if isinstance(asset, dict)
-
                     else False
                 )
+
+                # =====================================
+                # AZURE CROP PROTECTION
+                # =====================================
+                #
+                # Azure/OpenAI crops are already explicitly
+                # requested as clean product extractions.
+                #
+                # They must NOT be rejected by the generic
+                # portrait/human heuristic simply because
+                # the cropped product happens to be tall.
+                # =====================================
+
+                is_azure_crop = (
+                    isinstance(asset, dict)
+                    and bool(
+                        asset.get("crop_id")
+                        or asset.get("azure_crop")
+                    )
+                )
+
+                if is_azure_crop:
+
+                    _logger.warning(
+                        "[AZURE CROP PRESERVED] "
+                        "crop=%s "
+                        "| product=%s "
+                        "| size=%sx%s "
+                        "| ratio=%.2f",
+                        asset.get("crop_id"),
+                        asset.get("product_reference"),
+                        width,
+                        height,
+                        ratio
+                    )
+
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
 
-                # tall portrait images
+                # Tall portrait images are rejected ONLY
+                # when they are ordinary extracted assets.
+                #
+                # Azure crops are explicitly exempt.
+                # =====================================
+
                 if (
-
                     not recovered
-
-                    and
-
-                    ratio < 0.72
-
-                    and
-
-                    height > width * 1.20
-
+                    and not is_azure_crop
+                    and ratio < 0.72
+                    and height > width * 1.20
                 ):
 
                     _logger.warning(
-
-                        f"[ASSET REJECTED HUMAN] "
-
-                        f"ratio={ratio:.2f} "
-
-                        f"size={width}x{height}"
+                        "[ASSET REJECTED HUMAN] "
+                        "ratio=%.2f "
+                        "size=%sx%s",
+                        ratio,
+                        width,
+                        height
                     )
 
                     continue
@@ -9851,6 +21419,37 @@ class VendorImportJob(models.Model):
                     "asset_role": asset.get("asset_role"),
 
                     "priority": asset.get("priority", 0),
+
+                    # =====================================
+                    # AZURE CROP METADATA
+                    # =====================================
+
+                    "crop_id": asset.get(
+                        "crop_id"
+                    ),
+
+                    "product_reference": asset.get(
+                        "product_reference"
+                    ),
+
+                    "purpose": asset.get(
+                        "purpose"
+                    ),
+
+                    "figure_id": asset.get(
+                        "figure_id"
+                        or asset.get("azure_figure_id")
+                    ),
+
+                    "page": asset.get(
+                        "page"
+                        or asset.get("azure_page_number")
+                    ),
+
+                    "azure_crop": asset.get(
+                        "azure_crop",
+                        False
+                    ),
 
                 })
 
@@ -12305,7 +23904,7 @@ class VendorImportJob(models.Model):
                             a.get("width", 0)
                             *
                             a.get("height", 0)
-                        ) < 250000
+                        ) < 500000
                     )
                 ]
 
@@ -12338,6 +23937,180 @@ class VendorImportJob(models.Model):
                 f"pool={len(asset_pool)}"
             )
 
+            # =====================================================
+            # EXPLICIT AZURE CROP / IMAGE INDEX MATCH
+            # =====================================================
+            #
+            # PDF AI + Azure Crop may already have identified the
+            # exact image for this variant.
+            #
+            # In that situation, do NOT ask CLIP or the scoring
+            # system to rediscover the image.
+            #
+            # The corrected image_index represents the asset's
+            # actual clean_index.
+            # =====================================================
+
+            requested_image_index = variant.get(
+                "image_index"
+            )
+
+            if requested_image_index not in (
+                None,
+                "",
+                False
+            ):
+
+                try:
+
+                    requested_image_index = int(
+                        requested_image_index
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    requested_image_index = None
+
+
+            if requested_image_index is not None:
+
+                for explicit_asset in asset_pool:
+
+                    if not isinstance(
+                        explicit_asset,
+                        dict
+                    ):
+                        continue
+
+                    explicit_clean_index = explicit_asset.get(
+                        "clean_index"
+                    )
+
+                    try:
+
+                        explicit_clean_index = int(
+                            explicit_clean_index
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        continue
+
+                    if (
+                        explicit_clean_index
+                        != requested_image_index
+                    ):
+                        continue
+
+                    # -------------------------------------------------
+                    # Never use lifestyle assets as variant images.
+                    # -------------------------------------------------
+
+                    if explicit_asset.get(
+                        "is_lifestyle",
+                        False
+                    ):
+                        continue
+
+                    # -------------------------------------------------
+                    # Supporting / pouch / folded assets must not
+                    # become the explicit color variant.
+                    # -------------------------------------------------
+
+                    explicit_reference = str(
+                        explicit_asset.get(
+                            "product_reference",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    explicit_crop_id = str(
+                        explicit_asset.get(
+                            "crop_id",
+                            ""
+                        )
+                        or ""
+                    ).strip().lower()
+
+                    explicit_identity = (
+                        f"{explicit_reference} "
+                        f"{explicit_crop_id}"
+                    )
+
+                    if any(
+                        keyword in explicit_identity
+                        for keyword in (
+                            "pouch",
+                            "folded",
+                            "supporting",
+                            "gallery"
+                        )
+                    ):
+
+                        _logger.warning(
+                            "[EXPLICIT VARIANT SKIP SUPPORTING] "
+                            "variant=%s | "
+                            "index=%s | "
+                            "product=%s | "
+                            "crop=%s",
+                            variant_text,
+                            requested_image_index,
+                            explicit_asset.get(
+                                "product_reference"
+                            ),
+                            explicit_asset.get(
+                                "crop_id"
+                            )
+                        )
+
+                        continue
+
+                    # -------------------------------------------------
+                    # Exact explicit asset found.
+                    # -------------------------------------------------
+
+                    if requested_image_index not in (
+                        used_asset_indexes
+                    ):
+
+                        used_asset_indexes.add(
+                            requested_image_index
+                        )
+
+                        _logger.warning(
+                            "[EXPLICIT VARIANT MATCH] "
+                            "variant=%s | "
+                            "clean_index=%s | "
+                            "product=%s | "
+                            "crop=%s",
+                            variant_text,
+                            requested_image_index,
+                            explicit_asset.get(
+                                "product_reference"
+                            ),
+                            explicit_asset.get(
+                                "crop_id"
+                            )
+                        )
+
+                        return explicit_asset
+
+                    _logger.warning(
+                        "[EXPLICIT VARIANT ALREADY USED] "
+                        "variant=%s | "
+                        "clean_index=%s",
+                        variant_text,
+                        requested_image_index
+                    )
+
+                    break
 
             clip_asset = None
 
@@ -17326,6 +29099,7 @@ class VendorImportJob(models.Model):
             )
 
             return products
+
     #==========create pdf product==========================================
 
     def create_products_pdf(self):
@@ -17535,10 +29309,75 @@ class VendorImportJob(models.Model):
                         1
                     )
 
-                    # prefer highest gallery assets
-                    sorted_page_assets = sorted(
+                    # =========================================
+                    # PRIORITIZE AZURE CROPS
+                    # =========================================
+                    #
+                    # Azure crops were explicitly requested by
+                    # the PDF/Azure AI pipeline and therefore must
+                    # not lose their allocation slot to unrelated
+                    # page images.
+                    # =========================================
 
-                        page_images,
+                    azure_crop_assets = []
+
+                    normal_page_assets = []
+
+                    for asset in page_images:
+
+                        if (
+                            isinstance(asset, dict)
+                            and (
+                                asset.get("crop_id")
+                                or asset.get("azure_crop")
+                            )
+                        ):
+
+                            azure_crop_assets.append(
+                                asset
+                            )
+
+                        else:
+
+                            normal_page_assets.append(
+                                asset
+                            )
+
+                    _logger.warning(
+                        "[SMART PAGE FALLBACK] "
+                        "AZURE CROPS FOUND=%s "
+                        "| NORMAL ASSETS=%s",
+                        len(azure_crop_assets),
+                        len(normal_page_assets)
+                    )
+
+                    # -----------------------------------------
+                    # Sort Azure crops deterministically.
+                    # -----------------------------------------
+                    #
+                    # Preserve the order generated by the AI
+                    # crop pipeline rather than allowing gallery
+                    # scoring to displace them.
+                    # -----------------------------------------
+
+                    azure_crop_assets = sorted(
+
+                        azure_crop_assets,
+
+                        key=lambda x: (
+                            x.get("page", 0),
+                            x.get("clean_index", 0),
+                            x.get("crop_id", "")
+                        )
+                    )
+
+                    # -----------------------------------------
+                    # Sort ordinary page assets normally.
+                    # -----------------------------------------
+
+                    normal_page_assets = sorted(
+
+                        normal_page_assets,
 
                         key=lambda x: (
 
@@ -17551,17 +29390,72 @@ class VendorImportJob(models.Model):
                         reverse=True
                     )
 
-                    # allocate enough assets
+                    # -----------------------------------------
+                    # Allocate enough assets.
+                    # -----------------------------------------
+
                     allocation_size = min(
 
                         max(variant_count * 2, 4),
 
-                        len(sorted_page_assets)
+                        len(page_images)
                     )
 
-                    product_images = sorted_page_assets[
+                    # -----------------------------------------
+                    # Azure crops get first allocation priority.
+                    # -----------------------------------------
+
+                    product_images = azure_crop_assets[
                         :allocation_size
                     ]
+
+                    # -----------------------------------------
+                    # Fill remaining slots with normal assets.
+                    # -----------------------------------------
+
+                    remaining_slots = (
+                        allocation_size
+                        - len(product_images)
+                    )
+
+                    if remaining_slots > 0:
+
+                        product_images.extend(
+                            normal_page_assets[
+                                :remaining_slots
+                            ]
+                        )
+
+                    _logger.warning(
+                        "[SMART PAGE FALLBACK] "
+                        "%s | allocated=%s "
+                        "| azure_crops=%s "
+                        "| normal_assets=%s",
+                        product_data.get("name"),
+                        len(product_images),
+                        sum(
+                            1
+                            for asset in product_images
+                            if (
+                                isinstance(asset, dict)
+                                and (
+                                    asset.get("crop_id")
+                                    or asset.get("azure_crop")
+                                )
+                            )
+                        ),
+                        sum(
+                            1
+                            for asset in product_images
+                            if not (
+                                isinstance(asset, dict)
+                                and (
+                                    asset.get("crop_id")
+                                    or asset.get("azure_crop")
+                                )
+                            )
+                        )
+                    )
 
                     _logger.warning(
 
@@ -17654,6 +29548,20 @@ class VendorImportJob(models.Model):
                         []
                     )
 
+                    _logger.warning(
+                        "[PDF VARIANT INPUT] "
+                        "PRODUCT=%s "
+                        "| VARIANT_COUNT=%s "
+                        "| VARIANTS=%s",
+                        product_data.get("name"),
+                        len(variants),
+                        json.dumps(
+                            variants,
+                            ensure_ascii=False,
+                            default=str
+                        )
+                    )
+
                     page_validation["expected_products"] += 1
 
                     page_validation["expected_variants"] += len(
@@ -17677,6 +29585,8 @@ class VendorImportJob(models.Model):
                             "expected_variant_keys"
 
                         ].append(key)
+                    
+                    
 
                     variant_group = (
 
@@ -18076,41 +29986,54 @@ class VendorImportJob(models.Model):
                                 if not matched_asset:
 
                                     matched_asset = self._match_variant_image(
-
                                         variant,
-
                                         asset_pool,
-
                                         used_asset_indexes
-
                                     )
 
-                                    clean_index = matched_asset.get(
+                                # =====================================================
+                                # NO IMAGE MATCH → DO NOT CRASH
+                                # =====================================================
 
-                                        "clean_index"
+                                if not matched_asset:
+
+                                    _logger.warning(
+                                        "[VARIANT IMAGE] NO MATCH "
+                                        "| JOB=%s "
+                                        "| PRODUCT=%s "
+                                        "| VARIANT=%s",
+                                        self.id,
+                                        product_data.get("name"),
+                                        variant.get("attributes", {})
                                     )
 
-                                    if clean_index in page_validation["used_indexes"]:
+                                    continue
 
-                                        page_validation[
+                                clean_index = matched_asset.get(
+                                    "clean_index"
+                                )
 
-                                            "duplicate_indexes"
-
-                                        ].append(clean_index)
-
-                                    else:
-
-                                        page_validation[
-
-                                            "used_indexes"
-
-                                        ].add(clean_index)
+                                if clean_index in page_validation["used_indexes"]:
 
                                     page_validation[
+                                        "duplicate_indexes"
+                                    ].append(
+                                        clean_index
+                                    )
 
-                                        "variant_indexes"
+                                else:
 
-                                    ].append(clean_index)
+                                    page_validation[
+                                        "used_indexes"
+                                    ].add(
+                                        clean_index
+                                    )
+
+                                page_validation[
+                                    "variant_indexes"
+                                ].append(
+                                    clean_index
+                                )
 
                                 # =====================================
                                 # APPLY
@@ -18322,7 +30245,8 @@ class VendorImportJob(models.Model):
                 f"existing={product.name}"
             )
 
-            return product, False
+            # return product, False
+            return product, False, None
 
         # =====================================
         # BUILD PROFESSIONAL DESCRIPTION
@@ -24869,6 +36793,12 @@ class VendorImportJob(models.Model):
             'excel_ai',
             'excel_creating',
 
+            'azure_review',
+            'azure_crop',
+            'azure_fallback',
+
+            'family_a_review',
+
             'pdf_extracting',
             'pdf_ai',
             'pdf_creating',
@@ -24899,7 +36829,30 @@ class VendorImportJob(models.Model):
 
             "url_creating": "URL creation stalled",
 
+            # =============================================
+            # FAMILY A VISUAL QUALITY GATE
+            # =============================================
+
+            "family_a_review": "Family A Review",
+
+            # =============================================
+            # AZURE VISUAL INTERCEPTION
+            # =============================================
+            
+            "azure_review": "Azure visual review stalled",
+            
+            "azure_crop": "Azure image cropping stalled",
+
+            "azure_fallback": "Azure Fallback",
+
+            
+            "pdf_ai": "PDF AI stalled",
+            
+            "pdf_creating": "PDF creation stalled",
+
         }
+
+       
 
 
         # =================================================

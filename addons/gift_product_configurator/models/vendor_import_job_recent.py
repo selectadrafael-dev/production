@@ -2641,7 +2641,43 @@ class VendorImportJob(models.Model):
 
                                 "stock": stock,
 
-                                "images": images
+                                "images": images,
+
+                                # =================================================
+                                # PRESERVE ORIGINAL FAMILY A PAGE
+                                # =================================================
+                                #
+                                # This is the complete rendered catalogue page.
+                                #
+                                # It is required by:
+                                #
+                                # 1. Family A visual quality gate
+                                # 2. Azure fallback route
+                                #
+                                # Do NOT replace this with an extracted crop.
+                                # =================================================
+
+                                "page_image": p.get(
+                                    "page_image",
+                                    ""
+                                ),
+
+                                "page_width": p.get(
+                                    "page_width",
+                                    0
+                                ),
+
+                                "page_height": p.get(
+                                    "page_height",
+                                    0
+                                ),
+
+                                # Explicitly identify this as the default
+                                # Family A extraction.
+                                "extraction_source": "family_a",
+
+                                # Family A output is NOT Azure evidence.
+                                "azure_evidence": False,
                             })
 
 
