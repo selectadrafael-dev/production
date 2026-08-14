@@ -13785,6 +13785,74 @@ class VendorImportJob(models.Model):
                 )
 
         # =========================================================
+        # DEDUPLICATE CROPS
+        # =========================================================
+        #
+        # The audit response may expose the same crop both at the
+        # top level and inside page["crops"].
+        #
+        # crop_id is the authoritative identity.
+        # =========================================================
+
+        unique_crops = []
+        seen_crop_ids = set()
+
+        for crop in crops:
+
+            if not isinstance(
+                crop,
+                dict
+            ):
+                continue
+
+            crop_id = str(
+                crop.get(
+                    "crop_id",
+                    ""
+                )
+            ).strip()
+
+            if not crop_id:
+                unique_crops.append(
+                    crop
+                )
+                continue
+
+            if crop_id in seen_crop_ids:
+
+                _logger.warning(
+                    "[AZURE CROP] DUPLICATE CROP REMOVED "
+                    "| JOB=%s "
+                    "| CROP=%s",
+                    self.id,
+                    crop_id
+                )
+
+                continue
+
+            seen_crop_ids.add(
+                crop_id
+            )
+
+            unique_crops.append(
+                crop
+            )
+
+        crops = unique_crops
+
+        _logger.warning(
+            "[AZURE CROP] UNIQUE CROP REQUESTS "
+            "| JOB=%s "
+            "| CROPS=%s "
+            "| IDS=%s",
+            self.id,
+            len(crops),
+            sorted(
+                seen_crop_ids
+            )
+        )
+
+        # =========================================================
         # DETERMINE FIGURES CONTAINING MULTIPLE PRODUCT CROPS
         # =========================================================
 
@@ -14302,6 +14370,27 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
             "[AZURE CROP] USING ENRICHED CROPS "
+            "| JOB=%s "
+            "| CROPS=%s",
+            self.id,
+            len(crops)
+        )
+
+        # =========================================================
+        # MAKE ENRICHED CROPS AUTHORITATIVE
+        # =========================================================
+        #
+        # The enrichment pass attaches azure_figure_bounds and
+        # other authoritative metadata to each crop.
+        #
+        # From this point onward, the processing loop MUST use
+        # those enriched crop dictionaries.
+        # =========================================================
+
+        crops = enriched_crops
+
+        _logger.warning(
+            "[AZURE CROP] ENRICHED CROPS ACTIVATED "
             "| JOB=%s "
             "| CROPS=%s",
             self.id,
