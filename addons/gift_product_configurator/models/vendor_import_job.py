@@ -1597,9 +1597,9 @@ class VendorImportJob(models.Model):
 
                 return
 
-            # =================================================
-            # AZURE FALLBACK EXTRACTION
-            # =================================================
+            # =========================================================
+            # AZURE FALLBACK FOR FAMILY A FAILED PAGES
+            # =========================================================
 
             if self.state == 'azure_fallback':
 
@@ -1611,23 +1611,720 @@ class VendorImportJob(models.Model):
 
                 self.last_known_state = 'azure_fallback'
 
+                # =====================================================
+                # SAVE ORIGINAL JOB STATE
+                # =====================================================
+
+                original_pdf_file = self.pdf_file
+
+                original_total_pages = (
+                    self.total_pages or 0
+                )
+
+                original_current_page = (
+                    self.current_page or 0
+                )
+
+                original_last_ai_page = (
+                    self.last_ai_page or 0
+                )
+
+                page_model = self.env[
+                    'vendor.import.page'
+                ]
+
+                preserved_pages = []
+
+                temporary_pdf_created = False
+
                 try:
 
-        
-                    # =============================================
-                    # RESET EXTRACTION POSITION
-                    # =============================================
+                    # =================================================
+                    # LOAD AUTHORITATIVE FAMILY A REVIEW
+                    # =================================================
+
+                    try:
+                        family_a_review = json.loads(
+                            self.family_a_review_json
+                            or "{}"
+                        )
+                    except Exception as e:
+                        raise ValueError(
+                            "Invalid family_a_review_json: "
+                            f"{str(e)}"
+                        )
+
+                    failed_pages = sorted({
+                        int(page)
+                        for page in family_a_review.get(
+                            "failed_pages",
+                            []
+                        )
+                    })
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] FAILED PAGES "
+                        "| JOB=%s | PAGES=%s",
+                        self.id,
+                        failed_pages
+                    )
+
+                    # =================================================
+                    # SAFETY: NOTHING TO FALL BACK
+                    # =================================================
+
+                    if not failed_pages:
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] NO FAILED PAGES "
+                            "→ PDF AI "
+                            "| JOB=%s",
+                            self.id
+                        )
+
+                        self.last_known_state = 'pdf_ai'
+                        self.state = 'pdf_ai'
+
+                        self.flush_recordset()
+                        self.env.cr.commit()
+
+                        return
+
+                    # =================================================
+                    # LOAD ALL REMAINING FAMILY A PASS PAGES
+                    # =================================================
+                    #
+                    # At this point the Family A review has already
+                    # removed the FAIL pages.
+                    #
+                    # Therefore every current page record should be
+                    # a Family A PASS page.
+                    #
+                    # We preserve these records temporarily while Azure
+                    # processes ONLY the failed pages.
+                    # =================================================
+
+                    existing_pages = page_model.search(
+                        [
+                            ('job_id', '=', self.id)
+                        ],
+                        order='page_number asc'
+                    )
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] PRESERVING FAMILY A PASS "
+                        "PAGES | JOB=%s | COUNT=%s",
+                        self.id,
+                        len(existing_pages)
+                    )
+
+                    for record in existing_pages:
+
+                        preserved_pages.append({
+                            "page_number":
+                                int(record.page_number),
+
+                            "extracted_json":
+                                record.extracted_json or "[]",
+
+                            "page_images_json":
+                                record.page_images_json or "[]",
+                        })
+
+                    # =================================================
+                    # LOAD ORIGINAL PDF
+                    # =================================================
+
+                    if not original_pdf_file:
+
+                        raise ValueError(
+                            "Original PDF file is not available."
+                        )
+
+                    try:
+
+                        original_pdf_bytes = (
+                            base64.b64decode(
+                                original_pdf_file
+                            )
+                        )
+
+                    except Exception as e:
+
+                        raise ValueError(
+                            "Unable to decode original PDF: "
+                            f"{str(e)}"
+                        )
+
+                    source_doc = None
+                    fallback_doc = None
+
+                    try:
+
+                        # =================================================
+                        # OPEN ORIGINAL PDF
+                        # =================================================
+
+                        source_doc = fitz.open(
+                            stream=original_pdf_bytes,
+                            filetype="pdf"
+                        )
+
+                        source_total_pages = len(
+                            source_doc
+                        )
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] ORIGINAL PDF "
+                            "| JOB=%s | TOTAL=%s",
+                            self.id,
+                            source_total_pages
+                        )
+
+                        # =================================================
+                        # VALIDATE FAILED PAGE NUMBERS
+                        # =================================================
+
+                        invalid_pages = [
+                            page
+                            for page in failed_pages
+                            if page < 1
+                            or page > source_total_pages
+                        ]
+
+                        if invalid_pages:
+
+                            raise ValueError(
+                                "Family A review returned invalid "
+                                "page numbers: "
+                                f"{invalid_pages}"
+                            )
+
+                        # =================================================
+                        # BUILD FAILED-PAGES-ONLY PDF
+                        # =================================================
+                        #
+                        # IMPORTANT:
+                        #
+                        # The existing Azure extractor is intentionally
+                        # reused unchanged.
+                        #
+                        # We give it a temporary PDF containing ONLY the
+                        # pages Family A failed.
+                        #
+                        # Example:
+                        #
+                        # Original PDF:
+                        #   1 2 3 4 5 6 7 8
+                        #
+                        # Family A:
+                        #   PASS PASS FAIL PASS FAIL PASS PASS PASS
+                        #
+                        # Temporary PDF:
+                        #   original page 3
+                        #   original page 5
+                        #
+                        # Azure sees only 2 pages.
+                        # =================================================
+
+                        fallback_doc = fitz.open()
+
+                        for original_page_number in failed_pages:
+
+                            zero_based_page = (
+                                original_page_number - 1
+                            )
+
+                            fallback_doc.insert_pdf(
+                                source_doc,
+                                from_page=zero_based_page,
+                                to_page=zero_based_page
+                            )
+
+                        fallback_pdf_io = io.BytesIO()
+
+                        fallback_doc.save(
+                            fallback_pdf_io
+                        )
+
+                        fallback_pdf_io.seek(0)
+
+                        fallback_pdf_bytes = (
+                            fallback_pdf_io.getvalue()
+                        )
+
+                        fallback_pdf_base64 = (
+                            base64.b64encode(
+                                fallback_pdf_bytes
+                            ).decode("utf-8")
+                        )
+
+                        temporary_pdf_created = True
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] TEMPORARY PDF CREATED "
+                            "| JOB=%s | FAILED_PAGES=%s "
+                            "| TEMP_PAGES=%s",
+                            self.id,
+                            failed_pages,
+                            len(failed_pages)
+                        )
+
+                    finally:
+
+                        try:
+                            if fallback_doc:
+                                fallback_doc.close()
+                        except Exception:
+                            pass
+
+                        try:
+                            if source_doc:
+                                source_doc.close()
+                        except Exception:
+                            pass
+
+                    # =================================================
+                    # REMOVE ALL CURRENT PAGE RECORDS TEMPORARILY
+                    # =================================================
+                    #
+                    # This is NOT throwing away Family A output.
+                    #
+                    # The PASS records have already been copied into
+                    # preserved_pages above.
+                    #
+                    # They will be recreated after Azure finishes.
+                    #
+                    # We must do this because the existing Azure
+                    # extractor skips any page that already has a
+                    # vendor.import.page record.
+                    # =================================================
+
+                    current_records = page_model.search([
+                        ('job_id', '=', self.id)
+                    ])
+
+                    if current_records:
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] TEMPORARILY REMOVING "
+                            "PASS PAGE RECORDS "
+                            "| JOB=%s | COUNT=%s",
+                            self.id,
+                            len(current_records)
+                        )
+
+                        current_records.unlink()
+
+                    # =================================================
+                    # SWITCH JOB TO FAILED-PAGES-ONLY PDF
+                    # =================================================
+
+                    self.pdf_file = (
+                        fallback_pdf_base64
+                    )
+
+                    self.total_pages = (
+                        len(failed_pages)
+                    )
 
                     self.current_page = 0
+
                     self.last_ai_page = 0
 
-                    # =============================================
-                    # RUN EXISTING AZURE EXTRACTOR
-                    # =============================================
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
 
-                    self.extract_pdf_azure()
+                    self.state = (
+                        'azure_fallback'
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    # =================================================
+                    # RUN EXISTING AZURE EXTRACTOR
+                    # =================================================
+                    #
+                    # IMPORTANT:
+                    #
+                    # We are NOT rewriting extract_pdf_azure().
+                    #
+                    # It continues to perform its normal batching,
+                    # extraction, segmentation and persistence.
+                    #
+                    # The only difference is that its input PDF contains
+                    # ONLY the failed Family A pages.
+                    # =================================================
+
+                    expected_temp_pages = (
+                        len(failed_pages)
+                    )
+
+                    while (
+                        (self.current_page or 0)
+                        <
+                        expected_temp_pages
+                    ):
+
+                        previous_page = (
+                            self.current_page or 0
+                        )
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] RUNNING EXISTING "
+                            "AZURE EXTRACTOR "
+                            "| JOB=%s "
+                            "| TEMP_PAGE=%s/%s",
+                            self.id,
+                            previous_page,
+                            expected_temp_pages
+                        )
+
+                        self.last_known_state = (
+                            'azure_fallback'
+                        )
+
+                        self.state = (
+                            'azure_fallback'
+                        )
+
+                        self.extract_pdf_azure()
+
+                        current_page = (
+                            self.current_page or 0
+                        )
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] AZURE PROGRESS "
+                            "| JOB=%s "
+                            "| TEMP_PAGE=%s/%s",
+                            self.id,
+                            current_page,
+                            expected_temp_pages
+                        )
+
+                        # =============================================
+                        # PREVENT INFINITE LOOP
+                        # =============================================
+
+                        if current_page <= previous_page:
+
+                            raise RuntimeError(
+                                "Azure fallback extractor "
+                                "did not advance. "
+                                f"Previous={previous_page}, "
+                                f"Current={current_page}"
+                            )
+
+                    # =================================================
+                    # LOAD AZURE TEMPORARY PAGE RECORDS
+                    # =================================================
+
+                    azure_temp_pages = page_model.search(
+                        [
+                            ('job_id', '=', self.id)
+                        ],
+                        order='page_number asc'
+                    )
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] TEMPORARY AZURE RECORDS "
+                        "| JOB=%s | COUNT=%s | EXPECTED=%s",
+                        self.id,
+                        len(azure_temp_pages),
+                        len(failed_pages)
+                    )
+
+                    # =================================================
+                    # SAFETY CHECK
+                    # =================================================
+
+                    if len(azure_temp_pages) != len(
+                        failed_pages
+                    ):
+
+                        raise RuntimeError(
+                            "Azure fallback did not produce "
+                            "one page record for every failed "
+                            "Family A page. "
+                            f"Expected={len(failed_pages)}, "
+                            f"Received={len(azure_temp_pages)}"
+                        )
+
+                    # =================================================
+                    # REMAP AZURE TEMP PAGE NUMBERS
+                    # =================================================
+                    #
+                    # Temporary:
+                    #
+                    #   1 → original failed page 7
+                    #   2 → original failed page 13
+                    #   3 → original failed page 21
+                    #
+                    # Must become:
+                    #
+                    #   7
+                    #   13
+                    #   21
+                    #
+                    # Also update the "page" value inside extracted_json.
+                    # =================================================
+
+                    for temp_index, azure_record in enumerate(
+                        azure_temp_pages
+                    ):
+
+                        original_page_number = (
+                            failed_pages[temp_index]
+                        )
+
+                        try:
+
+                            blocks = json.loads(
+                                azure_record.extracted_json
+                                or "[]"
+                            )
+
+                        except Exception as e:
+
+                            raise ValueError(
+                                "Invalid Azure extracted_json "
+                                f"for temporary page "
+                                f"{temp_index + 1}: {str(e)}"
+                            )
+
+                        if not isinstance(
+                            blocks,
+                            list
+                        ):
+
+                            raise ValueError(
+                                "Azure extracted_json must "
+                                "contain a list."
+                            )
+
+                        # =============================================
+                        # RESTORE ORIGINAL PAGE NUMBER INSIDE BLOCKS
+                        # =============================================
+
+                        for block in blocks:
+
+                            if isinstance(
+                                block,
+                                dict
+                            ):
+
+                                block["page"] = (
+                                    original_page_number
+                                )
+
+                        azure_record.write({
+                            "page_number":
+                                original_page_number,
+
+                            "extracted_json":
+                                json.dumps(
+                                    blocks,
+                                    ensure_ascii=False
+                                )
+                        })
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] PAGE REMAPPED "
+                            "| TEMP=%s "
+                            "| ORIGINAL=%s "
+                            "| JOB=%s",
+                            temp_index + 1,
+                            original_page_number,
+                            self.id
+                        )
+
+                    # =================================================
+                    # RESTORE FAMILY A PASS PAGES
+                    # =================================================
+
+                    restored_count = 0
+
+                    for preserved in preserved_pages:
+
+                        page_number = (
+                            preserved["page_number"]
+                        )
+
+                        # ---------------------------------------------
+                        # Safety: failed pages must come from Azure.
+                        # ---------------------------------------------
+
+                        if page_number in failed_pages:
+
+                            _logger.warning(
+                                "[AZURE FALLBACK] "
+                                "NOT RESTORING FAILED PAGE "
+                                "| PAGE=%s | JOB=%s",
+                                page_number,
+                                self.id
+                            )
+
+                            continue
+
+                        # ---------------------------------------------
+                        # Safety: don't duplicate Azure page.
+                        # ---------------------------------------------
+
+                        existing = page_model.search([
+                            ('job_id', '=', self.id),
+                            ('page_number', '=', page_number)
+                        ], limit=1)
+
+                        if existing:
+
+                            _logger.warning(
+                                "[AZURE FALLBACK] PAGE ALREADY EXISTS "
+                                "| PAGE=%s | JOB=%s",
+                                page_number,
+                                self.id
+                            )
+
+                            continue
+
+                        page_model.create({
+                            'job_id':
+                                self.id,
+
+                            'page_number':
+                                page_number,
+
+                            'extracted_json':
+                                preserved[
+                                    "extracted_json"
+                                ],
+
+                            'page_images_json':
+                                preserved[
+                                    "page_images_json"
+                                ],
+                        })
+
+                        restored_count += 1
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] FAMILY A PASS PAGES "
+                        "RESTORED "
+                        "| JOB=%s | COUNT=%s",
+                        self.id,
+                        restored_count
+                    )
+
+                    # =================================================
+                    # VERIFY FINAL PAGE INVENTORY
+                    # =================================================
+
+                    final_pages = page_model.search(
+                        [
+                            ('job_id', '=', self.id)
+                        ],
+                        order='page_number asc'
+                    )
+
+                    final_page_numbers = [
+                        int(record.page_number)
+                        for record in final_pages
+                    ]
+
+                    expected_page_numbers = sorted({
+                        int(page)
+                        for page in (
+                            [
+                                item["page_number"]
+                                for item in preserved_pages
+                            ]
+                            +
+                            failed_pages
+                        )
+                    })
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] FINAL PAGE INVENTORY "
+                        "| JOB=%s "
+                        "| ACTUAL=%s "
+                        "| EXPECTED=%s",
+                        self.id,
+                        final_page_numbers,
+                        expected_page_numbers
+                    )
+
+                    if (
+                        final_page_numbers
+                        !=
+                        expected_page_numbers
+                    ):
+
+                        raise RuntimeError(
+                            "Final page inventory mismatch after "
+                            "Azure fallback. "
+                            f"Actual={final_page_numbers}, "
+                            f"Expected={expected_page_numbers}"
+                        )
+
+                    # =================================================
+                    # RESTORE ORIGINAL JOB PDF
+                    # =================================================
+
+                    self.pdf_file = (
+                        original_pdf_file
+                    )
+
+                    self.total_pages = (
+                        original_total_pages
+                        or len(expected_page_numbers)
+                    )
+
+                    self.current_page = (
+                        self.total_pages
+                    )
+
+                    # PDF AI must start from page 1 again.
+                    self.last_ai_page = 0
+
+                    # =================================================
+                    # HAND OFF TO EXISTING PDF AI
+                    # =================================================
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] COMPLETE "
+                        "→ PDF AI "
+                        "| JOB=%s "
+                        "| PASS_PAGES=%s "
+                        "| AZURE_PAGES=%s",
+                        self.id,
+                        len(preserved_pages),
+                        len(failed_pages)
+                    )
+
+                    self.stage_retry_count = 0
+
+                    self.last_error = False
+
+                    self.last_known_state = (
+                        'pdf_ai'
+                    )
+
+                    self.state = (
+                        'pdf_ai'
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    return
 
                 except Exception as e:
+
+                    # =================================================
+                    # RESTORE PASS PAGES ON FAILURE
+                    # =================================================
 
                     _logger.exception(
                         "[AZURE FALLBACK] FAILED "
@@ -1636,22 +2333,100 @@ class VendorImportJob(models.Model):
                         str(e)
                     )
 
+                    try:
+
+                        # Remove temporary Azure records.
+                        temporary_records = page_model.search([
+                            ('job_id', '=', self.id)
+                        ])
+
+                        if temporary_records:
+
+                            temporary_records.unlink()
+
+                        # Restore Family A PASS records.
+                        for preserved in preserved_pages:
+
+                            existing = page_model.search([
+                                ('job_id', '=', self.id),
+                                (
+                                    'page_number',
+                                    '=',
+                                    preserved["page_number"]
+                                )
+                            ], limit=1)
+
+                            if existing:
+
+                                continue
+
+                            page_model.create({
+                                'job_id':
+                                    self.id,
+
+                                'page_number':
+                                    preserved[
+                                        "page_number"
+                                    ],
+
+                                'extracted_json':
+                                    preserved[
+                                        "extracted_json"
+                                    ],
+
+                                'page_images_json':
+                                    preserved[
+                                        "page_images_json"
+                                    ],
+                            })
+
+                    except Exception:
+
+                        _logger.exception(
+                            "[AZURE FALLBACK] "
+                            "FAILED TO RESTORE FAMILY A "
+                            "PASS PAGES "
+                            "| JOB=%s",
+                            self.id
+                        )
+
+                    # =================================================
+                    # RESTORE ORIGINAL JOB STATE
+                    # =================================================
+
+                    self.pdf_file = (
+                        original_pdf_file
+                    )
+
+                    self.total_pages = (
+                        original_total_pages
+                    )
+
+                    self.current_page = (
+                        original_current_page
+                    )
+
+                    self.last_ai_page = (
+                        original_last_ai_page
+                    )
+
                     self.stage_retry_count += 1
+
                     self.last_error = str(e)
-                    self.last_known_state = 'azure_fallback'
-                    self.state = 'review'
+
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
+
+                    self.state = (
+                        'review'
+                    )
 
                     self._safe_commit_progress()
 
                     return
 
-                # Existing Azure extractor controls its own
-                # page-by-page extraction state.
-
-                self.flush_recordset()
-                self.env.cr.commit()
-
-                return
+            
 
             # =================================================
             # FAMILY A VISUAL QUALITY GATE
@@ -1675,28 +2450,104 @@ class VendorImportJob(models.Model):
                         self._review_family_a_extraction_with_openai()
                     )
 
+
                 except Exception as e:
 
                     _logger.exception(
                         "[FAMILY A REVIEW] FAILED "
-                        "| JOB=%s | %s",
-                        self.id,
-                        str(e)
+                        f"| {str(e)}"
                     )
 
-                    self.stage_retry_count += 1
+                    # =================================================
+                    # FAMILY A REVIEW TECHNICAL FAILURE
+                    # =================================================
+                    #
+                    # The visual review did NOT complete.
+                    #
+                    # Therefore NONE of the Family A pages can be
+                    # considered approved.
+                    #
+                    # Treat every currently extracted Family A page
+                    # as FAILED and send ONLY those pages through the
+                    # existing Azure fallback extractor.
+                    #
+                    # IMPORTANT:
+                    #
+                    # We do NOT send this to azure_review because
+                    # Azure extraction has not happened yet.
+                    #
+                    # azure_fallback is the correct route.
+                    # =================================================
+
+                    page_records = self.env[
+                        'vendor.import.page'
+                    ].search([
+                        ('job_id', '=', self.id)
+                    ], order='page_number asc')
+
+                    failed_pages = sorted({
+                        int(record.page_number)
+                        for record in page_records
+                        if record.page_number
+                    })
+
+                    # =================================================
+                    # STORE A SYNTHETIC FAMILY A FAIL RESULT
+                    # =================================================
+                    #
+                    # azure_fallback already expects
+                    # family_a_review_json['failed_pages'].
+                    #
+                    # When the OpenAI review itself fails, there is
+                    # no normal review_result to store.
+                    #
+                    # Therefore create an explicit technical-failure
+                    # result so the existing fallback mechanism knows
+                    # exactly which pages require Azure processing.
+                    # =================================================
+
+                    self.family_a_review_json = json.dumps(
+                        {
+                            "decision": "FAIL",
+                            "confidence": 0,
+                            "reason": (
+                                "Family A visual review failed "
+                                "technically. All Family A pages "
+                                "were therefore routed to Azure "
+                                "for independent extraction."
+                            ),
+                            "technical_failure": True,
+                            "error": str(e),
+                            "failed_pages": failed_pages,
+                        },
+                        ensure_ascii=False
+                    )
+
+                    self.stage_retry_count = 0
 
                     self.last_error = str(e)
 
                     self.last_known_state = (
-                        'family_a_review'
+                        'azure_fallback'
                     )
 
-                    self.state = 'review'
+                    self.state = (
+                        'azure_fallback'
+                    )
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] TECHNICAL FAILURE "
+                        "→ AZURE FALLBACK "
+                        "| JOB=%s "
+                        "| FAILED_PAGES=%s",
+                        self.id,
+                        failed_pages
+                    )
 
                     self._safe_commit_progress()
 
                     return
+
 
 
                 # =================================================
@@ -14637,12 +15488,25 @@ class VendorImportJob(models.Model):
 
                 if page_image:
 
+                    # -------------------------------------------------
+                    # Explicit visual label for OpenAI
+                    # -------------------------------------------------
+
+                    image_inputs.append({
+                        "type": "input_text",
+                        "text": (
+                            f"PAGE {page_number} - "
+                            "ORIGINAL CATALOGUE PAGE. "
+                            "This image is the authoritative source "
+                            "for this page."
+                        )
+                    })
+
                     original_page_index = (
                         len(image_inputs)
                     )
 
                     image_inputs.append({
-
                         "type":
                             "input_image",
 
@@ -14684,7 +15548,17 @@ class VendorImportJob(models.Model):
                         )
 
                         image_inputs.append({
+                            "type": "input_text",
+                            "text": (
+                                f"PAGE {page_number} - "
+                                f"FAMILY A EXTRACTED IMAGE "
+                                f"INDEX={image.get('index', len(extracted_indexes))}. "
+                                "Compare this image directly against "
+                                "the ORIGINAL CATALOGUE PAGE for the same page."
+                            )
+                        })
 
+                        image_inputs.append({
                             "type":
                                 "input_image",
 
@@ -14752,93 +15626,360 @@ class VendorImportJob(models.Model):
         You are the FINAL visual quality-control gate between
         Family A PDF extraction and the production PDF AI.
 
-        Family A has already extracted the COMPLETE catalogue.
+        Family A has already extracted product images from the catalogue.
 
-        Your task is to inspect EVERY PAGE INDEPENDENTLY.
+        YOUR MOST IMPORTANT RULE:
 
-        The ORIGINAL PAGE is the authoritative visual reference.
+        THE ORIGINAL CATALOGUE PAGE IS THE AUTHORITATIVE SOURCE OF TRUTH.
 
-        For each page, compare:
+        Do NOT judge Family A extracted images in isolation.
 
-        1. ORIGINAL PAGE
-        2. FAMILY A EXTRACTED IMAGES
+        For EVERY PAGE independently, compare:
 
-        Determine whether Family A extraction for THAT SPECIFIC PAGE
-        is safe to retain for production.
+        1. The ORIGINAL CATALOGUE PAGE.
+        2. ALL FAMILY A EXTRACTED IMAGES belonging to that SAME PAGE.
 
-        IMPORTANT:
+        The purpose of this review is to determine whether Family A has
+        faithfully represented everything important that is visibly present
+        on the original page.
 
-        - Evaluate each page independently.
-        - One page passing MUST NOT cause another page to pass.
-        - One page failing MUST NOT cause another page to fail.
-        - Do not make one global decision based on the majority of pages.
-        - A catalogue may contain a mixture of PASS and FAIL pages.
+        ================================================================
+        PAGE-BY-PAGE RULE
+        ================================================================
+
+        Evaluate every supplied page independently.
+
+        One page passing MUST NOT cause another page to pass.
+
+        One page failing MUST NOT cause another page to fail.
+
+        Do NOT make a global decision based on the majority of pages.
+
+        A catalogue may contain:
+
+        - pages that Family A handles perfectly;
+        - pages that Family A partially handles;
+        - pages that require Azure recovery.
+
+        The review must identify the exact pages requiring recovery.
+
+        ================================================================
+        ORIGINAL PAGE COMPARISON
+        ================================================================
+
+        For every page, compare the original page against EVERY Family A
+        extracted image.
+
+        Determine:
+
+        1. What products are visibly present on the original page?
+
+        2. What colour variants are visibly present?
+
+        3. Which images represent the primary product?
+
+        4. Which images are gallery/detail/folded/supporting images?
+
+        5. Which extracted image corresponds to which visible product?
+
+        6. Is any product or variant visible on the original page missing
+           from Family A extraction?
+
+        7. Has Family A extracted only part of a product?
+
+        8. Has Family A merged two separate products into one image?
+
+        9. Has Family A incorrectly treated multiple independent products
+           as variants of one product?
+
+        10. Has Family A incorrectly treated gallery/detail/folded images
+            as separate colour variants?
+
+        ================================================================
+        MISSING PRODUCT / VARIANT RULE
+        ================================================================
+
+        A CLEAN EXTRACTED IMAGE IS NOT SUFFICIENT FOR PASS.
+
+        If something important is clearly visible on the ORIGINAL PAGE
+        but Family A did not extract it, the page MUST FAIL.
+
+        Example:
+
+        ORIGINAL PAGE:
+            Black bag
+            Grey bag
+            Folded bag
+
+        FAMILY A:
+            Black bag
+            Folded bag
+
+        RESULT:
+
+            FAIL
+
+        because the Grey bag is missing.
+
+        Do NOT allow the page to PASS merely because the surviving
+        extracted images are individually clean.
+
+        This rule is especially important for colour variants.
+
+        ================================================================
+        PRODUCT STRUCTURE RULE
+        ================================================================
+
+        Do NOT assume that visually similar images belong to the same
+        product.
+
+        A catalogue page may contain:
+
+        - one product with multiple colour variants;
+        - multiple independent products;
+        - one product with several gallery images;
+        - one product with folded/detail images;
+        - multiple products with their own variants;
+        - a mixture of these structures.
+
+        Determine the structure from the ORIGINAL PAGE.
+
+        Multiple independent products MUST remain separate products.
+
+        Colour versions of the SAME product should be identified as
+        variants.
+
+        Gallery/detail/folded images should NOT automatically become
+        variants.
+
+        ================================================================
+        FAMILY A IMAGE MAPPING
+        ================================================================
+
+        Every Family A extracted image must be mapped to the original page.
+
+        For every extracted image report:
+
+        - image index;
+        - product group;
+        - colour when visually identifiable;
+        - image role;
+        - whether it matches something visible on the original page.
+
+        If an extracted image cannot be confidently matched to the
+        original page, mark it as suspicious.
+
+        If something visible on the original page has no corresponding
+        Family A image, record it under missing_items.
+
+        ================================================================
+        WHEN TO PASS
+        ================================================================
 
         PASS a page only when:
 
-        1. Required product/variant images are individually represented.
-        2. Products are not substantially cut or missing major visible portions.
-        3. Different products are not incorrectly merged.
-        4. Extracted images correspond to products actually visible
-        on that original page.
-        5. Important product bodies are present.
-        6. Separately shown colour/variant products are not incorrectly
-        combined.
-        7. The page is clean enough for the existing production PDF AI.
+        1. All important products visible on the original page are
+           represented.
 
-        FAIL a page when Family A extraction on THAT PAGE is unsafe,
+        2. All important colour/variant products visible on the original
+           page are represented.
+
+        3. Product bodies are substantially complete.
+
+        4. No important product has been lost.
+
+        5. Separate products are not incorrectly merged.
+
+        6. Variants are not incorrectly represented as separate products.
+
+        7. Gallery/detail/folded images are correctly distinguished.
+
+        8. Extracted images correspond to the original catalogue page.
+
+        9. The resulting evidence is sufficiently reliable for the
+           production PDF AI.
+
+        Minor cosmetic imperfections alone do NOT require FAIL.
+
+        ================================================================
+        WHEN TO FAIL
+        ================================================================
+
+        FAIL a page when any important extraction problem exists,
         including:
 
-        - substantially cropped products;
-        - missing major product portions;
-        - merged products;
-        - missing required variants;
+        - missing product;
+        - missing colour variant;
+        - missing required product image;
+        - substantially cropped product;
+        - major product portion missing;
         - incorrect image/product correspondence;
-        - images that are clearly not usable as product evidence.
+        - merged independent products;
+        - incorrect product/variant grouping;
+        - unusable product evidence.
 
-        Do NOT fail a page for minor cosmetic imperfections.
+        ================================================================
+        IMPORTANT DISTINCTION
+        ================================================================
 
-        Do NOT judge product descriptions, prices, names, or text accuracy
-        unless the visual extraction itself is affected.
+        A page can contain MULTIPLE PRODUCTS and still PASS.
+
+        Do NOT automatically send a multiple-product page to Azure.
+
+        If Family A extracted all products correctly, PASS the page and
+        describe the separate product groups clearly in the returned
+        structure.
+
+        If Family A incorrectly merged the products, FAIL the page.
+
+        ================================================================
+        DO NOT PERFORM THESE TASKS
+        ================================================================
 
         Do NOT create products.
 
         Do NOT provide crop coordinates.
 
-        Do NOT perform Azure processing yourself.
+        Do NOT perform Azure processing.
+
+        Do NOT judge product descriptions, prices or marketing text
+        unless the visual extraction itself is affected.
+
+        ================================================================
+        RETURN FORMAT
+        ================================================================
 
         Return ONLY valid JSON:
 
         {
             "decision": "PASS" or "FAIL",
+
             "confidence": 0.0,
+
             "reason": "overall routing summary",
+
             "pages": [
                 {
                     "page": 1,
+
                     "decision": "PASS" or "FAIL",
+
                     "confidence": 0.0,
-                    "reason": "specific reason for this page"
+
+                    "reason":
+                        "specific page-level explanation",
+
+                    "product_structure":
+                        "SINGLE_PRODUCT"
+                        or
+                        "MULTIPLE_PRODUCTS"
+                        or
+                        "MIXED",
+
+                    "product_groups": [
+                        {
+                            "group_id": "product_1",
+
+                            "relationship":
+                                "SINGLE_PRODUCT"
+                                or
+                                "VARIANTS"
+                                or
+                                "SEPARATE_PRODUCT",
+
+                            "description":
+                                "short visual description",
+
+                            "variants": [
+                                {
+                                    "color": "Black",
+
+                                    "extracted_image_indexes": [
+                                        0
+                                    ],
+
+                                    "image_role":
+                                        "PRIMARY"
+                                        or
+                                        "GALLERY"
+                                        or
+                                        "FOLDED"
+                                        or
+                                        "DETAIL"
+                                }
+                            ]
+                        }
+                    ],
+
+                    "missing_items": [
+                        {
+                            "description":
+                                "Grey version of the sling bag",
+
+                            "type":
+                                "MISSING_VARIANT"
+                                or
+                                "MISSING_PRODUCT"
+                                or
+                                "MISSING_IMAGE",
+
+                            "reason":
+                                "Visible on original page but absent from Family A extraction."
+                        }
+                    ],
+
+                    "extracted_asset_mapping": [
+                        {
+                            "image_index": 0,
+
+                            "product_group":
+                                "product_1",
+
+                            "color":
+                                "Black",
+
+                            "image_role":
+                                "PRIMARY",
+
+                            "matches_original":
+                                true,
+
+                            "reason":
+                                "Matches the black product visible on the original page."
+                        }
+                    ]
                 }
             ]
         }
 
-        CRITICAL:
+        ================================================================
+        CRITICAL OUTPUT RULES
+        ================================================================
 
-        The page-level decisions are authoritative.
+        Every supplied page MUST appear exactly once.
+
+        The page-level decision is authoritative.
 
         The top-level decision MUST be:
 
-        "PASS" only if ALL supplied pages are PASS.
+        PASS only when ALL supplied pages are PASS.
 
-        "FAIL" if ANY supplied page is FAIL.
+        FAIL when ANY supplied page is FAIL.
 
-        However, the page-level decisions must still identify exactly
-        which pages passed and which pages failed.
+        Do NOT omit pages.
 
-        Do not omit a page.
-        Every supplied page must appear exactly once in "pages".
+        Do NOT invent products or variants that are not visible on the
+        original page.
+
+        missing_items MUST identify important products, variants or images
+        visible on the original page but absent from Family A.
+
+        product_groups MUST distinguish separate products from variants.
+
+        extracted_asset_mapping MUST explain what each Family A image
+        represents relative to the original page.
         """
+
         # =====================================================
         # PAGE CONTEXT
         # =====================================================
@@ -15062,7 +16203,6 @@ class VendorImportJob(models.Model):
                     page_decision = "FAIL"
 
                 normalized_page = {
-
                     "page":
                         page_number,
 
@@ -15083,6 +16223,33 @@ class VendorImportJob(models.Model):
                             )
                         ),
 
+                    # =================================================
+                    # PRESERVE VISUAL PRODUCT STRUCTURE
+                    # =================================================
+
+                    "product_structure":
+                        page_result.get(
+                            "product_structure",
+                            "UNKNOWN"
+                        ),
+
+                    "product_groups":
+                        page_result.get(
+                            "product_groups",
+                            []
+                        ),
+
+                    "missing_items":
+                        page_result.get(
+                            "missing_items",
+                            []
+                        ),
+
+                    "extracted_asset_mapping":
+                        page_result.get(
+                            "extracted_asset_mapping",
+                            []
+                        ),
                 }
 
                 normalized_pages.append(
