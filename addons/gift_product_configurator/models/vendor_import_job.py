@@ -14537,6 +14537,38 @@ class VendorImportJob(models.Model):
             x = figure_x + crop_x
             y = figure_y + crop_y
 
+            # =========================================================
+            # CONVERT CROP OBJECT TO ORIGINAL-PAGE COORDINATES
+            # =========================================================
+            #
+            # From this point onward, the safe crop method must receive
+            # PAGE coordinates, not figure-relative coordinates.
+            #
+            # Keep crop_x / crop_y unchanged for debugging/reference.
+            # Replace only the operational x/y values on the crop object.
+            # =========================================================
+
+            crop["x"] = x
+            crop["y"] = y
+
+            _logger.warning(
+                "[AZURE CROP] PAGE COORDINATES APPLIED "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| PAGE_X=%s "
+                "| PAGE_Y=%s "
+                "| W=%s "
+                "| H=%s",
+                self.id,
+                crop_id,
+                figure_id,
+                x,
+                y,
+                width,
+                height
+            )
+
             _logger.warning(
                 "[AZURE CROP] COORDINATE TRANSFORM "
                 "| JOB=%s "
@@ -14594,180 +14626,219 @@ class VendorImportJob(models.Model):
             # BUILD FIGURE BOUNDS FOR THIS CROP
             # =========================================================
 
-            figure_id = str(
-                crop.get(
-                    "figure_id",
-                    ""
-                )
-            ).strip()
+            # figure_id = str(
+            #     crop.get(
+            #         "figure_id",
+            #         ""
+            #     )
+            # ).strip()
 
-            _logger.warning(
-                "[AZURE CROP] RAW CROP BEFORE BOUNDS "
-                "| JOB=%s "
-                "| CROP=%s "
-                "| PAGE=%s "
-                "| FIGURE=%s "
-                "| KEYS=%s "
-                "| BOUNDS_PRESENT=%s",
-                self.id,
-                crop.get(
-                    "crop_id",
-                    "unknown"
-                ),
-                crop.get(
-                    "page"
-                ),
-                crop.get(
-                    "figure_id",
-                    "unknown"
-                ),
-                list(
-                    crop.keys()
-                ),
-                isinstance(
-                    crop.get(
-                        "azure_figure_bounds"
-                    ),
-                    dict
-                )
-            )
+            # _logger.warning(
+            #     "[AZURE CROP] RAW CROP BEFORE BOUNDS "
+            #     "| JOB=%s "
+            #     "| CROP=%s "
+            #     "| PAGE=%s "
+            #     "| FIGURE=%s "
+            #     "| KEYS=%s "
+            #     "| BOUNDS_PRESENT=%s",
+            #     self.id,
+            #     crop.get(
+            #         "crop_id",
+            #         "unknown"
+            #     ),
+            #     crop.get(
+            #         "page"
+            #     ),
+            #     crop.get(
+            #         "figure_id",
+            #         "unknown"
+            #     ),
+            #     list(
+            #         crop.keys()
+            #     ),
+            #     isinstance(
+            #         crop.get(
+            #             "azure_figure_bounds"
+            #         ),
+            #         dict
+            #     )
+            # )
 
-            azure_bounds = crop.get(
-                "azure_figure_bounds"
-            )
+            # azure_bounds = crop.get(
+            #     "azure_figure_bounds"
+            # )
+
+            # # =========================================================
+            # # FIGURE BOUNDS MUST EXIST BEFORE .get()
+            # # =========================================================
+
+            # if not isinstance(
+            #     azure_bounds,
+            #     dict
+            # ):
+
+            #     _logger.error(
+            #         "[AZURE CROP] MISSING EMBEDDED FIGURE BOUNDS "
+            #         "| JOB=%s "
+            #         "| CROP=%s "
+            #         "| FIGURE=%s "
+            #         "| PAGE=%s",
+            #         self.id,
+            #         crop.get(
+            #             "crop_id",
+            #             "unknown"
+            #         ),
+            #         figure_id,
+            #         crop.get(
+            #             "page"
+            #         )
+            #     )
+
+            #     continue
+
+            # # =========================================================
+            # # VALIDATE FIGURE DIMENSIONS
+            # # =========================================================
+
+            # try:
+
+            #     azure_width = float(
+            #         azure_bounds.get(
+            #             "width",
+            #             0
+            #         )
+            #     )
+
+            #     azure_height = float(
+            #         azure_bounds.get(
+            #             "height",
+            #             0
+            #         )
+
+            #     )
+
+            # except (
+            #     TypeError,
+            #     ValueError
+            # ):
+
+            #     _logger.error(
+            #         "[AZURE CROP] INVALID EMBEDDED FIGURE BOUNDS "
+            #         "| JOB=%s "
+            #         "| CROP=%s "
+            #         "| FIGURE=%s "
+            #         "| BOUNDS=%s",
+            #         self.id,
+            #         crop.get(
+            #             "crop_id",
+            #             "unknown"
+            #         ),
+            #         figure_id,
+            #         json.dumps(
+            #             azure_bounds,
+            #             ensure_ascii=False,
+            #             default=str
+            #         )
+            #     )
+
+            #     continue
+
+            # if (
+            #     azure_width <= 0
+            #     or azure_height <= 0
+            # ):
+
+            #     _logger.error(
+            #         "[AZURE CROP] EMPTY EMBEDDED FIGURE BOUNDS "
+            #         "| JOB=%s "
+            #         "| CROP=%s "
+            #         "| FIGURE=%s "
+            #         "| BOUNDS=%s",
+            #         self.id,
+            #         crop.get(
+            #             "crop_id",
+            #             "unknown"
+            #         ),
+            #         figure_id,
+            #         json.dumps(
+            #             azure_bounds,
+            #             ensure_ascii=False,
+            #             default=str
+            #         )
+            #     )
+
+            #     continue
+
+            # if not isinstance(
+            #     azure_bounds,
+            #     dict
+            # ):
+
+            #     _logger.error(
+            #         "[AZURE CROP] MISSING EMBEDDED FIGURE BOUNDS "
+            #         "| JOB=%s "
+            #         "| CROP=%s "
+            #         "| FIGURE=%s",
+            #         self.id,
+            #         crop.get(
+            #             "crop_id",
+            #             "unknown"
+            #         ),
+            #         figure_id
+            #     )
+
+            #     continue
+
+            # figure_bounds = {
+            #     figure_id: azure_bounds
+            # }
+
+
+
+
 
             # =========================================================
-            # FIGURE BOUNDS MUST EXIST BEFORE .get()
+            # BUILD FIGURE BOUNDS FOR SAFE CROP
             # =========================================================
-
-            if not isinstance(
-                azure_bounds,
-                dict
-            ):
-
-                _logger.error(
-                    "[AZURE CROP] MISSING EMBEDDED FIGURE BOUNDS "
-                    "| JOB=%s "
-                    "| CROP=%s "
-                    "| FIGURE=%s "
-                    "| PAGE=%s",
-                    self.id,
-                    crop.get(
-                        "crop_id",
-                        "unknown"
-                    ),
-                    figure_id,
-                    crop.get(
-                        "page"
-                    )
-                )
-
-                continue
-
+            #
+            # azure_bounds was already validated above.
+            #
+            # Reuse it here to provide the structure expected by
+            # _build_safe_product_crop().
             # =========================================================
-            # VALIDATE FIGURE DIMENSIONS
-            # =========================================================
-
-            try:
-
-                azure_width = float(
-                    azure_bounds.get(
-                        "width",
-                        0
-                    )
-                )
-
-                azure_height = float(
-                    azure_bounds.get(
-                        "height",
-                        0
-                    )
-
-                )
-
-            except (
-                TypeError,
-                ValueError
-            ):
-
-                _logger.error(
-                    "[AZURE CROP] INVALID EMBEDDED FIGURE BOUNDS "
-                    "| JOB=%s "
-                    "| CROP=%s "
-                    "| FIGURE=%s "
-                    "| BOUNDS=%s",
-                    self.id,
-                    crop.get(
-                        "crop_id",
-                        "unknown"
-                    ),
-                    figure_id,
-                    json.dumps(
-                        azure_bounds,
-                        ensure_ascii=False,
-                        default=str
-                    )
-                )
-
-                continue
-
-            if (
-                azure_width <= 0
-                or azure_height <= 0
-            ):
-
-                _logger.error(
-                    "[AZURE CROP] EMPTY EMBEDDED FIGURE BOUNDS "
-                    "| JOB=%s "
-                    "| CROP=%s "
-                    "| FIGURE=%s "
-                    "| BOUNDS=%s",
-                    self.id,
-                    crop.get(
-                        "crop_id",
-                        "unknown"
-                    ),
-                    figure_id,
-                    json.dumps(
-                        azure_bounds,
-                        ensure_ascii=False,
-                        default=str
-                    )
-                )
-
-                continue
-
-            if not isinstance(
-                azure_bounds,
-                dict
-            ):
-
-                _logger.error(
-                    "[AZURE CROP] MISSING EMBEDDED FIGURE BOUNDS "
-                    "| JOB=%s "
-                    "| CROP=%s "
-                    "| FIGURE=%s",
-                    self.id,
-                    crop.get(
-                        "crop_id",
-                        "unknown"
-                    ),
-                    figure_id
-                )
-
-                continue
 
             figure_bounds = {
                 figure_id: azure_bounds
             }
 
+            _logger.warning(
+                "[AZURE CROP] SAFE CROP FIGURE BOUNDS "
+                "| JOB=%s "
+                "| CROP=%s "
+                "| FIGURE=%s "
+                "| BOUNDS=%s",
+                self.id,
+                crop_id,
+                figure_id,
+                json.dumps(
+                    figure_bounds,
+                    ensure_ascii=False,
+                    default=str
+                )
+            )
+
+
+            # =========================================================
+            # EXPANSION POLICY
+            # =========================================================
 
             figure_id = str(
                 crop.get(
                     "figure_id",
-                    ""
+                        ""
                 )
             ).strip()
+            
 
             allow_expansion = (
                 figure_id
@@ -14788,6 +14859,7 @@ class VendorImportJob(models.Model):
                 figure_id,
                 allow_expansion
             )
+
 
             safe_crop = self._build_safe_product_crop(
                 original_image,
