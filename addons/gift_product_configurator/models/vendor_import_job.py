@@ -2450,33 +2450,15 @@ class VendorImportJob(models.Model):
                         self._review_family_a_extraction_with_openai()
                     )
 
-
                 except Exception as e:
 
                     _logger.exception(
                         "[FAMILY A REVIEW] FAILED "
-                        f"| {str(e)}"
+                        f"| JOB={self.id}"
                     )
 
                     # =================================================
-                    # FAMILY A REVIEW TECHNICAL FAILURE
-                    # =================================================
-                    #
-                    # The visual review did NOT complete.
-                    #
-                    # Therefore NONE of the Family A pages can be
-                    # considered approved.
-                    #
-                    # Treat every currently extracted Family A page
-                    # as FAILED and send ONLY those pages through the
-                    # existing Azure fallback extractor.
-                    #
-                    # IMPORTANT:
-                    #
-                    # We do NOT send this to azure_review because
-                    # Azure extraction has not happened yet.
-                    #
-                    # azure_fallback is the correct route.
+                    # HARD ROUTING STOP
                     # =================================================
 
                     page_records = self.env[
@@ -2491,32 +2473,15 @@ class VendorImportJob(models.Model):
                         if record.page_number
                     })
 
-                    # =================================================
-                    # STORE A SYNTHETIC FAMILY A FAIL RESULT
-                    # =================================================
-                    #
-                    # azure_fallback already expects
-                    # family_a_review_json['failed_pages'].
-                    #
-                    # When the OpenAI review itself fails, there is
-                    # no normal review_result to store.
-                    #
-                    # Therefore create an explicit technical-failure
-                    # result so the existing fallback mechanism knows
-                    # exactly which pages require Azure processing.
-                    # =================================================
-
                     self.family_a_review_json = json.dumps(
                         {
                             "decision": "FAIL",
                             "confidence": 0,
+                            "technical_failure": True,
                             "reason": (
                                 "Family A visual review failed "
-                                "technically. All Family A pages "
-                                "were therefore routed to Azure "
-                                "for independent extraction."
+                                "technically."
                             ),
-                            "technical_failure": True,
                             "error": str(e),
                             "failed_pages": failed_pages,
                         },
@@ -2524,7 +2489,6 @@ class VendorImportJob(models.Model):
                     )
 
                     self.stage_retry_count = 0
-
                     self.last_error = str(e)
 
                     self.last_known_state = (
@@ -2536,18 +2500,29 @@ class VendorImportJob(models.Model):
                     )
 
                     _logger.warning(
-                        "[FAMILY A REVIEW] TECHNICAL FAILURE "
-                        "→ AZURE FALLBACK "
+                        "[FAMILY A REVIEW] "
+                        "HARD ROUTE → AZURE FALLBACK "
                         "| JOB=%s "
-                        "| FAILED_PAGES=%s",
+                        "| FAILED_PAGES=%s "
+                        "| NEW_STATE=%s",
                         self.id,
-                        failed_pages
+                        failed_pages,
+                        self.state,
                     )
 
-                    self._safe_commit_progress()
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "RETURNING AFTER FAILURE "
+                        "| JOB=%s "
+                        "| STATE=%s",
+                        self.id,
+                        self.state,
+                    )
 
                     return
-
 
 
                 # =================================================
