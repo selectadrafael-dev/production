@@ -6747,6 +6747,24 @@ class VendorImportJob(models.Model):
                         image_index
                     )
 
+                    # image_hash = str(
+                    #     asset.get(
+                    #         "image_hash",
+                    #         ""
+                    #     )
+                    # ).strip()
+
+                    # if not image_hash:
+
+                    #     _logger.warning(
+                    #         "[FAMILY A REVIEW] "
+                    #         "MISSING IMAGE HASH "
+                    #         "| JOB=%s | PAGE=%s | IMAGE=%s",
+                    #         self.id,
+                    #         page_number,
+                    #         image_index,
+                    #     )
+
                 except (
                     TypeError,
                     ValueError
@@ -16147,6 +16165,11 @@ class VendorImportJob(models.Model):
                                         extracted_indexes
                                     )
                                 ),
+
+                            "image_hash": hashlib.md5(
+                                image_data.encode("utf-8")
+                            ).hexdigest(),
+
                             "width":
                                 image.get(
                                     "width",
@@ -16186,6 +16209,7 @@ class VendorImportJob(models.Model):
                                 image.get(
                                     "azure_figure_id"
                                 ),
+                                
                         })
 
 
@@ -16305,6 +16329,92 @@ class VendorImportJob(models.Model):
 
         Do NOT request recovery of an asset that Family A already extracted
         correctly.
+
+        
+        CLASSIFICATION VALUES
+
+        For every extracted Family A image, classification MUST be exactly
+        one of:
+
+        - REAL_PRODUCT
+        - LIFESTYLE
+        - SUPPORTING
+        - DETAIL
+        - FOLDED
+        - MARKETING
+        - DECORATIVE
+        - TEXT_ONLY
+        - COLLAGE
+        - UNKNOWN
+
+        REAL_PRODUCT:
+        A standalone marketable product representation suitable to represent
+        the product or colour variant.
+
+        LIFESTYLE:
+        A product shown primarily in a person, usage or environmental scene
+        and not suitable as the primary standalone product representation.
+
+        SUPPORTING:
+        A useful product-related image that is not the primary product image.
+
+        DETAIL:
+        A close-up/detail representation of a product.
+
+        FOLDED:
+        A genuine product representation shown folded, compressed or otherwise
+        not in its primary presentation.
+
+        MARKETING:
+        A promotional/marketing composition where the product itself is not
+        the appropriate standalone representation.
+
+        DECORATIVE:
+        Decorative imagery that should not represent the product.
+
+        TEXT_ONLY:
+        Primarily text or non-product information.
+
+        COLLAGE:
+        Multiple visual elements combined into one image where it should not
+        automatically be treated as one standalone product.
+
+        UNKNOWN:
+        Family A cannot determine the visual classification confidently.
+
+
+        EXTRACTOR LIFESTYLE LABEL IS NOT AUTHORITATIVE
+
+        The supplied Family A metadata may contain:
+
+        "is_lifestyle"
+
+        Do NOT blindly copy or trust this field.
+
+        It is only an extractor hint.
+
+        Determine lifestyle status by visually comparing the actual extracted
+        image with the ORIGINAL CATALOGUE PAGE.
+
+        Your returned:
+
+        "classification"
+
+        is the authoritative Family A visual decision.
+
+        Therefore:
+
+        classification = REAL_PRODUCT
+
+        must be returned when the image is genuinely a standalone marketable
+        product, even if the supplied is_lifestyle field says true.
+
+        Likewise:
+
+        classification = LIFESTYLE
+
+        must be returned when the image is actually a lifestyle representation,
+        even if the supplied is_lifestyle field says false.
 
         ================================================================
         PRODUCT STRUCTURE
@@ -16590,6 +16700,52 @@ class VendorImportJob(models.Model):
 
         Minor cosmetic imperfections alone do not require PARTIAL or FAIL.
 
+
+        IMPORTANT FAMILY A ASSET IDENTITY RULE
+
+        For every entry in extracted_asset_mapping:
+
+        - image_index MUST refer to the supplied Family A extracted image.
+        - image_hash MUST be copied EXACTLY from the corresponding supplied
+        Family A extracted image metadata.
+        - Do NOT invent or modify image_hash.
+        - If an extracted image is being classified, the returned image_hash
+        must identify that exact image.
+
+        The following fields are authoritative Family A visual judgments:
+
+        - classification
+        - asset_role
+        - matches_original
+        - product_body_complete
+        - trustworthy
+        - preserve
+        - confidence
+
+        The original extractor fields such as is_lifestyle, score and
+        extractor_score are supporting evidence only.
+
+        Family A Review is the authoritative visual classifier.
+
+        If Family A says:
+
+        classification = REAL_PRODUCT
+
+        the downstream Asset Pool MUST treat that image as a REAL_PRODUCT
+        even if the extractor's is_lifestyle field or geometric heuristics
+        suggest otherwise.
+
+        If Family A says:
+
+        classification = LIFESTYLE
+
+        the downstream Asset Pool MUST NOT promote that image as a primary
+        product asset.
+
+        If Family A cannot determine the classification confidently, use:
+
+        classification = UNKNOWN
+
         ================================================================
         RETURN FORMAT
         ================================================================
@@ -16642,7 +16798,7 @@ class VendorImportJob(models.Model):
                                         0
                                     ],
 
-                                    "image_role":
+                                    "asset_role":
                                         "PRIMARY"
                                         or
                                         "GALLERY"
@@ -16721,23 +16877,39 @@ class VendorImportJob(models.Model):
                         {
                             "image_index": 0,
 
+                            "image_hash":
+                                "EXACT_HASH_FROM_THE_SUPPLIED_FAMILY_A_IMAGE",
+
                             "product_group":
                                 "product_1",
 
                             "color":
                                 "Black",
 
-                            "image_role":
+                            "classification":
+                                "REAL_PRODUCT",
+
+                            "asset_role":
                                 "PRIMARY",
 
                             "matches_original":
                                 true,
 
+                            "product_body_complete":
+                                true,
+
+                            "trustworthy":
+                                true,
+
                             "preserve":
                                 true,
 
+                            "confidence":
+                                0.98,
+
                             "reason":
-                                "Matches the Black product visible on the original page."
+                                "Standalone Black product visible on the original page "
+                                "and correctly represented by the Family A extracted image."
                         }
                     ]
                 }
@@ -17094,6 +17266,220 @@ class VendorImportJob(models.Model):
 
                     page_decision = "FAIL"
 
+                # =================================================
+                # NORMALIZE AUTHORITATIVE FAMILY A IMAGE MAPPING
+                # =================================================
+
+                raw_asset_mapping = page_result.get(
+                    "extracted_asset_mapping",
+                    []
+                )
+
+                normalized_asset_mapping = []
+
+                allowed_classifications = {
+                    "REAL_PRODUCT",
+                    "LIFESTYLE",
+                    "SUPPORTING",
+                    "DETAIL",
+                    "FOLDED",
+                    "MARKETING",
+                    "DECORATIVE",
+                    "TEXT_ONLY",
+                    "COLLAGE",
+                    "UNKNOWN",
+                }
+
+                for asset in raw_asset_mapping:
+
+                    if not isinstance(
+                        asset,
+                        dict
+                    ):
+                        continue
+
+                    try:
+                        image_index = int(
+                            asset.get(
+                                "image_index"
+                            )
+                        )
+
+                        image_hash = str(
+                            asset.get(
+                                "image_hash",
+                                ""
+                            )
+                        ).strip()
+
+                        if not image_hash:
+
+                            _logger.warning(
+                                "[FAMILY A REVIEW] "
+                                "MISSING IMAGE HASH "
+                                "| JOB=%s | PAGE=%s | IMAGE=%s",
+                                self.id,
+                                page_number,
+                                image_index,
+                            )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+                        continue
+
+                    classification = str(
+                        asset.get(
+                            "classification",
+                            "UNKNOWN"
+                        )
+                    ).upper().strip()
+
+                    if classification not in allowed_classifications:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] INVALID CLASSIFICATION "
+                            "| JOB=%s | PAGE=%s | IMAGE=%s | VALUE=%s",
+                            self.id,
+                            page_number,
+                            image_index,
+                            classification,
+                        )
+
+                        classification = "UNKNOWN"
+
+                    normalized_asset_mapping.append({
+
+                        "page":
+                            page_number,
+
+                        "image_index":
+                            image_index,
+
+
+                        "image_hash":
+                            image_hash,
+
+                        "classification":
+                            classification,
+
+                        "asset_role":
+                            str(
+                                asset.get(
+                                    "asset_role",
+                                    asset.get(
+                                        "image_role",
+                                        "UNKNOWN"
+                                    )
+                                )
+                            ).upper().strip(),
+
+                        "product_group":
+                            asset.get(
+                                "product_group"
+                            ),
+
+                        "color":
+                            asset.get(
+                                "color"
+                            ),
+
+                        "matches_original":
+                            bool(
+                                asset.get(
+                                    "matches_original",
+                                    False
+                                )
+                            ),
+
+                        "product_body_complete":
+                            bool(
+                                asset.get(
+                                    "product_body_complete",
+                                    False
+                                )
+                            ),
+
+                        "trustworthy":
+                            bool(
+                                asset.get(
+                                    "trustworthy",
+                                    False
+                                )
+                            ),
+
+                        "preserve":
+                            bool(
+                                asset.get(
+                                    "preserve",
+                                    False
+                                )
+                            ),
+
+                        "confidence":
+                            asset.get(
+                                "confidence",
+                                0
+                            ),
+
+                        "reason":
+                            str(
+                                asset.get(
+                                    "reason",
+                                    ""
+                                )
+                            ),
+
+                        "family_a_authoritative":
+                            True,
+                    })
+
+                _logger.warning(
+                    "[FAMILY A REVIEW] ASSET CLASSIFICATIONS "
+                    "| JOB=%s | PAGE=%s | ASSETS=%s",
+                    self.id,
+                    page_number,
+                    len(
+                        normalized_asset_mapping
+                    )
+                )
+
+                for asset in normalized_asset_mapping:
+
+                    _logger.warning(
+                        "[FAMILY A ASSET AUTHORITY] "
+                        "JOB=%s | PAGE=%s | IMAGE=%s "
+                        "| CLASS=%s | ROLE=%s "
+                        "| TRUST=%s | PRESERVE=%s "
+                        "| CONF=%s",
+                        self.id,
+                        page_number,
+                        asset.get(
+                            "image_index"
+                        ),
+                        asset.get(
+                            "classification"
+                        ),
+                        asset.get(
+                            "asset_role"
+                        ),
+                        asset.get(
+                            "trustworthy"
+                        ),
+                        asset.get(
+                            "preserve"
+                        ),
+                        asset.get(
+                            "confidence"
+                        ),
+                    )
+
+
+                # =================================================
+                # NOW BUILD normalized_page
+                # =================================================
+
                 normalized_page = {
                     "page":
                         page_number,
@@ -17148,10 +17534,7 @@ class VendorImportJob(models.Model):
                         ),
 
                     "extracted_asset_mapping":
-                        page_result.get(
-                            "extracted_asset_mapping",
-                            []
-                        ),
+                        normalized_asset_mapping,
                 }
 
                 normalized_pages.append(
@@ -21784,11 +22167,98 @@ class VendorImportJob(models.Model):
     def _prepare_asset_pool(self, images):
 
         prepared = []
+
         _logger.warning(
             f"[POOL BUILD START] incoming={len(images or [])}"
         )
 
         seen = {}
+
+        # =========================================================
+        # FAMILY A VISUAL AUTHORITY
+        # =========================================================
+
+        family_a_authority_by_hash = {}
+        family_a_authority_by_page_index = {}
+
+        try:
+
+            family_a_review = json.loads(
+                self.family_a_review_json
+                or "{}"
+            )
+
+        except Exception:
+
+            family_a_review = {}
+
+            _logger.warning(
+                "[POOL FAMILY A] "
+                "Could not parse family_a_review_json"
+            )
+
+        for page_result in family_a_review.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                page_result,
+                dict
+            ):
+                continue
+
+            page_number = page_result.get(
+                "page"
+            )
+
+            for authority in page_result.get(
+                "extracted_asset_mapping",
+                []
+            ):
+
+                if not isinstance(
+                    authority,
+                    dict
+                ):
+                    continue
+
+                image_index = authority.get(
+                    "image_index"
+                )
+
+                image_hash = authority.get(
+                    "image_hash"
+                )
+
+                if image_hash:
+                    family_a_authority_by_hash[
+                        image_hash
+                    ] = authority
+
+                if (
+                    page_number is not None
+                    and image_index is not None
+                ):
+
+                    family_a_authority_by_page_index[
+                        (
+                            int(page_number),
+                            int(image_index)
+                        )
+                    ] = authority
+
+        _logger.warning(
+            "[POOL FAMILY A] "
+            "authoritative_hashes=%s "
+            "| authoritative_page_indexes=%s",
+            len(
+                family_a_authority_by_hash
+            ),
+            len(
+                family_a_authority_by_page_index
+            ),
+        )
 
         for asset in (images or []):
 
@@ -21856,6 +22326,96 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                # =========================================================
+                # FAMILY A AUTHORITATIVE VISUAL DECISION
+                # =========================================================
+
+                family_a_authority = None
+
+                if isinstance(
+                    asset,
+                    dict
+                ):
+
+                    # -----------------------------------------------------
+                    # FIRST: exact image hash
+                    # -----------------------------------------------------
+
+                    incoming_hash = asset.get(
+                        "image_hash"
+                    )
+
+                    if not incoming_hash:
+
+                        incoming_hash = hashlib.md5(
+                            img.encode("utf-8")
+                        ).hexdigest()
+
+                    family_a_authority = (
+                        family_a_authority_by_hash.get(
+                            incoming_hash
+                        )
+                    )
+
+                    # -----------------------------------------------------
+                    # SECOND: page + image index
+                    # -----------------------------------------------------
+
+                    if family_a_authority is None:
+
+                        incoming_page = asset.get(
+                            "page"
+                        )
+
+                        incoming_index = asset.get(
+                            "index"
+                        )
+
+                        if (
+                            incoming_page is not None
+                            and
+                            incoming_index is not None
+                        ):
+
+                            family_a_authority = (
+                                family_a_authority_by_page_index.get(
+                                    (
+                                        int(incoming_page),
+                                        int(incoming_index)
+                                    )
+                                )
+                            )
+
+                _logger.warning(
+                    "[POOL FAMILY A DECISION] "
+                    "hash=%s | found=%s | classification=%s "
+                    "| role=%s | preserve=%s | trustworthy=%s",
+                    incoming_hash
+                        if isinstance(asset, dict)
+                        else None,
+                    bool(family_a_authority),
+                    family_a_authority.get(
+                        "classification"
+                    )
+                        if family_a_authority
+                        else "NONE",
+                    family_a_authority.get(
+                        "asset_role"
+                    )
+                        if family_a_authority
+                        else "NONE",
+                    family_a_authority.get(
+                        "preserve"
+                    )
+                        if family_a_authority
+                        else None,
+                    family_a_authority.get(
+                        "trustworthy"
+                    )
+                        if family_a_authority
+                        else None,
+                )
+
                 # =====================================
                 # SKIP EXTREMELY LOW SCORES
                 # =====================================
@@ -21864,7 +22424,7 @@ class VendorImportJob(models.Model):
 
                     continue
 
-                image_hash = asset.get("image_hash")
+                image_hash = incoming_hash
 
                 if not image_hash:
 
@@ -22056,21 +22616,83 @@ class VendorImportJob(models.Model):
                     )
                 )
 
+
+                # =========================================================
+                # FAMILY A AUTHORITY OVERRIDES GENERIC HUMAN HEURISTICS
+                # =========================================================
+
+                family_a_classification = None
+
+                if family_a_authority:
+
+                    family_a_classification = str(
+                        family_a_authority.get(
+                            "classification",
+                            "UNKNOWN"
+                        )
+                    ).upper().strip()
+
+                # =========================================================
+                # AUTHORITATIVE FAMILY A REAL PRODUCT
+                # =========================================================
+
                 if (
-                    not is_azure_asset
+                    family_a_authority
                     and
-                    not recovered
-                    and
-                    ratio < 0.72
-                    and
-                    height > width * 1.20
+                    family_a_classification == "REAL_PRODUCT"
                 ):
+
                     _logger.warning(
-                        f"[ASSET REJECTED HUMAN] "
-                        f"ratio={ratio:.2f} "
-                        f"size={width}x{height}"
+                        "[POOL FAMILY A OVERRIDE] "
+                        "REAL_PRODUCT preserved "
+                        "| image=%s "
+                        "| page=%s "
+                        "| ratio=%.2f "
+                        "| size=%sx%s",
+                        asset.get(
+                            "index"
+                        )
+                            if isinstance(asset, dict)
+                            else None,
+                        asset.get(
+                            "page"
+                        )
+                            if isinstance(asset, dict)
+                            else None,
+                        ratio,
+                        width,
+                        height,
                     )
-                    continue
+
+                    # Family A is authoritative.
+                    # DO NOT apply the generic portrait/human rejection.
+
+                else:
+
+                    # =====================================================
+                    # FALLBACK HUMAN / LIFESTYLE HEURISTIC
+                    # =====================================================
+
+                    if (
+                        not is_azure_asset
+                        and
+                        not recovered
+                        and
+                        ratio < 0.72
+                        and
+                        height > width * 1.20
+                    ):
+
+                        _logger.warning(
+                            "[ASSET REJECTED HUMAN FALLBACK] "
+                            "No authoritative Family A REAL_PRODUCT "
+                            "decision | ratio=%.2f | size=%sx%s",
+                            ratio,
+                            width,
+                            height,
+                        )
+
+                        continue
 
                 if is_azure_asset:
                     _logger.warning(
@@ -22150,9 +22772,16 @@ class VendorImportJob(models.Model):
                         else 0
                     ),
 
-                    "is_lifestyle": asset.get(
-                        "is_lifestyle",
-                        False
+  
+                    "is_lifestyle": (
+                        family_a_authority.get(
+                            "classification"
+                        ) == "LIFESTYLE"
+                        if family_a_authority
+                        else asset.get(
+                            "is_lifestyle",
+                            False
+                        )
                     ),
 
                     "background_ratio": background_ratio,
@@ -22167,9 +22796,57 @@ class VendorImportJob(models.Model):
                         asset.get("audit", [])
                     ),
 
-                    "classification": asset.get("classification"),
 
-                    "asset_role": asset.get("asset_role"),
+                    "classification": (
+                        family_a_authority.get(
+                            "classification"
+                        )
+                        if family_a_authority
+                        else asset.get(
+                            "classification"
+                        )
+                    ),
+
+                    "asset_role": (
+                        family_a_authority.get(
+                            "asset_role"
+                        )
+                        if family_a_authority
+                        else asset.get(
+                            "asset_role"
+                        )
+                    ),
+
+                    "family_a_authoritative": bool(
+                        family_a_authority
+                    ),
+
+                    "family_a_confidence": (
+                        family_a_authority.get(
+                            "confidence",
+                            0
+                        )
+                        if family_a_authority
+                        else 0
+                    ),
+
+                    "family_a_trustworthy": (
+                        family_a_authority.get(
+                            "trustworthy",
+                            False
+                        )
+                        if family_a_authority
+                        else False
+                    ),
+
+                    "family_a_preserve": (
+                        family_a_authority.get(
+                            "preserve",
+                            False
+                        )
+                        if family_a_authority
+                        else False
+                    ),
 
                     "priority": asset.get("priority", 0),
 
@@ -22208,14 +22885,27 @@ class VendorImportJob(models.Model):
 
 
                 _logger.warning(
-
-                    f"[POOL ADD] "
-
-                    f"index={len(prepared)-1} "
-
-                    f"color={dominant_color} "
-
-                    f"lifestyle={asset.get('is_lifestyle')}"
+                    "[POOL ADD] "
+                    "index=%s "
+                    "| color=%s "
+                    "| lifestyle=%s "
+                    "| classification=%s "
+                    "| family_a_authoritative=%s "
+                    "| family_a_trustworthy=%s",
+                    len(prepared) - 1,
+                    dominant_color,
+                    prepared[-1].get(
+                        "is_lifestyle"
+                    ),
+                    prepared[-1].get(
+                        "classification"
+                    ),
+                    prepared[-1].get(
+                        "family_a_authoritative"
+                    ),
+                    prepared[-1].get(
+                        "family_a_trustworthy"
+                    ),
                 )
 
                 seen[image_hash] = {
@@ -22256,25 +22946,64 @@ class VendorImportJob(models.Model):
                 f"color={asset.get('dominant_color')}"
             )
 
+
         prepared = sorted(
 
             prepared,
 
             key=lambda x: (
 
-                x.get("priority", 0),
+                x.get(
+                    "priority",
+                    0
+                ),
 
-                x.get("hero_score", 0),
+                # =============================================
+                # FAMILY A AUTHORITY
+                # =============================================
 
-                x.get("gallery_score", 0),
+                x.get(
+                    "classification"
+                ) == "REAL_PRODUCT",
 
-                not x.get("is_lifestyle", False),
+                x.get(
+                    "family_a_authoritative",
+                    False
+                ),
 
-                not x.get("is_collage", False),
+                x.get(
+                    "family_a_trustworthy",
+                    False
+                ),
 
-                -x.get("y", 0),
+                # =============================================
+                # EXISTING SCORING
+                # =============================================
 
-                -x.get("x", 0)
+                x.get(
+                    "hero_score",
+                    0
+                ),
+
+                x.get(
+                    "gallery_score",
+                    0
+                ),
+
+                not x.get(
+                    "is_collage",
+                    False
+                ),
+
+                -x.get(
+                    "y",
+                    0
+                ),
+
+                -x.get(
+                    "x",
+                    0
+                )
 
             ),
 
@@ -22303,18 +23032,39 @@ class VendorImportJob(models.Model):
         for asset in prepared:
            
             _logger.warning(
-                f"[POOL FINAL] "
-                f"index={asset.get('clean_index')} "
-                f"color={asset.get('dominant_color')} "
-                f"lifestyle={asset.get('is_lifestyle')} "
-                f"x={asset.get('x')} "
-                f"y={asset.get('y')} "
-                f"hero={asset.get('hero_score')} "
-                f"gallery={asset.get('gallery_score')} "
-                f"score={asset.get('score')} "
-                f"collage={asset.get('is_collage')} "
-                f"width={asset.get('width')} "
-                f"height={asset.get('height')}"
+                "[POOL FINAL] "
+                "index=%s "
+                "| color=%s "
+                "| lifestyle=%s "
+                "| classification=%s "
+                "| role=%s "
+                "| family_a_authoritative=%s "
+                "| family_a_trustworthy=%s "
+                "| family_a_preserve=%s "
+                "| x=%s "
+                "| y=%s "
+                "| hero=%s "
+                "| gallery=%s "
+                "| score=%s "
+                "| collage=%s "
+                "| width=%s "
+                "| height=%s",
+                asset.get("clean_index"),
+                asset.get("dominant_color"),
+                asset.get("is_lifestyle"),
+                asset.get("classification"),
+                asset.get("asset_role"),
+                asset.get("family_a_authoritative"),
+                asset.get("family_a_trustworthy"),
+                asset.get("family_a_preserve"),
+                asset.get("x"),
+                asset.get("y"),
+                asset.get("hero_score"),
+                asset.get("gallery_score"),
+                asset.get("score"),
+                asset.get("is_collage"),
+                asset.get("width"),
+                asset.get("height"),
             )
         return prepared
 
