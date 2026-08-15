@@ -15717,11 +15717,10 @@ class VendorImportJob(models.Model):
                                 )
                         })
 
-                        extracted_indexes.append({
 
+                        extracted_indexes.append({
                             "visual_index":
                                 visual_index,
-
                             "image_index":
                                 image.get(
                                     "index",
@@ -15729,10 +15728,45 @@ class VendorImportJob(models.Model):
                                         extracted_indexes
                                     )
                                 ),
-
-                            "image":
-                                image,
-
+                            "width":
+                                image.get(
+                                    "width",
+                                    0
+                                ),
+                            "height":
+                                image.get(
+                                    "height",
+                                    0
+                                ),
+                            "x":
+                                image.get(
+                                    "x",
+                                    0
+                                ),
+                            "y":
+                                image.get(
+                                    "y",
+                                    0
+                                ),
+                            "is_lifestyle":
+                                image.get(
+                                    "is_lifestyle",
+                                    False
+                                ),
+                            "score":
+                                image.get(
+                                    "score",
+                                    0
+                                ),
+                            "extractor_score":
+                                image.get(
+                                    "extractor_score",
+                                    0
+                                ),
+                            "azure_figure_id":
+                                image.get(
+                                    "azure_figure_id"
+                                ),
                         })
 
                 review_pages.append({
@@ -16135,6 +16169,14 @@ class VendorImportJob(models.Model):
         review_context = json.dumps(
             review_pages,
             ensure_ascii=False
+        )
+
+        _logger.warning(
+            "[FAMILY A REVIEW] CONTEXT SIZE "
+            "| JOB=%s | CHARS=%s | KB=%.2f",
+            self.id,
+            len(review_context),
+            len(review_context.encode("utf-8")) / 1024,
         )
 
         # =====================================================
