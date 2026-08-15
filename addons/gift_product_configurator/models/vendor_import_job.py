@@ -17080,88 +17080,66 @@ class VendorImportJob(models.Model):
             # PARSE
             # =================================================
 
-            result = json.loads(
-                cleaned
-            )
-
-            # =========================================================
-            # NORMALIZE FAMILY A PAGE CLASSIFICATIONS
-            # =========================================================
-
-            # partial_pages = []
-            # full_failed_pages = []
-
-            # for page_result in result.get(
-            #     "pages",
-            #     []
-            # ):
-
-            #     if not isinstance(
-            #         page_result,
-            #         dict
-            #     ):
-            #         continue
-
-            #     page_number = page_result.get(
-            #         "page"
-            #     )
-
-            #     if page_number is None:
-            #         continue
-
-            #     try:
-            #         page_number = int(
-            #             page_number
-            #         )
-            #     except (
-            #         TypeError,
-            #         ValueError
-            #     ):
-            #         continue
-
-            #     page_decision = str(
-            #         page_result.get(
-            #             "decision",
-            #             "FAIL"
-            #         )
-            #     ).upper().strip()
-
-            #     if page_decision == "PARTIAL":
-
-            #         partial_pages.append(
-            #             page_number
-            #         )
-
-            #     elif page_decision == "FAIL":
-
-            #         full_failed_pages.append(
-            #             page_number
-            #         )
-
-            # # Remove duplicates and keep deterministic order.
-
-            # partial_pages = sorted(
-            #     set(partial_pages)
+            # result = json.loads(
+            #     cleaned
             # )
 
-            # full_failed_pages = sorted(
-            #     set(full_failed_pages)
-            # )
+            try:
 
-            # # Preserve backward compatibility.
-            # # Existing Azure fallback reads failed_pages.
+                result = json.loads(
+                    cleaned
+                )
 
-            # result[
-            #     "partial_pages"
-            # ] = partial_pages
+            except json.JSONDecodeError as json_error:
 
-            # result[
-            #     "full_failed_pages"
-            # ] = full_failed_pages
+                _logger.error(
+                    "[FAMILY A REVIEW] INVALID JSON FROM OPENAI "
+                    "| JOB=%s "
+                    "| LINE=%s "
+                    "| COLUMN=%s "
+                    "| CHAR=%s",
+                    self.id,
+                    json_error.lineno,
+                    json_error.colno,
+                    json_error.pos,
+                )
 
-            # result[
-            #     "failed_pages"
-            # ] = full_failed_pages
+                # -------------------------------------------------
+                # SHOW THE EXACT AREA THAT FAILED
+                # -------------------------------------------------
+
+                error_position = json_error.pos
+
+                start = max(
+                    0,
+                    error_position - 500
+                )
+
+                end = min(
+                    len(cleaned),
+                    error_position + 500
+                )
+
+                _logger.error(
+                    "[FAMILY A REVIEW] INVALID JSON CONTEXT "
+                    "| JOB=%s\n%s",
+                    self.id,
+                    cleaned[start:end],
+                )
+
+                # -------------------------------------------------
+                # SHOW THE COMPLETE RESPONSE
+                # ONLY DURING DEBUGGING
+                # -------------------------------------------------
+
+                _logger.error(
+                    "[FAMILY A REVIEW] RAW CLEANED OUTPUT "
+                    "| JOB=%s\n%s",
+                    self.id,
+                    cleaned,
+                )
+
+                raise
 
             if not isinstance(
                 result,
