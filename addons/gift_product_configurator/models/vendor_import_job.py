@@ -16920,9 +16920,9 @@ class VendorImportJob(models.Model):
                 self.id
             )
 
-            # =================================================
+            # ================================================
             # TECHNICAL FAILURE — DO NOT RETURN A REVIEW
-            # =================================================
+            # ================================================
             #
             # OpenAI did not successfully perform the Family A
             # visual review.
