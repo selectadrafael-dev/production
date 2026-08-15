@@ -2433,13 +2433,24 @@ class VendorImportJob(models.Model):
                     # PDF AI must start from page 1 again.
                     self.last_ai_page = 0
 
+
                     # =================================================
-                    # HAND OFF TO EXISTING PDF AI
+                    # HAND OFF TO AZURE VISUAL REVIEW
+                    # =================================================
+                    #
+                    # Azure extraction has now completed and the final
+                    # page inventory has been restored.
+                    #
+                    # DO NOT send directly to PDF AI.
+                    #
+                    # The existing azure_review state is responsible for
+                    # deciding whether the Azure extraction is good enough
+                    # or whether Azure re-cropping is required.
                     # =================================================
 
                     _logger.warning(
                         "[AZURE FALLBACK] COMPLETE "
-                        "→ PDF AI "
+                        "→ AZURE REVIEW "
                         "| JOB=%s "
                         "| PASS_PAGES=%s "
                         "| AZURE_PAGES=%s",
@@ -2453,11 +2464,11 @@ class VendorImportJob(models.Model):
                     self.last_error = False
 
                     self.last_known_state = (
-                        'pdf_ai'
+                        'azure_review'
                     )
 
                     self.state = (
-                        'pdf_ai'
+                        'azure_review'
                     )
 
                     self.flush_recordset()
