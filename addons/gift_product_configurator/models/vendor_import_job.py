@@ -1699,23 +1699,30 @@ class VendorImportJob(models.Model):
 
                     if technical_failure:
 
-                        current_family_a_pages = page_model.search(
-                            [
-                                ('job_id', '=', self.id)
-                            ],
-                            order='page_number asc'
-                        )
+                        # =================================================
+                        # TECHNICAL FAMILY A FAILURE
+                        # =================================================
+                        #
+                        # The original Family A page records may already have
+                        # been removed by an earlier Azure fallback invocation.
+                        #
+                        # Therefore NEVER depend on vendor.import.page here.
+                        #
+                        # The authoritative page list was captured inside
+                        # family_a_review_json before those records were removed.
+                        # =================================================
 
                         failed_pages = sorted({
-                            int(record.page_number)
-                            for record in current_family_a_pages
-                            if record.page_number
+                            int(page)
+                            for page in family_a_review.get(
+                                "failed_pages",
+                                []
+                            )
                         })
 
                         _logger.warning(
                             "[AZURE FALLBACK] "
-                            "FAMILY A REVIEW TECHNICAL FAILURE "
-                            "→ ALL FAMILY A PAGES "
+                            "TECHNICAL FAILURE PAGE SNAPSHOT "
                             "| JOB=%s "
                             "| PAGES=%s",
                             self.id,
@@ -1764,6 +1771,7 @@ class VendorImportJob(models.Model):
 
                         return
 
+
                     if (
                         not failed_pages
                         and technical_failure
@@ -1771,107 +1779,102 @@ class VendorImportJob(models.Model):
 
                         raise RuntimeError(
                             "Family A review failed technically "
-                            "but no Family A page records were "
-                            "available for Azure fallback."
+                            "but no fallback page numbers were "
+                            "recorded."
                         )
 
+                    
                     # =================================================
-                    # LOAD ALL REMAINING FAMILY A PASS PAGES
+                    # LOAD FAMILY A PASS PAGES FOR PRESERVATION
                     # =================================================
                     #
-                    # At this point the Family A review has already
-                    # removed the FAIL pages.
+                    # NORMAL REVIEW:
                     #
-                    # Therefore every current page record should be
-                    # a Family A PASS page.
+                    # Family A successfully completed its review.
+                    # Therefore only explicitly failed pages are sent
+                    # to Azure. All other pages are preserved.
                     #
-                    # We preserve these records temporarily while Azure
-                    # processes ONLY the failed pages.
+                    # TECHNICAL REVIEW FAILURE:
+                    #
+                    # Family A review never completed.
+                    # Therefore NO Family A page is trusted or preserved.
+                    # All captured fallback pages go to Azure.
                     # =================================================
 
-                    existing_pages = page_model.search(
-                        [
-                            ('job_id', '=', self.id)
-                        ],
-                        order='page_number asc'
-                    )
+                    preserved_pages = []
 
-                    _logger.warning(
-                        "[AZURE FALLBACK] PRESERVING FAMILY A PASS "
-                        "PAGES | JOB=%s | COUNT=%s",
-                        self.id,
-                        len(existing_pages)
-                    )
+                    if technical_failure:
 
-
-                    for record in existing_pages:
-
-                        page_number = int(
-                            record.page_number
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "TECHNICAL FAILURE "
+                            "→ NO FAMILY A PAGES PRESERVED "
+                            "| JOB=%s "
+                            "| AZURE_PAGES=%s",
+                            self.id,
+                            failed_pages
                         )
 
-                        # =================================================
-                        # TECHNICAL FAMILY A FAILURE
-                        # =================================================
-                        #
-                        # No Family A page was successfully reviewed.
-                        #
-                        # Therefore DO NOT preserve any Family A page
-                        # when technical_failure=True.
-                        #
-                        # Every page will be regenerated by Azure.
-                        # =================================================
+                    else:
 
-                        if (
-                            technical_failure
-                            and page_number in failed_pages
-                        ):
+                        existing_pages = page_model.search(
+                            [
+                                ('job_id', '=', self.id)
+                            ],
+                            order='page_number asc'
+                        )
 
-                            _logger.warning(
-                                "[AZURE FALLBACK] "
-                                "NOT PRESERVING UNVERIFIED "
-                                "FAMILY A PAGE "
-                                "| JOB=%s "
-                                "| PAGE=%s",
-                                self.id,
-                                page_number
+                        for record in existing_pages:
+
+                            page_number = int(
+                                record.page_number
                             )
 
-                            continue
+                            # -------------------------------------------------
+                            # EXPLICITLY FAILED FAMILY A PAGE
+                            # -------------------------------------------------
 
-                        # =================================================
-                        # NORMAL FAMILY A PASS PAGE
-                        # =================================================
-                        #
-                        # In a normal successful review, only pages
-                        # remaining here are approved Family A pages.
-                        # Preserve them while Azure replaces the
-                        # explicitly failed pages.
-                        # =================================================
+                            if page_number in failed_pages:
 
-                        if page_number in failed_pages:
+                                _logger.warning(
+                                    "[AZURE FALLBACK] "
+                                    "NOT PRESERVING FAILED PAGE "
+                                    "| JOB=%s "
+                                    "| PAGE=%s",
+                                    self.id,
+                                    page_number
+                                )
 
-                            _logger.warning(
-                                "[AZURE FALLBACK] "
-                                "NOT PRESERVING FAILED PAGE "
-                                "| JOB=%s "
-                                "| PAGE=%s",
-                                self.id,
-                                page_number
-                            )
+                                continue
 
-                            continue
+                            # -------------------------------------------------
+                            # APPROVED FAMILY A PAGE
+                            # -------------------------------------------------
 
-                        preserved_pages.append({
-                            "page_number":
-                                page_number,
+                            preserved_pages.append({
+                                "page_number":
+                                    page_number,
 
-                            "extracted_json":
-                                record.extracted_json or "[]",
+                                "extracted_json":
+                                    record.extracted_json or "[]",
 
-                            "page_images_json":
-                                record.page_images_json or "[]",
-                        })
+                                "page_images_json":
+                                    record.page_images_json or "[]",
+                            })
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] "
+                            "PRESERVED FAMILY A PASS PAGES "
+                            "| JOB=%s "
+                            "| COUNT=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            len(preserved_pages),
+                            [
+                                item["page_number"]
+                                for item in preserved_pages
+                            ]
+                        )
 
                     # =================================================
                     # LOAD ORIGINAL PDF
@@ -2614,6 +2617,31 @@ class VendorImportJob(models.Model):
                     # so azure_fallback can handle it differently
                     # from a normal Family A FAIL decision.
                     # =================================================
+                    
+                    # =================================================
+                    # CAPTURE ORIGINAL FAMILY A PAGE NUMBERS
+                    # =================================================
+
+                    page_records = self.env[
+                        'vendor.import.page'
+                    ].search([
+                        ('job_id', '=', self.id)
+                    ], order='page_number asc')
+
+                    fallback_pages = sorted({
+                        int(record.page_number)
+                        for record in page_records
+                        if record.page_number
+                    })
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "TECHNICAL FAILURE PAGE SNAPSHOT "
+                        "| JOB=%s "
+                        "| PAGES=%s",
+                        self.id,
+                        fallback_pages
+                    )
 
                     self.family_a_review_json = json.dumps(
                         {
@@ -2626,7 +2654,7 @@ class VendorImportJob(models.Model):
                             ),
                             "error": str(e),
                             "pages": [],
-                            "failed_pages": [],
+                            "failed_pages": fallback_pages,
                         },
                         ensure_ascii=False
                     )
