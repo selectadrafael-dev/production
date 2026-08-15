@@ -273,6 +273,12 @@ class VendorImportJob(models.Model):
         string="Family A Review"
     )
 
+    family_a_partial_recovery_json = fields.Text(
+        string="Family A Partial Recovery",
+        copy=False,
+        default="{}"
+    )
+
     state = fields.Selection([
         ('draft', 'Draft'),
         ('processing', 'Processing'),
@@ -2833,6 +2839,390 @@ class VendorImportJob(models.Model):
                 self.env.cr.commit()
 
                 return
+
+            
+            # =================================================
+            # FAMILY A PARTIAL PRECISION RECOVERY
+            # =================================================
+
+            if self.state == 'family_a_partial_recovery':
+
+                _logger.warning(
+                    "[FAMILY A PARTIAL RECOVERY] START | JOB=%s",
+                    self.id
+                )
+
+                self.last_known_state = (
+                    'family_a_partial_recovery'
+                )
+
+                try:
+
+                    # =================================================
+                    # LOAD AUTHORITATIVE FAMILY A REVIEW
+                    # =================================================
+
+                    try:
+                        family_a_review = json.loads(
+                            self.family_a_review_json or "{}"
+                        )
+
+                    except Exception as e:
+
+                        raise ValueError(
+                            "Invalid family_a_review_json: "
+                            f"{str(e)}"
+                        )
+
+                    if not isinstance(
+                        family_a_review,
+                        dict
+                    ):
+                        raise ValueError(
+                            "Family A review result must "
+                            "be a JSON object."
+                        )
+
+                    # =================================================
+                    # AUTHORITATIVE PARTIAL PAGES
+                    # =================================================
+
+                    partial_pages = sorted({
+                        int(page)
+                        for page in family_a_review.get(
+                            "partial_pages",
+                            []
+                        )
+                    })
+
+                    if not partial_pages:
+
+                        raise ValueError(
+                            "Family A entered partial recovery "
+                            "but no partial_pages were recorded."
+                        )
+
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "PARTIAL PAGES | JOB=%s | PAGES=%s",
+                        self.id,
+                        partial_pages
+                    )
+
+                    # =================================================
+                    # BUILD RECOVERY REQUESTS
+                    # =================================================
+
+                    recovery_requests = []
+
+                    for page_result in family_a_review.get(
+                        "pages",
+                        []
+                    ):
+
+                        if not isinstance(
+                            page_result,
+                            dict
+                        ):
+                            continue
+
+                        try:
+                            page_number = int(
+                                page_result.get("page")
+                            )
+
+                        except (
+                            TypeError,
+                            ValueError
+                        ):
+                            continue
+
+                        if page_number not in partial_pages:
+                            continue
+
+                        page_decision = str(
+                            page_result.get(
+                                "decision",
+                                ""
+                            )
+                        ).upper().strip()
+
+                        if page_decision != "PARTIAL":
+                            continue
+
+                        requests = page_result.get(
+                            "missing_asset_requests",
+                            []
+                        )
+
+                        if not isinstance(
+                            requests,
+                            list
+                        ):
+                            raise ValueError(
+                                "missing_asset_requests must "
+                                "be a list for page "
+                                f"{page_number}."
+                            )
+
+                        _logger.warning(
+                            "[FAMILY A PARTIAL RECOVERY] "
+                            "PAGE REQUESTS | JOB=%s | "
+                            "PAGE=%s | COUNT=%s",
+                            self.id,
+                            page_number,
+                            len(requests)
+                        )
+
+                        for request in requests:
+
+                            if not isinstance(
+                                request,
+                                dict
+                            ):
+                                continue
+
+                            crop = request.get(
+                                "crop",
+                                {}
+                            )
+
+                            if not isinstance(
+                                crop,
+                                dict
+                            ):
+                                crop = {}
+
+                            recovery_request = {
+
+                                "page":
+                                    page_number,
+
+                                "product_group":
+                                    request.get(
+                                        "product_group"
+                                    ),
+
+                                "product_reference":
+                                    request.get(
+                                        "product_reference"
+                                    ),
+
+                                "color":
+                                    request.get(
+                                        "color"
+                                    ),
+
+                                "required_image_role":
+                                    request.get(
+                                        "required_image_role"
+                                    ),
+
+                                "asset_type":
+                                    request.get(
+                                        "asset_type"
+                                    ),
+
+                                "reason":
+                                    request.get(
+                                        "reason"
+                                    ),
+
+                                "confidence":
+                                    request.get(
+                                        "confidence",
+                                        0
+                                    ),
+
+                                # =====================================
+                                # EXISTING AZURE-STYLE CROP CONTRACT
+                                # =====================================
+
+                                "crop": {
+
+                                    "crop_id":
+                                        crop.get(
+                                            "crop_id"
+                                        ),
+
+                                    "figure_id":
+                                        crop.get(
+                                            "figure_id"
+                                        ),
+
+                                    "x":
+                                        crop.get("x"),
+
+                                    "y":
+                                        crop.get("y"),
+
+                                    "width":
+                                        crop.get("width"),
+
+                                    "height":
+                                        crop.get("height"),
+
+                                    "purpose":
+                                        crop.get(
+                                            "purpose"
+                                        ),
+
+                                    "product_reference":
+                                        crop.get(
+                                            "product_reference"
+                                        ),
+
+                                    "confidence":
+                                        crop.get(
+                                            "confidence",
+                                            request.get(
+                                                "confidence",
+                                                0
+                                            )
+                                        )
+                                }
+                            }
+
+                            recovery_requests.append(
+                                recovery_request
+                            )
+
+                            _logger.warning(
+                                "[FAMILY A PARTIAL RECOVERY] "
+                                "TARGET | JOB=%s | PAGE=%s | "
+                                "PRODUCT=%s | COLOR=%s | "
+                                "CROP=(x=%s,y=%s,w=%s,h=%s) | "
+                                "CONFIDENCE=%s",
+
+                                self.id,
+
+                                page_number,
+
+                                request.get(
+                                    "product_reference"
+                                ),
+
+                                request.get(
+                                    "color"
+                                ),
+
+                                crop.get("x"),
+
+                                crop.get("y"),
+
+                                crop.get("width"),
+
+                                crop.get("height"),
+
+                                request.get(
+                                    "confidence",
+                                    0
+                                )
+                            )
+
+                    # =================================================
+                    # SAFETY CHECK
+                    # =================================================
+
+                    pages_with_requests = {
+                        item["page"]
+                        for item in recovery_requests
+                    }
+
+                    pages_without_requests = sorted(
+                        set(partial_pages)
+                        - pages_with_requests
+                    )
+
+                    if pages_without_requests:
+
+                        raise ValueError(
+                            "Family A marked pages PARTIAL "
+                            "but supplied no recovery targets "
+                            f"for pages: {pages_without_requests}"
+                        )
+
+                    if not recovery_requests:
+
+                        raise ValueError(
+                            "Family A partial recovery contains "
+                            "no recovery requests."
+                        )
+
+                    # =================================================
+                    # SAVE RECOVERY PAYLOAD
+                    # =================================================
+
+                    self.family_a_partial_recovery_json = (
+                        json.dumps(
+                            {
+                                "decision":
+                                    "READY_FOR_PRECISION_RECOVERY",
+
+                                "partial_pages":
+                                    partial_pages,
+
+                                "recovery_requests":
+                                    recovery_requests
+                            },
+                            ensure_ascii=False
+                        )
+                    )
+
+                    self.stage_retry_count = 0
+                    self.last_error = False
+
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
+
+                    # =================================================
+                    # IMPORTANT
+                    #
+                    # DO NOT CROP YET.
+                    # DO NOT SEND TO PDF AI.
+                    # DO NOT SEND TO AZURE.
+                    #
+                    # The next implementation stage will consume
+                    # family_a_partial_recovery_json.
+                    # =================================================
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "REQUESTS READY FOR PRECISION CROP "
+                        "| JOB=%s | PAGES=%s | REQUESTS=%s",
+
+                        self.id,
+
+                        partial_pages,
+
+                        len(recovery_requests)
+                    )
+
+                    return
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "INITIALIZATION FAILED | JOB=%s | %s",
+                        self.id,
+                        str(e)
+                    )
+
+                    self.stage_retry_count += 1
+                    self.last_error = str(e)
+
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
+
+                    self._safe_commit_progress()
+
+                    return
 
 
             # =============================================
