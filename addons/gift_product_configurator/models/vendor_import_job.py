@@ -2433,13 +2433,24 @@ class VendorImportJob(models.Model):
                     # PDF AI must start from page 1 again.
                     self.last_ai_page = 0
 
+
                     # =================================================
-                    # HAND OFF TO EXISTING PDF AI
+                    # HAND OFF TO AZURE VISUAL REVIEW
+                    # =================================================
+                    #
+                    # Azure extraction has now completed and the final
+                    # page inventory has been restored.
+                    #
+                    # DO NOT send directly to PDF AI.
+                    #
+                    # The existing azure_review state is responsible for
+                    # deciding whether the Azure extraction is good enough
+                    # or whether Azure re-cropping is required.
                     # =================================================
 
                     _logger.warning(
                         "[AZURE FALLBACK] COMPLETE "
-                        "→ PDF AI "
+                        "→ AZURE REVIEW "
                         "| JOB=%s "
                         "| PASS_PAGES=%s "
                         "| AZURE_PAGES=%s",
@@ -2453,11 +2464,11 @@ class VendorImportJob(models.Model):
                     self.last_error = False
 
                     self.last_known_state = (
-                        'pdf_ai'
+                        'azure_review'
                     )
 
                     self.state = (
-                        'pdf_ai'
+                        'azure_review'
                     )
 
                     self.flush_recordset()
@@ -21303,33 +21314,66 @@ class VendorImportJob(models.Model):
                         ratio
                     )
 
+
                 # =====================================
                 # HUMAN / LIFESTYLE DETECTION
                 # =====================================
 
-                # Tall portrait images are rejected ONLY
-                # when they are ordinary extracted assets.
+                # Azure/Fallback assets are authoritative product
+                # evidence and must NOT be rejected merely because
+                # the extracted product is naturally tall/portrait.
                 #
-                # Azure crops are explicitly exempt.
-                # =====================================
+                # Examples:
+                #   water bottles
+                #   umbrellas
+                #   pens
+                #   thermos/flasks
+                #   bags
+                #   other vertically-oriented products
+                #
+                # Only apply the generic portrait/human heuristic
+                # to normal Family A assets.
+
+                is_azure_asset = (
+                    isinstance(asset, dict)
+                    and (
+                        asset.get("azure_figure_id")
+                        or asset.get("azure_crop")
+                        or asset.get("crop_id")
+                        or asset.get("figure_id")
+                        or asset.get("asset_role") == "azure"
+                        or asset.get("source") == "azure"
+                        or asset.get("recovered") is True
+                    )
+                )
 
                 if (
+                    not is_azure_asset
+                    and
                     not recovered
-                    and not is_azure_crop
-                    and ratio < 0.72
-                    and height > width * 1.20
+                    and
+                    ratio < 0.72
+                    and
+                    height > width * 1.20
                 ):
-
                     _logger.warning(
-                        "[ASSET REJECTED HUMAN] "
-                        "ratio=%.2f "
-                        "size=%sx%s",
-                        ratio,
-                        width,
-                        height
+                        f"[ASSET REJECTED HUMAN] "
+                        f"ratio={ratio:.2f} "
+                        f"size={width}x{height}"
                     )
-
                     continue
+
+                if is_azure_asset:
+                    _logger.warning(
+                        f"[ASSET HUMAN CHECK BYPASSED] "
+                        f"Azure/Fallback product evidence preserved "
+                        f"| ratio={ratio:.2f} "
+                        f"| size={width}x{height} "
+                        f"| figure_id=%s "
+                        f"| crop_id=%s",
+                        asset.get("azure_figure_id"),
+                        asset.get("crop_id"),
+                    )
 
                 asset.setdefault(
                     "audit",
