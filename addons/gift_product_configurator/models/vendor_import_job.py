@@ -293,6 +293,7 @@ class VendorImportJob(models.Model):
         # =================================================
 
         ('family_a_review', 'Family A Visual Review'),
+        ('family_a_partial_recovery', 'Family A Partial Recovery'),
 
         # =================================================
         # AZURE VISUAL REVIEW / CROPPING
@@ -2718,66 +2719,57 @@ class VendorImportJob(models.Model):
                     ensure_ascii=False
                 )
 
-
                 # =================================================
-                # READ FAILED PAGES
+                # READ AUTHORITATIVE FAMILY A ROUTING
                 # =================================================
 
-                failed_pages = {
+                failed_pages = sorted({
                     int(page)
                     for page in review_result.get(
                         'failed_pages',
                         []
                     )
-                }
+                })
+
+                partial_pages = sorted({
+                    int(page)
+                    for page in review_result.get(
+                        'partial_pages',
+                        []
+                    )
+                })
+
+
+                _logger.warning(
+                    "[FAMILY A REVIEW] ROUTING DECISION "
+                    "| JOB=%s "
+                    "| PASS=%s "
+                    "| PARTIAL=%s "
+                    "| FAIL=%s",
+                    self.id,
+                    review_result.get(
+                        'passed_pages',
+                        []
+                    ),
+                    partial_pages,
+                    failed_pages
+                )
 
 
                 # =================================================
-                # REMOVE ONLY FAILED FAMILY A PAGES
+                # FULL PAGE FAILURE
                 # =================================================
 
                 if failed_pages:
 
                     _logger.warning(
-                        "[FAMILY A REVIEW] FAILED PAGES "
-                        "| JOB=%s | PAGES=%s",
-                        self.id,
-                        sorted(failed_pages)
-                    )
-
-                    failed_page_records = self.env[
-                        'vendor.import.page'
-                    ].search([
-                        ('job_id', '=', self.id),
-                        ('page_number', 'in', list(
-                            failed_pages
-                        )),
-                    ])
-
-                    if failed_page_records:
-
-                        _logger.warning(
-                            "[FAMILY A REVIEW] REMOVING "
-                            "FAILED FAMILY A RECORDS "
-                            "| JOB=%s | COUNT=%s",
-                            self.id,
-                            len(failed_page_records)
-                        )
-
-                        failed_page_records.unlink()
-
-
-                    # =================================================
-                    # FAILED PAGES → AZURE FALLBACK
-                    # =================================================
-
-                    _logger.warning(
                         "[FAMILY A REVIEW] "
-                        "FAILED PAGES REMOVED "
+                        "FULL FAILED PAGES "
                         "→ AZURE FALLBACK "
-                        "| JOB=%s | PAGES=%s",
+                        "| JOB=%s "
+                        "| PAGES=%s",
                         self.id,
-                        sorted(failed_pages)
+                        failed_pages
                     )
 
                     self.last_known_state = (
@@ -2788,11 +2780,37 @@ class VendorImportJob(models.Model):
                         'azure_fallback'
                     )
 
-                else:
 
-                    # =================================================
-                    # ALL PAGES PASSED → EXISTING PDF AI
-                    # =================================================
+                # =================================================
+                # PARTIAL FAMILY A RECOVERY
+                # =================================================
+
+                elif partial_pages:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "PARTIAL PAGES "
+                        "→ FAMILY A PARTIAL RECOVERY "
+                        "| JOB=%s "
+                        "| PAGES=%s",
+                        self.id,
+                        partial_pages
+                    )
+
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
+
+                    self.state = (
+                        'family_a_partial_recovery'
+                    )
+
+
+                # =================================================
+                # COMPLETE FAMILY A SUCCESS
+                # =================================================
+
+                else:
 
                     _logger.warning(
                         "[FAMILY A REVIEW] "
@@ -15780,17 +15798,31 @@ class VendorImportJob(models.Model):
                                 ),
                         })
 
-                review_pages.append({
 
-                    "page":
-                        page_number,
+                review_pages.append({
+                    "page": page_number,
 
                     "original_page_visual_index":
                         original_page_index,
 
+                    # =================================================
+                    # ORIGINAL PAGE GEOMETRY
+                    # =================================================
+                    #
+                    # These dimensions define the coordinate space
+                    # used by Family A recovery.
+                    #
+                    # Coordinates returned by OpenAI MUST refer to
+                    # this exact ORIGINAL PAGE IMAGE.
+                    # =================================================
+                    "page_width":
+                        block.get("page_width", 0),
+
+                    "page_height":
+                        block.get("page_height", 0),
+
                     "extracted_images":
                         extracted_indexes,
-
                 })
 
         # =====================================================
@@ -15815,29 +15847,46 @@ class VendorImportJob(models.Model):
         # FAMILY A VISUAL QUALITY PROMPT
         # =====================================================
 
+
         review_prompt = """
-        You are the FINAL visual quality-control gate between
-        Family A PDF extraction and the production PDF AI.
+        You are the FINAL visual quality-control and RECOVERY-TARGET
+        identification gate between Family A PDF extraction and the
+        production PDF AI.
 
         Family A has already extracted product images from the catalogue.
 
-        YOUR MOST IMPORTANT RULE:
+        Your job is NOT to redo Family A extraction.
 
-        THE ORIGINAL CATALOGUE PAGE IS THE AUTHORITATIVE SOURCE OF TRUTH.
+        Your job is to determine:
 
-        Do NOT judge Family A extracted images in isolation.
-
-        For EVERY PAGE independently, compare:
-
-        1. The ORIGINAL CATALOGUE PAGE.
-        2. ALL FAMILY A EXTRACTED IMAGES belonging to that SAME PAGE.
-
-        The purpose of this review is to determine whether Family A has
-        faithfully represented everything important that is visibly present
-        on the original page.
+        1. Which Family A assets are trustworthy and must be preserved.
+        2. Which important product/image assets are missing, incomplete,
+        damaged, incorrectly represented, or unusable.
+        3. Whether the page is PASS, PARTIAL, or FAIL.
+        4. For every recoverable PARTIAL missing asset, identify the EXACT
+        visual location of that missing asset on the ORIGINAL CATALOGUE PAGE
+        so that a downstream precision crop engine can recover it.
 
         ================================================================
-        PAGE-BY-PAGE RULE
+        AUTHORITATIVE SOURCE
+        ================================================================
+
+        THE ORIGINAL CATALOGUE PAGE IS THE PRIMARY SOURCE OF TRUTH.
+
+        For EVERY PAGE independently compare:
+
+        1. ORIGINAL CATALOGUE PAGE.
+        2. ALL FAMILY A EXTRACTED IMAGES belonging to that same page.
+        3. The supplied Family A image coordinates and metadata.
+
+        Never judge a Family A image in isolation.
+
+        Do not invent products, variants, images, or recovery targets.
+
+        Every recovery target MUST be visibly supported by the ORIGINAL PAGE.
+
+        ================================================================
+        PAGE-BY-PAGE EVALUATION
         ================================================================
 
         Evaluate every supplied page independently.
@@ -15846,56 +15895,76 @@ class VendorImportJob(models.Model):
 
         One page failing MUST NOT cause another page to fail.
 
-        Do NOT make a global decision based on the majority of pages.
-
-        A catalogue may contain:
-
-        - pages that Family A handles perfectly;
-        - pages that Family A partially handles;
-        - pages that require Azure recovery.
-
-        The review must identify the exact pages requiring recovery.
+        One page being partial MUST NOT cause another page to be partial.
 
         ================================================================
-        ORIGINAL PAGE COMPARISON
+        WHAT FAMILY A ALREADY EXTRACTED
         ================================================================
 
-        For every page, compare the original page against EVERY Family A
-        extracted image.
+        For every Family A extracted image, determine:
 
-        Determine:
+        - image index;
+        - approximate product/group;
+        - colour/variant when visually identifiable;
+        - image role;
+        - whether it matches a visible object on the original page;
+        - whether the product body is substantially complete;
+        - whether the asset is trustworthy and should be preserved.
 
-        1. What products are visibly present on the original page?
+        A trustworthy Family A image MUST be preserved.
 
-        2. What colour variants are visibly present?
-
-        3. Which images represent the primary product?
-
-        4. Which images are gallery/detail/folded/supporting images?
-
-        5. Which extracted image corresponds to which visible product?
-
-        6. Is any product or variant visible on the original page missing
-           from Family A extraction?
-
-        7. Has Family A extracted only part of a product?
-
-        8. Has Family A merged two separate products into one image?
-
-        9. Has Family A incorrectly treated multiple independent products
-           as variants of one product?
-
-        10. Has Family A incorrectly treated gallery/detail/folded images
-            as separate colour variants?
+        Do NOT request recovery of an asset that Family A already extracted
+        correctly.
 
         ================================================================
-        MISSING PRODUCT / VARIANT RULE
+        PRODUCT STRUCTURE
         ================================================================
 
-        A CLEAN EXTRACTED IMAGE IS NOT SUFFICIENT FOR PASS.
+        A catalogue page may contain:
 
-        If something important is clearly visible on the ORIGINAL PAGE
-        but Family A did not extract it, the page MUST FAIL.
+        - one product;
+        - one product with multiple colour variants;
+        - one product with multiple gallery images;
+        - multiple independent products;
+        - multiple products with their own variants;
+        - folded/detail images;
+        - lifestyle/supporting images;
+        - composite catalogue layouts.
+
+        Determine the actual structure from the ORIGINAL PAGE.
+
+        Do not assume:
+
+        - one image = one product;
+        - one figure = one product;
+        - one colour = a separate product;
+        - one folded/detail image = a variant.
+
+        Multiple independent products MUST remain separate products.
+
+        Colour representations of the SAME product should be treated as
+        variants when the visual/contextual evidence supports that relationship.
+
+        Gallery, folded, detail and supporting images are NOT automatically
+        variants.
+
+        ================================================================
+        PARTIAL PAGE
+        ================================================================
+
+        Classify a page as PARTIAL when ALL of the following are true:
+
+        1. At least one trustworthy Family A product/image asset exists.
+
+        2. One or more important products, variants, or required production
+        images are missing, incomplete, or unusable.
+
+        3. The trustworthy Family A assets can safely be preserved.
+
+        4. The missing asset is visibly present on the ORIGINAL PAGE.
+
+        5. The missing asset can be located precisely enough for a downstream
+        crop engine to recover it.
 
         Example:
 
@@ -15909,158 +15978,250 @@ class VendorImportJob(models.Model):
             Folded bag
 
         RESULT:
+            PARTIAL
 
-            FAIL
+        The Black and Folded Family A assets must be preserved.
 
-        because the Grey bag is missing.
-
-        Do NOT allow the page to PASS merely because the surviving
-        extracted images are individually clean.
-
-        This rule is especially important for colour variants.
+        The Grey bag becomes a recovery target.
 
         ================================================================
-        PRODUCT STRUCTURE RULE
+        FAIL PAGE
         ================================================================
 
-        Do NOT assume that visually similar images belong to the same
-        product.
+        Classify a page as FAIL when:
 
-        A catalogue page may contain:
+        - no trustworthy Family A product/image asset exists;
+        - the Family A extraction is fundamentally unusable;
+        - surviving Family A assets cannot safely be preserved;
+        - product relationships are severely incorrect;
+        - products are incorrectly merged in a way that prevents reliable
+        preservation;
+        - variant/product relationships are so incorrect that reliable
+        recovery cannot be performed;
+        - the original page does not provide enough reliable visual evidence
+        to identify the missing asset;
+        - the missing asset cannot be localized with sufficient confidence;
+        - or the page requires complete replacement by Azure.
 
-        - one product with multiple colour variants;
-        - multiple independent products;
-        - one product with several gallery images;
-        - one product with folded/detail images;
-        - multiple products with their own variants;
-        - a mixture of these structures.
+        IMPORTANT:
 
-        Determine the structure from the ORIGINAL PAGE.
+        A page MUST NOT be classified as FAIL merely because one or more
+        products, variants, or images are missing.
 
-        Multiple independent products MUST remain separate products.
-
-        Colour versions of the SAME product should be identified as
-        variants.
-
-        Gallery/detail/folded images should NOT automatically become
-        variants.
-
-        ================================================================
-        FAMILY A IMAGE MAPPING
-        ================================================================
-
-        Every Family A extracted image must be mapped to the original page.
-
-        For every extracted image report:
-
-        - image index;
-        - product group;
-        - colour when visually identifiable;
-        - image role;
-        - whether it matches something visible on the original page.
-
-        If an extracted image cannot be confidently matched to the
-        original page, mark it as suspicious.
-
-        If something visible on the original page has no corresponding
-        Family A image, record it under missing_items.
+        If trustworthy Family A assets exist and the missing assets can be
+        reliably identified and localized, classify the page as PARTIAL.
 
         ================================================================
-        WHEN TO PASS
+        CRITICAL PRESERVATION RULE
+        ================================================================
+
+        For PARTIAL pages:
+
+        KEEP all trustworthy Family A assets.
+
+        Do NOT replace them.
+
+        Do NOT request recovery of assets already represented correctly.
+
+        Only the missing, incomplete, or unusable asset should become a
+        recovery target.
+
+        ================================================================
+        RECOVERY TARGET IDENTIFICATION
+        ================================================================
+
+        For EVERY missing or unusable asset on a PARTIAL page, determine:
+
+        - product_group;
+        - product_reference;
+        - colour/variant when visually identifiable;
+        - required_image_role;
+        - asset_type;
+        - reason the Family A asset is insufficient;
+        - confidence;
+        - exact location on the ORIGINAL PAGE.
+
+        The missing asset MUST actually be visible on the original page.
+
+        Do NOT infer a missing asset merely because a product "normally"
+        would have another image.
+
+        ================================================================
+        RECOVERY TARGET COORDINATES
+        ================================================================
+
+        For every recoverable missing asset, provide a crop entry using the
+        EXISTING AZURE CROP COORDINATE CONTRACT.
+
+        Do NOT invent a new Family A coordinate format.
+
+        Coordinates MUST be:
+
+        - pixel coordinates;
+        - relative to the ORIGINAL PAGE IMAGE;
+        - expressed as x, y, width, height;
+        - completely inside the original page;
+        - tightly around the actual marketable product representation;
+        - NOT around unrelated text, logos, marketing graphics, or neighbouring
+        products.
+
+        The coordinate means:
+
+        x = left edge
+        y = top edge
+        width = crop width
+        height = crop height
+
+        The crop target should contain the actual product representation,
+        not merely the surrounding catalogue panel.
+
+        ================================================================
+        CROP ACCURACY RULE
+        ================================================================
+
+        The coordinate is a RECOVERY TARGET, not a casual visual estimate.
+
+        Before returning a crop:
+
+        1. Visually identify the exact missing product representation.
+        2. Identify its actual visible boundaries.
+        3. Exclude neighbouring products.
+        4. Exclude unrelated text.
+        5. Exclude logos and marketing graphics.
+        6. Exclude people/lifestyle scenes unless the target itself is a
+        clearly marketable standalone product representation.
+        7. Do not include another colour variant unless the target requires it.
+        8. Do not return a broad catalogue-card crop when the individual
+        product can be localized more precisely.
+        9. Do not use the Family A extracted image as the coordinate source.
+        10. The ORIGINAL PAGE is the coordinate source.
+
+        ================================================================
+        MULTI-PRODUCT / MULTI-VARIANT RULE
+        ================================================================
+
+        If multiple individually marketable product representations are
+        embedded inside one visual area, create a separate recovery target
+        for EACH missing representation.
+
+        Example:
+
+        Original page contains:
+
+        Grey bag
+        Black bag
+        Navy bag
+
+        Family A contains:
+
+        Grey bag
+        Black bag
+
+        Then:
+
+        PARTIAL
+
+        Recovery targets:
+
+        1. Navy bag
+        2. Only Navy bag
+
+        Do NOT create one large crop containing all three bags.
+
+        Likewise, if Family A contains only one combined crop containing:
+
+        Grey + Black + Navy
+
+        but the production pipeline requires individual product images,
+        identify each required individual representation separately.
+
+        ================================================================
+        COORDINATE CONSISTENCY
+        ================================================================
+
+        Every crop coordinate MUST lie completely inside the ORIGINAL PAGE.
+
+        If the target is inside a known Family A candidate/image region,
+        use that known region as contextual evidence.
+
+        If the target was missed completely by Family A, locate it directly
+        from the ORIGINAL PAGE.
+
+        Do not fabricate a figure or region identifier.
+
+        ================================================================
+        CROP TARGET QUALITY
+        ================================================================
+
+        A recovery target is valid only when:
+
+        - the product is visibly present;
+        - the product identity is sufficiently clear;
+        - the target boundaries can be localized;
+        - the target is sufficiently complete to produce a useful crop;
+        - the target is not merely a decorative/marketing object;
+        - the target is not merely text;
+        - the target is not merely a lifestyle scene;
+        - the target does not unnecessarily include another marketable product.
+
+        If these conditions cannot be satisfied, do NOT invent coordinates.
+
+        If the missing asset cannot be localized reliably, the page should be
+        classified as FAIL so that the existing full-page Azure fallback can
+        take responsibility.
+
+        ================================================================
+        SUPPORTING IMAGE RULE
+        ================================================================
+
+        Supporting images MUST NOT become product variants.
+
+        People, usage scenes, logos, symbols, text, badges and marketing
+        graphics are not product variants.
+
+        A supporting image may remain a gallery/supporting asset when useful,
+        but it must not create a product or variant.
+
+        ================================================================
+        PASS
         ================================================================
 
         PASS a page only when:
 
-        1. All important products visible on the original page are
-           represented.
+        - all important visible products are represented;
+        - all important visible variants are represented;
+        - required production images are represented;
+        - product bodies are substantially complete;
+        - separate products are not incorrectly merged;
+        - variants are not incorrectly represented as products;
+        - gallery/detail/folded images are correctly interpreted;
+        - Family A assets correspond to the original page;
+        - the evidence is reliable enough for PDF AI.
 
-        2. All important colour/variant products visible on the original
-           page are represented.
-
-        3. Product bodies are substantially complete.
-
-        4. No important product has been lost.
-
-        5. Separate products are not incorrectly merged.
-
-        6. Variants are not incorrectly represented as separate products.
-
-        7. Gallery/detail/folded images are correctly distinguished.
-
-        8. Extracted images correspond to the original catalogue page.
-
-        9. The resulting evidence is sufficiently reliable for the
-           production PDF AI.
-
-        Minor cosmetic imperfections alone do NOT require FAIL.
-
-        ================================================================
-        WHEN TO FAIL
-        ================================================================
-
-        FAIL a page when any important extraction problem exists,
-        including:
-
-        - missing product;
-        - missing colour variant;
-        - missing required product image;
-        - substantially cropped product;
-        - major product portion missing;
-        - incorrect image/product correspondence;
-        - merged independent products;
-        - incorrect product/variant grouping;
-        - unusable product evidence.
-
-        ================================================================
-        IMPORTANT DISTINCTION
-        ================================================================
-
-        A page can contain MULTIPLE PRODUCTS and still PASS.
-
-        Do NOT automatically send a multiple-product page to Azure.
-
-        If Family A extracted all products correctly, PASS the page and
-        describe the separate product groups clearly in the returned
-        structure.
-
-        If Family A incorrectly merged the products, FAIL the page.
-
-        ================================================================
-        DO NOT PERFORM THESE TASKS
-        ================================================================
-
-        Do NOT create products.
-
-        Do NOT provide crop coordinates.
-
-        Do NOT perform Azure processing.
-
-        Do NOT judge product descriptions, prices or marketing text
-        unless the visual extraction itself is affected.
+        Minor cosmetic imperfections alone do not require PARTIAL or FAIL.
 
         ================================================================
         RETURN FORMAT
         ================================================================
 
-        Return ONLY valid JSON:
+        Return ONLY valid JSON.
+
+        Use this structure:
 
         {
-            "decision": "PASS" or "FAIL",
-
+            "decision": "PASS" or "PARTIAL" or "FAIL",
             "confidence": 0.0,
-
             "reason": "overall routing summary",
 
             "pages": [
                 {
                     "page": 1,
 
-                    "decision": "PASS" or "FAIL",
+                    "decision": "PASS" or "PARTIAL" or "FAIL",
 
                     "confidence": 0.0,
 
-                    "reason":
-                        "specific page-level explanation",
+                    "reason": "specific page-level explanation",
 
                     "product_structure":
                         "SINGLE_PRODUCT"
@@ -16121,6 +16282,51 @@ class VendorImportJob(models.Model):
                         }
                     ],
 
+                    "missing_asset_requests": [
+                        {
+                            "product_group": "product_1",
+
+                            "product_reference":
+                                "Grey version of the sling bag",
+
+                            "color": "Grey",
+
+                            "required_image_role":
+                                "PRIMARY",
+
+                            "asset_type":
+                                "MISSING_VARIANT",
+
+                            "reason":
+                                "Grey variant is visible on the original page but no trustworthy Family A image represents it.",
+
+                            "confidence": 0.95,
+
+                            "crop": {
+                                "crop_id": "family_crop_1",
+
+                                "figure_id":
+                                    "family_a_source_region_or_page",
+
+                                "x": 0,
+
+                                "y": 0,
+
+                                "width": 0,
+
+                                "height": 0,
+
+                                "purpose":
+                                    "Recover the missing Grey product representation.",
+
+                                "product_reference":
+                                    "Grey version of the sling bag",
+
+                                "confidence": 0.95
+                            }
+                        }
+                    ],
+
                     "extracted_asset_mapping": [
                         {
                             "image_index": 0,
@@ -16137,8 +16343,11 @@ class VendorImportJob(models.Model):
                             "matches_original":
                                 true,
 
+                            "preserve":
+                                true,
+
                             "reason":
-                                "Matches the black product visible on the original page."
+                                "Matches the Black product visible on the original page."
                         }
                     ]
                 }
@@ -16146,31 +16355,42 @@ class VendorImportJob(models.Model):
         }
 
         ================================================================
-        CRITICAL OUTPUT RULES
+        FINAL OUTPUT RULES
         ================================================================
 
         Every supplied page MUST appear exactly once.
 
         The page-level decision is authoritative.
 
-        The top-level decision MUST be:
+        The global decision is:
 
-        PASS only when ALL supplied pages are PASS.
+        ANY FAIL → FAIL
 
-        FAIL when ANY supplied page is FAIL.
+        NO FAIL + ANY PARTIAL → PARTIAL
 
-        Do NOT omit pages.
+        NO FAIL + NO PARTIAL → PASS
 
-        Do NOT invent products or variants that are not visible on the
-        original page.
+        A PARTIAL page remains PARTIAL until the downstream Family
+        Precision Recovery process successfully recovers and validates all
+        required missing assets.
 
-        missing_items MUST identify important products, variants or images
-        visible on the original page but absent from Family A.
+        A failed Family Precision Recovery MUST NOT silently become PASS.
 
-        product_groups MUST distinguish separate products from variants.
+        If Family Precision Recovery cannot safely recover a required asset,
+        the page must be escalated to the existing full-page Azure fallback.
 
-        extracted_asset_mapping MUST explain what each Family A image
-        represents relative to the original page.
+        Do NOT create products.
+
+        Do NOT perform cropping.
+
+        Do NOT perform Azure processing.
+
+        Do NOT modify or discard existing Family A assets.
+
+        Do NOT invent recovery targets or coordinates.
+
+        Coordinates are only requested for genuinely recoverable missing
+        assets that are visibly present on the ORIGINAL PAGE.
         """
 
         # =====================================================
@@ -16302,6 +16522,85 @@ class VendorImportJob(models.Model):
                 cleaned
             )
 
+            # =========================================================
+            # NORMALIZE FAMILY A PAGE CLASSIFICATIONS
+            # =========================================================
+
+            # partial_pages = []
+            # full_failed_pages = []
+
+            # for page_result in result.get(
+            #     "pages",
+            #     []
+            # ):
+
+            #     if not isinstance(
+            #         page_result,
+            #         dict
+            #     ):
+            #         continue
+
+            #     page_number = page_result.get(
+            #         "page"
+            #     )
+
+            #     if page_number is None:
+            #         continue
+
+            #     try:
+            #         page_number = int(
+            #             page_number
+            #         )
+            #     except (
+            #         TypeError,
+            #         ValueError
+            #     ):
+            #         continue
+
+            #     page_decision = str(
+            #         page_result.get(
+            #             "decision",
+            #             "FAIL"
+            #         )
+            #     ).upper().strip()
+
+            #     if page_decision == "PARTIAL":
+
+            #         partial_pages.append(
+            #             page_number
+            #         )
+
+            #     elif page_decision == "FAIL":
+
+            #         full_failed_pages.append(
+            #             page_number
+            #         )
+
+            # # Remove duplicates and keep deterministic order.
+
+            # partial_pages = sorted(
+            #     set(partial_pages)
+            # )
+
+            # full_failed_pages = sorted(
+            #     set(full_failed_pages)
+            # )
+
+            # # Preserve backward compatibility.
+            # # Existing Azure fallback reads failed_pages.
+
+            # result[
+            #     "partial_pages"
+            # ] = partial_pages
+
+            # result[
+            #     "full_failed_pages"
+            # ] = full_failed_pages
+
+            # result[
+            #     "failed_pages"
+            # ] = full_failed_pages
+
             if not isinstance(
                 result,
                 dict
@@ -16396,8 +16695,10 @@ class VendorImportJob(models.Model):
                     )
                 ).upper().strip()
 
+
                 if page_decision not in (
                     "PASS",
+                    "PARTIAL",
                     "FAIL"
                 ):
 
@@ -16443,6 +16744,16 @@ class VendorImportJob(models.Model):
                     "missing_items":
                         page_result.get(
                             "missing_items",
+                            []
+                        ),
+
+                    # =================================================
+                    # PRESERVE FAMILY PRECISION RECOVERY TARGETS
+                    # =================================================
+
+                    "missing_asset_requests":
+                        page_result.get(
+                            "missing_asset_requests",
                             []
                         ),
 
@@ -16505,30 +16816,39 @@ class VendorImportJob(models.Model):
             # =================================================
 
             failed_pages = [
-
                 item
                 for item in normalized_pages
-
                 if item["decision"] == "FAIL"
-
             ]
 
+            partial_pages = [
+                item
+                for item in normalized_pages
+                if item["decision"] == "PARTIAL"
+            ]
 
             passed_pages = [
-
                 item
                 for item in normalized_pages
-
                 if item["decision"] == "PASS"
-
             ]
 
 
-            decision = (
-                "FAIL"
-                if failed_pages
-                else "PASS"
-            )
+            # =================================================
+            # AUTHORITATIVE GLOBAL DECISION
+            # =================================================
+
+            if failed_pages:
+
+                decision = "FAIL"
+
+            elif partial_pages:
+
+                decision = "PARTIAL"
+
+            else:
+
+                decision = "PASS"
 
 
             result["decision"] = decision
@@ -16540,10 +16860,16 @@ class VendorImportJob(models.Model):
                 for item in passed_pages
             ]
 
+            result["partial_pages"] = [
+                item["page"]
+                for item in partial_pages
+            ]
+
             result["failed_pages"] = [
                 item["page"]
                 for item in failed_pages
             ]
+
 
             # =================================================
             # AUTHORITATIVE ROUTING SUMMARY
@@ -16553,7 +16879,15 @@ class VendorImportJob(models.Model):
 
                 result["reason"] = (
                     f"{len(failed_pages)} page(s) failed "
-                    "Family A visual quality review."
+                    "Family A visual quality review and require "
+                    "full-page Azure fallback."
+                )
+
+            elif partial_pages:
+
+                result["reason"] = (
+                    f"{len(partial_pages)} page(s) are PARTIAL "
+                    "and require Family Precision Recovery."
                 )
 
             else:
@@ -16563,33 +16897,18 @@ class VendorImportJob(models.Model):
                 )
 
             result["summary"] = {
-
                 "total_pages":
                     len(normalized_pages),
 
                 "passed":
                     len(passed_pages),
 
+                "partial":
+                    len(partial_pages),
+
                 "failed":
                     len(failed_pages),
-
             }
-
-            _logger.warning(
-                "[FAMILY A REVIEW] DECISION "
-                "| JOB=%s | DECISION=%s | CONFIDENCE=%s "
-                "| REASON=%s",
-                self.id,
-                decision,
-                result.get(
-                    "confidence",
-                    0
-                ),
-                result.get(
-                    "reason",
-                    ""
-                )
-            )
 
             return result
 
@@ -36842,6 +37161,7 @@ class VendorImportJob(models.Model):
             'azure_fallback',
 
             'family_a_review',
+            'family_a_partial_recovery',
 
             'pdf_extracting',
             'pdf_ai',
@@ -36878,6 +37198,7 @@ class VendorImportJob(models.Model):
             # =============================================
 
             "family_a_review": "Family A Review",
+            "family_a_partial_recovery" : "Family A Partial Recovery",
 
             # =============================================
             # AZURE VISUAL INTERCEPTION
