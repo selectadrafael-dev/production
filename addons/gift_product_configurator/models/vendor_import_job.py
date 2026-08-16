@@ -17430,9 +17430,68 @@ class VendorImportJob(models.Model):
 
                 decoder = json.JSONDecoder()
 
-                result, json_end = decoder.raw_decode(
-                    cleaned.lstrip()
-                )
+                # ================================================
+                # PARSE FAMILY A JSON
+                # ================================================
+
+                try:
+
+                    # -------------------------------------------------
+                    # OpenAI may return explanatory text before JSON.
+                    # Find the first JSON object and decode from there.
+                    # -------------------------------------------------
+
+                    json_start = cleaned.find("{")
+
+                    if json_start == -1:
+
+                        raise json.JSONDecodeError(
+                            "No JSON object found",
+                            cleaned,
+                            0
+                        )
+
+                    result, json_end = decoder.raw_decode(
+                        cleaned,
+                        json_start
+                    )
+
+                    # -------------------------------------------------
+                    # Diagnostic
+                    # -------------------------------------------------
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] JSON PARSED "
+                        "| JOB=%s "
+                        "| JSON_START=%s "
+                        "| JSON_END=%s",
+                        self.id,
+                        json_start,
+                        json_end,
+                    )
+
+                except json.JSONDecodeError as json_error:
+
+                    _logger.error(
+                        "[FAMILY A REVIEW] INVALID JSON FROM OPENAI "
+                        "| JOB=%s "
+                        "| LINE=%s "
+                        "| COLUMN=%s "
+                        "| CHAR=%s",
+                        self.id,
+                        json_error.lineno,
+                        json_error.colno,
+                        json_error.pos,
+                    )
+
+                    _logger.error(
+                        "[FAMILY A REVIEW] JSON PARSE INPUT "
+                        "| JOB=%s\n%s",
+                        self.id,
+                        cleaned[:5000]
+                    )
+
+                    raise
 
                 trailing_output = (
                     cleaned.lstrip()[
