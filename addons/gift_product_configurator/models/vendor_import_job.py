@@ -3194,12 +3194,24 @@ class VendorImportJob(models.Model):
                         "[FAMILY A PARTIAL RECOVERY] "
                         "REQUESTS READY FOR PRECISION CROP "
                         "| JOB=%s | PAGES=%s | REQUESTS=%s",
-
                         self.id,
-
                         partial_pages,
+                        len(recovery_requests),
+                    )
 
-                        len(recovery_requests)
+                    # =========================================================
+                    # EXECUTE FAMILY A PRECISION CROP
+                    # =========================================================
+
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "STARTING PRECISION CROP "
+                        "| JOB=%s",
+                        self.id,
+                    )
+
+                    crop_result = (
+                        self._process_precision_crop_recovery()
                     )
 
                     return
@@ -19309,6 +19321,858 @@ class VendorImportJob(models.Model):
                 created_assets
             )
         }
+
+
+    #==========================================================
+    # FAMILY A RECOVERY CROPPING
+    #==========================================================
+
+    def _process_precision_crop_recovery(self):
+
+        _logger.warning(
+            "[PRECISION CROP] START | JOB=%s",
+            self.id,
+        )
+
+        try:
+
+            recovery_payload = json.loads(
+                self.family_a_partial_recovery_json
+                or "{}"
+            )
+
+            if not isinstance(
+                recovery_payload,
+                dict
+            ):
+                raise ValueError(
+                    "Family A precision recovery payload "
+                    "must be a JSON object."
+                )
+
+            recovery_requests = (
+                recovery_payload.get(
+                    "recovery_requests",
+                    []
+                )
+            )
+
+            if not isinstance(
+                recovery_requests,
+                list
+            ):
+                raise ValueError(
+                    "Family A recovery_requests "
+                    "must be a list."
+                )
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "RECOVERY REQUESTS | JOB=%s | COUNT=%s",
+                self.id,
+                len(recovery_requests),
+            )
+
+            # =====================================================
+            # ORIGINAL PDF SOURCE
+            # =====================================================
+
+            if not self.pdf_file:
+                raise ValueError(
+                    "Original PDF is unavailable for "
+                    "Family A precision recovery."
+                )
+
+            try:
+                original_pdf_bytes = base64.b64decode(
+                    self.pdf_file
+                )
+            except Exception as e:
+                raise ValueError(
+                    "Unable to decode original PDF for "
+                    f"precision recovery: {str(e)}"
+                )
+
+            source_doc = fitz.open(
+                stream=original_pdf_bytes,
+                filetype="pdf"
+            )
+
+            source_total_pages = len(
+                source_doc
+            )
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "ORIGINAL PDF | JOB=%s | PAGES=%s",
+                self.id,
+                source_total_pages,
+            )
+
+                        # =====================================================
+            # GROUP RECOVERY REQUESTS BY ORIGINAL PDF PAGE
+            # =====================================================
+
+            requests_by_page = {}
+
+            for request in recovery_requests:
+
+                if not isinstance(
+                    request,
+                    dict
+                ):
+                    continue
+
+                try:
+                    page_number = int(
+                        request.get("page")
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    raise ValueError(
+                        "Family A precision recovery request "
+                        "contains an invalid page number."
+                    )
+
+                if (
+                    page_number < 1
+                    or page_number > source_total_pages
+                ):
+
+                    raise ValueError(
+                        "Family A precision recovery request "
+                        f"references invalid page {page_number}. "
+                        f"Original PDF has "
+                        f"{source_total_pages} pages."
+                    )
+
+                requests_by_page.setdefault(
+                    page_number,
+                    []
+                ).append(
+                    request
+                )
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "PAGES READY | JOB=%s | PAGES=%s",
+                self.id,
+                sorted(
+                    requests_by_page.keys()
+                ),
+            )
+
+            # =====================================================
+            # PROCESS EACH ORIGINAL PAGE
+            # =====================================================
+
+            recovered_total = 0
+
+            for page_number in sorted(
+                requests_by_page
+            ):
+
+                _logger.warning(
+                    "[PRECISION CROP] "
+                    "PAGE START | JOB=%s | PAGE=%s | REQUESTS=%s",
+                    self.id,
+                    page_number,
+                    len(
+                        requests_by_page[
+                            page_number
+                        ]
+                    ),
+                )
+
+                # -------------------------------------------------
+                # ORIGINAL PDF PAGE
+                # -------------------------------------------------
+
+                source_page = source_doc[
+                    page_number - 1
+                ]
+
+                # Match Family A's existing page rendering
+                # convention: 2x resolution.
+                pix = source_page.get_pixmap(
+                    matrix=fitz.Matrix(
+                        2,
+                        2
+                    ),
+                    alpha=False
+                )
+
+                page_image = Image.frombytes(
+                    "RGB",
+                    [
+                        pix.width,
+                        pix.height
+                    ],
+                    pix.samples
+                )
+
+                page_width = page_image.width
+                page_height = page_image.height
+
+                _logger.warning(
+                    "[PRECISION CROP] "
+                    "PAGE IMAGE READY | "
+                    "JOB=%s | PAGE=%s | SIZE=%sx%s",
+                    self.id,
+                    page_number,
+                    page_width,
+                    page_height,
+                )
+
+                                # =================================================
+                # PROCESS FAMILY A PRECISION CROP REQUESTS
+                # =================================================
+
+                for request_index, request in enumerate(
+                    requests_by_page[
+                        page_number
+                    ]
+                ):
+
+                    if not isinstance(
+                        request,
+                        dict
+                    ):
+                        raise ValueError(
+                            "Family A precision recovery "
+                            "request must be an object."
+                        )
+
+                    crop = request.get(
+                        "crop",
+                        {}
+                    )
+
+                    if not isinstance(
+                        crop,
+                        dict
+                    ):
+                        raise ValueError(
+                            "Family A precision recovery "
+                            "crop definition must be an object."
+                        )
+
+                    # -------------------------------------------------
+                    # READ FAMILY A COORDINATES
+                    # -------------------------------------------------
+
+                    try:
+
+                        x = float(
+                            crop.get("x")
+                        )
+
+                        y = float(
+                            crop.get("y")
+                        )
+
+                        width = float(
+                            crop.get("width")
+                        )
+
+                        height = float(
+                            crop.get("height")
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        raise ValueError(
+                            "Family A returned invalid "
+                            "precision crop coordinates "
+                            f"| PAGE={page_number} "
+                            f"| REQUEST={request_index}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "REQUEST | JOB=%s | PAGE=%s | "
+                        "INDEX=%s | "
+                        "PRODUCT=%s | COLOR=%s | "
+                        "CROP=(x=%s,y=%s,w=%s,h=%s)",
+                        self.id,
+                        page_number,
+                        request_index,
+                        request.get(
+                            "product_reference"
+                        ),
+                        request.get(
+                            "color"
+                        ),
+                        x,
+                        y,
+                        width,
+                        height,
+                    )
+
+                    # -------------------------------------------------
+                    # BASIC GEOMETRY VALIDATION
+                    # -------------------------------------------------
+
+                    if (
+                        x < 0
+                        or y < 0
+                        or width <= 0
+                        or height <= 0
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop has "
+                            "invalid geometry "
+                            f"| PAGE={page_number} "
+                            f"| CROP=({x},{y},{width},{height})"
+                        )
+
+                    # -------------------------------------------------
+                    # PAGE BOUNDARY VALIDATION
+                    # -------------------------------------------------
+
+                    if (
+                        x + width > page_width
+                        or y + height > page_height
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop "
+                            "exceeds original page bounds "
+                            f"| PAGE={page_number} "
+                            f"| PAGE_SIZE="
+                            f"{page_width}x{page_height} "
+                            f"| CROP="
+                            f"({x},{y},{width},{height})"
+                        )
+
+                    # -------------------------------------------------
+                    # COVERAGE VALIDATION
+                    # -------------------------------------------------
+
+                    crop_area = (
+                        width *
+                        height
+                    )
+
+                    page_area = (
+                        page_width *
+                        page_height
+                    )
+
+                    coverage = (
+                        crop_area / page_area
+                        if page_area
+                        else 1.0
+                    )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "GEOMETRY | JOB=%s | PAGE=%s | "
+                        "COVERAGE=%.4f",
+                        self.id,
+                        page_number,
+                        coverage,
+                    )
+
+                    # A precision recovery crop should identify
+                    # a product region, not the whole page.
+                    if coverage >= 0.95:
+
+                        raise ValueError(
+                            "Family A precision crop is "
+                            "essentially the entire page "
+                            f"| PAGE={page_number} "
+                            f"| COVERAGE={coverage:.4f} "
+                            f"| CROP="
+                            f"({x},{y},{width},{height})"
+                        )
+
+                    # -------------------------------------------------
+                    # NORMALIZE TO INTEGER PIXELS
+                    # -------------------------------------------------
+
+                    left = max(
+                        0,
+                        int(round(x))
+                    )
+
+                    top = max(
+                        0,
+                        int(round(y))
+                    )
+
+                    right = min(
+                        page_width,
+                        int(round(
+                            x + width
+                        ))
+                    )
+
+                    bottom = min(
+                        page_height,
+                        int(round(
+                            y + height
+                        ))
+                    )
+
+                    if (
+                        right <= left
+                        or bottom <= top
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop "
+                            "collapsed after pixel "
+                            f"normalization "
+                            f"| PAGE={page_number}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "NORMALIZED | JOB=%s | PAGE=%s | "
+                        "BOX=(%s,%s,%s,%s)",
+                        self.id,
+                        page_number,
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    )
+
+                                        # -------------------------------------------------
+                    # EXECUTE FAMILY A PRECISION CROP
+                    # -------------------------------------------------
+
+                    cropped = page_image.crop(
+                        (
+                            left,
+                            top,
+                            right,
+                            bottom,
+                        )
+                    )
+
+                    if (
+                        cropped.width < 20
+                        or cropped.height < 20
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop "
+                            "produced an image that is "
+                            "too small "
+                            f"| PAGE={page_number} "
+                            f"| SIZE="
+                            f"{cropped.width}x"
+                            f"{cropped.height}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "IMAGE CROPPED | JOB=%s | PAGE=%s | "
+                        "SIZE=%sx%s | PRODUCT=%s | COLOR=%s",
+                        self.id,
+                        page_number,
+                        cropped.width,
+                        cropped.height,
+                        request.get(
+                            "product_reference"
+                        ),
+                        request.get(
+                            "color"
+                        ),
+                    )
+
+                    # -------------------------------------------------
+                    # ENCODE RECOVERED IMAGE
+                    # -------------------------------------------------
+
+                    crop_buffer = io.BytesIO()
+
+                    cropped.save(
+                        crop_buffer,
+                        format="PNG"
+                    )
+
+                    crop_bytes = (
+                        crop_buffer.getvalue()
+                    )
+
+                    crop_base64 = (
+                        base64.b64encode(
+                            crop_bytes
+                        ).decode(
+                            "utf-8"
+                        )
+                    )
+
+                    crop_hash = hashlib.md5(
+                        crop_bytes
+                    ).hexdigest()
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "IMAGE ENCODED | JOB=%s | PAGE=%s | "
+                        "HASH=%s | BYTES=%s",
+                        self.id,
+                        page_number,
+                        crop_hash,
+                        len(crop_bytes),
+                    )
+
+                    # -------------------------------------------------
+                    # BUILD AUTHORITATIVE FAMILY A RECOVERED ASSET
+                    # -------------------------------------------------
+
+                    recovered_asset = {
+
+                        "image":
+                            crop_base64,
+
+                        "image_hash":
+                            crop_hash,
+
+                        "page":
+                            page_number,
+
+                        "x":
+                            left,
+
+                        "y":
+                            top,
+
+                        "width":
+                            right - left,
+
+                        "height":
+                            bottom - top,
+
+                        "product_reference":
+                            request.get(
+                                "product_reference"
+                            ),
+
+                        "product_group":
+                            request.get(
+                                "product_group"
+                            ),
+
+                        "color":
+                            request.get(
+                                "color"
+                            ),
+
+                        "asset_role":
+                            request.get(
+                                "required_image_role"
+                            ),
+
+                        # Family A has explicitly identified
+                        # this as the missing real product.
+                        "classification":
+                            "REAL_PRODUCT",
+
+                        "trustworthy":
+                            True,
+
+                        "preserve":
+                            True,
+
+                        # -------------------------------------------------
+                        # FAMILY A RECOVERY FLAGS
+                        # -------------------------------------------------
+
+                        "family_a_recovered":
+                            True,
+
+                        "family_a_precision_crop":
+                            True,
+
+                        # -------------------------------------------------
+                        # CROP METADATA
+                        # Keep the same coordinate/crop vocabulary
+                        # already used by the Azure crop pipeline.
+                        # -------------------------------------------------
+
+                        "crop_id":
+                            crop.get(
+                                "crop_id"
+                            ),
+
+                        "figure_id":
+                            crop.get(
+                                "figure_id"
+                            ),
+
+                        "purpose":
+                            crop.get(
+                                "purpose"
+                            ),
+
+                        "confidence":
+                            crop.get(
+                                "confidence",
+                                request.get(
+                                    "confidence",
+                                    0
+                                )
+                            ),
+
+                    }
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "ASSET BUILT | JOB=%s | PAGE=%s | "
+                        "PRODUCT=%s | COLOR=%s | ROLE=%s | "
+                        "CONFIDENCE=%s",
+                        self.id,
+                        page_number,
+                        recovered_asset.get(
+                            "product_reference"
+                        ),
+                        recovered_asset.get(
+                            "color"
+                        ),
+                        recovered_asset.get(
+                            "asset_role"
+                        ),
+                        recovered_asset.get(
+                            "confidence"
+                        ),
+                    )
+
+                    # -------------------------------------------------
+                    # LOAD CURRENT PAGE ASSET COLLECTION
+                    # -------------------------------------------------
+
+                    page_record = self.env[
+                        "vendor.import.page"
+                    ].search(
+                        [
+                            ("job_id", "=", self.id),
+                            (
+                                "page_number",
+                                "=",
+                                page_number
+                            ),
+                        ],
+                        limit=1,
+                    )
+
+                    if not page_record:
+
+                        raise ValueError(
+                            "Family A precision recovery "
+                            "could not find the page record "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number}"
+                        )
+
+                    # -------------------------------------------------
+                    # LOAD EXISTING PAGE IMAGES
+                    # -------------------------------------------------
+
+                    try:
+
+                        page_images = json.loads(
+                            page_record.page_images_json
+                            or "[]"
+                        )
+
+                    except Exception as e:
+
+                        raise ValueError(
+                            "Invalid page_images_json "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number} "
+                            f"| ERROR={str(e)}"
+                        )
+
+                    if not isinstance(
+                        page_images,
+                        list
+                    ):
+
+                        raise ValueError(
+                            "page_images_json must be "
+                            "a list "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "EXISTING ASSETS | JOB=%s | PAGE=%s | "
+                        "COUNT=%s",
+                        self.id,
+                        page_number,
+                        len(page_images),
+                    )
+
+                    # -------------------------------------------------
+                    # DUPLICATE PROTECTION
+                    # -------------------------------------------------
+
+                    existing_hashes = {
+                        asset.get("image_hash")
+                        for asset in page_images
+                        if isinstance(
+                            asset,
+                            dict
+                        )
+                        and asset.get(
+                            "image_hash"
+                        )
+                    }
+
+                    if crop_hash in existing_hashes:
+
+                        _logger.warning(
+                            "[PRECISION CROP] "
+                            "DUPLICATE SKIPPED | JOB=%s | "
+                            "PAGE=%s | HASH=%s",
+                            self.id,
+                            page_number,
+                            crop_hash,
+                        )
+
+                        continue
+
+                    # -------------------------------------------------
+                    # APPEND RECOVERED ASSET
+                    # -------------------------------------------------
+
+                    page_images.append(
+                        recovered_asset
+                    )
+
+                    recovered_total += 1
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "ASSET APPENDED | JOB=%s | PAGE=%s | "
+                        "TOTAL_ASSETS=%s | PRODUCT=%s | COLOR=%s",
+                        self.id,
+                        page_number,
+                        len(page_images),
+                        recovered_asset.get(
+                            "product_reference"
+                        ),
+                        recovered_asset.get(
+                            "color"
+                        ),
+                    )
+
+                    # -------------------------------------------------
+                    # PERSIST UPDATED PAGE ASSET COLLECTION
+                    # -------------------------------------------------
+
+                    page_record.write({
+                        "page_images_json": json.dumps(
+                            page_images,
+                            ensure_ascii=False
+                        ),
+                    })
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "ASSETS PERSISTED | JOB=%s | PAGE=%s | "
+                        "COUNT=%s",
+                        self.id,
+                        page_number,
+                        len(page_images),
+                    )
+
+                    # -------------------------------------------------
+                    # PAGE RECOVERY COMPLETE
+                    # -------------------------------------------------
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "PAGE RECOVERY COMPLETE | "
+                        "JOB=%s | PAGE=%s | "
+                        "RECOVERED_TOTAL=%s",
+                        self.id,
+                        page_number,
+                        recovered_total,
+                    )
+
+            # =====================================================
+            # PRECISION RECOVERY COMPLETE
+            # =====================================================
+
+            if recovered_total <= 0:
+
+                raise ValueError(
+                    "Family A precision recovery produced "
+                    "no new assets."
+                )
+
+            recovery_payload[
+                "decision"
+            ] = "PRECISION_RECOVERY_COMPLETE"
+
+            recovery_payload[
+                "completed"
+            ] = True
+
+            recovery_payload[
+                "recovered_count"
+            ] = recovered_total
+
+            self.family_a_partial_recovery_json = (
+                json.dumps(
+                    recovery_payload,
+                    ensure_ascii=False
+                )
+            )
+
+            # =====================================================
+            # HAND BACK TO EXISTING PDF AI PIPELINE
+            # =====================================================
+
+            self.last_ai_page = 0
+            self.stage_retry_count = 0
+            self.last_error = False
+
+            self.last_known_state = "pdf_ai"
+            self.state = "pdf_ai"
+
+            self.flush_recordset()
+            self.env.cr.commit()
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "COMPLETE → PDF AI | "
+                "JOB=%s | RECOVERED=%s",
+                self.id,
+                recovered_total,
+            )
+
+            return {
+                "success": True,
+                "recovered_count":
+                    recovered_total,
+            }
+
+        except Exception as e:
+
+            _logger.exception(
+                "[PRECISION CROP] FAILED "
+                "| JOB=%s | %s",
+                self.id,
+                str(e),
+            )
+
+            return
 
     # =========================================================
     # SAFE CROP / WHITESPACE EXPANSION
@@ -40215,3 +41079,4 @@ class VendorImportJob(models.Model):
 
         return default_currency
 
+    
