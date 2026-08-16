@@ -17092,15 +17092,30 @@ class VendorImportJob(models.Model):
             # PARSE
             # =================================================
 
-            # result = json.loads(
-            #     cleaned
-            # )
 
             try:
 
-                result = json.loads(
-                    cleaned
+                decoder = json.JSONDecoder()
+
+                result, json_end = decoder.raw_decode(
+                    cleaned.lstrip()
                 )
+
+                trailing_output = (
+                    cleaned.lstrip()[
+                        json_end:
+                    ].strip()
+                )
+
+                if trailing_output:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "OPENAI RETURNED TRAILING TEXT "
+                        "| JOB=%s | CHARS=%s",
+                        self.id,
+                        len(trailing_output),
+                    )
 
             except json.JSONDecodeError as json_error:
 
