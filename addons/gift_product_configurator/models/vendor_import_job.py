@@ -10550,6 +10550,245 @@ class VendorImportJob(models.Model):
             f"recovery={page_context.get('requires_recovery')}"
         )
 
+        # =====================================================
+        # FAMILY A AUTHORITATIVE ASSET CONTEXT FOR PDF AI
+        # =====================================================
+        #
+        # Family A has already reviewed these extracted assets.
+        # Its classification/role decision is authoritative.
+        #
+        # IMPORTANT:
+        # We do NOT replace the existing page_images.
+        # We only provide Family A's authoritative decisions
+        # to PDF AI as structured context.
+        # =====================================================
+
+        family_a_authority = []
+
+        try:
+            family_a_review = json.loads(
+                self.family_a_review_json
+                or "{}"
+            )
+
+            current_page_number = int(
+                next_record.page_number
+            )
+
+            family_a_pages = (
+                family_a_review.get("pages", [])
+                if isinstance(
+                    family_a_review,
+                    dict
+                )
+                else []
+            )
+
+            current_family_a_page = None
+
+            for review_page in family_a_pages:
+                try:
+                    review_page_number = int(
+                        review_page.get(
+                            "page",
+                            0
+                        )
+                    )
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    continue
+
+                if (
+                    review_page_number
+                    == current_page_number
+                ):
+                    current_family_a_page = (
+                        review_page
+                    )
+                    break
+
+            if current_family_a_page:
+                raw_family_a_assets = (
+                    current_family_a_page.get(
+                        "extracted_asset_mapping",
+                        []
+                    )
+                )
+
+                if isinstance(
+                    raw_family_a_assets,
+                    list
+                ):
+                    family_a_authority = (
+                        raw_family_a_assets
+                    )
+
+        except Exception as e:
+            _logger.warning(
+                "[PDF AI] FAMILY A AUTHORITY LOAD FAILED "
+                "| PAGE=%s | %s",
+                next_record.page_number,
+                str(e)
+            )
+
+        # =====================================================
+        # RESOLVE FAMILY A ASSETS AGAINST CURRENT CLEAN INDEX
+        # =====================================================
+        #
+        # Family A's original image_index is preserved.
+        # We additionally resolve the same asset by image_hash
+        # against the CURRENT page_images clean_index.
+        #
+        # This protects us if filtering/recovery changed indexes.
+        # =====================================================
+
+        current_assets_by_hash = {}
+
+        for asset in page_images:
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            image_hash = (
+                asset.get("image_hash")
+                or asset.get("source_hash")
+            )
+
+            if image_hash:
+                current_assets_by_hash[
+                    str(image_hash)
+                ] = asset
+
+
+        family_a_prompt_assets = []
+
+        for family_asset in family_a_authority:
+
+            if not isinstance(
+                family_asset,
+                dict
+            ):
+                continue
+
+            image_hash = (
+                family_asset.get(
+                    "image_hash"
+                )
+                or ""
+            )
+
+            current_asset = (
+                current_assets_by_hash.get(
+                    str(image_hash)
+                )
+                if image_hash
+                else None
+            )
+
+            current_clean_index = None
+
+            if isinstance(
+                current_asset,
+                dict
+            ):
+                current_clean_index = (
+                    current_asset.get(
+                        "clean_index"
+                    )
+                )
+
+            family_a_prompt_assets.append({
+                "family_a_image_index":
+                    family_asset.get(
+                        "image_index"
+                    ),
+
+                "current_clean_index":
+                    current_clean_index,
+
+                "image_hash":
+                    image_hash,
+
+                "classification":
+                    family_asset.get(
+                        "classification",
+                        "UNKNOWN"
+                    ),
+
+                "asset_role":
+                    family_asset.get(
+                        "asset_role",
+                        "UNKNOWN"
+                    ),
+
+                "product_group":
+                    family_asset.get(
+                        "product_group"
+                    ),
+
+                "color":
+                    family_asset.get(
+                        "color"
+                    ),
+
+                "matches_original":
+                    bool(
+                        family_asset.get(
+                            "matches_original",
+                            False
+                        )
+                    ),
+
+                "product_body_complete":
+                    bool(
+                        family_asset.get(
+                            "product_body_complete",
+                            False
+                        )
+                    ),
+
+                "trustworthy":
+                    bool(
+                        family_asset.get(
+                            "trustworthy",
+                            False
+                        )
+                    ),
+
+                "preserve":
+                    bool(
+                        family_asset.get(
+                            "preserve",
+                            False
+                        )
+                    ),
+
+                "confidence":
+                    family_asset.get(
+                        "confidence",
+                        0
+                    ),
+            })
+
+
+        family_a_authority_context = json.dumps(
+            family_a_prompt_assets,
+            ensure_ascii=False,
+            indent=2
+        )
+
+        _logger.warning(
+            "[PDF AI FAMILY A AUTHORITY] "
+            "PAGE=%s | ASSETS=%s\n%s",
+            next_record.page_number,
+            len(family_a_prompt_assets),
+            family_a_authority_context
+        )
+
         page_price = ""
 
         page_stock = ""
@@ -10725,6 +10964,79 @@ class VendorImportJob(models.Model):
         AVAILABLE ASSETS:
 
         {asset_identity_map}
+
+
+        ==================================================
+        FAMILY A AUTHORITATIVE ASSET DECISIONS
+        ==================================================
+
+        Family A is the authoritative visual classification
+        layer for the extracted assets on this page.
+
+        The Family A decisions below MUST be respected when
+        selecting:
+
+        - hero_image_index
+        - gallery_image_indexes
+        - variant image_index
+
+        The "current_clean_index" refers to the image_index
+        that MUST be used in the final PDF-AI JSON output.
+
+        IMPORTANT FAMILY A RULES:
+
+        1. REAL_PRODUCT
+           A REAL_PRODUCT asset represents an actual product
+           image and may be used as a hero or variant image
+           when the visual/product relationship supports it.
+
+        2. LIFESTYLE
+           Do NOT use as a variant image.
+
+        3. MARKETING
+           Do NOT use as a variant image.
+
+        4. SUPPORTING
+           Do NOT use as a variant image.
+
+        5. DETAIL
+           Do NOT promote to a product variant merely because
+           it visually resembles the product.
+
+        6. FOLDED / POUCH / ACCESSORY / PACKAGING
+           Do NOT treat these as separate product variants
+           unless the catalogue explicitly identifies them as
+           selectable products/options.
+
+        7. preserve=false and trustworthy=false
+           These assets must NOT override a trustworthy
+           REAL_PRODUCT asset.
+
+        8. Color-specific REAL_PRODUCT assets must remain
+           associated with their actual visual product.
+
+        9. NEVER reuse one image_index for two different
+           products when separate product-specific assets
+           exist.
+
+        10. NEVER select an image merely because it has a
+            higher geometric, hero, gallery, or extractor score
+            if Family A has identified another asset as the
+            authoritative REAL_PRODUCT representation.
+
+        11. If Family A identifies separate REAL_PRODUCT assets
+            for separate products, do NOT merge them into one
+            product.
+
+        12. If the correct product-specific image cannot be
+            established safely, leave image_index as null.
+            Do NOT reuse another product's image.
+
+        FAMILY A ASSET MAP:
+
+        {family_a_authority_context}
+
+        ==================================================
 
         ==================================================
 
