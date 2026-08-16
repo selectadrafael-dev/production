@@ -18222,6 +18222,185 @@ class VendorImportJob(models.Model):
 
             raise
 
+    # =================================================
+    # FAMILY A AUTHORITATIVE AUTHORITY
+    # =================================================
+
+    def _get_family_a_authority(self):
+
+        """
+        Load the persisted Family A review.
+
+        This is the single source of truth for:
+        - page decisions
+        - asset classifications
+        - asset roles
+        - product groups
+        - colors
+        - trustworthy/preserve decisions
+        - confidence
+        """
+
+        try:
+
+            if not self.family_a_review_json:
+
+                _logger.warning(
+                    "[FAMILY A AUTHORITY] "
+                    "NO PERSISTED REVIEW "
+                    "| JOB=%s",
+                    self.id
+                )
+
+                return {}
+
+            authority = json.loads(
+                self.family_a_review_json
+            )
+
+            if not isinstance(
+                authority,
+                dict
+            ):
+
+                _logger.error(
+                    "[FAMILY A AUTHORITY] "
+                    "INVALID REVIEW TYPE "
+                    "| JOB=%s "
+                    "| TYPE=%s",
+                    self.id,
+                    type(authority).__name__,
+                )
+
+                return {}
+
+            _logger.warning(
+                "[FAMILY A AUTHORITY] "
+                "LOADED "
+                "| JOB=%s "
+                "| DECISION=%s "
+                "| PAGES=%s "
+                "| FAILED=%s "
+                "| PARTIAL=%s",
+                self.id,
+                authority.get("decision"),
+                len(
+                    authority.get(
+                        "pages",
+                        []
+                    )
+                ),
+                authority.get(
+                    "failed_pages",
+                    []
+                ),
+                authority.get(
+                    "partial_pages",
+                    []
+                ),
+            )
+
+            return authority
+
+        except Exception:
+
+            _logger.exception(
+                "[FAMILY A AUTHORITY] "
+                "LOAD FAILED "
+                "| JOB=%s",
+                self.id
+            )
+
+            return {}
+
+
+    # =================================================
+    # FAMILY A PAGE AUTHORITY
+    # =================================================
+
+    def _get_family_a_page_authority(
+        self,
+        page_number
+    ):
+
+        authority = self._get_family_a_authority()
+
+        if not authority:
+
+            return {}
+
+        try:
+
+            target_page = int(
+                page_number
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return {}
+
+        for page in authority.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                page,
+                dict
+            ):
+
+                continue
+
+            try:
+
+                current_page = int(
+                    page.get("page")
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+            if current_page == target_page:
+
+                _logger.warning(
+                    "[FAMILY A PAGE AUTHORITY] "
+                    "FOUND "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| DECISION=%s "
+                    "| ASSETS=%s",
+                    self.id,
+                    target_page,
+                    page.get("decision"),
+                    len(
+                        page.get(
+                            "extracted_asset_mapping",
+                            []
+                        )
+                    ),
+                )
+
+                return page
+
+        _logger.warning(
+            "[FAMILY A PAGE AUTHORITY] "
+            "NOT FOUND "
+            "| JOB=%s "
+            "| PAGE=%s",
+            self.id,
+            target_page,
+        )
+
+        return {}
+
+
     # =========================================================
     # AZURE OPENAI CROP PROCESSOR
     # =========================================================
