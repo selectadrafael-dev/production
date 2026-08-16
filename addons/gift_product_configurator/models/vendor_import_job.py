@@ -17430,6 +17430,7 @@ class VendorImportJob(models.Model):
 
                 decoder = json.JSONDecoder()
 
+
                 # ================================================
                 # PARSE FAMILY A JSON
                 # ================================================
@@ -17439,36 +17440,150 @@ class VendorImportJob(models.Model):
                     # -------------------------------------------------
                     # OpenAI may return explanatory text before JSON.
                     # Find the first JSON object and decode from there.
+                    #
+                    # Also sanitize illegal // comments that OpenAI
+                    # may occasionally place inside the JSON.
                     # -------------------------------------------------
 
-                    json_start = cleaned.find("{")
+                    def _strip_json_comments(text):
+
+                        output = []
+
+                        in_string = False
+                        escape = False
+                        i = 0
+                        length = len(text)
+
+                        while i < length:
+
+                            char = text[i]
+
+                            # -----------------------------------------
+                            # INSIDE JSON STRING
+                            # -----------------------------------------
+
+                            if in_string:
+
+                                output.append(char)
+
+                                if escape:
+
+                                    escape = False
+
+                                elif char == "\\":
+
+                                    escape = True
+
+                                elif char == '"':
+
+                                    in_string = False
+
+                                i += 1
+
+                                continue
+
+                            # -----------------------------------------
+                            # OUTSIDE JSON STRING
+                            # -----------------------------------------
+
+                            if char == '"':
+
+                                in_string = True
+
+                                output.append(char)
+
+                                i += 1
+
+                                continue
+
+                            # -----------------------------------------
+                            # JAVASCRIPT // COMMENT
+                            # -----------------------------------------
+
+                            if (
+                                char == "/"
+                                and i + 1 < length
+                                and text[i + 1] == "/"
+                            ):
+
+                                # Skip the comment itself.
+                                i += 2
+
+                                while (
+                                    i < length
+                                    and text[i] not in (
+                                        "\n",
+                                        "\r"
+                                    )
+                                ):
+
+                                    i += 1
+
+                                continue
+
+                            output.append(char)
+
+                            i += 1
+
+                        return "".join(output)
+
+
+                    # -------------------------------------------------
+                    # REMOVE ILLEGAL COMMENTS
+                    # -------------------------------------------------
+
+                    cleaned_for_json = (
+                        _strip_json_comments(
+                            cleaned
+                        )
+                    )
+
+
+                    # -------------------------------------------------
+                    # FIND FIRST JSON OBJECT
+                    # -------------------------------------------------
+
+                    json_start = (
+                        cleaned_for_json.find("{")
+                    )
 
                     if json_start == -1:
 
                         raise json.JSONDecodeError(
                             "No JSON object found",
-                            cleaned,
+                            cleaned_for_json,
                             0
                         )
 
-                    result, json_end = decoder.raw_decode(
-                        cleaned,
-                        json_start
-                    )
 
                     # -------------------------------------------------
-                    # Diagnostic
+                    # DECODE JSON
+                    # -------------------------------------------------
+
+                    result, json_end = (
+                        decoder.raw_decode(
+                            cleaned_for_json,
+                            json_start
+                        )
+                    )
+
+
+                    # -------------------------------------------------
+                    # DIAGNOSTIC
                     # -------------------------------------------------
 
                     _logger.warning(
                         "[FAMILY A REVIEW] JSON PARSED "
                         "| JOB=%s "
                         "| JSON_START=%s "
-                        "| JSON_END=%s",
+                        "| JSON_END=%s "
+                        "| COMMENT_SANITIZED=%s",
                         self.id,
                         json_start,
                         json_end,
+                        cleaned_for_json != cleaned,
                     )
+
 
                 except json.JSONDecodeError as json_error:
 
@@ -17493,8 +17608,9 @@ class VendorImportJob(models.Model):
 
                     raise
 
-                trailing_output = (
-                    cleaned.lstrip()[
+                
+                railing_output = (
+                    cleaned_for_json.lstrip()[
                         json_end:
                     ].strip()
                 )
