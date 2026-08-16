@@ -9824,6 +9824,32 @@ class VendorImportJob(models.Model):
             page_width = 0
             page_height = 0
 
+            page_text = ""
+
+            for block in page_blocks:
+
+                if block.get("text"):
+                    page_text = (
+                        block.get("text") or ""
+                    ).strip()
+
+                    if page_text:
+                        break
+
+                    _logger.warning(
+                        "[AI PAGE TEXT] "
+                        "PAGE=%s | EXISTS=%s | LENGTH=%s",
+                        next_record.page_number,
+                        bool(page_text),
+                        len(page_text)
+                    )
+
+                    _logger.warning(
+                        "[AI PAGE TEXT SAMPLE] PAGE=%s\n%s",
+                        next_record.page_number,
+                        page_text[:2000]
+                    )
+
             for block in page_blocks:
 
                 if block.get("page_image"):
@@ -10408,18 +10434,13 @@ class VendorImportJob(models.Model):
         # =====================================================
 
         page_data = {
-
             "page": next_record.page_number,
-
             "products": [],
-
             "images": page_images,
-
             "page_image": page_image,
-
             "page_width": page_width,
-
-            "page_height": page_height
+            "page_height": page_height,
+            "text": page_text,
         }
 
         # family = self._prepare_product_family(
@@ -11255,7 +11276,7 @@ class VendorImportJob(models.Model):
         PAGE TEXT
         ==================================================
 
-        {page_context}
+        {page_text}
 
         ==================================================
         DETECTED PRICE
