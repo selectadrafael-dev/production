@@ -10318,14 +10318,14 @@ class VendorImportJob(models.Model):
 
             asset_identity_lines.append(
                 f"""
-        INDEX {clean_index}
-        - Azure Figure ID: {azure_figure_id}
-        - Crop ID: {crop_id}
-        - Product Reference: {product_reference}
-        - Color: {dominant_color}
-        - Image Role: {image_role}
-        - Azure Caption: {azure_caption}
-        """.strip()
+                INDEX {clean_index}
+                - Azure Figure ID: {azure_figure_id}
+                - Crop ID: {crop_id}
+                - Product Reference: {product_reference}
+                - Color: {dominant_color}
+                - Image Role: {image_role}
+                - Azure Caption: {azure_caption}
+                """.strip()
             )
 
         asset_identity_map = "\n\n".join(
@@ -10785,12 +10785,62 @@ class VendorImportJob(models.Model):
             indent=2
         )
 
+        # =====================================================
+        # FAMILY A AUTHORITATIVE PRODUCT IDENTITY
+        # =====================================================
+
+        family_a_product_identity = []
+
+        if isinstance(
+            current_family_a_page,
+            dict
+        ):
+
+            family_a_product_identity = (
+                current_family_a_page.get(
+                    "product_groups",
+                    []
+                )
+            )
+
+        family_a_product_identity_context = json.dumps(
+            family_a_product_identity,
+            ensure_ascii=False,
+            indent=2
+        )
+
+        _logger.warning(
+            "[PDF AI FAMILY A PRODUCT IDENTITY] "
+            "PAGE=%s | GROUPS=%s\n%s",
+            next_record.page_number,
+            len(
+                family_a_product_identity
+            )
+            if isinstance(
+                family_a_product_identity,
+                list
+            )
+            else 0,
+            family_a_product_identity_context
+        )
+
         _logger.warning(
             "[PDF AI FAMILY A AUTHORITY] "
             "PAGE=%s | ASSETS=%s\n%s",
             next_record.page_number,
             len(family_a_prompt_assets),
             family_a_authority_context
+        )
+
+        _logger.warning(
+            "[PDF AI FAMILY A NAME AUTHORITY] "
+            "JOB=%s | CONTEXT=%s",
+            self.id,
+            json.dumps(
+                family_a_product_identity_context,
+                ensure_ascii=False,
+                default=str
+            )
         )
 
         page_price = ""
@@ -11063,6 +11113,45 @@ class VendorImportJob(models.Model):
         No extra text.
 
         ==================================================
+        FAMILY A AUTHORITATIVE PRODUCT IDENTITY
+        ==================================================
+
+        Family A has visually inspected the ORIGINAL CATALOGUE PAGE.
+
+        The following product-group information is therefore the
+        authoritative product identity established from the original page.
+
+        {family_a_product_identity_context}
+
+        ==================================================
+        AUTHORITATIVE PRODUCT NAME PRIORITY
+        ==================================================
+
+        For each product group:
+
+        1. If Family A provides a non-empty "product_name" or
+           "product_title" AND "name_trustworthy" is true:
+
+           USE THAT VALUE AS THE PRODUCT "name".
+
+        2. Preserve the Family A authoritative name exactly.
+
+        3. Do NOT shorten it.
+
+        4. Do NOT paraphrase it.
+
+        5. Do NOT replace it with a newly generated ecommerce name.
+
+        6. Do NOT replace it with a description, material, feature,
+           marketing phrase, or variant color.
+
+        7. The same Family A product group MUST retain the same
+           authoritative product name across all of its variants.
+
+        ONLY if Family A does NOT provide a trustworthy authoritative
+        product_name/product_title may the fallback TITLE RULES be used.
+
+        ==================================================
         CORE EXTRACTION RULES
         ==================================================
 
@@ -11086,35 +11175,38 @@ class VendorImportJob(models.Model):
         - detect visible variants
         - create products even if the printed title is missing
 
-        IMPORTANT PRODUCT NAME REQUIREMENT:
+                IMPORTANT PRODUCT NAME REQUIREMENT:
 
         Creating a product when its printed title is missing does NOT
         permit an empty product name.
 
-        Every detected product MUST have a non-empty "name".
+        FIRST check the FAMILY A AUTHORITATIVE PRODUCT NAME/TITLE.
 
-        If the exact printed title cannot be recovered, determine the
-        strongest product identity from the complete catalogue page,
-        page text, product-family context, model/product information,
-        and visible product characteristics.
+        If Family A provides a trustworthy product_name or
+        product_title for this product group:
+
+        - use that value as the product "name"
+        - preserve it exactly
+        - do not generate a replacement name
+
+        ONLY if no trustworthy Family A product name/title is available,
+        use the FALLBACK TITLE RULES below.
+
+        In that fallback situation, determine the strongest product
+        identity from:
+
+        - the ORIGINAL CATALOGUE PAGE
+        - page text
+        - catalogue headings
+        - product-family context
+        - model/product information
+        - visible product characteristics
 
         If necessary, generate a concise commercially meaningful name
         describing the actual product.
 
-        NEVER return:
-        - ""
-        - null
-        - "Unknown"
-        - "Unnamed Product"
-        - "Product"
-
-        for the name of a detected product.
-
-        Pens, bottles, shirts, caps and accessories
-        must NEVER be ignored simply because:
-        - title is small
-        - products are grouped
-        - products are arranged in grid layout
+        NEVER return an empty string or null for a detected product
+        when a usable product identity can be established.
 
 
         IMPORTANT:
@@ -11381,15 +11473,57 @@ class VendorImportJob(models.Model):
             - assigning the same image to multiple colors
             - assigning a supporting image to a variant
 
-        ==================================================
-        TITLE RULES
-        ==================================================
-
-               # ==================================================
+       
+        # ==================================================
         # TITLE / PRODUCT NAME RULES
         # ==================================================
 
-        CRITICAL PRODUCT NAME RULE:
+      
+        FAMILY A AUTHORITATIVE PRODUCT NAME PRIORITY
+     
+
+        CRITICAL:
+
+        Family A provides the authoritative product_name and/or
+        product_title derived directly from the ORIGINAL CATALOGUE PAGE.
+
+       IF a trustworthy Family A product_name or product_title is
+       available for this product group:
+
+        1. USE THAT NAME/TITLE AS THE PRODUCT "name".
+        2. Preserve it exactly as supplied by Family A.
+        3. DO NOT shorten it.
+        4. DO NOT summarize it.
+        5. DO NOT paraphrase it.
+        6. DO NOT replace it with a newly generated name.
+        7. DO NOT use a description, material, feature, or marketing
+           phrase instead.
+
+        Family A's authoritative product name/title has FIRST PRIORITY
+        because Family A visually inspected the ORIGINAL CATALOGUE PAGE.
+
+        ==================================================
+        FALLBACK TITLE RULES
+        ==================================================
+
+        The TITLE RULES BELOW are FALLBACK ONLY.
+
+        Use them ONLY when:
+
+        - Family A authoritative product_name is unavailable, OR
+        - Family A authoritative product_title is unavailable, OR
+        - Family A explicitly marks the supplied name/title as
+          untrustworthy or unusable.
+
+        If Family A provides a trustworthy authoritative product name,
+        DO NOT apply the fallback title-selection rules below.
+
+        If Family A does NOT provide a usable authoritative name/title,
+        then inspect the ORIGINAL CATALOGUE PAGE and apply the title
+        rules below to recover the best available product title.
+
+
+        FALLBACK PRODUCT NAME RULE:
 
         EVERY DETECTED PRODUCT MUST HAVE A NON-EMPTY "name".
 
@@ -11403,23 +11537,35 @@ class VendorImportJob(models.Model):
 
         when a real product has been detected.
 
-        PRODUCT NAME PRIORITY:
+        THIS IS A FALLBACK RULE ONLY.
 
-        1. Use the exact visible catalogue product title when one exists.
+        If Family A did NOT provide a trustworthy authoritative
+        product_name or product_title, determine the strongest
+        available product identity from:
 
-        2. If the title is not clearly readable, use the strongest
-           product-name evidence available from:
-           - page text
-           - catalogue headings
-           - model/product codes when they form part of the product identity
-           - surrounding product-specific text
-           - the complete catalogue page visual context
-           - product-family context
+        - the ORIGINAL CATALOGUE PAGE
+        - page text
+        - catalogue headings
+        - model/product codes when they form part of the product identity
+        - surrounding product-specific text
+        - the complete catalogue page visual context
+        - product-family context
 
-        3. If no exact title can be recovered, generate a concise,
-           commercially meaningful product name describing the actual
-           product shown.
+        If no exact catalogue title can be recovered, generate a concise
+        commercially meaningful product name describing the actual
+        product shown.
 
+        NEVER use an empty string, null, "Unknown", "Unnamed Product",
+        "Product", or another generic placeholder merely because the
+        printed title cannot be confidently read.
+
+        When a product belongs to a clearly established Family A product
+        group, preserve that product grouping when determining its name.
+
+        Do not create separate product names merely because the product
+        has multiple color variants.
+
+        
         IMPORTANT:
 
         A missing or unclear title does NOT mean the product name should
@@ -17420,6 +17566,73 @@ class VendorImportJob(models.Model):
 
         classification = UNKNOWN
 
+        # ================================================================
+        # AUTHORITATIVE PRODUCT NAME / TITLE
+        # ================================================================
+
+        For EVERY product_group, inspect the ORIGINAL CATALOGUE PAGE
+        and determine the actual product name/title whenever possible.
+
+        Family A has direct access to the complete original catalogue
+        page and therefore has first authority for product identity.
+
+        "product_name" MUST contain the best authoritative product name
+        established from the original catalogue page.
+
+        "product_title" MUST contain the exact visible catalogue title
+        when one is clearly present.
+
+        If the exact printed title is clearly visible:
+
+            product_name = product_title
+
+        If the exact printed title cannot be read but the product identity
+        is clearly established from the original page:
+
+            provide the best accurate product_name based on the original
+            catalogue evidence.
+
+        NEVER return an empty product_name when the original page provides
+        enough evidence to identify the product.
+
+                If the original catalogue page does NOT provide enough reliable
+        evidence to establish the product identity:
+
+        - product_name may be empty;
+        - product_title may be empty;
+        - name_trustworthy MUST be false;
+        - name_confidence MUST be low;
+        - DO NOT invent or commercially rename the product.
+
+        This allows downstream PDF AI to use its own title fallback rules
+        only when Family A cannot establish a trustworthy authoritative name.
+
+        "name_source" MUST normally be:
+
+            "ORIGINAL_CATALOGUE_PAGE"
+
+        "name_confidence" MUST represent Family A's confidence in the
+        product identity.
+
+        "name_trustworthy" MUST be true only when Family A considers the
+        product name/title sufficiently reliable for downstream systems
+        to use as the authoritative product identity.
+
+        IMPORTANT:
+
+        This product_name/product_title becomes persistent Family A
+        authority and will be consumed by downstream PDF AI and product
+        creation.
+
+        Therefore:
+
+        - Do NOT use a generic placeholder.
+        - Do NOT use a material as the product name.
+        - Do NOT use a feature as the product name.
+        - Do NOT use a description sentence as the product name.
+        - Do NOT invent a commercial name when the original catalogue
+          provides an identifiable name/title.
+
         ================================================================
         RETURN FORMAT
         ================================================================
@@ -17454,6 +17667,22 @@ class VendorImportJob(models.Model):
                         {
                             "group_id": "product_1",
 
+                            "product_name":
+                                "EXACT PRODUCT NAME/TITLE VISIBLE
+                                 OR DERIVED FROM THE ORIGINAL CATALOGUE PAGE",
+
+                            "product_title":
+                                "EXACT CATALOGUE TITLE WHEN AVAILABLE",
+
+                            "name_source":
+                                "ORIGINAL_CATALOGUE_PAGE",
+
+                            "name_confidence":
+                                0.0,
+
+                            "name_trustworthy":
+                                true,
+
                             "relationship":
                                 "SINGLE_PRODUCT"
                                 or
@@ -17484,6 +17713,8 @@ class VendorImportJob(models.Model):
                             ]
                         }
                     ],
+
+                    
 
                     "missing_items": [
                         {
