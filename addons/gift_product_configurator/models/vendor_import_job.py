@@ -23216,7 +23216,20 @@ class VendorImportJob(models.Model):
                 ):
 
                     # -----------------------------------------------------
-                    # FIRST: exact image hash
+                    # FAMILY A IDENTITY MATCHING
+                    #
+                    # Priority:
+                    #   1. exact image hash
+                    #   2. source hash
+                    #   3. source asset id
+                    #   4. page + ORIGINAL extraction index
+                    #
+                    # IMPORTANT:
+                    # "index" is NOT available yet here.
+                    # It is assigned only AFTER the pool is built/sorted.
+                    #
+                    # "clean_index" is the original extraction index and
+                    # must therefore be used for Family A page/index matching.
                     # -----------------------------------------------------
 
                     incoming_hash = asset.get(
@@ -23229,15 +23242,43 @@ class VendorImportJob(models.Model):
                             img.encode("utf-8")
                         ).hexdigest()
 
+                    # =====================================================
+                    # 1. EXACT IMAGE HASH
+                    # =====================================================
+
                     family_a_authority = (
                         family_a_authority_by_hash.get(
                             incoming_hash
                         )
                     )
 
-                    # -----------------------------------------------------
-                    # SECOND: page + image index
-                    # -----------------------------------------------------
+                    # =====================================================
+                    # 2. SOURCE HASH FALLBACK
+                    # =====================================================
+
+                    if family_a_authority is None:
+
+                        source_hash = asset.get(
+                            "source_hash"
+                        )
+
+                        if source_hash:
+
+                            family_a_authority = (
+                                family_a_authority_by_hash.get(
+                                    source_hash
+                                )
+                            )
+
+                    # =====================================================
+                    # 3. PAGE + ORIGINAL EXTRACTION INDEX
+                    #
+                    # DO NOT use asset["index"] here.
+                    # "index" is assigned later in this method.
+                    #
+                    # Family A's image_index corresponds to the original
+                    # extraction/clean index.
+                    # =====================================================
 
                     if family_a_authority is None:
 
@@ -23246,23 +23287,71 @@ class VendorImportJob(models.Model):
                         )
 
                         incoming_index = asset.get(
-                            "index"
+                            "clean_index"
                         )
 
                         if (
                             incoming_page is not None
-                            and
-                            incoming_index is not None
+                            and incoming_index is not None
                         ):
 
-                            family_a_authority = (
-                                family_a_authority_by_page_index.get(
-                                    (
-                                        int(incoming_page),
-                                        int(incoming_index)
+                            try:
+
+                                family_a_authority = (
+                                    family_a_authority_by_page_index.get(
+                                        (
+                                            int(incoming_page),
+                                            int(incoming_index)
+                                        )
                                     )
                                 )
-                            )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                family_a_authority = None
+
+                    # =====================================================
+                    # 4. PAGE + SOURCE/EXTRACTOR RANK FALLBACK
+                    #
+                    # Keep this only as a secondary bridge if the source
+                    # asset carries extractor_rank.
+                    # =====================================================
+
+                    if family_a_authority is None:
+
+                        incoming_page = asset.get(
+                            "page"
+                        )
+
+                        incoming_index = asset.get(
+                            "extractor_rank"
+                        )
+
+                        if (
+                            incoming_page is not None
+                            and incoming_index is not None
+                        ):
+
+                            try:
+
+                                family_a_authority = (
+                                    family_a_authority_by_page_index.get(
+                                        (
+                                            int(incoming_page),
+                                            int(incoming_index)
+                                        )
+                                    )
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                family_a_authority = None
 
                 _logger.warning(
                     "[POOL FAMILY A DECISION] "
