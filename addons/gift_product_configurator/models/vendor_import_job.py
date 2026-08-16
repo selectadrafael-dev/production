@@ -17609,7 +17609,7 @@ class VendorImportJob(models.Model):
                     raise
 
                 
-                railing_output = (
+                trailing_output = (
                     cleaned_for_json.lstrip()[
                         json_end:
                     ].strip()
