@@ -166,6 +166,16 @@ class VendorImportJob(models.Model):
     extra_info = fields.Text()
 
     pdf_file = fields.Binary()
+
+    azure_fallback_original_pdf = fields.Binary(
+        string="Azure Fallback Original PDF",
+        attachment=True,
+    )
+
+    azure_fallback_original_total_pages = fields.Integer(
+        string="Azure Fallback Original Total Pages",
+    )
+
     excel_file = fields.Binary()
     logo_file = fields.Binary()
 
@@ -268,6 +278,7 @@ class VendorImportJob(models.Model):
         string="Azure Crop Completed",
         default=False
     )
+
 
     family_a_review_json = fields.Text(
         string="Family A Review"
@@ -1621,11 +1632,88 @@ class VendorImportJob(models.Model):
                 # =====================================================
                 # SAVE ORIGINAL JOB STATE
                 # =====================================================
+                #
+                # The Azure fallback may span multiple cron invocations.
+                #
+                # The persistent snapshot below must survive those
+                # invocations because self.pdf_file becomes the temporary
+                # failed-pages-only PDF.
+                #
+                # IMPORTANT:
+                # The snapshot is cleared only after Azure fallback
+                # completes successfully.
+                # =====================================================
 
-                original_pdf_file = self.pdf_file
+
+                # =================================================
+                # PERSIST ORIGINAL PDF BEFORE AZURE TEMPORARY PDF
+                # =================================================
+                #
+                # IMPORTANT:
+                #
+                # self.pdf_file may already contain a temporary Azure
+                # fallback PDF when this method is re-entered by a later
+                # cron invocation.
+                #
+                # Therefore NEVER assume self.pdf_file is still the
+                # original catalogue.
+                #
+                # The first Azure fallback invocation permanently
+                # snapshots the original PDF.
+                #
+                # Subsequent retries reuse that snapshot.
+                # =================================================
+
+                if not self.azure_fallback_original_pdf:
+
+                    if not self.pdf_file:
+
+                        raise ValueError(
+                            "Cannot start Azure fallback: "
+                            "original PDF is unavailable."
+                        )
+
+                    self.azure_fallback_original_pdf = (
+                        self.pdf_file
+                    )
+
+                    self.azure_fallback_original_total_pages = (
+                        self.total_pages or 0
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] ORIGINAL PDF SNAPSHOT SAVED "
+                        "| JOB=%s "
+                        "| TOTAL_PAGES=%s",
+                        self.id,
+                        self.azure_fallback_original_total_pages,
+                    )
+
+                else:
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] REUSING PERSISTED ORIGINAL PDF "
+                        "| JOB=%s "
+                        "| TOTAL_PAGES=%s",
+                        self.id,
+                        self.azure_fallback_original_total_pages,
+                    )
+
+
+                # =================================================
+                # USE PERSISTED ORIGINAL AS AUTHORITATIVE SOURCE
+                # =================================================
+
+                original_pdf_file = (
+                    self.azure_fallback_original_pdf
+                )
 
                 original_total_pages = (
-                    self.total_pages or 0
+                    self.azure_fallback_original_total_pages
+                    or 0
                 )
 
                 original_current_page = (
@@ -1933,9 +2021,25 @@ class VendorImportJob(models.Model):
                             source_total_pages
                         )
 
+
+
+
                         # =================================================
                         # VALIDATE FAILED PAGE NUMBERS
                         # =================================================
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] SOURCE PDF VALIDATION "
+                            "| JOB=%s "
+                            "| SOURCE_TOTAL_PAGES=%s "
+                            "| FAILED_PAGES=%s "
+                            "| SNAPSHOT_AVAILABLE=%s",
+                            self.id,
+                            source_total_pages,
+                            failed_pages,
+                            bool(self.azure_fallback_original_pdf),
+                        )
+
 
                         invalid_pages = [
                             page
@@ -2015,11 +2119,14 @@ class VendorImportJob(models.Model):
 
                         _logger.warning(
                             "[AZURE FALLBACK] TEMPORARY PDF CREATED "
-                            "| JOB=%s | FAILED_PAGES=%s "
-                            "| TEMP_PAGES=%s",
+                            "| JOB=%s "
+                            "| ORIGINAL_TOTAL=%s "
+                            "| FAILED_PAGES=%s "
+                            "| TEMP_TOTAL=%s",
                             self.id,
+                            original_total_pages,
                             failed_pages,
-                            len(failed_pages)
+                            len(failed_pages),
                         )
 
                     finally:
@@ -2440,6 +2547,25 @@ class VendorImportJob(models.Model):
                     # PDF AI must start from page 1 again.
                     self.last_ai_page = 0
 
+                    # =================================================
+                    # CLEAR PERSISTENT AZURE ORIGINAL SNAPSHOT
+                    # =================================================
+                    #
+                    # Azure fallback has completed successfully.
+                    # The temporary fallback PDF is no longer needed,
+                    # and the persistent original snapshot can be removed.
+                    # =================================================
+
+                    self.azure_fallback_original_pdf = False
+
+                    self.azure_fallback_original_total_pages = 0
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] ORIGINAL PDF SNAPSHOT CLEARED "
+                        "| JOB=%s",
+                        self.id,
+                    )
+
 
                     # =================================================
                     # HAND OFF TO AZURE VISUAL REVIEW
@@ -2554,15 +2680,16 @@ class VendorImportJob(models.Model):
                         )
 
                     # =================================================
-                    # RESTORE ORIGINAL JOB STATE
+                    # RESTORE TRUE ORIGINAL PDF FROM PERSISTENT SNAPSHOT
                     # =================================================
 
                     self.pdf_file = (
-                        original_pdf_file
+                        self.azure_fallback_original_pdf
                     )
 
                     self.total_pages = (
-                        original_total_pages
+                        self.azure_fallback_original_total_pages
+                        or 0
                     )
 
                     self.current_page = (
