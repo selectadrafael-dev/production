@@ -166,6 +166,16 @@ class VendorImportJob(models.Model):
     extra_info = fields.Text()
 
     pdf_file = fields.Binary()
+
+    azure_fallback_original_pdf = fields.Binary(
+        string="Azure Fallback Original PDF",
+        attachment=True,
+    )
+
+    azure_fallback_original_total_pages = fields.Integer(
+        string="Azure Fallback Original Total Pages",
+    )
+
     excel_file = fields.Binary()
     logo_file = fields.Binary()
 
@@ -269,8 +279,15 @@ class VendorImportJob(models.Model):
         default=False
     )
 
+
     family_a_review_json = fields.Text(
         string="Family A Review"
+    )
+
+    family_a_partial_recovery_json = fields.Text(
+        string="Family A Partial Recovery",
+        copy=False,
+        default="{}"
     )
 
     state = fields.Selection([
@@ -293,6 +310,7 @@ class VendorImportJob(models.Model):
         # =================================================
 
         ('family_a_review', 'Family A Visual Review'),
+        ('family_a_partial_recovery', 'Family A Partial Recovery'),
 
         # =================================================
         # AZURE VISUAL REVIEW / CROPPING
@@ -1614,11 +1632,88 @@ class VendorImportJob(models.Model):
                 # =====================================================
                 # SAVE ORIGINAL JOB STATE
                 # =====================================================
+                #
+                # The Azure fallback may span multiple cron invocations.
+                #
+                # The persistent snapshot below must survive those
+                # invocations because self.pdf_file becomes the temporary
+                # failed-pages-only PDF.
+                #
+                # IMPORTANT:
+                # The snapshot is cleared only after Azure fallback
+                # completes successfully.
+                # =====================================================
 
-                original_pdf_file = self.pdf_file
+
+                # =================================================
+                # PERSIST ORIGINAL PDF BEFORE AZURE TEMPORARY PDF
+                # =================================================
+                #
+                # IMPORTANT:
+                #
+                # self.pdf_file may already contain a temporary Azure
+                # fallback PDF when this method is re-entered by a later
+                # cron invocation.
+                #
+                # Therefore NEVER assume self.pdf_file is still the
+                # original catalogue.
+                #
+                # The first Azure fallback invocation permanently
+                # snapshots the original PDF.
+                #
+                # Subsequent retries reuse that snapshot.
+                # =================================================
+
+                if not self.azure_fallback_original_pdf:
+
+                    if not self.pdf_file:
+
+                        raise ValueError(
+                            "Cannot start Azure fallback: "
+                            "original PDF is unavailable."
+                        )
+
+                    self.azure_fallback_original_pdf = (
+                        self.pdf_file
+                    )
+
+                    self.azure_fallback_original_total_pages = (
+                        self.total_pages or 0
+                    )
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] ORIGINAL PDF SNAPSHOT SAVED "
+                        "| JOB=%s "
+                        "| TOTAL_PAGES=%s",
+                        self.id,
+                        self.azure_fallback_original_total_pages,
+                    )
+
+                else:
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] REUSING PERSISTED ORIGINAL PDF "
+                        "| JOB=%s "
+                        "| TOTAL_PAGES=%s",
+                        self.id,
+                        self.azure_fallback_original_total_pages,
+                    )
+
+
+                # =================================================
+                # USE PERSISTED ORIGINAL AS AUTHORITATIVE SOURCE
+                # =================================================
+
+                original_pdf_file = (
+                    self.azure_fallback_original_pdf
+                )
 
                 original_total_pages = (
-                    self.total_pages or 0
+                    self.azure_fallback_original_total_pages
+                    or 0
                 )
 
                 original_current_page = (
@@ -1926,9 +2021,25 @@ class VendorImportJob(models.Model):
                             source_total_pages
                         )
 
+
+
+
                         # =================================================
                         # VALIDATE FAILED PAGE NUMBERS
                         # =================================================
+
+                        _logger.warning(
+                            "[AZURE FALLBACK] SOURCE PDF VALIDATION "
+                            "| JOB=%s "
+                            "| SOURCE_TOTAL_PAGES=%s "
+                            "| FAILED_PAGES=%s "
+                            "| SNAPSHOT_AVAILABLE=%s",
+                            self.id,
+                            source_total_pages,
+                            failed_pages,
+                            bool(self.azure_fallback_original_pdf),
+                        )
+
 
                         invalid_pages = [
                             page
@@ -2008,11 +2119,14 @@ class VendorImportJob(models.Model):
 
                         _logger.warning(
                             "[AZURE FALLBACK] TEMPORARY PDF CREATED "
-                            "| JOB=%s | FAILED_PAGES=%s "
-                            "| TEMP_PAGES=%s",
+                            "| JOB=%s "
+                            "| ORIGINAL_TOTAL=%s "
+                            "| FAILED_PAGES=%s "
+                            "| TEMP_TOTAL=%s",
                             self.id,
+                            original_total_pages,
                             failed_pages,
-                            len(failed_pages)
+                            len(failed_pages),
                         )
 
                     finally:
@@ -2433,6 +2547,25 @@ class VendorImportJob(models.Model):
                     # PDF AI must start from page 1 again.
                     self.last_ai_page = 0
 
+                    # =================================================
+                    # CLEAR PERSISTENT AZURE ORIGINAL SNAPSHOT
+                    # =================================================
+                    #
+                    # Azure fallback has completed successfully.
+                    # The temporary fallback PDF is no longer needed,
+                    # and the persistent original snapshot can be removed.
+                    # =================================================
+
+                    self.azure_fallback_original_pdf = False
+
+                    self.azure_fallback_original_total_pages = 0
+
+                    _logger.warning(
+                        "[AZURE FALLBACK] ORIGINAL PDF SNAPSHOT CLEARED "
+                        "| JOB=%s",
+                        self.id,
+                    )
+
 
                     # =================================================
                     # HAND OFF TO AZURE VISUAL REVIEW
@@ -2547,15 +2680,16 @@ class VendorImportJob(models.Model):
                         )
 
                     # =================================================
-                    # RESTORE ORIGINAL JOB STATE
+                    # RESTORE TRUE ORIGINAL PDF FROM PERSISTENT SNAPSHOT
                     # =================================================
 
                     self.pdf_file = (
-                        original_pdf_file
+                        self.azure_fallback_original_pdf
                     )
 
                     self.total_pages = (
-                        original_total_pages
+                        self.azure_fallback_original_total_pages
+                        or 0
                     )
 
                     self.current_page = (
@@ -2718,66 +2852,57 @@ class VendorImportJob(models.Model):
                     ensure_ascii=False
                 )
 
-
                 # =================================================
-                # READ FAILED PAGES
+                # READ AUTHORITATIVE FAMILY A ROUTING
                 # =================================================
 
-                failed_pages = {
+                failed_pages = sorted({
                     int(page)
                     for page in review_result.get(
                         'failed_pages',
                         []
                     )
-                }
+                })
+
+                partial_pages = sorted({
+                    int(page)
+                    for page in review_result.get(
+                        'partial_pages',
+                        []
+                    )
+                })
+
+
+                _logger.warning(
+                    "[FAMILY A REVIEW] ROUTING DECISION "
+                    "| JOB=%s "
+                    "| PASS=%s "
+                    "| PARTIAL=%s "
+                    "| FAIL=%s",
+                    self.id,
+                    review_result.get(
+                        'passed_pages',
+                        []
+                    ),
+                    partial_pages,
+                    failed_pages
+                )
 
 
                 # =================================================
-                # REMOVE ONLY FAILED FAMILY A PAGES
+                # FULL PAGE FAILURE
                 # =================================================
 
                 if failed_pages:
 
                     _logger.warning(
-                        "[FAMILY A REVIEW] FAILED PAGES "
-                        "| JOB=%s | PAGES=%s",
-                        self.id,
-                        sorted(failed_pages)
-                    )
-
-                    failed_page_records = self.env[
-                        'vendor.import.page'
-                    ].search([
-                        ('job_id', '=', self.id),
-                        ('page_number', 'in', list(
-                            failed_pages
-                        )),
-                    ])
-
-                    if failed_page_records:
-
-                        _logger.warning(
-                            "[FAMILY A REVIEW] REMOVING "
-                            "FAILED FAMILY A RECORDS "
-                            "| JOB=%s | COUNT=%s",
-                            self.id,
-                            len(failed_page_records)
-                        )
-
-                        failed_page_records.unlink()
-
-
-                    # =================================================
-                    # FAILED PAGES → AZURE FALLBACK
-                    # =================================================
-
-                    _logger.warning(
                         "[FAMILY A REVIEW] "
-                        "FAILED PAGES REMOVED "
+                        "FULL FAILED PAGES "
                         "→ AZURE FALLBACK "
-                        "| JOB=%s | PAGES=%s",
+                        "| JOB=%s "
+                        "| PAGES=%s",
                         self.id,
-                        sorted(failed_pages)
+                        failed_pages
                     )
 
                     self.last_known_state = (
@@ -2788,11 +2913,37 @@ class VendorImportJob(models.Model):
                         'azure_fallback'
                     )
 
-                else:
 
-                    # =================================================
-                    # ALL PAGES PASSED → EXISTING PDF AI
-                    # =================================================
+                # =================================================
+                # PARTIAL FAMILY A RECOVERY
+                # =================================================
+
+                elif partial_pages:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "PARTIAL PAGES "
+                        "→ FAMILY A PARTIAL RECOVERY "
+                        "| JOB=%s "
+                        "| PAGES=%s",
+                        self.id,
+                        partial_pages
+                    )
+
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
+
+                    self.state = (
+                        'family_a_partial_recovery'
+                    )
+
+
+                # =================================================
+                # COMPLETE FAMILY A SUCCESS
+                # =================================================
+
+                else:
 
                     _logger.warning(
                         "[FAMILY A REVIEW] "
@@ -2815,6 +2966,402 @@ class VendorImportJob(models.Model):
                 self.env.cr.commit()
 
                 return
+
+            
+            # =================================================
+            # FAMILY A PARTIAL PRECISION RECOVERY
+            # =================================================
+
+            if self.state == 'family_a_partial_recovery':
+
+                _logger.warning(
+                    "[FAMILY A PARTIAL RECOVERY] START | JOB=%s",
+                    self.id
+                )
+
+                self.last_known_state = (
+                    'family_a_partial_recovery'
+                )
+
+                try:
+
+                    # =================================================
+                    # LOAD AUTHORITATIVE FAMILY A REVIEW
+                    # =================================================
+
+                    try:
+                        family_a_review = json.loads(
+                            self.family_a_review_json or "{}"
+                        )
+
+                    except Exception as e:
+
+                        raise ValueError(
+                            "Invalid family_a_review_json: "
+                            f"{str(e)}"
+                        )
+
+                    if not isinstance(
+                        family_a_review,
+                        dict
+                    ):
+                        raise ValueError(
+                            "Family A review result must "
+                            "be a JSON object."
+                        )
+
+                    # =================================================
+                    # AUTHORITATIVE PARTIAL PAGES
+                    # =================================================
+
+                    partial_pages = sorted({
+                        int(page)
+                        for page in family_a_review.get(
+                            "partial_pages",
+                            []
+                        )
+                    })
+
+                    if not partial_pages:
+
+                        raise ValueError(
+                            "Family A entered partial recovery "
+                            "but no partial_pages were recorded."
+                        )
+
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "PARTIAL PAGES | JOB=%s | PAGES=%s",
+                        self.id,
+                        partial_pages
+                    )
+
+                    # =================================================
+                    # BUILD RECOVERY REQUESTS
+                    # =================================================
+
+                    recovery_requests = []
+
+                    for page_result in family_a_review.get(
+                        "pages",
+                        []
+                    ):
+
+                        if not isinstance(
+                            page_result,
+                            dict
+                        ):
+                            continue
+
+                        try:
+                            page_number = int(
+                                page_result.get("page")
+                            )
+
+                        except (
+                            TypeError,
+                            ValueError
+                        ):
+                            continue
+
+                        if page_number not in partial_pages:
+                            continue
+
+                        page_decision = str(
+                            page_result.get(
+                                "decision",
+                                ""
+                            )
+                        ).upper().strip()
+
+                        if page_decision != "PARTIAL":
+                            continue
+
+                        requests = page_result.get(
+                            "missing_asset_requests",
+                            []
+                        )
+
+                        if not isinstance(
+                            requests,
+                            list
+                        ):
+                            raise ValueError(
+                                "missing_asset_requests must "
+                                "be a list for page "
+                                f"{page_number}."
+                            )
+
+                        _logger.warning(
+                            "[FAMILY A PARTIAL RECOVERY] "
+                            "PAGE REQUESTS | JOB=%s | "
+                            "PAGE=%s | COUNT=%s",
+                            self.id,
+                            page_number,
+                            len(requests)
+                        )
+
+                        for request in requests:
+
+                            if not isinstance(
+                                request,
+                                dict
+                            ):
+                                continue
+
+                            crop = request.get(
+                                "crop",
+                                {}
+                            )
+
+                            if not isinstance(
+                                crop,
+                                dict
+                            ):
+                                crop = {}
+
+                            recovery_request = {
+
+                                "page":
+                                    page_number,
+
+                                "product_group":
+                                    request.get(
+                                        "product_group"
+                                    ),
+
+                                "product_reference":
+                                    request.get(
+                                        "product_reference"
+                                    ),
+
+                                "color":
+                                    request.get(
+                                        "color"
+                                    ),
+
+                                "required_image_role":
+                                    request.get(
+                                        "required_image_role"
+                                    ),
+
+                                "asset_type":
+                                    request.get(
+                                        "asset_type"
+                                    ),
+
+                                "reason":
+                                    request.get(
+                                        "reason"
+                                    ),
+
+                                "confidence":
+                                    request.get(
+                                        "confidence",
+                                        0
+                                    ),
+
+                                # =====================================
+                                # EXISTING AZURE-STYLE CROP CONTRACT
+                                # =====================================
+
+                                "crop": {
+
+                                    "crop_id":
+                                        crop.get(
+                                            "crop_id"
+                                        ),
+
+                                    "figure_id":
+                                        crop.get(
+                                            "figure_id"
+                                        ),
+
+                                    "x":
+                                        crop.get("x"),
+
+                                    "y":
+                                        crop.get("y"),
+
+                                    "width":
+                                        crop.get("width"),
+
+                                    "height":
+                                        crop.get("height"),
+
+                                    "purpose":
+                                        crop.get(
+                                            "purpose"
+                                        ),
+
+                                    "product_reference":
+                                        crop.get(
+                                            "product_reference"
+                                        ),
+
+                                    "confidence":
+                                        crop.get(
+                                            "confidence",
+                                            request.get(
+                                                "confidence",
+                                                0
+                                            )
+                                        )
+                                }
+                            }
+
+                            recovery_requests.append(
+                                recovery_request
+                            )
+
+                            _logger.warning(
+                                "[FAMILY A PARTIAL RECOVERY] "
+                                "TARGET | JOB=%s | PAGE=%s | "
+                                "PRODUCT=%s | COLOR=%s | "
+                                "CROP=(x=%s,y=%s,w=%s,h=%s) | "
+                                "CONFIDENCE=%s",
+
+                                self.id,
+
+                                page_number,
+
+                                request.get(
+                                    "product_reference"
+                                ),
+
+                                request.get(
+                                    "color"
+                                ),
+
+                                crop.get("x"),
+
+                                crop.get("y"),
+
+                                crop.get("width"),
+
+                                crop.get("height"),
+
+                                request.get(
+                                    "confidence",
+                                    0
+                                )
+                            )
+
+                    # =================================================
+                    # SAFETY CHECK
+                    # =================================================
+
+                    pages_with_requests = {
+                        item["page"]
+                        for item in recovery_requests
+                    }
+
+                    pages_without_requests = sorted(
+                        set(partial_pages)
+                        - pages_with_requests
+                    )
+
+                    if pages_without_requests:
+
+                        raise ValueError(
+                            "Family A marked pages PARTIAL "
+                            "but supplied no recovery targets "
+                            f"for pages: {pages_without_requests}"
+                        )
+
+                    if not recovery_requests:
+
+                        raise ValueError(
+                            "Family A partial recovery contains "
+                            "no recovery requests."
+                        )
+
+                    # =================================================
+                    # SAVE RECOVERY PAYLOAD
+                    # =================================================
+
+                    self.family_a_partial_recovery_json = (
+                        json.dumps(
+                            {
+                                "decision":
+                                    "READY_FOR_PRECISION_RECOVERY",
+
+                                "partial_pages":
+                                    partial_pages,
+
+                                "recovery_requests":
+                                    recovery_requests
+                            },
+                            ensure_ascii=False
+                        )
+                    )
+
+                    self.stage_retry_count = 0
+                    self.last_error = False
+
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
+
+                    # =================================================
+                    # IMPORTANT
+                    #
+                    # DO NOT CROP YET.
+                    # DO NOT SEND TO PDF AI.
+                    # DO NOT SEND TO AZURE.
+                    #
+                    # The next implementation stage will consume
+                    # family_a_partial_recovery_json.
+                    # =================================================
+
+                    self.flush_recordset()
+                    self.env.cr.commit()
+
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "REQUESTS READY FOR PRECISION CROP "
+                        "| JOB=%s | PAGES=%s | REQUESTS=%s",
+                        self.id,
+                        partial_pages,
+                        len(recovery_requests),
+                    )
+
+                    # =========================================================
+                    # EXECUTE FAMILY A PRECISION CROP
+                    # =========================================================
+
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "STARTING PRECISION CROP "
+                        "| JOB=%s",
+                        self.id,
+                    )
+
+                    crop_result = (
+                        self._process_precision_crop_recovery()
+                    )
+
+                    return
+
+                except Exception as e:
+
+                    _logger.exception(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "INITIALIZATION FAILED | JOB=%s | %s",
+                        self.id,
+                        str(e)
+                    )
+
+                    self.stage_retry_count += 1
+                    self.last_error = str(e)
+
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
+
+                    self._safe_commit_progress()
+
+                    return
 
 
             # =============================================
@@ -6339,6 +6886,24 @@ class VendorImportJob(models.Model):
                         image_index
                     )
 
+                    # image_hash = str(
+                    #     asset.get(
+                    #         "image_hash",
+                    #         ""
+                    #     )
+                    # ).strip()
+
+                    # if not image_hash:
+
+                    #     _logger.warning(
+                    #         "[FAMILY A REVIEW] "
+                    #         "MISSING IMAGE HASH "
+                    #         "| JOB=%s | PAGE=%s | IMAGE=%s",
+                    #         self.id,
+                    #         page_number,
+                    #         image_index,
+                    #     )
+
                 except (
                     TypeError,
                     ValueError
@@ -9386,6 +9951,36 @@ class VendorImportJob(models.Model):
             page_width = 0
             page_height = 0
 
+            page_text = ""
+
+            for block in page_blocks:
+
+                if block.get("text"):
+                    page_text = (
+                        block.get("text") or ""
+                    ).strip()
+
+                    # if page_text:
+                    #     break
+
+                    if page_text:
+                        _logger.warning(
+                            "[AI PAGE TEXT] "
+                            "PAGE=%s | EXISTS=%s | LENGTH=%s",
+                            next_record.page_number,
+                            bool(page_text),
+                            len(page_text)
+                        )
+
+                        _logger.warning(
+                            "[AI PAGE TEXT SAMPLE] PAGE=%s\n%s",
+                            next_record.page_number,
+                            page_text[:2000]
+                        )
+
+                        break
+
+
             for block in page_blocks:
 
                 if block.get("page_image"):
@@ -9850,14 +10445,14 @@ class VendorImportJob(models.Model):
 
             asset_identity_lines.append(
                 f"""
-        INDEX {clean_index}
-        - Azure Figure ID: {azure_figure_id}
-        - Crop ID: {crop_id}
-        - Product Reference: {product_reference}
-        - Color: {dominant_color}
-        - Image Role: {image_role}
-        - Azure Caption: {azure_caption}
-        """.strip()
+                INDEX {clean_index}
+                - Azure Figure ID: {azure_figure_id}
+                - Crop ID: {crop_id}
+                - Product Reference: {product_reference}
+                - Color: {dominant_color}
+                - Image Role: {image_role}
+                - Azure Caption: {azure_caption}
+                """.strip()
             )
 
         asset_identity_map = "\n\n".join(
@@ -9970,18 +10565,13 @@ class VendorImportJob(models.Model):
         # =====================================================
 
         page_data = {
-
             "page": next_record.page_number,
-
             "products": [],
-
             "images": page_images,
-
             "page_image": page_image,
-
             "page_width": page_width,
-
-            "page_height": page_height
+            "page_height": page_height,
+            "text": page_text,
         }
 
         # family = self._prepare_product_family(
@@ -10089,6 +10679,295 @@ class VendorImportJob(models.Model):
             f"life={page_context.get('lifestyle')} "
 
             f"recovery={page_context.get('requires_recovery')}"
+        )
+
+        # =====================================================
+        # FAMILY A AUTHORITATIVE ASSET CONTEXT FOR PDF AI
+        # =====================================================
+        #
+        # Family A has already reviewed these extracted assets.
+        # Its classification/role decision is authoritative.
+        #
+        # IMPORTANT:
+        # We do NOT replace the existing page_images.
+        # We only provide Family A's authoritative decisions
+        # to PDF AI as structured context.
+        # =====================================================
+
+        family_a_authority = []
+
+        try:
+            family_a_review = json.loads(
+                self.family_a_review_json
+                or "{}"
+            )
+
+            current_page_number = int(
+                next_record.page_number
+            )
+
+            family_a_pages = (
+                family_a_review.get("pages", [])
+                if isinstance(
+                    family_a_review,
+                    dict
+                )
+                else []
+            )
+
+            current_family_a_page = None
+
+            for review_page in family_a_pages:
+                try:
+                    review_page_number = int(
+                        review_page.get(
+                            "page",
+                            0
+                        )
+                    )
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    continue
+
+                if (
+                    review_page_number
+                    == current_page_number
+                ):
+                    current_family_a_page = (
+                        review_page
+                    )
+                    break
+
+            if current_family_a_page:
+                raw_family_a_assets = (
+                    current_family_a_page.get(
+                        "extracted_asset_mapping",
+                        []
+                    )
+                )
+
+                if isinstance(
+                    raw_family_a_assets,
+                    list
+                ):
+                    family_a_authority = (
+                        raw_family_a_assets
+                    )
+
+        except Exception as e:
+            _logger.warning(
+                "[PDF AI] FAMILY A AUTHORITY LOAD FAILED "
+                "| PAGE=%s | %s",
+                next_record.page_number,
+                str(e)
+            )
+
+        # =====================================================
+        # RESOLVE FAMILY A ASSETS AGAINST CURRENT CLEAN INDEX
+        # =====================================================
+        #
+        # Family A's original image_index is preserved.
+        # We additionally resolve the same asset by image_hash
+        # against the CURRENT page_images clean_index.
+        #
+        # This protects us if filtering/recovery changed indexes.
+        # =====================================================
+
+        current_assets_by_hash = {}
+
+        for asset in page_images:
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            image_hash = (
+                asset.get("image_hash")
+                or asset.get("source_hash")
+            )
+
+            if image_hash:
+                current_assets_by_hash[
+                    str(image_hash)
+                ] = asset
+
+
+        family_a_prompt_assets = []
+
+        for family_asset in family_a_authority:
+
+            if not isinstance(
+                family_asset,
+                dict
+            ):
+                continue
+
+            image_hash = (
+                family_asset.get(
+                    "image_hash"
+                )
+                or ""
+            )
+
+            current_asset = (
+                current_assets_by_hash.get(
+                    str(image_hash)
+                )
+                if image_hash
+                else None
+            )
+
+            current_clean_index = None
+
+            if isinstance(
+                current_asset,
+                dict
+            ):
+                current_clean_index = (
+                    current_asset.get(
+                        "clean_index"
+                    )
+                )
+
+            family_a_prompt_assets.append({
+                "family_a_image_index":
+                    family_asset.get(
+                        "image_index"
+                    ),
+
+                "current_clean_index":
+                    current_clean_index,
+
+                "image_hash":
+                    image_hash,
+
+                "classification":
+                    family_asset.get(
+                        "classification",
+                        "UNKNOWN"
+                    ),
+
+                "asset_role":
+                    family_asset.get(
+                        "asset_role",
+                        "UNKNOWN"
+                    ),
+
+                "product_group":
+                    family_asset.get(
+                        "product_group"
+                    ),
+
+                "color":
+                    family_asset.get(
+                        "color"
+                    ),
+
+                "matches_original":
+                    bool(
+                        family_asset.get(
+                            "matches_original",
+                            False
+                        )
+                    ),
+
+                "product_body_complete":
+                    bool(
+                        family_asset.get(
+                            "product_body_complete",
+                            False
+                        )
+                    ),
+
+                "trustworthy":
+                    bool(
+                        family_asset.get(
+                            "trustworthy",
+                            False
+                        )
+                    ),
+
+                "preserve":
+                    bool(
+                        family_asset.get(
+                            "preserve",
+                            False
+                        )
+                    ),
+
+                "confidence":
+                    family_asset.get(
+                        "confidence",
+                        0
+                    ),
+            })
+
+
+        family_a_authority_context = json.dumps(
+            family_a_prompt_assets,
+            ensure_ascii=False,
+            indent=2
+        )
+
+        # =====================================================
+        # FAMILY A AUTHORITATIVE PRODUCT IDENTITY
+        # =====================================================
+
+        family_a_product_identity = []
+
+        if isinstance(
+            current_family_a_page,
+            dict
+        ):
+
+            family_a_product_identity = (
+                current_family_a_page.get(
+                    "product_groups",
+                    []
+                )
+            )
+
+        family_a_product_identity_context = json.dumps(
+            family_a_product_identity,
+            ensure_ascii=False,
+            indent=2
+        )
+
+        _logger.warning(
+            "[PDF AI FAMILY A PRODUCT IDENTITY] "
+            "PAGE=%s | GROUPS=%s\n%s",
+            next_record.page_number,
+            len(
+                family_a_product_identity
+            )
+            if isinstance(
+                family_a_product_identity,
+                list
+            )
+            else 0,
+            family_a_product_identity_context
+        )
+
+        _logger.warning(
+            "[PDF AI FAMILY A AUTHORITY] "
+            "PAGE=%s | ASSETS=%s\n%s",
+            next_record.page_number,
+            len(family_a_prompt_assets),
+            family_a_authority_context
+        )
+
+        _logger.warning(
+            "[PDF AI FAMILY A NAME AUTHORITY] "
+            "JOB=%s | CONTEXT=%s",
+            self.id,
+            json.dumps(
+                family_a_product_identity_context,
+                ensure_ascii=False,
+                default=str
+            )
         )
 
         page_price = ""
@@ -10267,6 +11146,79 @@ class VendorImportJob(models.Model):
 
         {asset_identity_map}
 
+
+        ==================================================
+        FAMILY A AUTHORITATIVE ASSET DECISIONS
+        ==================================================
+
+        Family A is the authoritative visual classification
+        layer for the extracted assets on this page.
+
+        The Family A decisions below MUST be respected when
+        selecting:
+
+        - hero_image_index
+        - gallery_image_indexes
+        - variant image_index
+
+        The "current_clean_index" refers to the image_index
+        that MUST be used in the final PDF-AI JSON output.
+
+        IMPORTANT FAMILY A RULES:
+
+        1. REAL_PRODUCT
+           A REAL_PRODUCT asset represents an actual product
+           image and may be used as a hero or variant image
+           when the visual/product relationship supports it.
+
+        2. LIFESTYLE
+           Do NOT use as a variant image.
+
+        3. MARKETING
+           Do NOT use as a variant image.
+
+        4. SUPPORTING
+           Do NOT use as a variant image.
+
+        5. DETAIL
+           Do NOT promote to a product variant merely because
+           it visually resembles the product.
+
+        6. FOLDED / POUCH / ACCESSORY / PACKAGING
+           Do NOT treat these as separate product variants
+           unless the catalogue explicitly identifies them as
+           selectable products/options.
+
+        7. preserve=false and trustworthy=false
+           These assets must NOT override a trustworthy
+           REAL_PRODUCT asset.
+
+        8. Color-specific REAL_PRODUCT assets must remain
+           associated with their actual visual product.
+
+        9. NEVER reuse one image_index for two different
+           products when separate product-specific assets
+           exist.
+
+        10. NEVER select an image merely because it has a
+            higher geometric, hero, gallery, or extractor score
+            if Family A has identified another asset as the
+            authoritative REAL_PRODUCT representation.
+
+        11. If Family A identifies separate REAL_PRODUCT assets
+            for separate products, do NOT merge them into one
+            product.
+
+        12. If the correct product-specific image cannot be
+            established safely, leave image_index as null.
+            Do NOT reuse another product's image.
+
+        FAMILY A ASSET MAP:
+
+        {family_a_authority_context}
+
+        ==================================================
+
         ==================================================
 
         You are an AI ecommerce catalog extraction engine.
@@ -10286,6 +11238,45 @@ class VendorImportJob(models.Model):
         No markdown.
         No explanations.
         No extra text.
+
+        ==================================================
+        FAMILY A AUTHORITATIVE PRODUCT IDENTITY
+        ==================================================
+
+        Family A has visually inspected the ORIGINAL CATALOGUE PAGE.
+
+        The following product-group information is therefore the
+        authoritative product identity established from the original page.
+
+        {family_a_product_identity_context}
+
+        ==================================================
+        AUTHORITATIVE PRODUCT NAME PRIORITY
+        ==================================================
+
+        For each product group:
+
+        1. If Family A provides a non-empty "product_name" or
+           "product_title" AND "name_trustworthy" is true:
+
+           USE THAT VALUE AS THE PRODUCT "name".
+
+        2. Preserve the Family A authoritative name exactly.
+
+        3. Do NOT shorten it.
+
+        4. Do NOT paraphrase it.
+
+        5. Do NOT replace it with a newly generated ecommerce name.
+
+        6. Do NOT replace it with a description, material, feature,
+           marketing phrase, or variant color.
+
+        7. The same Family A product group MUST retain the same
+           authoritative product name across all of its variants.
+
+        ONLY if Family A does NOT provide a trustworthy authoritative
+        product_name/product_title may the fallback TITLE RULES be used.
 
         ==================================================
         CORE EXTRACTION RULES
@@ -10309,13 +11300,40 @@ class VendorImportJob(models.Model):
         If multiple standalone products appear on one page:
         - infer product grouping visually
         - detect visible variants
-        - create products even if title is missing
+        - create products even if the printed title is missing
 
-        Pens, bottles, shirts, caps and accessories
-        must NEVER be ignored simply because:
-        - title is small
-        - products are grouped
-        - products are arranged in grid layout
+                IMPORTANT PRODUCT NAME REQUIREMENT:
+
+        Creating a product when its printed title is missing does NOT
+        permit an empty product name.
+
+        FIRST check the FAMILY A AUTHORITATIVE PRODUCT NAME/TITLE.
+
+        If Family A provides a trustworthy product_name or
+        product_title for this product group:
+
+        - use that value as the product "name"
+        - preserve it exactly
+        - do not generate a replacement name
+
+        ONLY if no trustworthy Family A product name/title is available,
+        use the FALLBACK TITLE RULES below.
+
+        In that fallback situation, determine the strongest product
+        identity from:
+
+        - the ORIGINAL CATALOGUE PAGE
+        - page text
+        - catalogue headings
+        - product-family context
+        - model/product information
+        - visible product characteristics
+
+        If necessary, generate a concise commercially meaningful name
+        describing the actual product.
+
+        NEVER return an empty string or null for a detected product
+        when a usable product identity can be established.
 
 
         IMPORTANT:
@@ -10582,11 +11600,123 @@ class VendorImportJob(models.Model):
             - assigning the same image to multiple colors
             - assigning a supporting image to a variant
 
-        ==================================================
-        TITLE RULES
-        ==================================================
+       
+        # ==================================================
+        # TITLE / PRODUCT NAME RULES
+        # ==================================================
+
+      
+        FAMILY A AUTHORITATIVE PRODUCT NAME PRIORITY
+     
 
         CRITICAL:
+
+        Family A provides the authoritative product_name and/or
+        product_title derived directly from the ORIGINAL CATALOGUE PAGE.
+
+       IF a trustworthy Family A product_name or product_title is
+       available for this product group:
+
+        1. USE THAT NAME/TITLE AS THE PRODUCT "name".
+        2. Preserve it exactly as supplied by Family A.
+        3. DO NOT shorten it.
+        4. DO NOT summarize it.
+        5. DO NOT paraphrase it.
+        6. DO NOT replace it with a newly generated name.
+        7. DO NOT use a description, material, feature, or marketing
+           phrase instead.
+
+        Family A's authoritative product name/title has FIRST PRIORITY
+        because Family A visually inspected the ORIGINAL CATALOGUE PAGE.
+
+        ==================================================
+        FALLBACK TITLE RULES
+        ==================================================
+
+        The TITLE RULES BELOW are FALLBACK ONLY.
+
+        Use them ONLY when:
+
+        - Family A authoritative product_name is unavailable, OR
+        - Family A authoritative product_title is unavailable, OR
+        - Family A explicitly marks the supplied name/title as
+          untrustworthy or unusable.
+
+        If Family A provides a trustworthy authoritative product name,
+        DO NOT apply the fallback title-selection rules below.
+
+        If Family A does NOT provide a usable authoritative name/title,
+        then inspect the ORIGINAL CATALOGUE PAGE and apply the title
+        rules below to recover the best available product title.
+
+
+        FALLBACK PRODUCT NAME RULE:
+
+        EVERY DETECTED PRODUCT MUST HAVE A NON-EMPTY "name".
+
+        NEVER return:
+
+        "name": ""
+
+        and NEVER return:
+
+        "name": null
+
+        when a real product has been detected.
+
+        THIS IS A FALLBACK RULE ONLY.
+
+        If Family A did NOT provide a trustworthy authoritative
+        product_name or product_title, determine the strongest
+        available product identity from:
+
+        - the ORIGINAL CATALOGUE PAGE
+        - page text
+        - catalogue headings
+        - model/product codes when they form part of the product identity
+        - surrounding product-specific text
+        - the complete catalogue page visual context
+        - product-family context
+
+        If no exact catalogue title can be recovered, generate a concise
+        commercially meaningful product name describing the actual
+        product shown.
+
+        NEVER use an empty string, null, "Unknown", "Unnamed Product",
+        "Product", or another generic placeholder merely because the
+        printed title cannot be confidently read.
+
+        When a product belongs to a clearly established Family A product
+        group, preserve that product grouping when determining its name.
+
+        Do not create separate product names merely because the product
+        has multiple color variants.
+
+        
+        IMPORTANT:
+
+        A missing or unclear title does NOT mean the product name should
+        be empty.
+
+        The instruction:
+
+        "create products even if title is missing"
+
+        means the product MUST still receive a usable "name".
+
+        NEVER use an empty string, null, "Unknown", "Unnamed Product",
+        "Product", or another generic placeholder merely because the
+        printed title cannot be confidently read.
+
+        When a product belongs to a clearly established Family A product
+        group, preserve that product grouping when determining its name.
+
+        Do not create separate product names merely because the product
+        has multiple color variants.
+
+        ==================================================
+        EXACT TITLE PRIORITY
+        ==================================================
 
         ALWAYS prioritize the REAL PRODUCT TITLE
         even if:
@@ -10594,7 +11724,7 @@ class VendorImportJob(models.Model):
         * title is small
         * title is thin font
         * title is placed left/right/middle
-        * title are mostly separated from images
+        * title is separated from images
         * description text is visually larger
 
         The TRUE PRODUCT TITLE is usually:
@@ -10664,7 +11794,8 @@ class VendorImportJob(models.Model):
         to:
         * "T-Shirt"
 
-        ALWAYS preserve the FULL visible catalog title exactly as printed on the page.
+        ALWAYS preserve the FULL visible catalog title exactly as printed
+        on the page.
 
         If multiple words appear in the title heading:
         include ALL of them.
@@ -10797,7 +11928,7 @@ class VendorImportJob(models.Model):
 
         [
             {{
-                "name": "",
+                "name": "REQUIRED NON-EMPTY PRODUCT NAME",
                 "subtitle": "",
                 "description": "",
                 "bullet_features": [],
@@ -10817,7 +11948,7 @@ class VendorImportJob(models.Model):
         PAGE TEXT
         ==================================================
 
-        {page_context}
+        {page_text}
 
         ==================================================
         DETECTED PRICE
@@ -11098,6 +12229,33 @@ class VendorImportJob(models.Model):
             try:
 
                 parsed = json.loads(result)
+                # =====================================================
+                # VALIDATE REQUIRED PRODUCT NAME
+                # =====================================================
+
+                for pidx, product in enumerate(parsed):
+
+                    product_name = (
+                        product.get("name")
+                        if isinstance(product, dict)
+                        else ""
+                    )
+
+                    if not isinstance(product_name, str):
+                        product_name = ""
+
+                    product_name = product_name.strip()
+
+                    if not product_name:
+                        _logger.warning(
+                            "[PDF AI PRODUCT NAME MISSING] "
+                            "PAGE=%s | PRODUCT=%s",
+                            next_record.page_number,
+                            pidx
+                        )
+
+                    else:
+                        product["name"] = product_name
                 
                 _logger.warning(
                     f"[AI RAW RESPONSE] "
@@ -12675,6 +13833,115 @@ class VendorImportJob(models.Model):
 
         return found_images
 
+    # =========================================================
+    # AUTHORITATIVE FAMILY A SPECIFICATION
+    # =========================================================
+    def _get_family_a_authoritative_spec(self):
+        """
+        Return the persisted Family A authoritative analysis.
+
+        This is NOT another AI call.
+
+        It is the reusable contract that downstream stages such as
+        Azure Review and PDF Production AI can consume.
+
+        Family A remains the authority for:
+            - page decisions
+            - product structure
+            - product groups
+            - asset classification
+            - asset roles
+            - variant relationships
+            - image identity
+            - preservation decisions
+            - missing asset requests
+        """
+
+        try:
+
+            family_a_review = json.loads(
+                self.family_a_review_json
+                or "{}"
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                "[FAMILY A AUTHORITY] "
+                "FAILED TO LOAD SPEC "
+                "| JOB=%s",
+                self.id
+            )
+
+            raise ValueError(
+                "Invalid family_a_review_json: "
+                f"{str(e)}"
+            )
+
+        if not isinstance(
+            family_a_review,
+            dict
+        ):
+
+            raise ValueError(
+                "Family A authoritative specification "
+                "must be a JSON object."
+            )
+
+        return family_a_review
+
+
+    # =========================================================
+    # AUTHORITATIVE FAMILY A PAGE SPECIFICATION
+    # =========================================================
+    def _get_family_a_page_spec(
+        self,
+        page_number,
+        family_a_review=None,
+    ):
+        """
+        Return the authoritative Family A specification
+        for one catalogue page.
+        """
+
+        if family_a_review is None:
+
+            family_a_review = (
+                self._get_family_a_authoritative_spec()
+            )
+
+        for page in family_a_review.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                page,
+                dict
+            ):
+                continue
+
+            try:
+
+                if int(
+                    page.get(
+                        "page"
+                    )
+                ) == int(
+                    page_number
+                ):
+
+                    return page
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+        return {}
+
     # =========== PDF OPENAI PRODUCT REVIEW ================================
     def _review_azure_evidence_with_openai(self):
         """
@@ -12738,6 +14005,27 @@ class VendorImportJob(models.Model):
             }
 
         audit_pages = []
+
+        # ========================================================
+        # LOAD AUTHORITATIVE FAMILY A SPECIFICATION
+        # ========================================================
+
+        family_a_review = (
+            self._get_family_a_authoritative_spec()
+        )
+
+        _logger.warning(
+            "[AZURE AUDIT] FAMILY A AUTHORITY LOADED "
+            "| JOB=%s "
+            "| PAGES=%s",
+            self.id,
+            len(
+                family_a_review.get(
+                    "pages",
+                    []
+                )
+            )
+        )
 
         # ========================================================
         # BUILD OPENAI VISUAL INPUT
@@ -12964,9 +14252,37 @@ class VendorImportJob(models.Model):
 
                     })
 
-                # =================================================
-                # PAGE AUDIT DATA
-                # =================================================
+                # =========================================================
+                # FAMILY A AUTHORITATIVE PAGE SPECIFICATION
+                # =========================================================
+
+                family_a_page_spec = (
+                    self._get_family_a_page_spec(
+                        page_number,
+                        family_a_review
+                    )
+                )
+
+                _logger.warning(
+                    "[AZURE AUDIT] FAMILY A PAGE SPEC "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| FOUND=%s "
+                    "| DECISION=%s "
+                    "| ASSETS=%s",
+                    self.id,
+                    page_number,
+                    bool(family_a_page_spec),
+                    family_a_page_spec.get(
+                        "decision"
+                    ),
+                    len(
+                        family_a_page_spec.get(
+                            "extracted_asset_mapping",
+                            []
+                        )
+                    )
+                )
 
                 audit_pages.append({
 
@@ -13001,7 +14317,14 @@ class VendorImportJob(models.Model):
                         block.get(
                             "azure_evidence",
                             {}
-                        )
+                        ),
+
+                    # =====================================================
+                    # FAMILY A AUTHORITATIVE ANALYSIS
+                    # =====================================================
+
+                    "family_a_authority":
+                        family_a_page_spec,
 
                 })
 
@@ -13528,6 +14851,56 @@ class VendorImportJob(models.Model):
         IMPORTANT:
 
         The ORIGINAL PAGE is the authoritative visual reference.
+
+        FAMILY A AUTHORITATIVE ANALYSIS:
+
+        The PAGE EVIDENCE may also contain a field named
+        "family_a_authority".
+
+        This is the authoritative specification produced by the
+        Family A visual review before Azure fallback.
+
+        Family A analysis is NOT a replacement for your visual inspection.
+
+        You must still independently inspect:
+
+        1. the ORIGINAL PAGE;
+        2. the Azure figures;
+        3. the actual supplied figure images.
+
+        However, Family A's analysis provides authoritative prior
+        classification and structural context that MUST be preserved
+        unless your direct visual inspection establishes that it is
+        visibly incorrect.
+
+        Family A may have already established:
+
+        - whether an extracted asset is a REAL_PRODUCT;
+        - whether it is LIFESTYLE;
+        - whether it is SUPPORTING;
+        - whether it is DETAIL;
+        - whether it belongs to a product group;
+        - whether it represents a color/variant;
+        - whether it matches the original;
+        - whether the product body is complete;
+        - whether the asset is trustworthy;
+        - whether the asset should be preserved.
+
+        Do NOT discard or silently overwrite this information.
+
+        If Azure discovers a genuine visual contradiction, report that
+        contradiction explicitly in the Azure result.
+
+        Do NOT reinterpret Family A merely because Azure produced a
+        different figure boundary.
+
+        Family A authority is especially important when Azure has
+        fragmented, merged, or ambiguously detected the same visual
+        asset.
+
+        The purpose of Azure fallback is to improve or recover the
+        visual extraction, not to erase the authoritative Family A
+        catalogue interpretation.
 
         Azure figures are detected visual regions from that page.
 
@@ -15739,6 +17112,11 @@ class VendorImportJob(models.Model):
                                         extracted_indexes
                                     )
                                 ),
+
+                            "image_hash": hashlib.md5(
+                                image_data.encode("utf-8")
+                            ).hexdigest(),
+
                             "width":
                                 image.get(
                                     "width",
@@ -15778,19 +17156,34 @@ class VendorImportJob(models.Model):
                                 image.get(
                                     "azure_figure_id"
                                 ),
+                                
                         })
 
-                review_pages.append({
 
-                    "page":
-                        page_number,
+                review_pages.append({
+                    "page": page_number,
 
                     "original_page_visual_index":
                         original_page_index,
 
+                    # =================================================
+                    # ORIGINAL PAGE GEOMETRY
+                    # =================================================
+                    #
+                    # These dimensions define the coordinate space
+                    # used by Family A recovery.
+                    #
+                    # Coordinates returned by OpenAI MUST refer to
+                    # this exact ORIGINAL PAGE IMAGE.
+                    # =================================================
+                    "page_width":
+                        block.get("page_width", 0),
+
+                    "page_height":
+                        block.get("page_height", 0),
+
                     "extracted_images":
                         extracted_indexes,
-
                 })
 
         # =====================================================
@@ -15815,29 +17208,46 @@ class VendorImportJob(models.Model):
         # FAMILY A VISUAL QUALITY PROMPT
         # =====================================================
 
+
         review_prompt = """
-        You are the FINAL visual quality-control gate between
-        Family A PDF extraction and the production PDF AI.
+        You are the FINAL visual quality-control and RECOVERY-TARGET
+        identification gate between Family A PDF extraction and the
+        production PDF AI.
 
         Family A has already extracted product images from the catalogue.
 
-        YOUR MOST IMPORTANT RULE:
+        Your job is NOT to redo Family A extraction.
 
-        THE ORIGINAL CATALOGUE PAGE IS THE AUTHORITATIVE SOURCE OF TRUTH.
+        Your job is to determine:
 
-        Do NOT judge Family A extracted images in isolation.
-
-        For EVERY PAGE independently, compare:
-
-        1. The ORIGINAL CATALOGUE PAGE.
-        2. ALL FAMILY A EXTRACTED IMAGES belonging to that SAME PAGE.
-
-        The purpose of this review is to determine whether Family A has
-        faithfully represented everything important that is visibly present
-        on the original page.
+        1. Which Family A assets are trustworthy and must be preserved.
+        2. Which important product/image assets are missing, incomplete,
+        damaged, incorrectly represented, or unusable.
+        3. Whether the page is PASS, PARTIAL, or FAIL.
+        4. For every recoverable PARTIAL missing asset, identify the EXACT
+        visual location of that missing asset on the ORIGINAL CATALOGUE PAGE
+        so that a downstream precision crop engine can recover it.
 
         ================================================================
-        PAGE-BY-PAGE RULE
+        AUTHORITATIVE SOURCE
+        ================================================================
+
+        THE ORIGINAL CATALOGUE PAGE IS THE PRIMARY SOURCE OF TRUTH.
+
+        For EVERY PAGE independently compare:
+
+        1. ORIGINAL CATALOGUE PAGE.
+        2. ALL FAMILY A EXTRACTED IMAGES belonging to that same page.
+        3. The supplied Family A image coordinates and metadata.
+
+        Never judge a Family A image in isolation.
+
+        Do not invent products, variants, images, or recovery targets.
+
+        Every recovery target MUST be visibly supported by the ORIGINAL PAGE.
+
+        ================================================================
+        PAGE-BY-PAGE EVALUATION
         ================================================================
 
         Evaluate every supplied page independently.
@@ -15846,56 +17256,162 @@ class VendorImportJob(models.Model):
 
         One page failing MUST NOT cause another page to fail.
 
-        Do NOT make a global decision based on the majority of pages.
-
-        A catalogue may contain:
-
-        - pages that Family A handles perfectly;
-        - pages that Family A partially handles;
-        - pages that require Azure recovery.
-
-        The review must identify the exact pages requiring recovery.
+        One page being partial MUST NOT cause another page to be partial.
 
         ================================================================
-        ORIGINAL PAGE COMPARISON
+        WHAT FAMILY A ALREADY EXTRACTED
         ================================================================
 
-        For every page, compare the original page against EVERY Family A
-        extracted image.
+        For every Family A extracted image, determine:
 
-        Determine:
+        - image index;
+        - approximate product/group;
+        - colour/variant when visually identifiable;
+        - image role;
+        - whether it matches a visible object on the original page;
+        - whether the product body is substantially complete;
+        - whether the asset is trustworthy and should be preserved.
 
-        1. What products are visibly present on the original page?
+        A trustworthy Family A image MUST be preserved.
 
-        2. What colour variants are visibly present?
+        Do NOT request recovery of an asset that Family A already extracted
+        correctly.
 
-        3. Which images represent the primary product?
+        
+        CLASSIFICATION VALUES
 
-        4. Which images are gallery/detail/folded/supporting images?
+        For every extracted Family A image, classification MUST be exactly
+        one of:
 
-        5. Which extracted image corresponds to which visible product?
+        - REAL_PRODUCT
+        - LIFESTYLE
+        - SUPPORTING
+        - DETAIL
+        - FOLDED
+        - MARKETING
+        - DECORATIVE
+        - TEXT_ONLY
+        - COLLAGE
+        - UNKNOWN
 
-        6. Is any product or variant visible on the original page missing
-           from Family A extraction?
+        REAL_PRODUCT:
+        A standalone marketable product representation suitable to represent
+        the product or colour variant.
 
-        7. Has Family A extracted only part of a product?
+        LIFESTYLE:
+        A product shown primarily in a person, usage or environmental scene
+        and not suitable as the primary standalone product representation.
 
-        8. Has Family A merged two separate products into one image?
+        SUPPORTING:
+        A useful product-related image that is not the primary product image.
 
-        9. Has Family A incorrectly treated multiple independent products
-           as variants of one product?
+        DETAIL:
+        A close-up/detail representation of a product.
 
-        10. Has Family A incorrectly treated gallery/detail/folded images
-            as separate colour variants?
+        FOLDED:
+        A genuine product representation shown folded, compressed or otherwise
+        not in its primary presentation.
+
+        MARKETING:
+        A promotional/marketing composition where the product itself is not
+        the appropriate standalone representation.
+
+        DECORATIVE:
+        Decorative imagery that should not represent the product.
+
+        TEXT_ONLY:
+        Primarily text or non-product information.
+
+        COLLAGE:
+        Multiple visual elements combined into one image where it should not
+        automatically be treated as one standalone product.
+
+        UNKNOWN:
+        Family A cannot determine the visual classification confidently.
+
+
+        EXTRACTOR LIFESTYLE LABEL IS NOT AUTHORITATIVE
+
+        The supplied Family A metadata may contain:
+
+        "is_lifestyle"
+
+        Do NOT blindly copy or trust this field.
+
+        It is only an extractor hint.
+
+        Determine lifestyle status by visually comparing the actual extracted
+        image with the ORIGINAL CATALOGUE PAGE.
+
+        Your returned:
+
+        "classification"
+
+        is the authoritative Family A visual decision.
+
+        Therefore:
+
+        classification = REAL_PRODUCT
+
+        must be returned when the image is genuinely a standalone marketable
+        product, even if the supplied is_lifestyle field says true.
+
+        Likewise:
+
+        classification = LIFESTYLE
+
+        must be returned when the image is actually a lifestyle representation,
+        even if the supplied is_lifestyle field says false.
 
         ================================================================
-        MISSING PRODUCT / VARIANT RULE
+        PRODUCT STRUCTURE
         ================================================================
 
-        A CLEAN EXTRACTED IMAGE IS NOT SUFFICIENT FOR PASS.
+        A catalogue page may contain:
 
-        If something important is clearly visible on the ORIGINAL PAGE
-        but Family A did not extract it, the page MUST FAIL.
+        - one product;
+        - one product with multiple colour variants;
+        - one product with multiple gallery images;
+        - multiple independent products;
+        - multiple products with their own variants;
+        - folded/detail images;
+        - lifestyle/supporting images;
+        - composite catalogue layouts.
+
+        Determine the actual structure from the ORIGINAL PAGE.
+
+        Do not assume:
+
+        - one image = one product;
+        - one figure = one product;
+        - one colour = a separate product;
+        - one folded/detail image = a variant.
+
+        Multiple independent products MUST remain separate products.
+
+        Colour representations of the SAME product should be treated as
+        variants when the visual/contextual evidence supports that relationship.
+
+        Gallery, folded, detail and supporting images are NOT automatically
+        variants.
+
+        ================================================================
+        PARTIAL PAGE
+        ================================================================
+
+        Classify a page as PARTIAL when ALL of the following are true:
+
+        1. At least one trustworthy Family A product/image asset exists.
+
+        2. One or more important products, variants, or required production
+        images are missing, incomplete, or unusable.
+
+        3. The trustworthy Family A assets can safely be preserved.
+
+        4. The missing asset is visibly present on the ORIGINAL PAGE.
+
+        5. The missing asset can be located precisely enough for a downstream
+        crop engine to recover it.
 
         Example:
 
@@ -15909,158 +17425,363 @@ class VendorImportJob(models.Model):
             Folded bag
 
         RESULT:
+            PARTIAL
 
-            FAIL
+        The Black and Folded Family A assets must be preserved.
 
-        because the Grey bag is missing.
-
-        Do NOT allow the page to PASS merely because the surviving
-        extracted images are individually clean.
-
-        This rule is especially important for colour variants.
+        The Grey bag becomes a recovery target.
 
         ================================================================
-        PRODUCT STRUCTURE RULE
+        FAIL PAGE
         ================================================================
 
-        Do NOT assume that visually similar images belong to the same
-        product.
+        Classify a page as FAIL when:
 
-        A catalogue page may contain:
+        - no trustworthy Family A product/image asset exists;
+        - the Family A extraction is fundamentally unusable;
+        - surviving Family A assets cannot safely be preserved;
+        - product relationships are severely incorrect;
+        - products are incorrectly merged in a way that prevents reliable
+        preservation;
+        - variant/product relationships are so incorrect that reliable
+        recovery cannot be performed;
+        - the original page does not provide enough reliable visual evidence
+        to identify the missing asset;
+        - the missing asset cannot be localized with sufficient confidence;
+        - or the page requires complete replacement by Azure.
 
-        - one product with multiple colour variants;
-        - multiple independent products;
-        - one product with several gallery images;
-        - one product with folded/detail images;
-        - multiple products with their own variants;
-        - a mixture of these structures.
+        IMPORTANT:
 
-        Determine the structure from the ORIGINAL PAGE.
+        A page MUST NOT be classified as FAIL merely because one or more
+        products, variants, or images are missing.
 
-        Multiple independent products MUST remain separate products.
-
-        Colour versions of the SAME product should be identified as
-        variants.
-
-        Gallery/detail/folded images should NOT automatically become
-        variants.
-
-        ================================================================
-        FAMILY A IMAGE MAPPING
-        ================================================================
-
-        Every Family A extracted image must be mapped to the original page.
-
-        For every extracted image report:
-
-        - image index;
-        - product group;
-        - colour when visually identifiable;
-        - image role;
-        - whether it matches something visible on the original page.
-
-        If an extracted image cannot be confidently matched to the
-        original page, mark it as suspicious.
-
-        If something visible on the original page has no corresponding
-        Family A image, record it under missing_items.
+        If trustworthy Family A assets exist and the missing assets can be
+        reliably identified and localized, classify the page as PARTIAL.
 
         ================================================================
-        WHEN TO PASS
+        CRITICAL PRESERVATION RULE
+        ================================================================
+
+        For PARTIAL pages:
+
+        KEEP all trustworthy Family A assets.
+
+        Do NOT replace them.
+
+        Do NOT request recovery of assets already represented correctly.
+
+        Only the missing, incomplete, or unusable asset should become a
+        recovery target.
+
+        ================================================================
+        RECOVERY TARGET IDENTIFICATION
+        ================================================================
+
+        For EVERY missing or unusable asset on a PARTIAL page, determine:
+
+        - product_group;
+        - product_reference;
+        - colour/variant when visually identifiable;
+        - required_image_role;
+        - asset_type;
+        - reason the Family A asset is insufficient;
+        - confidence;
+        - exact location on the ORIGINAL PAGE.
+
+        The missing asset MUST actually be visible on the original page.
+
+        Do NOT infer a missing asset merely because a product "normally"
+        would have another image.
+
+        ================================================================
+        RECOVERY TARGET COORDINATES
+        ================================================================
+
+        For every recoverable missing asset, provide a crop entry using the
+        EXISTING AZURE CROP COORDINATE CONTRACT.
+
+        Do NOT invent a new Family A coordinate format.
+
+        Coordinates MUST be:
+
+        - pixel coordinates;
+        - relative to the ORIGINAL PAGE IMAGE;
+        - expressed as x, y, width, height;
+        - completely inside the original page;
+        - tightly around the actual marketable product representation;
+        - NOT around unrelated text, logos, marketing graphics, or neighbouring
+        products.
+
+        The coordinate means:
+
+        x = left edge
+        y = top edge
+        width = crop width
+        height = crop height
+
+        The crop target should contain the actual product representation,
+        not merely the surrounding catalogue panel.
+
+        ================================================================
+        CROP ACCURACY RULE
+        ================================================================
+
+        The coordinate is a RECOVERY TARGET, not a casual visual estimate.
+
+        Before returning a crop:
+
+        1. Visually identify the exact missing product representation.
+        2. Identify its actual visible boundaries.
+        3. Exclude neighbouring products.
+        4. Exclude unrelated text.
+        5. Exclude logos and marketing graphics.
+        6. Exclude people/lifestyle scenes unless the target itself is a
+        clearly marketable standalone product representation.
+        7. Do not include another colour variant unless the target requires it.
+        8. Do not return a broad catalogue-card crop when the individual
+        product can be localized more precisely.
+        9. Do not use the Family A extracted image as the coordinate source.
+        10. The ORIGINAL PAGE is the coordinate source.
+
+        ================================================================
+        MULTI-PRODUCT / MULTI-VARIANT RULE
+        ================================================================
+
+        If multiple individually marketable product representations are
+        embedded inside one visual area, create a separate recovery target
+        for EACH missing representation.
+
+        Example:
+
+        Original page contains:
+
+        Grey bag
+        Black bag
+        Navy bag
+
+        Family A contains:
+
+        Grey bag
+        Black bag
+
+        Then:
+
+        PARTIAL
+
+        Recovery targets:
+
+        1. Navy bag
+        2. Only Navy bag
+
+        Do NOT create one large crop containing all three bags.
+
+        Likewise, if Family A contains only one combined crop containing:
+
+        Grey + Black + Navy
+
+        but the production pipeline requires individual product images,
+        identify each required individual representation separately.
+
+        ================================================================
+        COORDINATE CONSISTENCY
+        ================================================================
+
+        Every crop coordinate MUST lie completely inside the ORIGINAL PAGE.
+
+        If the target is inside a known Family A candidate/image region,
+        use that known region as contextual evidence.
+
+        If the target was missed completely by Family A, locate it directly
+        from the ORIGINAL PAGE.
+
+        Do not fabricate a figure or region identifier.
+
+        ================================================================
+        CROP TARGET QUALITY
+        ================================================================
+
+        A recovery target is valid only when:
+
+        - the product is visibly present;
+        - the product identity is sufficiently clear;
+        - the target boundaries can be localized;
+        - the target is sufficiently complete to produce a useful crop;
+        - the target is not merely a decorative/marketing object;
+        - the target is not merely text;
+        - the target is not merely a lifestyle scene;
+        - the target does not unnecessarily include another marketable product.
+
+        If these conditions cannot be satisfied, do NOT invent coordinates.
+
+        If the missing asset cannot be localized reliably, the page should be
+        classified as FAIL so that the existing full-page Azure fallback can
+        take responsibility.
+
+        ================================================================
+        SUPPORTING IMAGE RULE
+        ================================================================
+
+        Supporting images MUST NOT become product variants.
+
+        People, usage scenes, logos, symbols, text, badges and marketing
+        graphics are not product variants.
+
+        A supporting image may remain a gallery/supporting asset when useful,
+        but it must not create a product or variant.
+
+        ================================================================
+        PASS
         ================================================================
 
         PASS a page only when:
 
-        1. All important products visible on the original page are
-           represented.
+        - all important visible products are represented;
+        - all important visible variants are represented;
+        - required production images are represented;
+        - product bodies are substantially complete;
+        - separate products are not incorrectly merged;
+        - variants are not incorrectly represented as products;
+        - gallery/detail/folded images are correctly interpreted;
+        - Family A assets correspond to the original page;
+        - the evidence is reliable enough for PDF AI.
 
-        2. All important colour/variant products visible on the original
-           page are represented.
+        Minor cosmetic imperfections alone do not require PARTIAL or FAIL.
 
-        3. Product bodies are substantially complete.
 
-        4. No important product has been lost.
+        IMPORTANT FAMILY A ASSET IDENTITY RULE
 
-        5. Separate products are not incorrectly merged.
+        For every entry in extracted_asset_mapping:
 
-        6. Variants are not incorrectly represented as separate products.
+        - image_index MUST refer to the supplied Family A extracted image.
+        - image_hash MUST be copied EXACTLY from the corresponding supplied
+        Family A extracted image metadata.
+        - Do NOT invent or modify image_hash.
+        - If an extracted image is being classified, the returned image_hash
+        must identify that exact image.
 
-        7. Gallery/detail/folded images are correctly distinguished.
+        The following fields are authoritative Family A visual judgments:
 
-        8. Extracted images correspond to the original catalogue page.
+        - classification
+        - asset_role
+        - matches_original
+        - product_body_complete
+        - trustworthy
+        - preserve
+        - confidence
 
-        9. The resulting evidence is sufficiently reliable for the
-           production PDF AI.
+        The original extractor fields such as is_lifestyle, score and
+        extractor_score are supporting evidence only.
 
-        Minor cosmetic imperfections alone do NOT require FAIL.
+        Family A Review is the authoritative visual classifier.
 
-        ================================================================
-        WHEN TO FAIL
-        ================================================================
+        If Family A says:
 
-        FAIL a page when any important extraction problem exists,
-        including:
+        classification = REAL_PRODUCT
 
-        - missing product;
-        - missing colour variant;
-        - missing required product image;
-        - substantially cropped product;
-        - major product portion missing;
-        - incorrect image/product correspondence;
-        - merged independent products;
-        - incorrect product/variant grouping;
-        - unusable product evidence.
+        the downstream Asset Pool MUST treat that image as a REAL_PRODUCT
+        even if the extractor's is_lifestyle field or geometric heuristics
+        suggest otherwise.
 
-        ================================================================
-        IMPORTANT DISTINCTION
-        ================================================================
+        If Family A says:
 
-        A page can contain MULTIPLE PRODUCTS and still PASS.
+        classification = LIFESTYLE
 
-        Do NOT automatically send a multiple-product page to Azure.
+        the downstream Asset Pool MUST NOT promote that image as a primary
+        product asset.
 
-        If Family A extracted all products correctly, PASS the page and
-        describe the separate product groups clearly in the returned
-        structure.
+        If Family A cannot determine the classification confidently, use:
 
-        If Family A incorrectly merged the products, FAIL the page.
+        classification = UNKNOWN
 
-        ================================================================
-        DO NOT PERFORM THESE TASKS
-        ================================================================
+        # ================================================================
+        # AUTHORITATIVE PRODUCT NAME / TITLE
+        # ================================================================
 
-        Do NOT create products.
+        For EVERY product_group, inspect the ORIGINAL CATALOGUE PAGE
+        and determine the actual product name/title whenever possible.
 
-        Do NOT provide crop coordinates.
+        Family A has direct access to the complete original catalogue
+        page and therefore has first authority for product identity.
 
-        Do NOT perform Azure processing.
+        "product_name" MUST contain the best authoritative product name
+        established from the original catalogue page.
 
-        Do NOT judge product descriptions, prices or marketing text
-        unless the visual extraction itself is affected.
+        "product_title" MUST contain the exact visible catalogue title
+        when one is clearly present.
+
+        If the exact printed title is clearly visible:
+
+            product_name = product_title
+
+        If the exact printed title cannot be read but the product identity
+        is clearly established from the original page:
+
+            provide the best accurate product_name based on the original
+            catalogue evidence.
+
+        NEVER return an empty product_name when the original page provides
+        enough evidence to identify the product.
+
+                If the original catalogue page does NOT provide enough reliable
+        evidence to establish the product identity:
+
+        - product_name may be empty;
+        - product_title may be empty;
+        - name_trustworthy MUST be false;
+        - name_confidence MUST be low;
+        - DO NOT invent or commercially rename the product.
+
+        This allows downstream PDF AI to use its own title fallback rules
+        only when Family A cannot establish a trustworthy authoritative name.
+
+        "name_source" MUST normally be:
+
+            "ORIGINAL_CATALOGUE_PAGE"
+
+        "name_confidence" MUST represent Family A's confidence in the
+        product identity.
+
+        "name_trustworthy" MUST be true only when Family A considers the
+        product name/title sufficiently reliable for downstream systems
+        to use as the authoritative product identity.
+
+        IMPORTANT:
+
+        This product_name/product_title becomes persistent Family A
+        authority and will be consumed by downstream PDF AI and product
+        creation.
+
+        Therefore:
+
+        - Do NOT use a generic placeholder.
+        - Do NOT use a material as the product name.
+        - Do NOT use a feature as the product name.
+        - Do NOT use a description sentence as the product name.
+        - Do NOT invent a commercial name when the original catalogue
+          provides an identifiable name/title.
 
         ================================================================
         RETURN FORMAT
         ================================================================
 
-        Return ONLY valid JSON:
+        Return ONLY valid JSON.
+
+        Use this structure:
 
         {
-            "decision": "PASS" or "FAIL",
-
+            "decision": "PASS" or "PARTIAL" or "FAIL",
             "confidence": 0.0,
-
             "reason": "overall routing summary",
 
             "pages": [
                 {
                     "page": 1,
 
-                    "decision": "PASS" or "FAIL",
+                    "decision": "PASS" or "PARTIAL" or "FAIL",
 
                     "confidence": 0.0,
 
-                    "reason":
-                        "specific page-level explanation",
+                    "reason": "specific page-level explanation",
 
                     "product_structure":
                         "SINGLE_PRODUCT"
@@ -16072,6 +17793,22 @@ class VendorImportJob(models.Model):
                     "product_groups": [
                         {
                             "group_id": "product_1",
+
+                            "product_name":
+                                "EXACT PRODUCT NAME/TITLE VISIBLE
+                                 OR DERIVED FROM THE ORIGINAL CATALOGUE PAGE",
+
+                            "product_title":
+                                "EXACT CATALOGUE TITLE WHEN AVAILABLE",
+
+                            "name_source":
+                                "ORIGINAL_CATALOGUE_PAGE",
+
+                            "name_confidence":
+                                0.0,
+
+                            "name_trustworthy":
+                                true,
 
                             "relationship":
                                 "SINGLE_PRODUCT"
@@ -16091,7 +17828,7 @@ class VendorImportJob(models.Model):
                                         0
                                     ],
 
-                                    "image_role":
+                                    "asset_role":
                                         "PRIMARY"
                                         or
                                         "GALLERY"
@@ -16103,6 +17840,8 @@ class VendorImportJob(models.Model):
                             ]
                         }
                     ],
+
+                    
 
                     "missing_items": [
                         {
@@ -16121,9 +17860,57 @@ class VendorImportJob(models.Model):
                         }
                     ],
 
+                    "missing_asset_requests": [
+                        {
+                            "product_group": "product_1",
+
+                            "product_reference":
+                                "Grey version of the sling bag",
+
+                            "color": "Grey",
+
+                            "required_image_role":
+                                "PRIMARY",
+
+                            "asset_type":
+                                "MISSING_VARIANT",
+
+                            "reason":
+                                "Grey variant is visible on the original page but no trustworthy Family A image represents it.",
+
+                            "confidence": 0.95,
+
+                            "crop": {
+                                "crop_id": "family_crop_1",
+
+                                "figure_id":
+                                    "family_a_source_region_or_page",
+
+                                "x": 0,
+
+                                "y": 0,
+
+                                "width": 0,
+
+                                "height": 0,
+
+                                "purpose":
+                                    "Recover the missing Grey product representation.",
+
+                                "product_reference":
+                                    "Grey version of the sling bag",
+
+                                "confidence": 0.95
+                            }
+                        }
+                    ],
+
                     "extracted_asset_mapping": [
                         {
                             "image_index": 0,
+
+                            "image_hash":
+                                "EXACT_HASH_FROM_THE_SUPPLIED_FAMILY_A_IMAGE",
 
                             "product_group":
                                 "product_1",
@@ -16131,14 +17918,30 @@ class VendorImportJob(models.Model):
                             "color":
                                 "Black",
 
-                            "image_role":
+                            "classification":
+                                "REAL_PRODUCT",
+
+                            "asset_role":
                                 "PRIMARY",
 
                             "matches_original":
                                 true,
 
+                            "product_body_complete":
+                                true,
+
+                            "trustworthy":
+                                true,
+
+                            "preserve":
+                                true,
+
+                            "confidence":
+                                0.98,
+
                             "reason":
-                                "Matches the black product visible on the original page."
+                                "Standalone Black product visible on the original page "
+                                "and correctly represented by the Family A extracted image."
                         }
                     ]
                 }
@@ -16146,31 +17949,42 @@ class VendorImportJob(models.Model):
         }
 
         ================================================================
-        CRITICAL OUTPUT RULES
+        FINAL OUTPUT RULES
         ================================================================
 
         Every supplied page MUST appear exactly once.
 
         The page-level decision is authoritative.
 
-        The top-level decision MUST be:
+        The global decision is:
 
-        PASS only when ALL supplied pages are PASS.
+        ANY FAIL → FAIL
 
-        FAIL when ANY supplied page is FAIL.
+        NO FAIL + ANY PARTIAL → PARTIAL
 
-        Do NOT omit pages.
+        NO FAIL + NO PARTIAL → PASS
 
-        Do NOT invent products or variants that are not visible on the
-        original page.
+        A PARTIAL page remains PARTIAL until the downstream Family
+        Precision Recovery process successfully recovers and validates all
+        required missing assets.
 
-        missing_items MUST identify important products, variants or images
-        visible on the original page but absent from Family A.
+        A failed Family Precision Recovery MUST NOT silently become PASS.
 
-        product_groups MUST distinguish separate products from variants.
+        If Family Precision Recovery cannot safely recover a required asset,
+        the page must be escalated to the existing full-page Azure fallback.
 
-        extracted_asset_mapping MUST explain what each Family A image
-        represents relative to the original page.
+        Do NOT create products.
+
+        Do NOT perform cropping.
+
+        Do NOT perform Azure processing.
+
+        Do NOT modify or discard existing Family A assets.
+
+        Do NOT invent recovery targets or coordinates.
+
+        Coordinates are only requested for genuinely recoverable missing
+        assets that are visibly present on the ORIGINAL PAGE.
         """
 
         # =====================================================
@@ -16298,9 +18112,256 @@ class VendorImportJob(models.Model):
             # PARSE
             # =================================================
 
-            result = json.loads(
-                cleaned
-            )
+
+            try:
+
+                decoder = json.JSONDecoder()
+
+
+                # ================================================
+                # PARSE FAMILY A JSON
+                # ================================================
+
+                try:
+
+                    # -------------------------------------------------
+                    # OpenAI may return explanatory text before JSON.
+                    # Find the first JSON object and decode from there.
+                    #
+                    # Also sanitize illegal // comments that OpenAI
+                    # may occasionally place inside the JSON.
+                    # -------------------------------------------------
+
+                    def _strip_json_comments(text):
+
+                        output = []
+
+                        in_string = False
+                        escape = False
+                        i = 0
+                        length = len(text)
+
+                        while i < length:
+
+                            char = text[i]
+
+                            # -----------------------------------------
+                            # INSIDE JSON STRING
+                            # -----------------------------------------
+
+                            if in_string:
+
+                                output.append(char)
+
+                                if escape:
+
+                                    escape = False
+
+                                elif char == "\\":
+
+                                    escape = True
+
+                                elif char == '"':
+
+                                    in_string = False
+
+                                i += 1
+
+                                continue
+
+                            # -----------------------------------------
+                            # OUTSIDE JSON STRING
+                            # -----------------------------------------
+
+                            if char == '"':
+
+                                in_string = True
+
+                                output.append(char)
+
+                                i += 1
+
+                                continue
+
+                            # -----------------------------------------
+                            # JAVASCRIPT // COMMENT
+                            # -----------------------------------------
+
+                            if (
+                                char == "/"
+                                and i + 1 < length
+                                and text[i + 1] == "/"
+                            ):
+
+                                # Skip the comment itself.
+                                i += 2
+
+                                while (
+                                    i < length
+                                    and text[i] not in (
+                                        "\n",
+                                        "\r"
+                                    )
+                                ):
+
+                                    i += 1
+
+                                continue
+
+                            output.append(char)
+
+                            i += 1
+
+                        return "".join(output)
+
+
+                    # -------------------------------------------------
+                    # REMOVE ILLEGAL COMMENTS
+                    # -------------------------------------------------
+
+                    cleaned_for_json = (
+                        _strip_json_comments(
+                            cleaned
+                        )
+                    )
+
+
+                    # -------------------------------------------------
+                    # FIND FIRST JSON OBJECT
+                    # -------------------------------------------------
+
+                    json_start = (
+                        cleaned_for_json.find("{")
+                    )
+
+                    if json_start == -1:
+
+                        raise json.JSONDecodeError(
+                            "No JSON object found",
+                            cleaned_for_json,
+                            0
+                        )
+
+
+                    # -------------------------------------------------
+                    # DECODE JSON
+                    # -------------------------------------------------
+
+                    result, json_end = (
+                        decoder.raw_decode(
+                            cleaned_for_json,
+                            json_start
+                        )
+                    )
+
+
+                    # -------------------------------------------------
+                    # DIAGNOSTIC
+                    # -------------------------------------------------
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] JSON PARSED "
+                        "| JOB=%s "
+                        "| JSON_START=%s "
+                        "| JSON_END=%s "
+                        "| COMMENT_SANITIZED=%s",
+                        self.id,
+                        json_start,
+                        json_end,
+                        cleaned_for_json != cleaned,
+                    )
+
+
+                except json.JSONDecodeError as json_error:
+
+                    _logger.error(
+                        "[FAMILY A REVIEW] INVALID JSON FROM OPENAI "
+                        "| JOB=%s "
+                        "| LINE=%s "
+                        "| COLUMN=%s "
+                        "| CHAR=%s",
+                        self.id,
+                        json_error.lineno,
+                        json_error.colno,
+                        json_error.pos,
+                    )
+
+                    _logger.error(
+                        "[FAMILY A REVIEW] JSON PARSE INPUT "
+                        "| JOB=%s\n%s",
+                        self.id,
+                        cleaned[:5000]
+                    )
+
+                    raise
+
+                
+                trailing_output = (
+                    cleaned_for_json.lstrip()[
+                        json_end:
+                    ].strip()
+                )
+
+                if trailing_output:
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] "
+                        "OPENAI RETURNED TRAILING TEXT "
+                        "| JOB=%s | CHARS=%s",
+                        self.id,
+                        len(trailing_output),
+                    )
+
+            except json.JSONDecodeError as json_error:
+
+                _logger.error(
+                    "[FAMILY A REVIEW] INVALID JSON FROM OPENAI "
+                    "| JOB=%s "
+                    "| LINE=%s "
+                    "| COLUMN=%s "
+                    "| CHAR=%s",
+                    self.id,
+                    json_error.lineno,
+                    json_error.colno,
+                    json_error.pos,
+                )
+
+                # -------------------------------------------------
+                # SHOW THE EXACT AREA THAT FAILED
+                # -------------------------------------------------
+
+                error_position = json_error.pos
+
+                start = max(
+                    0,
+                    error_position - 500
+                )
+
+                end = min(
+                    len(cleaned),
+                    error_position + 500
+                )
+
+                _logger.error(
+                    "[FAMILY A REVIEW] INVALID JSON CONTEXT "
+                    "| JOB=%s\n%s",
+                    self.id,
+                    cleaned[start:end],
+                )
+
+                # -------------------------------------------------
+                # SHOW THE COMPLETE RESPONSE
+                # ONLY DURING DEBUGGING
+                # -------------------------------------------------
+
+                _logger.error(
+                    "[FAMILY A REVIEW] RAW CLEANED OUTPUT "
+                    "| JOB=%s\n%s",
+                    self.id,
+                    cleaned,
+                )
+
+                raise
 
             if not isinstance(
                 result,
@@ -16396,12 +18457,228 @@ class VendorImportJob(models.Model):
                     )
                 ).upper().strip()
 
+
                 if page_decision not in (
                     "PASS",
+                    "PARTIAL",
                     "FAIL"
                 ):
 
                     page_decision = "FAIL"
+
+                # =================================================
+                # NORMALIZE AUTHORITATIVE FAMILY A IMAGE MAPPING
+                # =================================================
+
+                raw_asset_mapping = page_result.get(
+                    "extracted_asset_mapping",
+                    []
+                )
+
+                normalized_asset_mapping = []
+
+                allowed_classifications = {
+                    "REAL_PRODUCT",
+                    "LIFESTYLE",
+                    "SUPPORTING",
+                    "DETAIL",
+                    "FOLDED",
+                    "MARKETING",
+                    "DECORATIVE",
+                    "TEXT_ONLY",
+                    "COLLAGE",
+                    "UNKNOWN",
+                }
+
+                for asset in raw_asset_mapping:
+
+                    if not isinstance(
+                        asset,
+                        dict
+                    ):
+                        continue
+
+                    try:
+                        image_index = int(
+                            asset.get(
+                                "image_index"
+                            )
+                        )
+
+                        image_hash = str(
+                            asset.get(
+                                "image_hash",
+                                ""
+                            )
+                        ).strip()
+
+                        if not image_hash:
+
+                            _logger.warning(
+                                "[FAMILY A REVIEW] "
+                                "MISSING IMAGE HASH "
+                                "| JOB=%s | PAGE=%s | IMAGE=%s",
+                                self.id,
+                                page_number,
+                                image_index,
+                            )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+                        continue
+
+                    classification = str(
+                        asset.get(
+                            "classification",
+                            "UNKNOWN"
+                        )
+                    ).upper().strip()
+
+                    if classification not in allowed_classifications:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] INVALID CLASSIFICATION "
+                            "| JOB=%s | PAGE=%s | IMAGE=%s | VALUE=%s",
+                            self.id,
+                            page_number,
+                            image_index,
+                            classification,
+                        )
+
+                        classification = "UNKNOWN"
+
+                    normalized_asset_mapping.append({
+
+                        "page":
+                            page_number,
+
+                        "image_index":
+                            image_index,
+
+
+                        "image_hash":
+                            image_hash,
+
+                        "classification":
+                            classification,
+
+                        "asset_role":
+                            str(
+                                asset.get(
+                                    "asset_role",
+                                    asset.get(
+                                        "image_role",
+                                        "UNKNOWN"
+                                    )
+                                )
+                            ).upper().strip(),
+
+                        "product_group":
+                            asset.get(
+                                "product_group"
+                            ),
+
+                        "color":
+                            asset.get(
+                                "color"
+                            ),
+
+                        "matches_original":
+                            bool(
+                                asset.get(
+                                    "matches_original",
+                                    False
+                                )
+                            ),
+
+                        "product_body_complete":
+                            bool(
+                                asset.get(
+                                    "product_body_complete",
+                                    False
+                                )
+                            ),
+
+                        "trustworthy":
+                            bool(
+                                asset.get(
+                                    "trustworthy",
+                                    False
+                                )
+                            ),
+
+                        "preserve":
+                            bool(
+                                asset.get(
+                                    "preserve",
+                                    False
+                                )
+                            ),
+
+                        "confidence":
+                            asset.get(
+                                "confidence",
+                                0
+                            ),
+
+                        "reason":
+                            str(
+                                asset.get(
+                                    "reason",
+                                    ""
+                                )
+                            ),
+
+                        "family_a_authoritative":
+                            True,
+                    })
+
+                _logger.warning(
+                    "[FAMILY A REVIEW] ASSET CLASSIFICATIONS "
+                    "| JOB=%s | PAGE=%s | ASSETS=%s",
+                    self.id,
+                    page_number,
+                    len(
+                        normalized_asset_mapping
+                    )
+                )
+
+                for asset in normalized_asset_mapping:
+
+                    _logger.warning(
+                        "[FAMILY A ASSET AUTHORITY] "
+                        "JOB=%s | PAGE=%s | IMAGE=%s "
+                        "| CLASS=%s | ROLE=%s "
+                        "| TRUST=%s | PRESERVE=%s "
+                        "| CONF=%s",
+                        self.id,
+                        page_number,
+                        asset.get(
+                            "image_index"
+                        ),
+                        asset.get(
+                            "classification"
+                        ),
+                        asset.get(
+                            "asset_role"
+                        ),
+                        asset.get(
+                            "trustworthy"
+                        ),
+                        asset.get(
+                            "preserve"
+                        ),
+                        asset.get(
+                            "confidence"
+                        ),
+                    )
+
+
+                # =================================================
+                # NOW BUILD normalized_page
+                # =================================================
 
                 normalized_page = {
                     "page":
@@ -16446,11 +18723,18 @@ class VendorImportJob(models.Model):
                             []
                         ),
 
-                    "extracted_asset_mapping":
+                    # =================================================
+                    # PRESERVE FAMILY PRECISION RECOVERY TARGETS
+                    # =================================================
+
+                    "missing_asset_requests":
                         page_result.get(
-                            "extracted_asset_mapping",
+                            "missing_asset_requests",
                             []
                         ),
+
+                    "extracted_asset_mapping":
+                        normalized_asset_mapping,
                 }
 
                 normalized_pages.append(
@@ -16505,30 +18789,39 @@ class VendorImportJob(models.Model):
             # =================================================
 
             failed_pages = [
-
                 item
                 for item in normalized_pages
-
                 if item["decision"] == "FAIL"
-
             ]
 
+            partial_pages = [
+                item
+                for item in normalized_pages
+                if item["decision"] == "PARTIAL"
+            ]
 
             passed_pages = [
-
                 item
                 for item in normalized_pages
-
                 if item["decision"] == "PASS"
-
             ]
 
 
-            decision = (
-                "FAIL"
-                if failed_pages
-                else "PASS"
-            )
+            # =================================================
+            # AUTHORITATIVE GLOBAL DECISION
+            # =================================================
+
+            if failed_pages:
+
+                decision = "FAIL"
+
+            elif partial_pages:
+
+                decision = "PARTIAL"
+
+            else:
+
+                decision = "PASS"
 
 
             result["decision"] = decision
@@ -16540,10 +18833,16 @@ class VendorImportJob(models.Model):
                 for item in passed_pages
             ]
 
+            result["partial_pages"] = [
+                item["page"]
+                for item in partial_pages
+            ]
+
             result["failed_pages"] = [
                 item["page"]
                 for item in failed_pages
             ]
+
 
             # =================================================
             # AUTHORITATIVE ROUTING SUMMARY
@@ -16553,7 +18852,15 @@ class VendorImportJob(models.Model):
 
                 result["reason"] = (
                     f"{len(failed_pages)} page(s) failed "
-                    "Family A visual quality review."
+                    "Family A visual quality review and require "
+                    "full-page Azure fallback."
+                )
+
+            elif partial_pages:
+
+                result["reason"] = (
+                    f"{len(partial_pages)} page(s) are PARTIAL "
+                    "and require Family Precision Recovery."
                 )
 
             else:
@@ -16563,33 +18870,18 @@ class VendorImportJob(models.Model):
                 )
 
             result["summary"] = {
-
                 "total_pages":
                     len(normalized_pages),
 
                 "passed":
                     len(passed_pages),
 
+                "partial":
+                    len(partial_pages),
+
                 "failed":
                     len(failed_pages),
-
             }
-
-            _logger.warning(
-                "[FAMILY A REVIEW] DECISION "
-                "| JOB=%s | DECISION=%s | CONFIDENCE=%s "
-                "| REASON=%s",
-                self.id,
-                decision,
-                result.get(
-                    "confidence",
-                    0
-                ),
-                result.get(
-                    "reason",
-                    ""
-                )
-            )
 
             return result
 
@@ -16616,6 +18908,185 @@ class VendorImportJob(models.Model):
             # =================================================
 
             raise
+
+    # =================================================
+    # FAMILY A AUTHORITATIVE AUTHORITY
+    # =================================================
+
+    def _get_family_a_authority(self):
+
+        """
+        Load the persisted Family A review.
+
+        This is the single source of truth for:
+        - page decisions
+        - asset classifications
+        - asset roles
+        - product groups
+        - colors
+        - trustworthy/preserve decisions
+        - confidence
+        """
+
+        try:
+
+            if not self.family_a_review_json:
+
+                _logger.warning(
+                    "[FAMILY A AUTHORITY] "
+                    "NO PERSISTED REVIEW "
+                    "| JOB=%s",
+                    self.id
+                )
+
+                return {}
+
+            authority = json.loads(
+                self.family_a_review_json
+            )
+
+            if not isinstance(
+                authority,
+                dict
+            ):
+
+                _logger.error(
+                    "[FAMILY A AUTHORITY] "
+                    "INVALID REVIEW TYPE "
+                    "| JOB=%s "
+                    "| TYPE=%s",
+                    self.id,
+                    type(authority).__name__,
+                )
+
+                return {}
+
+            _logger.warning(
+                "[FAMILY A AUTHORITY] "
+                "LOADED "
+                "| JOB=%s "
+                "| DECISION=%s "
+                "| PAGES=%s "
+                "| FAILED=%s "
+                "| PARTIAL=%s",
+                self.id,
+                authority.get("decision"),
+                len(
+                    authority.get(
+                        "pages",
+                        []
+                    )
+                ),
+                authority.get(
+                    "failed_pages",
+                    []
+                ),
+                authority.get(
+                    "partial_pages",
+                    []
+                ),
+            )
+
+            return authority
+
+        except Exception:
+
+            _logger.exception(
+                "[FAMILY A AUTHORITY] "
+                "LOAD FAILED "
+                "| JOB=%s",
+                self.id
+            )
+
+            return {}
+
+
+    # =================================================
+    # FAMILY A PAGE AUTHORITY
+    # =================================================
+
+    def _get_family_a_page_authority(
+        self,
+        page_number
+    ):
+
+        authority = self._get_family_a_authority()
+
+        if not authority:
+
+            return {}
+
+        try:
+
+            target_page = int(
+                page_number
+            )
+
+        except (
+            TypeError,
+            ValueError
+        ):
+
+            return {}
+
+        for page in authority.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                page,
+                dict
+            ):
+
+                continue
+
+            try:
+
+                current_page = int(
+                    page.get("page")
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+            if current_page == target_page:
+
+                _logger.warning(
+                    "[FAMILY A PAGE AUTHORITY] "
+                    "FOUND "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| DECISION=%s "
+                    "| ASSETS=%s",
+                    self.id,
+                    target_page,
+                    page.get("decision"),
+                    len(
+                        page.get(
+                            "extracted_asset_mapping",
+                            []
+                        )
+                    ),
+                )
+
+                return page
+
+        _logger.warning(
+            "[FAMILY A PAGE AUTHORITY] "
+            "NOT FOUND "
+            "| JOB=%s "
+            "| PAGE=%s",
+            self.id,
+            target_page,
+        )
+
+        return {}
+
 
     # =========================================================
     # AZURE OPENAI CROP PROCESSOR
@@ -18239,6 +20710,858 @@ class VendorImportJob(models.Model):
                 created_assets
             )
         }
+
+
+    #==========================================================
+    # FAMILY A RECOVERY CROPPING
+    #==========================================================
+
+    def _process_precision_crop_recovery(self):
+
+        _logger.warning(
+            "[PRECISION CROP] START | JOB=%s",
+            self.id,
+        )
+
+        try:
+
+            recovery_payload = json.loads(
+                self.family_a_partial_recovery_json
+                or "{}"
+            )
+
+            if not isinstance(
+                recovery_payload,
+                dict
+            ):
+                raise ValueError(
+                    "Family A precision recovery payload "
+                    "must be a JSON object."
+                )
+
+            recovery_requests = (
+                recovery_payload.get(
+                    "recovery_requests",
+                    []
+                )
+            )
+
+            if not isinstance(
+                recovery_requests,
+                list
+            ):
+                raise ValueError(
+                    "Family A recovery_requests "
+                    "must be a list."
+                )
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "RECOVERY REQUESTS | JOB=%s | COUNT=%s",
+                self.id,
+                len(recovery_requests),
+            )
+
+            # =====================================================
+            # ORIGINAL PDF SOURCE
+            # =====================================================
+
+            if not self.pdf_file:
+                raise ValueError(
+                    "Original PDF is unavailable for "
+                    "Family A precision recovery."
+                )
+
+            try:
+                original_pdf_bytes = base64.b64decode(
+                    self.pdf_file
+                )
+            except Exception as e:
+                raise ValueError(
+                    "Unable to decode original PDF for "
+                    f"precision recovery: {str(e)}"
+                )
+
+            source_doc = fitz.open(
+                stream=original_pdf_bytes,
+                filetype="pdf"
+            )
+
+            source_total_pages = len(
+                source_doc
+            )
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "ORIGINAL PDF | JOB=%s | PAGES=%s",
+                self.id,
+                source_total_pages,
+            )
+
+                        # =====================================================
+            # GROUP RECOVERY REQUESTS BY ORIGINAL PDF PAGE
+            # =====================================================
+
+            requests_by_page = {}
+
+            for request in recovery_requests:
+
+                if not isinstance(
+                    request,
+                    dict
+                ):
+                    continue
+
+                try:
+                    page_number = int(
+                        request.get("page")
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    raise ValueError(
+                        "Family A precision recovery request "
+                        "contains an invalid page number."
+                    )
+
+                if (
+                    page_number < 1
+                    or page_number > source_total_pages
+                ):
+
+                    raise ValueError(
+                        "Family A precision recovery request "
+                        f"references invalid page {page_number}. "
+                        f"Original PDF has "
+                        f"{source_total_pages} pages."
+                    )
+
+                requests_by_page.setdefault(
+                    page_number,
+                    []
+                ).append(
+                    request
+                )
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "PAGES READY | JOB=%s | PAGES=%s",
+                self.id,
+                sorted(
+                    requests_by_page.keys()
+                ),
+            )
+
+            # =====================================================
+            # PROCESS EACH ORIGINAL PAGE
+            # =====================================================
+
+            recovered_total = 0
+
+            for page_number in sorted(
+                requests_by_page
+            ):
+
+                _logger.warning(
+                    "[PRECISION CROP] "
+                    "PAGE START | JOB=%s | PAGE=%s | REQUESTS=%s",
+                    self.id,
+                    page_number,
+                    len(
+                        requests_by_page[
+                            page_number
+                        ]
+                    ),
+                )
+
+                # -------------------------------------------------
+                # ORIGINAL PDF PAGE
+                # -------------------------------------------------
+
+                source_page = source_doc[
+                    page_number - 1
+                ]
+
+                # Match Family A's existing page rendering
+                # convention: 2x resolution.
+                pix = source_page.get_pixmap(
+                    matrix=fitz.Matrix(
+                        2,
+                        2
+                    ),
+                    alpha=False
+                )
+
+                page_image = Image.frombytes(
+                    "RGB",
+                    [
+                        pix.width,
+                        pix.height
+                    ],
+                    pix.samples
+                )
+
+                page_width = page_image.width
+                page_height = page_image.height
+
+                _logger.warning(
+                    "[PRECISION CROP] "
+                    "PAGE IMAGE READY | "
+                    "JOB=%s | PAGE=%s | SIZE=%sx%s",
+                    self.id,
+                    page_number,
+                    page_width,
+                    page_height,
+                )
+
+                                # =================================================
+                # PROCESS FAMILY A PRECISION CROP REQUESTS
+                # =================================================
+
+                for request_index, request in enumerate(
+                    requests_by_page[
+                        page_number
+                    ]
+                ):
+
+                    if not isinstance(
+                        request,
+                        dict
+                    ):
+                        raise ValueError(
+                            "Family A precision recovery "
+                            "request must be an object."
+                        )
+
+                    crop = request.get(
+                        "crop",
+                        {}
+                    )
+
+                    if not isinstance(
+                        crop,
+                        dict
+                    ):
+                        raise ValueError(
+                            "Family A precision recovery "
+                            "crop definition must be an object."
+                        )
+
+                    # -------------------------------------------------
+                    # READ FAMILY A COORDINATES
+                    # -------------------------------------------------
+
+                    try:
+
+                        x = float(
+                            crop.get("x")
+                        )
+
+                        y = float(
+                            crop.get("y")
+                        )
+
+                        width = float(
+                            crop.get("width")
+                        )
+
+                        height = float(
+                            crop.get("height")
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+
+                        raise ValueError(
+                            "Family A returned invalid "
+                            "precision crop coordinates "
+                            f"| PAGE={page_number} "
+                            f"| REQUEST={request_index}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "REQUEST | JOB=%s | PAGE=%s | "
+                        "INDEX=%s | "
+                        "PRODUCT=%s | COLOR=%s | "
+                        "CROP=(x=%s,y=%s,w=%s,h=%s)",
+                        self.id,
+                        page_number,
+                        request_index,
+                        request.get(
+                            "product_reference"
+                        ),
+                        request.get(
+                            "color"
+                        ),
+                        x,
+                        y,
+                        width,
+                        height,
+                    )
+
+                    # -------------------------------------------------
+                    # BASIC GEOMETRY VALIDATION
+                    # -------------------------------------------------
+
+                    if (
+                        x < 0
+                        or y < 0
+                        or width <= 0
+                        or height <= 0
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop has "
+                            "invalid geometry "
+                            f"| PAGE={page_number} "
+                            f"| CROP=({x},{y},{width},{height})"
+                        )
+
+                    # -------------------------------------------------
+                    # PAGE BOUNDARY VALIDATION
+                    # -------------------------------------------------
+
+                    if (
+                        x + width > page_width
+                        or y + height > page_height
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop "
+                            "exceeds original page bounds "
+                            f"| PAGE={page_number} "
+                            f"| PAGE_SIZE="
+                            f"{page_width}x{page_height} "
+                            f"| CROP="
+                            f"({x},{y},{width},{height})"
+                        )
+
+                    # -------------------------------------------------
+                    # COVERAGE VALIDATION
+                    # -------------------------------------------------
+
+                    crop_area = (
+                        width *
+                        height
+                    )
+
+                    page_area = (
+                        page_width *
+                        page_height
+                    )
+
+                    coverage = (
+                        crop_area / page_area
+                        if page_area
+                        else 1.0
+                    )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "GEOMETRY | JOB=%s | PAGE=%s | "
+                        "COVERAGE=%.4f",
+                        self.id,
+                        page_number,
+                        coverage,
+                    )
+
+                    # A precision recovery crop should identify
+                    # a product region, not the whole page.
+                    if coverage >= 0.95:
+
+                        raise ValueError(
+                            "Family A precision crop is "
+                            "essentially the entire page "
+                            f"| PAGE={page_number} "
+                            f"| COVERAGE={coverage:.4f} "
+                            f"| CROP="
+                            f"({x},{y},{width},{height})"
+                        )
+
+                    # -------------------------------------------------
+                    # NORMALIZE TO INTEGER PIXELS
+                    # -------------------------------------------------
+
+                    left = max(
+                        0,
+                        int(round(x))
+                    )
+
+                    top = max(
+                        0,
+                        int(round(y))
+                    )
+
+                    right = min(
+                        page_width,
+                        int(round(
+                            x + width
+                        ))
+                    )
+
+                    bottom = min(
+                        page_height,
+                        int(round(
+                            y + height
+                        ))
+                    )
+
+                    if (
+                        right <= left
+                        or bottom <= top
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop "
+                            "collapsed after pixel "
+                            f"normalization "
+                            f"| PAGE={page_number}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "NORMALIZED | JOB=%s | PAGE=%s | "
+                        "BOX=(%s,%s,%s,%s)",
+                        self.id,
+                        page_number,
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    )
+
+                                        # -------------------------------------------------
+                    # EXECUTE FAMILY A PRECISION CROP
+                    # -------------------------------------------------
+
+                    cropped = page_image.crop(
+                        (
+                            left,
+                            top,
+                            right,
+                            bottom,
+                        )
+                    )
+
+                    if (
+                        cropped.width < 20
+                        or cropped.height < 20
+                    ):
+
+                        raise ValueError(
+                            "Family A precision crop "
+                            "produced an image that is "
+                            "too small "
+                            f"| PAGE={page_number} "
+                            f"| SIZE="
+                            f"{cropped.width}x"
+                            f"{cropped.height}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "IMAGE CROPPED | JOB=%s | PAGE=%s | "
+                        "SIZE=%sx%s | PRODUCT=%s | COLOR=%s",
+                        self.id,
+                        page_number,
+                        cropped.width,
+                        cropped.height,
+                        request.get(
+                            "product_reference"
+                        ),
+                        request.get(
+                            "color"
+                        ),
+                    )
+
+                    # -------------------------------------------------
+                    # ENCODE RECOVERED IMAGE
+                    # -------------------------------------------------
+
+                    crop_buffer = io.BytesIO()
+
+                    cropped.save(
+                        crop_buffer,
+                        format="PNG"
+                    )
+
+                    crop_bytes = (
+                        crop_buffer.getvalue()
+                    )
+
+                    crop_base64 = (
+                        base64.b64encode(
+                            crop_bytes
+                        ).decode(
+                            "utf-8"
+                        )
+                    )
+
+                    crop_hash = hashlib.md5(
+                        crop_bytes
+                    ).hexdigest()
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "IMAGE ENCODED | JOB=%s | PAGE=%s | "
+                        "HASH=%s | BYTES=%s",
+                        self.id,
+                        page_number,
+                        crop_hash,
+                        len(crop_bytes),
+                    )
+
+                    # -------------------------------------------------
+                    # BUILD AUTHORITATIVE FAMILY A RECOVERED ASSET
+                    # -------------------------------------------------
+
+                    recovered_asset = {
+
+                        "image":
+                            crop_base64,
+
+                        "image_hash":
+                            crop_hash,
+
+                        "page":
+                            page_number,
+
+                        "x":
+                            left,
+
+                        "y":
+                            top,
+
+                        "width":
+                            right - left,
+
+                        "height":
+                            bottom - top,
+
+                        "product_reference":
+                            request.get(
+                                "product_reference"
+                            ),
+
+                        "product_group":
+                            request.get(
+                                "product_group"
+                            ),
+
+                        "color":
+                            request.get(
+                                "color"
+                            ),
+
+                        "asset_role":
+                            request.get(
+                                "required_image_role"
+                            ),
+
+                        # Family A has explicitly identified
+                        # this as the missing real product.
+                        "classification":
+                            "REAL_PRODUCT",
+
+                        "trustworthy":
+                            True,
+
+                        "preserve":
+                            True,
+
+                        # -------------------------------------------------
+                        # FAMILY A RECOVERY FLAGS
+                        # -------------------------------------------------
+
+                        "family_a_recovered":
+                            True,
+
+                        "family_a_precision_crop":
+                            True,
+
+                        # -------------------------------------------------
+                        # CROP METADATA
+                        # Keep the same coordinate/crop vocabulary
+                        # already used by the Azure crop pipeline.
+                        # -------------------------------------------------
+
+                        "crop_id":
+                            crop.get(
+                                "crop_id"
+                            ),
+
+                        "figure_id":
+                            crop.get(
+                                "figure_id"
+                            ),
+
+                        "purpose":
+                            crop.get(
+                                "purpose"
+                            ),
+
+                        "confidence":
+                            crop.get(
+                                "confidence",
+                                request.get(
+                                    "confidence",
+                                    0
+                                )
+                            ),
+
+                    }
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "ASSET BUILT | JOB=%s | PAGE=%s | "
+                        "PRODUCT=%s | COLOR=%s | ROLE=%s | "
+                        "CONFIDENCE=%s",
+                        self.id,
+                        page_number,
+                        recovered_asset.get(
+                            "product_reference"
+                        ),
+                        recovered_asset.get(
+                            "color"
+                        ),
+                        recovered_asset.get(
+                            "asset_role"
+                        ),
+                        recovered_asset.get(
+                            "confidence"
+                        ),
+                    )
+
+                    # -------------------------------------------------
+                    # LOAD CURRENT PAGE ASSET COLLECTION
+                    # -------------------------------------------------
+
+                    page_record = self.env[
+                        "vendor.import.page"
+                    ].search(
+                        [
+                            ("job_id", "=", self.id),
+                            (
+                                "page_number",
+                                "=",
+                                page_number
+                            ),
+                        ],
+                        limit=1,
+                    )
+
+                    if not page_record:
+
+                        raise ValueError(
+                            "Family A precision recovery "
+                            "could not find the page record "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number}"
+                        )
+
+                    # -------------------------------------------------
+                    # LOAD EXISTING PAGE IMAGES
+                    # -------------------------------------------------
+
+                    try:
+
+                        page_images = json.loads(
+                            page_record.page_images_json
+                            or "[]"
+                        )
+
+                    except Exception as e:
+
+                        raise ValueError(
+                            "Invalid page_images_json "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number} "
+                            f"| ERROR={str(e)}"
+                        )
+
+                    if not isinstance(
+                        page_images,
+                        list
+                    ):
+
+                        raise ValueError(
+                            "page_images_json must be "
+                            "a list "
+                            f"| JOB={self.id} "
+                            f"| PAGE={page_number}"
+                        )
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "EXISTING ASSETS | JOB=%s | PAGE=%s | "
+                        "COUNT=%s",
+                        self.id,
+                        page_number,
+                        len(page_images),
+                    )
+
+                    # -------------------------------------------------
+                    # DUPLICATE PROTECTION
+                    # -------------------------------------------------
+
+                    existing_hashes = {
+                        asset.get("image_hash")
+                        for asset in page_images
+                        if isinstance(
+                            asset,
+                            dict
+                        )
+                        and asset.get(
+                            "image_hash"
+                        )
+                    }
+
+                    if crop_hash in existing_hashes:
+
+                        _logger.warning(
+                            "[PRECISION CROP] "
+                            "DUPLICATE SKIPPED | JOB=%s | "
+                            "PAGE=%s | HASH=%s",
+                            self.id,
+                            page_number,
+                            crop_hash,
+                        )
+
+                        continue
+
+                    # -------------------------------------------------
+                    # APPEND RECOVERED ASSET
+                    # -------------------------------------------------
+
+                    page_images.append(
+                        recovered_asset
+                    )
+
+                    recovered_total += 1
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "ASSET APPENDED | JOB=%s | PAGE=%s | "
+                        "TOTAL_ASSETS=%s | PRODUCT=%s | COLOR=%s",
+                        self.id,
+                        page_number,
+                        len(page_images),
+                        recovered_asset.get(
+                            "product_reference"
+                        ),
+                        recovered_asset.get(
+                            "color"
+                        ),
+                    )
+
+                    # -------------------------------------------------
+                    # PERSIST UPDATED PAGE ASSET COLLECTION
+                    # -------------------------------------------------
+
+                    page_record.write({
+                        "page_images_json": json.dumps(
+                            page_images,
+                            ensure_ascii=False
+                        ),
+                    })
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "ASSETS PERSISTED | JOB=%s | PAGE=%s | "
+                        "COUNT=%s",
+                        self.id,
+                        page_number,
+                        len(page_images),
+                    )
+
+                    # -------------------------------------------------
+                    # PAGE RECOVERY COMPLETE
+                    # -------------------------------------------------
+
+                    _logger.warning(
+                        "[PRECISION CROP] "
+                        "PAGE RECOVERY COMPLETE | "
+                        "JOB=%s | PAGE=%s | "
+                        "RECOVERED_TOTAL=%s",
+                        self.id,
+                        page_number,
+                        recovered_total,
+                    )
+
+            # =====================================================
+            # PRECISION RECOVERY COMPLETE
+            # =====================================================
+
+            if recovered_total <= 0:
+
+                raise ValueError(
+                    "Family A precision recovery produced "
+                    "no new assets."
+                )
+
+            recovery_payload[
+                "decision"
+            ] = "PRECISION_RECOVERY_COMPLETE"
+
+            recovery_payload[
+                "completed"
+            ] = True
+
+            recovery_payload[
+                "recovered_count"
+            ] = recovered_total
+
+            self.family_a_partial_recovery_json = (
+                json.dumps(
+                    recovery_payload,
+                    ensure_ascii=False
+                )
+            )
+
+            # =====================================================
+            # HAND BACK TO EXISTING PDF AI PIPELINE
+            # =====================================================
+
+            self.last_ai_page = 0
+            self.stage_retry_count = 0
+            self.last_error = False
+
+            self.last_known_state = "pdf_ai"
+            self.state = "pdf_ai"
+
+            self.flush_recordset()
+            self.env.cr.commit()
+
+            _logger.warning(
+                "[PRECISION CROP] "
+                "COMPLETE → PDF AI | "
+                "JOB=%s | RECOVERED=%s",
+                self.id,
+                recovered_total,
+            )
+
+            return {
+                "success": True,
+                "recovered_count":
+                    recovered_total,
+            }
+
+        except Exception as e:
+
+            _logger.exception(
+                "[PRECISION CROP] FAILED "
+                "| JOB=%s | %s",
+                self.id,
+                str(e),
+            )
+
+            return
 
     # =========================================================
     # SAFE CROP / WHITESPACE EXPANSION
@@ -21071,15 +24394,105 @@ class VendorImportJob(models.Model):
             return asset_pool
 
     #=================Centralized Rusable Image=======================
-      
-    def _prepare_asset_pool(self, images):
+    def _prepare_asset_pool(
+        self,
+        images,
+        current_page=None
+    ):
 
         prepared = []
+
         _logger.warning(
             f"[POOL BUILD START] incoming={len(images or [])}"
         )
 
         seen = {}
+
+        # =========================================================
+        # FAMILY A VISUAL AUTHORITY
+        # =========================================================
+
+        family_a_authority_by_hash = {}
+        family_a_authority_by_page_index = {}
+
+        try:
+
+            family_a_review = json.loads(
+                self.family_a_review_json
+                or "{}"
+            )
+
+        except Exception:
+
+            family_a_review = {}
+
+            _logger.warning(
+                "[POOL FAMILY A] "
+                "Could not parse family_a_review_json"
+            )
+
+        for page_result in family_a_review.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                page_result,
+                dict
+            ):
+                continue
+
+            page_number = page_result.get(
+                "page"
+            )
+
+            for authority in page_result.get(
+                "extracted_asset_mapping",
+                []
+            ):
+
+                if not isinstance(
+                    authority,
+                    dict
+                ):
+                    continue
+
+                image_index = authority.get(
+                    "image_index"
+                )
+
+                image_hash = authority.get(
+                    "image_hash"
+                )
+
+                if image_hash:
+                    family_a_authority_by_hash[
+                        image_hash
+                    ] = authority
+
+                if (
+                    page_number is not None
+                    and image_index is not None
+                ):
+
+                    family_a_authority_by_page_index[
+                        (
+                            int(page_number),
+                            int(image_index)
+                        )
+                    ] = authority
+
+        _logger.warning(
+            "[POOL FAMILY A] "
+            "authoritative_hashes=%s "
+            "| authoritative_page_indexes=%s",
+            len(
+                family_a_authority_by_hash
+            ),
+            len(
+                family_a_authority_by_page_index
+            ),
+        )
 
         for asset in (images or []):
 
@@ -21147,6 +24560,146 @@ class VendorImportJob(models.Model):
 
                     continue
 
+                # =========================================================
+                # FAMILY A AUTHORITATIVE VISUAL DECISION
+                # =========================================================
+
+                family_a_authority = None
+
+                if isinstance(
+                    asset,
+                    dict
+                ):
+
+                    # =====================================================
+                    # 1. EXACT IMAGE HASH
+                    # =====================================================
+
+                    incoming_hash = asset.get(
+                        "image_hash"
+                    )
+
+                    if not incoming_hash:
+
+                        incoming_hash = hashlib.md5(
+                            img.encode("utf-8")
+                        ).hexdigest()
+
+                    family_a_authority = (
+                        family_a_authority_by_hash.get(
+                            incoming_hash
+                        )
+                    )
+
+                    # =====================================================
+                    # 2. SOURCE HASH FALLBACK
+                    # =====================================================
+
+                    if family_a_authority is None:
+
+                        source_hash = asset.get(
+                            "source_hash"
+                        )
+
+                        if source_hash:
+
+                            family_a_authority = (
+                                family_a_authority_by_hash.get(
+                                    source_hash
+                                )
+                            )
+
+                    # =====================================================
+                    # 3. CURRENT PDF PAGE + CLEAN INDEX
+                    #
+                    # Family A authority:
+                    #
+                    #     (page_number, image_index)
+                    #
+                    # Incoming production asset:
+                    #
+                    #     (current_page, clean_index)
+                    #
+                    # These identify the same extracted asset.
+                    #
+                    # DO NOT use:
+                    #
+                    #     asset["page"]
+                    #     asset["index"]
+                    #     asset["extractor_rank"]
+                    #
+                    # for this authoritative lookup.
+                    # =====================================================
+
+                    if family_a_authority is None:
+
+                        incoming_index = asset.get(
+                            "clean_index"
+                        )
+
+                        if (
+                            current_page is not None
+                            and incoming_index is not None
+                        ):
+
+                            try:
+
+                                family_a_authority = (
+                                    family_a_authority_by_page_index.get(
+                                        (
+                                            int(current_page),
+                                            int(incoming_index)
+                                        )
+                                    )
+                                )
+
+                                _logger.warning(
+                                    "[POOL FAMILY A INDEX LOOKUP] "
+                                    "page=%s "
+                                    "| clean_index=%s "
+                                    "| found=%s",
+                                    current_page,
+                                    incoming_index,
+                                    bool(family_a_authority)
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                family_a_authority = None
+
+                _logger.warning(
+                    "[POOL FAMILY A DECISION] "
+                    "hash=%s | found=%s | classification=%s "
+                    "| role=%s | preserve=%s | trustworthy=%s",
+                    incoming_hash
+                        if isinstance(asset, dict)
+                        else None,
+                    bool(family_a_authority),
+                    family_a_authority.get(
+                        "classification"
+                    )
+                        if family_a_authority
+                        else "NONE",
+                    family_a_authority.get(
+                        "asset_role"
+                    )
+                        if family_a_authority
+                        else "NONE",
+                    family_a_authority.get(
+                        "preserve"
+                    )
+                        if family_a_authority
+                        else None,
+                    family_a_authority.get(
+                        "trustworthy"
+                    )
+                        if family_a_authority
+                        else None,
+                )
+
                 # =====================================
                 # SKIP EXTREMELY LOW SCORES
                 # =====================================
@@ -21155,7 +24708,7 @@ class VendorImportJob(models.Model):
 
                     continue
 
-                image_hash = asset.get("image_hash")
+                image_hash = incoming_hash
 
                 if not image_hash:
 
@@ -21347,21 +24900,83 @@ class VendorImportJob(models.Model):
                     )
                 )
 
+
+                # =========================================================
+                # FAMILY A AUTHORITY OVERRIDES GENERIC HUMAN HEURISTICS
+                # =========================================================
+
+                family_a_classification = None
+
+                if family_a_authority:
+
+                    family_a_classification = str(
+                        family_a_authority.get(
+                            "classification",
+                            "UNKNOWN"
+                        )
+                    ).upper().strip()
+
+                # =========================================================
+                # AUTHORITATIVE FAMILY A REAL PRODUCT
+                # =========================================================
+
                 if (
-                    not is_azure_asset
+                    family_a_authority
                     and
-                    not recovered
-                    and
-                    ratio < 0.72
-                    and
-                    height > width * 1.20
+                    family_a_classification == "REAL_PRODUCT"
                 ):
+
                     _logger.warning(
-                        f"[ASSET REJECTED HUMAN] "
-                        f"ratio={ratio:.2f} "
-                        f"size={width}x{height}"
+                        "[POOL FAMILY A OVERRIDE] "
+                        "REAL_PRODUCT preserved "
+                        "| image=%s "
+                        "| page=%s "
+                        "| ratio=%.2f "
+                        "| size=%sx%s",
+                        asset.get(
+                            "index"
+                        )
+                            if isinstance(asset, dict)
+                            else None,
+                        asset.get(
+                            "page"
+                        )
+                            if isinstance(asset, dict)
+                            else None,
+                        ratio,
+                        width,
+                        height,
                     )
-                    continue
+
+                    # Family A is authoritative.
+                    # DO NOT apply the generic portrait/human rejection.
+
+                else:
+
+                    # =====================================================
+                    # FALLBACK HUMAN / LIFESTYLE HEURISTIC
+                    # =====================================================
+
+                    if (
+                        not is_azure_asset
+                        and
+                        not recovered
+                        and
+                        ratio < 0.72
+                        and
+                        height > width * 1.20
+                    ):
+
+                        _logger.warning(
+                            "[ASSET REJECTED HUMAN FALLBACK] "
+                            "No authoritative Family A REAL_PRODUCT "
+                            "decision | ratio=%.2f | size=%sx%s",
+                            ratio,
+                            width,
+                            height,
+                        )
+
+                        continue
 
                 if is_azure_asset:
                     _logger.warning(
@@ -21441,9 +25056,16 @@ class VendorImportJob(models.Model):
                         else 0
                     ),
 
-                    "is_lifestyle": asset.get(
-                        "is_lifestyle",
-                        False
+  
+                    "is_lifestyle": (
+                        family_a_authority.get(
+                            "classification"
+                        ) == "LIFESTYLE"
+                        if family_a_authority
+                        else asset.get(
+                            "is_lifestyle",
+                            False
+                        )
                     ),
 
                     "background_ratio": background_ratio,
@@ -21458,9 +25080,57 @@ class VendorImportJob(models.Model):
                         asset.get("audit", [])
                     ),
 
-                    "classification": asset.get("classification"),
 
-                    "asset_role": asset.get("asset_role"),
+                    "classification": (
+                        family_a_authority.get(
+                            "classification"
+                        )
+                        if family_a_authority
+                        else asset.get(
+                            "classification"
+                        )
+                    ),
+
+                    "asset_role": (
+                        family_a_authority.get(
+                            "asset_role"
+                        )
+                        if family_a_authority
+                        else asset.get(
+                            "asset_role"
+                        )
+                    ),
+
+                    "family_a_authoritative": bool(
+                        family_a_authority
+                    ),
+
+                    "family_a_confidence": (
+                        family_a_authority.get(
+                            "confidence",
+                            0
+                        )
+                        if family_a_authority
+                        else 0
+                    ),
+
+                    "family_a_trustworthy": (
+                        family_a_authority.get(
+                            "trustworthy",
+                            False
+                        )
+                        if family_a_authority
+                        else False
+                    ),
+
+                    "family_a_preserve": (
+                        family_a_authority.get(
+                            "preserve",
+                            False
+                        )
+                        if family_a_authority
+                        else False
+                    ),
 
                     "priority": asset.get("priority", 0),
 
@@ -21499,14 +25169,27 @@ class VendorImportJob(models.Model):
 
 
                 _logger.warning(
-
-                    f"[POOL ADD] "
-
-                    f"index={len(prepared)-1} "
-
-                    f"color={dominant_color} "
-
-                    f"lifestyle={asset.get('is_lifestyle')}"
+                    "[POOL ADD] "
+                    "index=%s "
+                    "| color=%s "
+                    "| lifestyle=%s "
+                    "| classification=%s "
+                    "| family_a_authoritative=%s "
+                    "| family_a_trustworthy=%s",
+                    len(prepared) - 1,
+                    dominant_color,
+                    prepared[-1].get(
+                        "is_lifestyle"
+                    ),
+                    prepared[-1].get(
+                        "classification"
+                    ),
+                    prepared[-1].get(
+                        "family_a_authoritative"
+                    ),
+                    prepared[-1].get(
+                        "family_a_trustworthy"
+                    ),
                 )
 
                 seen[image_hash] = {
@@ -21547,25 +25230,64 @@ class VendorImportJob(models.Model):
                 f"color={asset.get('dominant_color')}"
             )
 
+
         prepared = sorted(
 
             prepared,
 
             key=lambda x: (
 
-                x.get("priority", 0),
+                x.get(
+                    "priority",
+                    0
+                ),
 
-                x.get("hero_score", 0),
+                # =============================================
+                # FAMILY A AUTHORITY
+                # =============================================
 
-                x.get("gallery_score", 0),
+                x.get(
+                    "classification"
+                ) == "REAL_PRODUCT",
 
-                not x.get("is_lifestyle", False),
+                x.get(
+                    "family_a_authoritative",
+                    False
+                ),
 
-                not x.get("is_collage", False),
+                x.get(
+                    "family_a_trustworthy",
+                    False
+                ),
 
-                -x.get("y", 0),
+                # =============================================
+                # EXISTING SCORING
+                # =============================================
 
-                -x.get("x", 0)
+                x.get(
+                    "hero_score",
+                    0
+                ),
+
+                x.get(
+                    "gallery_score",
+                    0
+                ),
+
+                not x.get(
+                    "is_collage",
+                    False
+                ),
+
+                -x.get(
+                    "y",
+                    0
+                ),
+
+                -x.get(
+                    "x",
+                    0
+                )
 
             ),
 
@@ -21594,18 +25316,39 @@ class VendorImportJob(models.Model):
         for asset in prepared:
            
             _logger.warning(
-                f"[POOL FINAL] "
-                f"index={asset.get('clean_index')} "
-                f"color={asset.get('dominant_color')} "
-                f"lifestyle={asset.get('is_lifestyle')} "
-                f"x={asset.get('x')} "
-                f"y={asset.get('y')} "
-                f"hero={asset.get('hero_score')} "
-                f"gallery={asset.get('gallery_score')} "
-                f"score={asset.get('score')} "
-                f"collage={asset.get('is_collage')} "
-                f"width={asset.get('width')} "
-                f"height={asset.get('height')}"
+                "[POOL FINAL] "
+                "index=%s "
+                "| color=%s "
+                "| lifestyle=%s "
+                "| classification=%s "
+                "| role=%s "
+                "| family_a_authoritative=%s "
+                "| family_a_trustworthy=%s "
+                "| family_a_preserve=%s "
+                "| x=%s "
+                "| y=%s "
+                "| hero=%s "
+                "| gallery=%s "
+                "| score=%s "
+                "| collage=%s "
+                "| width=%s "
+                "| height=%s",
+                asset.get("clean_index"),
+                asset.get("dominant_color"),
+                asset.get("is_lifestyle"),
+                asset.get("classification"),
+                asset.get("asset_role"),
+                asset.get("family_a_authoritative"),
+                asset.get("family_a_trustworthy"),
+                asset.get("family_a_preserve"),
+                asset.get("x"),
+                asset.get("y"),
+                asset.get("hero_score"),
+                asset.get("gallery_score"),
+                asset.get("score"),
+                asset.get("is_collage"),
+                asset.get("width"),
+                asset.get("height"),
             )
         return prepared
 
@@ -29545,7 +33288,8 @@ class VendorImportJob(models.Model):
                 # =====================================
 
                 asset_pool = self._prepare_asset_pool(
-                    segmented_assets
+                    segmented_assets,
+                    current_page=page_number
                 )
 
                 _logger.warning(
@@ -36842,6 +40586,7 @@ class VendorImportJob(models.Model):
             'azure_fallback',
 
             'family_a_review',
+            'family_a_partial_recovery',
 
             'pdf_extracting',
             'pdf_ai',
@@ -36878,6 +40623,7 @@ class VendorImportJob(models.Model):
             # =============================================
 
             "family_a_review": "Family A Review",
+            "family_a_partial_recovery" : "Family A Partial Recovery",
 
             # =============================================
             # AZURE VISUAL INTERCEPTION
@@ -38776,3 +42522,4 @@ class VendorImportJob(models.Model):
 
         return default_currency
 
+    
