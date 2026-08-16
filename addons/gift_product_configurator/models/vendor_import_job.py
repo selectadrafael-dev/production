@@ -23041,8 +23041,11 @@ class VendorImportJob(models.Model):
             return asset_pool
 
     #=================Centralized Rusable Image=======================
-      
-    def _prepare_asset_pool(self, images):
+    def _prepare_asset_pool(
+        self,
+        images,
+        current_page=None
+    ):
 
         prepared = []
 
@@ -23215,22 +23218,9 @@ class VendorImportJob(models.Model):
                     dict
                 ):
 
-                    # -----------------------------------------------------
-                    # FAMILY A IDENTITY MATCHING
-                    #
-                    # Priority:
-                    #   1. exact image hash
-                    #   2. source hash
-                    #   3. source asset id
-                    #   4. page + ORIGINAL extraction index
-                    #
-                    # IMPORTANT:
-                    # "index" is NOT available yet here.
-                    # It is assigned only AFTER the pool is built/sorted.
-                    #
-                    # "clean_index" is the original extraction index and
-                    # must therefore be used for Family A page/index matching.
-                    # -----------------------------------------------------
+                    # =====================================================
+                    # 1. EXACT IMAGE HASH
+                    # =====================================================
 
                     incoming_hash = asset.get(
                         "image_hash"
@@ -23241,10 +23231,6 @@ class VendorImportJob(models.Model):
                         incoming_hash = hashlib.md5(
                             img.encode("utf-8")
                         ).hexdigest()
-
-                    # =====================================================
-                    # 1. EXACT IMAGE HASH
-                    # =====================================================
 
                     family_a_authority = (
                         family_a_authority_by_hash.get(
@@ -23271,27 +23257,35 @@ class VendorImportJob(models.Model):
                             )
 
                     # =====================================================
-                    # 3. PAGE + ORIGINAL EXTRACTION INDEX
+                    # 3. CURRENT PDF PAGE + CLEAN INDEX
                     #
-                    # DO NOT use asset["index"] here.
-                    # "index" is assigned later in this method.
+                    # Family A authority:
                     #
-                    # Family A's image_index corresponds to the original
-                    # extraction/clean index.
+                    #     (page_number, image_index)
+                    #
+                    # Incoming production asset:
+                    #
+                    #     (current_page, clean_index)
+                    #
+                    # These identify the same extracted asset.
+                    #
+                    # DO NOT use:
+                    #
+                    #     asset["page"]
+                    #     asset["index"]
+                    #     asset["extractor_rank"]
+                    #
+                    # for this authoritative lookup.
                     # =====================================================
 
                     if family_a_authority is None:
-
-                        incoming_page = asset.get(
-                            "page"
-                        )
 
                         incoming_index = asset.get(
                             "clean_index"
                         )
 
                         if (
-                            incoming_page is not None
+                            current_page is not None
                             and incoming_index is not None
                         ):
 
@@ -23300,50 +23294,20 @@ class VendorImportJob(models.Model):
                                 family_a_authority = (
                                     family_a_authority_by_page_index.get(
                                         (
-                                            int(incoming_page),
+                                            int(current_page),
                                             int(incoming_index)
                                         )
                                     )
                                 )
 
-                            except (
-                                TypeError,
-                                ValueError
-                            ):
-
-                                family_a_authority = None
-
-                    # =====================================================
-                    # 4. PAGE + SOURCE/EXTRACTOR RANK FALLBACK
-                    #
-                    # Keep this only as a secondary bridge if the source
-                    # asset carries extractor_rank.
-                    # =====================================================
-
-                    if family_a_authority is None:
-
-                        incoming_page = asset.get(
-                            "page"
-                        )
-
-                        incoming_index = asset.get(
-                            "extractor_rank"
-                        )
-
-                        if (
-                            incoming_page is not None
-                            and incoming_index is not None
-                        ):
-
-                            try:
-
-                                family_a_authority = (
-                                    family_a_authority_by_page_index.get(
-                                        (
-                                            int(incoming_page),
-                                            int(incoming_index)
-                                        )
-                                    )
+                                _logger.warning(
+                                    "[POOL FAMILY A INDEX LOOKUP] "
+                                    "page=%s "
+                                    "| clean_index=%s "
+                                    "| found=%s",
+                                    current_page,
+                                    incoming_index,
+                                    bool(family_a_authority)
                                 )
 
                             except (
@@ -31971,7 +31935,8 @@ class VendorImportJob(models.Model):
                 # =====================================
 
                 asset_pool = self._prepare_asset_pool(
-                    segmented_assets
+                    segmented_assets,
+                    current_page=page_number
                 )
 
                 _logger.warning(
