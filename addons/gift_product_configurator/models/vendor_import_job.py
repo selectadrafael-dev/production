@@ -9833,22 +9833,26 @@ class VendorImportJob(models.Model):
                         block.get("text") or ""
                     ).strip()
 
+                    # if page_text:
+                    #     break
+
                     if page_text:
+                        _logger.warning(
+                            "[AI PAGE TEXT] "
+                            "PAGE=%s | EXISTS=%s | LENGTH=%s",
+                            next_record.page_number,
+                            bool(page_text),
+                            len(page_text)
+                        )
+
+                        _logger.warning(
+                            "[AI PAGE TEXT SAMPLE] PAGE=%s\n%s",
+                            next_record.page_number,
+                            page_text[:2000]
+                        )
+
                         break
 
-                    _logger.warning(
-                        "[AI PAGE TEXT] "
-                        "PAGE=%s | EXISTS=%s | LENGTH=%s",
-                        next_record.page_number,
-                        bool(page_text),
-                        len(page_text)
-                    )
-
-                    _logger.warning(
-                        "[AI PAGE TEXT SAMPLE] PAGE=%s\n%s",
-                        next_record.page_number,
-                        page_text[:2000]
-                    )
 
             for block in page_blocks:
 
@@ -11080,7 +11084,31 @@ class VendorImportJob(models.Model):
         If multiple standalone products appear on one page:
         - infer product grouping visually
         - detect visible variants
-        - create products even if title is missing
+        - create products even if the printed title is missing
+
+        IMPORTANT PRODUCT NAME REQUIREMENT:
+
+        Creating a product when its printed title is missing does NOT
+        permit an empty product name.
+
+        Every detected product MUST have a non-empty "name".
+
+        If the exact printed title cannot be recovered, determine the
+        strongest product identity from the complete catalogue page,
+        page text, product-family context, model/product information,
+        and visible product characteristics.
+
+        If necessary, generate a concise commercially meaningful name
+        describing the actual product.
+
+        NEVER return:
+        - ""
+        - null
+        - "Unknown"
+        - "Unnamed Product"
+        - "Product"
+
+        for the name of a detected product.
 
         Pens, bottles, shirts, caps and accessories
         must NEVER be ignored simply because:
@@ -11357,7 +11385,65 @@ class VendorImportJob(models.Model):
         TITLE RULES
         ==================================================
 
-        CRITICAL:
+               # ==================================================
+        # TITLE / PRODUCT NAME RULES
+        # ==================================================
+
+        CRITICAL PRODUCT NAME RULE:
+
+        EVERY DETECTED PRODUCT MUST HAVE A NON-EMPTY "name".
+
+        NEVER return:
+
+        "name": ""
+
+        and NEVER return:
+
+        "name": null
+
+        when a real product has been detected.
+
+        PRODUCT NAME PRIORITY:
+
+        1. Use the exact visible catalogue product title when one exists.
+
+        2. If the title is not clearly readable, use the strongest
+           product-name evidence available from:
+           - page text
+           - catalogue headings
+           - model/product codes when they form part of the product identity
+           - surrounding product-specific text
+           - the complete catalogue page visual context
+           - product-family context
+
+        3. If no exact title can be recovered, generate a concise,
+           commercially meaningful product name describing the actual
+           product shown.
+
+        IMPORTANT:
+
+        A missing or unclear title does NOT mean the product name should
+        be empty.
+
+        The instruction:
+
+        "create products even if title is missing"
+
+        means the product MUST still receive a usable "name".
+
+        NEVER use an empty string, null, "Unknown", "Unnamed Product",
+        "Product", or another generic placeholder merely because the
+        printed title cannot be confidently read.
+
+        When a product belongs to a clearly established Family A product
+        group, preserve that product grouping when determining its name.
+
+        Do not create separate product names merely because the product
+        has multiple color variants.
+
+        ==================================================
+        EXACT TITLE PRIORITY
+        ==================================================
 
         ALWAYS prioritize the REAL PRODUCT TITLE
         even if:
@@ -11365,7 +11451,7 @@ class VendorImportJob(models.Model):
         * title is small
         * title is thin font
         * title is placed left/right/middle
-        * title are mostly separated from images
+        * title is separated from images
         * description text is visually larger
 
         The TRUE PRODUCT TITLE is usually:
@@ -11435,7 +11521,8 @@ class VendorImportJob(models.Model):
         to:
         * "T-Shirt"
 
-        ALWAYS preserve the FULL visible catalog title exactly as printed on the page.
+        ALWAYS preserve the FULL visible catalog title exactly as printed
+        on the page.
 
         If multiple words appear in the title heading:
         include ALL of them.
@@ -11568,7 +11655,7 @@ class VendorImportJob(models.Model):
 
         [
             {{
-                "name": "",
+                "name": "REQUIRED NON-EMPTY PRODUCT NAME",
                 "subtitle": "",
                 "description": "",
                 "bullet_features": [],
@@ -11869,6 +11956,33 @@ class VendorImportJob(models.Model):
             try:
 
                 parsed = json.loads(result)
+                # =====================================================
+                # VALIDATE REQUIRED PRODUCT NAME
+                # =====================================================
+
+                for pidx, product in enumerate(parsed):
+
+                    product_name = (
+                        product.get("name")
+                        if isinstance(product, dict)
+                        else ""
+                    )
+
+                    if not isinstance(product_name, str):
+                        product_name = ""
+
+                    product_name = product_name.strip()
+
+                    if not product_name:
+                        _logger.warning(
+                            "[PDF AI PRODUCT NAME MISSING] "
+                            "PAGE=%s | PRODUCT=%s",
+                            next_record.page_number,
+                            pidx
+                        )
+
+                    else:
+                        product["name"] = product_name
                 
                 _logger.warning(
                     f"[AI RAW RESPONSE] "
@@ -13446,6 +13560,115 @@ class VendorImportJob(models.Model):
 
         return found_images
 
+    # =========================================================
+    # AUTHORITATIVE FAMILY A SPECIFICATION
+    # =========================================================
+    def _get_family_a_authoritative_spec(self):
+        """
+        Return the persisted Family A authoritative analysis.
+
+        This is NOT another AI call.
+
+        It is the reusable contract that downstream stages such as
+        Azure Review and PDF Production AI can consume.
+
+        Family A remains the authority for:
+            - page decisions
+            - product structure
+            - product groups
+            - asset classification
+            - asset roles
+            - variant relationships
+            - image identity
+            - preservation decisions
+            - missing asset requests
+        """
+
+        try:
+
+            family_a_review = json.loads(
+                self.family_a_review_json
+                or "{}"
+            )
+
+        except Exception as e:
+
+            _logger.exception(
+                "[FAMILY A AUTHORITY] "
+                "FAILED TO LOAD SPEC "
+                "| JOB=%s",
+                self.id
+            )
+
+            raise ValueError(
+                "Invalid family_a_review_json: "
+                f"{str(e)}"
+            )
+
+        if not isinstance(
+            family_a_review,
+            dict
+        ):
+
+            raise ValueError(
+                "Family A authoritative specification "
+                "must be a JSON object."
+            )
+
+        return family_a_review
+
+
+    # =========================================================
+    # AUTHORITATIVE FAMILY A PAGE SPECIFICATION
+    # =========================================================
+    def _get_family_a_page_spec(
+        self,
+        page_number,
+        family_a_review=None,
+    ):
+        """
+        Return the authoritative Family A specification
+        for one catalogue page.
+        """
+
+        if family_a_review is None:
+
+            family_a_review = (
+                self._get_family_a_authoritative_spec()
+            )
+
+        for page in family_a_review.get(
+            "pages",
+            []
+        ):
+
+            if not isinstance(
+                page,
+                dict
+            ):
+                continue
+
+            try:
+
+                if int(
+                    page.get(
+                        "page"
+                    )
+                ) == int(
+                    page_number
+                ):
+
+                    return page
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                continue
+
+        return {}
+
     # =========== PDF OPENAI PRODUCT REVIEW ================================
     def _review_azure_evidence_with_openai(self):
         """
@@ -13509,6 +13732,27 @@ class VendorImportJob(models.Model):
             }
 
         audit_pages = []
+
+        # ========================================================
+        # LOAD AUTHORITATIVE FAMILY A SPECIFICATION
+        # ========================================================
+
+        family_a_review = (
+            self._get_family_a_authoritative_spec()
+        )
+
+        _logger.warning(
+            "[AZURE AUDIT] FAMILY A AUTHORITY LOADED "
+            "| JOB=%s "
+            "| PAGES=%s",
+            self.id,
+            len(
+                family_a_review.get(
+                    "pages",
+                    []
+                )
+            )
+        )
 
         # ========================================================
         # BUILD OPENAI VISUAL INPUT
@@ -13735,9 +13979,37 @@ class VendorImportJob(models.Model):
 
                     })
 
-                # =================================================
-                # PAGE AUDIT DATA
-                # =================================================
+                # =========================================================
+                # FAMILY A AUTHORITATIVE PAGE SPECIFICATION
+                # =========================================================
+
+                family_a_page_spec = (
+                    self._get_family_a_page_spec(
+                        page_number,
+                        family_a_review
+                    )
+                )
+
+                _logger.warning(
+                    "[AZURE AUDIT] FAMILY A PAGE SPEC "
+                    "| JOB=%s "
+                    "| PAGE=%s "
+                    "| FOUND=%s "
+                    "| DECISION=%s "
+                    "| ASSETS=%s",
+                    self.id,
+                    page_number,
+                    bool(family_a_page_spec),
+                    family_a_page_spec.get(
+                        "decision"
+                    ),
+                    len(
+                        family_a_page_spec.get(
+                            "extracted_asset_mapping",
+                            []
+                        )
+                    )
+                )
 
                 audit_pages.append({
 
@@ -13772,7 +14044,14 @@ class VendorImportJob(models.Model):
                         block.get(
                             "azure_evidence",
                             {}
-                        )
+                        ),
+
+                    # =====================================================
+                    # FAMILY A AUTHORITATIVE ANALYSIS
+                    # =====================================================
+
+                    "family_a_authority":
+                        family_a_page_spec,
 
                 })
 
@@ -14299,6 +14578,56 @@ class VendorImportJob(models.Model):
         IMPORTANT:
 
         The ORIGINAL PAGE is the authoritative visual reference.
+
+        FAMILY A AUTHORITATIVE ANALYSIS:
+
+        The PAGE EVIDENCE may also contain a field named
+        "family_a_authority".
+
+        This is the authoritative specification produced by the
+        Family A visual review before Azure fallback.
+
+        Family A analysis is NOT a replacement for your visual inspection.
+
+        You must still independently inspect:
+
+        1. the ORIGINAL PAGE;
+        2. the Azure figures;
+        3. the actual supplied figure images.
+
+        However, Family A's analysis provides authoritative prior
+        classification and structural context that MUST be preserved
+        unless your direct visual inspection establishes that it is
+        visibly incorrect.
+
+        Family A may have already established:
+
+        - whether an extracted asset is a REAL_PRODUCT;
+        - whether it is LIFESTYLE;
+        - whether it is SUPPORTING;
+        - whether it is DETAIL;
+        - whether it belongs to a product group;
+        - whether it represents a color/variant;
+        - whether it matches the original;
+        - whether the product body is complete;
+        - whether the asset is trustworthy;
+        - whether the asset should be preserved.
+
+        Do NOT discard or silently overwrite this information.
+
+        If Azure discovers a genuine visual contradiction, report that
+        contradiction explicitly in the Azure result.
+
+        Do NOT reinterpret Family A merely because Azure produced a
+        different figure boundary.
+
+        Family A authority is especially important when Azure has
+        fragmented, merged, or ambiguously detected the same visual
+        asset.
+
+        The purpose of Azure fallback is to improve or recover the
+        visual extraction, not to erase the authoritative Family A
+        catalogue interpretation.
 
         Azure figures are detected visual regions from that page.
 
