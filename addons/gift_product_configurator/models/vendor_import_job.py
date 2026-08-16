@@ -918,7 +918,6 @@ class VendorImportJob(models.Model):
 
                     return
 
-
                 # =========================================
                 # APIFY RESPONSE READY
                 # =========================================
@@ -9734,18 +9733,57 @@ class VendorImportJob(models.Model):
             f"APIFY ITEMS FETCHED → {len(data)}"
         )
 
+        
+        # =====================================================
+        # APIFY COMPLETED BUT RETURNED NO DATA
+        # =====================================================
+        #
+        # Apify has already completed successfully, but the
+        # dataset contains zero records.
+        #
+        # This is NOT "waiting for Apify".
+        # This is a terminal URL extraction failure.
+        #
+        # IMPORTANT:
+        # Do not return True here because the caller uses True
+        # to mean "Apify is still processing".
+        # =====================================================
+
         if not data:
-            _logger.warning("APIFY RETURNED EMPTY → MARK JOB AS DONE")
 
-            self.state = 'done'   # 🔥 STOP LOOP COMPLETELY
+            _logger.error(
+                "[APIFY EMPTY DATASET] "
+                "TERMINAL FAILURE "
+                "| JOB=%s "
+                "| URL=%s "
+                "| RUN_ID=%s "
+                "| DATASET_ID=%s "
+                "| STATUS=SUCCEEDED "
+                "| ITEMS=0",
+                self.id,
+                url,
+                self.apify_run_id,
+                self.apify_dataset_id,
+            )
+
+            self.last_error = (
+                "Apify completed successfully but returned "
+                "0 dataset items."
+            )
+
+            self.last_known_state = (
+                'url_scraping'
+            )
+
+            self.state = (
+                'failed'
+            )
+
             self._safe_commit_progress()
-            return
 
-        # 🔥 CLEAN UP (IMPORTANT)
-        self.apify_run_id = False
-        self.apify_dataset_id = False
+            return False
 
-        return data
+        
 
 
     # =========== PDF OPENAI BACKUP ================================
