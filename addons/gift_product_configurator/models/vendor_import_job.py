@@ -17487,10 +17487,10 @@ class VendorImportJob(models.Model):
                 "pages": review_pages,
             }
 
+
         # =====================================================
         # FAMILY A VISUAL QUALITY PROMPT
         # =====================================================
-
 
         review_prompt = """
         You are the FINAL visual quality-control and RECOVERY-TARGET
@@ -17646,42 +17646,252 @@ class VendorImportJob(models.Model):
         must be returned when the image is actually a lifestyle representation,
         even if the supplied is_lifestyle field says false.
 
+        # ================================================================
+        # AUTHORITATIVE CATALOGUE PRODUCT GROUPING — VISUAL + LAYOUT RULE
+        # ================================================================
+
+        PRODUCT GROUPING IS A VISUAL CATALOGUE INTERPRETATION TASK.
+
+        You must determine the actual purchasable product structure represented
+        on the original catalogue page BEFORE assigning images, variants,
+        colors, stock, or gallery assets.
+
+        Do NOT assume that a page represents one product simply because:
+
+        - the page has one general product description,
+        - the products share the same series/family name,
+        - the products look similar,
+        - the page uses one large lifestyle photograph,
+        - the page contains one general technical specification,
+        - or the page has one general heading such as "Series", "Collection",
+        "Range", or a brand/family name.
+
+        A SERIES / FAMILY / COLLECTION NAME IS NOT AUTOMATICALLY A PRODUCT NAME.
+
+        ----------------------------------------------------------------
+        CRITICAL MULTI-PRODUCT RULE
+        ----------------------------------------------------------------
+
+        When the original catalogue visually separates multiple product blocks,
+        each separately identified product block MUST become its own authoritative
+        product_group unless the catalogue explicitly shows that they are merely
+        variants of the same product.
+
+        Strong visual evidence for independent products includes, but is not
+        limited to:
+
+        1. A distinct product name or heading above a visual block.
+        2. Separate columns or panels with separate product headings.
+        3. Separate groups of product photographs belonging to each heading.
+        4. Separate stock quantities associated with different product blocks.
+        5. Different physical product designs shown in their respective blocks.
+        6. Separate packaging, detail, usage, or feature images clearly belonging
+        to different named products.
+
+        When these signals occur together, treat the products as INDEPENDENT
+        PRODUCTS, not as variants of one product.
+
+        ----------------------------------------------------------------
+        EXACT INTERPRETATION RULE FOR THIS CATALOGUE PATTERN
+        ----------------------------------------------------------------
+
+        If a page contains a general family/series section plus multiple
+        individually titled product columns, interpret the structure as:
+
+            SHARED FAMILY / SERIES INFORMATION
+                        |
+                        +---- PRODUCT GROUP 1
+                        |
+                        +---- PRODUCT GROUP 2
+                        |
+                        +---- PRODUCT GROUP 3
+                        etc.
+
+        The shared family section must NOT become an additional product.
+
+        Likewise, the shared family/lifestyle image must NOT automatically be
+        assigned as the hero image of every product.
+
+        Each named product column owns the visual assets physically located
+        inside its own catalogue block.
+
+        ----------------------------------------------------------------
+        REFERENCE EXAMPLE — DO NOT GENERALIZE
+        ----------------------------------------------------------------
+
+        For example, if a catalogue page contains a family heading followed
+        by two separately titled product columns, each separately titled
+        product must remain an independent product_group.
+
+        The family heading must remain family-level information.
+
+        This example is illustrative only. Do NOT assume these names,
+        products, or quantities exist on other catalogue pages.
+
+        ----------------------------------------------------------------
+        VISUAL OWNERSHIP OF ASSETS
+        ----------------------------------------------------------------
+
+        Determine asset ownership primarily from the ORIGINAL CATALOGUE PAGE
+        LAYOUT and visual proximity to the product heading.
+
+        For each product column:
+
+        - The main product photographs directly beneath that product's heading
+        belong to that product.
+        - Detail photographs inside that product's column belong to that product.
+        - Usage/capacity photographs inside that product's column belong to
+        that product.
+        - Packaging photographs inside that product's column belong to that
+        product.
+        - The stock quantity printed beneath that product column belongs to
+        that product.
+
+        Do NOT move an image from one product column to another merely because
+        the products have similar appearance, color, material, or construction.
+
+        ----------------------------------------------------------------
+        SHARED FAMILY ASSETS
+        ----------------------------------------------------------------
+
+        Images located in a separate family/series area outside the individual
+        product columns must be classified as FAMILY_LEVEL / SHARED unless the
+        catalogue explicitly associates them with one product.
+
+        For example, a large lifestyle image beside the general "Wally Series"
+        description is shared family imagery.
+
+        Do NOT automatically use such an image as the PRIMARY/HERO image for
+        Wally Carta or Wally Porto.
+
+        Likewise, a general RFID feature illustration positioned in the shared
+        family section should remain family-level unless visual evidence clearly
+        assigns it to one specific product.
+
+        ----------------------------------------------------------------
+        STOCK AS PRODUCT EVIDENCE
+        ----------------------------------------------------------------
+
+        Separate stock quantities are strong evidence of separate catalogue
+        products when each quantity is visually associated with a separate
+        named product block.
+
+        For this layout:
+
+            Wally Carta → Stock 59 pcs
+            Wally Porto → Stock 287 pcs
+
+        These stock quantities MUST NOT be merged into one product.
+
+        They must remain attached to their respective authoritative product
+        groups.
+
+        ----------------------------------------------------------------
+        PRODUCT NAME PRIORITY
+        ----------------------------------------------------------------
+
+        When a product heading is visibly printed in the original catalogue,
+        use that exact catalogue product name as the authoritative product name.
+
+        Do NOT replace an explicit catalogue product name with:
+
+        - the family name,
+        - a generated commercial name,
+        - a descriptive interpretation,
+        - a color name,
+        - a generic product category,
+        - or a name inferred from the shared family description.
+
+        For this page:
+
+            Wally Carta → authoritative product name
+            Wally Porto → authoritative product name
+
+        "Wally Series" is the family/series context, not the product name.
+
+        ----------------------------------------------------------------
+        VARIANT RULE
+        ----------------------------------------------------------------
+
+        Only create a variant relationship when the catalogue provides evidence
+        that multiple visual/product representations belong to the SAME named
+        product and differ by a genuine variant attribute such as:
+
+        - color,
+        - size,
+        - finish,
+        - capacity,
+        - configuration,
+        - or another explicitly supported product option.
+
+        Do NOT use variants to combine separately titled catalogue products.
+
+        Therefore:
+
+            Wally Carta ≠ variant of Wally Porto
+            Wally Porto ≠ variant of Wally Carta
+
+        They must remain separate product groups.
+
+        ----------------------------------------------------------------
+        AUTHORITATIVE DECISION REQUIREMENT
+        ----------------------------------------------------------------
+
+        Your final product grouping decision must be based on the combined
+        evidence of:
+
+            1. visible product headings,
+            2. page layout / column boundaries,
+            3. visual product identity,
+            4. asset proximity,
+            5. stock quantities,
+            6. supporting/detail imagery,
+            7. shared family/series context.
+
+        Visual layout evidence must be treated as first-class evidence.
+
+        If text extraction suggests SINGLE_PRODUCT but the original visual page
+        clearly shows multiple separately titled product blocks, the visual
+        catalogue evidence takes priority.
+
+        Do NOT collapse independently titled products into one group merely
+        because their descriptions are shared or their products look similar.
         
         # ================================================================
-        # PRODUCT STRUCTURE / DECOMPOSITION RULE
+        # PRODUCT STRUCTURE — FINAL SANITY CHECK
         # ================================================================
 
-        PRODUCT STRUCTURE IS A FIRST-CLASS DECISION.
+        The product grouping decision established above is authoritative.
 
-        Before assigning extracted images to variants, FIRST determine
-        exactly how many DISTINCT MARKETABLE PRODUCTS are visibly present
-        on the ORIGINAL CATALOGUE PAGE.
+        Before returning the result, perform a final structural sanity check.
 
-        Do NOT begin by assuming that all images belong to one product.
+        Do NOT re-interpret the page from the extracted images alone.
 
-        The correct order of reasoning is:
+        Verify that the product_groups are consistent with the ORIGINAL
+        CATALOGUE PAGE.
+
+        The validation order is:
 
             STEP 1:
-                Identify every visually distinct marketable product
-                represented on the ORIGINAL CATALOGUE PAGE.
+                Count the distinct marketable products visibly represented
+                on the ORIGINAL CATALOGUE PAGE.
 
             STEP 2:
-                Assign a unique product_group to EACH distinct product.
+                Confirm that each distinct product has its own product_group.
 
             STEP 3:
-                For each product_group, determine whether its images
-                represent:
-                    - one product;
-                    - selectable variants of that product;
-                    - supporting/gallery/detail representations.
-
-            STEP 4:
-                Map every Family A extracted image to the correct
+                Confirm that legitimate variants remain inside their correct
                 product_group.
 
+            STEP 4:
+                Confirm that every Family A extracted image is mapped to the
+                correct product_group.
+
             STEP 5:
-                Only after the above is complete, determine the final
-                product_structure.
+                Confirm that product_structure matches the resulting
+                product_groups.
+
+        The ORIGINAL CATALOGUE PAGE remains the authoritative source.
 
         ================================================================
         DISTINCT PRODUCT RULE
@@ -17801,6 +18011,10 @@ class VendorImportJob(models.Model):
         If an image is a collage containing multiple distinct products,
         classify it as supporting/collage evidence and DO NOT use it as
         the sole primary asset for multiple products.
+
+        A COLLAGE MAY visually reference multiple product_groups, but the
+        collage asset itself must not be treated as the PRIMARY asset of
+        each referenced product.
 
         ================================================================
         PRODUCT COUNT SANITY CHECK
@@ -18272,13 +18486,6 @@ class VendorImportJob(models.Model):
           provides an identifiable name/title.
 
         ================================================================
-        RETURN FORMAT
-        ================================================================
-
-        
-        Return ONLY valid JSON.
-
-        ================================================================
         PRODUCT GROUP / ASSET MAPPING CONSISTENCY REQUIREMENTS
         ================================================================
 
@@ -18369,6 +18576,13 @@ class VendorImportJob(models.Model):
             extracted_asset_mapping.product_group
 
         These relationships MUST remain consistent.
+
+        ================================================================
+        RETURN FORMAT
+        ================================================================
+
+        
+        Return ONLY valid JSON.
 
         Use this structure:
 
