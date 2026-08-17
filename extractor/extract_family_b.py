@@ -7,9 +7,6 @@ import fitz
 import base64
 import io
 
-import base64
-import io
-
 # Pillow
 from PIL import Image
 
@@ -108,42 +105,11 @@ def extract_pdf(
 
     )
 
-    # =================================================
-    # FAMILY B ORIGINAL CATALOGUE PAGE
-    # =================================================
-
-    page_buffer = io.BytesIO()
-
-    image.save(
-        page_buffer,
-        format="JPEG",
-        quality=85
-    )
-
-    page_base64 = base64.b64encode(
-        page_buffer.getvalue()
-    ).decode("utf-8")
-
-    _logger.warning(
-        "[FAMILY B PAGE IMAGE] "
-        "page=1 "
-        "| present=%s "
-        "| chars=%s "
-        "| size=%sx%s",
-        bool(page_base64),
-        len(page_base64),
-        image.width,
-        image.height,
-    )
-
+   
     image = Image.frombytes(
-
         "RGB",
-
         [pix.width, pix.height],
-
         pix.samples
-
     )
 
     # =================================================
