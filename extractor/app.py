@@ -75,20 +75,45 @@ def extract():
     file = next(iter(request.files.values()))
 
 
+
     try:
+
+        _logger.warning(
+            "[EXTRACT DISPATCH] "
+            "CALLING extract_pdf "
+            "| filename=%s "
+            "| extractor=%s",
+            getattr(file, "filename", None),
+            getattr(
+                extract_pdf,
+                "__module__",
+                "unknown"
+            )
+        )
 
         return extract_pdf(file)
 
     except Exception as e:
 
-        _logger.exception(
+        import traceback
 
-            "[PDF EXTRACTION FAILED]"
+        full_traceback = traceback.format_exc()
+
+        _logger.exception(
+            "[PDF EXTRACTION FAILED] "
+            "| ERROR=%s",
+            str(e)
         )
 
         return jsonify({
 
-            "error": str(e)
+            "error": str(e),
+
+            "exception_type":
+                type(e).__name__,
+
+            "traceback":
+                full_traceback,
 
         }), 500
 

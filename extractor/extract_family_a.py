@@ -1397,7 +1397,7 @@ def extract_pdf(
             # =================================================
 
             "extractor_family": "A",
-            "extractor_version": "family_a_v1",
+            "extractor_version": "family_a_v1_20260817_image_fix",
 
             # =================================================
             # PAGE
@@ -1547,7 +1547,7 @@ def extract_pdf(
             "extractor_version":
                 response_page.get(
                     "extractor_version",
-                    "family_a_v1"
+                    "family_a_v1_20260817_image_fix"
                 ),
 
             "page_image_present":
@@ -1590,7 +1590,7 @@ def extract_pdf(
     
     return jsonify({
         "extractor_family": "A",
-        "extractor_version": "family_a_v1",
+        "extractor_version": "family_a_v1_20260817_image_fix",
         "extractor_trace": extractor_trace,
         "pages": pages_data
     })
