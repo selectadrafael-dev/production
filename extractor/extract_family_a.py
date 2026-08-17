@@ -1389,22 +1389,60 @@ def extract_pdf(
 
         )
 
+
         pages_data.append({
 
-            "page": page_number + 1,
+            # =================================================
+            # EXTRACTOR IDENTITY
+            # =================================================
 
+            "extractor_family": "A",
+            "extractor_version": "family_a_v1",
+
+            # =================================================
+            # PAGE
+            # =================================================
+
+            "page": page_number + 1,
             "text": text,
 
+            # =================================================
+            # ORIGINAL CATALOGUE PAGE
+            # =================================================
+
             "page_image": page_base64,
-
             "page_image_size": len(page_base64),
-
             "page_width": img.width,
-
             "page_height": img.height,
+
+            # =================================================
+            # EXTRACTED ASSETS
+            # =================================================
 
             "images": image_list
         })
+
+
+        # =================================================
+        # FAMILY A RESPONSE TRACE
+        # =================================================
+
+        _logger.warning(
+            "[FAMILY A RESPONSE] "
+            "page=%s "
+            "| family=A "
+            "| version=family_a_v1 "
+            "| page_image=%s "
+            "| page_image_chars=%s "
+            "| page_size=%sx%s "
+            "| assets=%s",
+            page_number + 1,
+            bool(page_base64),
+            len(page_base64),
+            img.width,
+            img.height,
+            len(image_list),
+        )
 
         # ======================================
         # FAMILY A DEBUG SUMMARY
@@ -1464,7 +1502,95 @@ def extract_pdf(
     except Exception:
         pass
 
+    # =================================================
+    # FAMILY A FINAL RESPONSE AUDIT
+    # =================================================
+
+    for response_page in pages_data:
+
+        _logger.warning(
+            "[FAMILY A FINAL RESPONSE] "
+            "page=%s "
+            "| family=%s "
+            "| version=%s "
+            "| page_image=%s "
+            "| page_image_chars=%s "
+            "| assets=%s",
+            response_page.get("page"),
+            response_page.get("extractor_family"),
+            response_page.get("extractor_version"),
+            bool(response_page.get("page_image")),
+            len(response_page.get("page_image") or ""),
+            len(response_page.get("images") or []),
+        )
+
+
+    # =================================================
+    # FAMILY A FINAL RESPONSE TRACE
+    # =================================================
+
+    extractor_trace = []
+
+    for response_page in pages_data:
+
+        extractor_trace.append({
+
+            "page": response_page.get("page"),
+
+            "extractor_family":
+                response_page.get(
+                    "extractor_family",
+                    "A"
+                ),
+
+            "extractor_version":
+                response_page.get(
+                    "extractor_version",
+                    "family_a_v1"
+                ),
+
+            "page_image_present":
+                bool(
+                    response_page.get(
+                        "page_image"
+                    )
+                ),
+
+            "page_image_chars":
+                len(
+                    response_page.get(
+                        "page_image"
+                    ) or ""
+                ),
+
+            "page_width":
+                response_page.get(
+                    "page_width"
+                ),
+
+            "page_height":
+                response_page.get(
+                    "page_height"
+                ),
+
+            "asset_count":
+                len(
+                    response_page.get(
+                        "images"
+                    ) or []
+                ),
+        })
+
+
+    _logger.warning(
+        "[FAMILY A FINAL RESPONSE] %s",
+        extractor_trace
+    )
+    
     return jsonify({
+        "extractor_family": "A",
+        "extractor_version": "family_a_v1",
+        "extractor_trace": extractor_trace,
         "pages": pages_data
     })
 

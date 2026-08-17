@@ -4,6 +4,11 @@ from flask import jsonify, request
 # Standard
 import logging
 import fitz
+import base64
+import io
+
+import base64
+import io
 
 # Pillow
 from PIL import Image
@@ -103,6 +108,34 @@ def extract_pdf(
 
     )
 
+    # =================================================
+    # FAMILY B ORIGINAL CATALOGUE PAGE
+    # =================================================
+
+    page_buffer = io.BytesIO()
+
+    image.save(
+        page_buffer,
+        format="JPEG",
+        quality=85
+    )
+
+    page_base64 = base64.b64encode(
+        page_buffer.getvalue()
+    ).decode("utf-8")
+
+    _logger.warning(
+        "[FAMILY B PAGE IMAGE] "
+        "page=1 "
+        "| present=%s "
+        "| chars=%s "
+        "| size=%sx%s",
+        bool(page_base64),
+        len(page_base64),
+        image.width,
+        image.height,
+    )
+
     image = Image.frombytes(
 
         "RGB",
@@ -111,6 +144,34 @@ def extract_pdf(
 
         pix.samples
 
+    )
+
+    # =================================================
+    # FAMILY B ORIGINAL PAGE IMAGE
+    # =================================================
+
+    page_buffer = io.BytesIO()
+
+    image.save(
+        page_buffer,
+        format="JPEG",
+        quality=85
+    )
+
+    page_base64 = base64.b64encode(
+        page_buffer.getvalue()
+    ).decode("utf-8")
+
+    _logger.warning(
+        "[FAMILY B PAGE IMAGE] "
+        "page=1 "
+        "| present=%s "
+        "| chars=%s "
+        "| size=%sx%s",
+        bool(page_base64),
+        len(page_base64),
+        image.width,
+        image.height,
     )
 
     regions = page_region_analyzer.analyze(
@@ -396,27 +457,79 @@ def extract_pdf(
 
     response_data = {
 
+        # =================================================
+        # EXTRACTOR IDENTITY
+        # =================================================
+
+        "extractor_family": "B",
+        "extractor_version": "family_b_v1",
+
+        # =================================================
+        # ORIGINAL PAGE IMAGE
+        # =================================================
+
+        "page_image": page_base64,
+        "page_image_size": len(page_base64),
+        "page_width": image.width,
+        "page_height": image.height,
+
+        # =================================================
+        # EXISTING RESPONSE
+        # =================================================
+
         "family": preview_context["family"],
-
         "regions": preview_context["regions"],
-
         "selected": preview_context["selected"],
-
         "metadata": preview_context["metadata"],
-
         "candidates": preview_context["candidates"],
-
         "pipeline": preview_context["pipeline"],
-
         "statistics": preview_context["statistics"],
-        
         "diagnostics": preview_context["diagnostics"],
-        
         "recovery": preview_context["recovery"],
-
         "text": preview_context["text"],
-       
     }
+
+    # =================================================
+    # FAMILY B RESPONSE TRACE
+    # =================================================
+
+    response_data["extractor_trace"] = [{
+
+        "page": 1,
+
+        "extractor_family": "B",
+
+        "extractor_version": "family_b_v1",
+
+        "page_image_present":
+            bool(page_base64),
+
+        "page_image_chars":
+            len(page_base64),
+
+        "page_width":
+            image.width,
+
+        "page_height":
+            image.height,
+
+        "regions":
+            len(classified),
+
+        "selected_regions":
+            len(selected),
+
+        "candidates":
+            len(candidates),
+
+        "metadata_blocks":
+            len(metadata),
+    }]
+
+    _logger.warning(
+        "[FAMILY B RESPONSE] %s",
+        response_data["extractor_trace"]
+    )
 
     try:
         # existing processing logic...
@@ -452,6 +565,29 @@ def extract_pdf(
 
             preview=preview
 
+        )
+
+        # =================================================
+        # FAMILY B RESPONSE TRACE
+        # =================================================
+
+        response_data["extractor_trace"] = [{
+            "page": 1,
+            "extractor_family": "B",
+            "extractor_version": "family_b_v1",
+            "page_image_present": bool(page_base64),
+            "page_image_chars": len(page_base64),
+            "page_width": image.width,
+            "page_height": image.height,
+            "regions": len(classified),
+            "selected_regions": len(selected),
+            "candidates": len(candidates),
+            "metadata_blocks": len(metadata),
+        }]
+
+        _logger.warning(
+            "[FAMILY B FINAL RESPONSE] %s",
+            response_data["extractor_trace"]
         )
 
         return jsonify(
