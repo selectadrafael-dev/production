@@ -4567,12 +4567,113 @@ class VendorImportJob(models.Model):
 
 
                         if response.status_code != 200:
-
+                            _logger.error(
+                                "[PDF API ERROR] "
+                                "JOB=%s "
+                                "| PAGE=%s "
+                                "| ATTEMPT=%s "
+                                "| STATUS=%s "
+                                "| RESPONSE=%s",
+                                self.id,
+                                i + 1,
+                                attempt + 1,
+                                response.status_code,
+                                response.text[:5000],
+                            )
+                            
                             continue
 
 
                         page_data = response.json()
 
+                        # =================================================
+                        # EXTRACTOR RESPONSE TRACE
+                        # =================================================
+
+                        if isinstance(page_data, dict):
+
+                            _logger.warning(
+                                "[PDF API RESPONSE] "
+                                "JOB=%s "
+                                "| FAMILY=%s "
+                                "| VERSION=%s "
+                                "| TOP_LEVEL_KEYS=%s",
+                                self.id,
+                                page_data.get(
+                                    "extractor_family"
+                                ),
+                                page_data.get(
+                                    "extractor_version"
+                                ),
+                                list(page_data.keys()),
+                            )
+
+                            extractor_trace = (
+                                page_data.get(
+                                    "extractor_trace",
+                                    []
+                                )
+                            )
+
+                            _logger.warning(
+                                "[PDF API EXTRACTOR TRACE] "
+                                "JOB=%s\n%s",
+                                self.id,
+                                json.dumps(
+                                    extractor_trace,
+                                    ensure_ascii=False,
+                                    indent=2
+                                )
+                            )
+
+                            for response_page in (
+                                page_data.get(
+                                    "pages",
+                                    []
+                                )
+                            ):
+
+                                _logger.warning(
+                                    "[PDF API PAGE] "
+                                    "JOB=%s "
+                                    "| PAGE=%s "
+                                    "| FAMILY=%s "
+                                    "| VERSION=%s "
+                                    "| PAGE_IMAGE=%s "
+                                    "| PAGE_IMAGE_CHARS=%s "
+                                    "| ASSETS=%s",
+                                    self.id,
+                                    response_page.get(
+                                        "page"
+                                    ),
+                                    response_page.get(
+                                        "extractor_family",
+                                        page_data.get(
+                                            "extractor_family"
+                                        )
+                                    ),
+                                    response_page.get(
+                                        "extractor_version",
+                                        page_data.get(
+                                            "extractor_version"
+                                        )
+                                    ),
+                                    bool(
+                                        response_page.get(
+                                            "page_image"
+                                        )
+                                    ),
+                                    len(
+                                        response_page.get(
+                                            "page_image"
+                                        ) or ""
+                                    ),
+                                    len(
+                                        response_page.get(
+                                            "images"
+                                        ) or []
+                                    ),
+                                )
 
                         # =========================
                         # RESPONSE FORMAT
@@ -4626,6 +4727,41 @@ class VendorImportJob(models.Model):
                                 "images",
                                 []
                             )
+
+                            # =================================================
+                            # ORIGINAL CATALOGUE PAGE IMAGE
+                            # =================================================
+                            #
+                            # Preserve the complete original page image so
+                            # Family A Review can visually compare the extracted
+                            # assets against the actual catalogue page.
+                            #
+                            # This is authoritative visual evidence.
+                            # =================================================
+
+                            page_image = p.get(
+                                "page_image",
+                                ""
+                            )
+
+                            if page_image:
+
+                                _logger.warning(
+                                    "[PDF NORMALIZE] ORIGINAL PAGE IMAGE "
+                                    "| JOB=%s | PAGE=%s | CHARS=%s",
+                                    self.id,
+                                    i + 1,
+                                    len(page_image),
+                                )
+
+                            else:
+
+                                _logger.warning(
+                                    "[PDF NORMALIZE] ORIGINAL PAGE IMAGE MISSING "
+                                    "| JOB=%s | PAGE=%s",
+                                    self.id,
+                                    i + 1,
+                                )
 
                             # ===========================
                             # CLEAN CATALOG SEGMENTATION
@@ -4727,6 +4863,17 @@ class VendorImportJob(models.Model):
 
                                 "page": i + 1,
 
+                                # =================================================
+                                # ORIGINAL CATALOGUE PAGE
+                                # =================================================
+                                #
+                                # MUST survive normalization because Family A
+                                # Review uses the complete original page as its
+                                # authoritative visual source.
+                                # =================================================
+
+                                "page_image": page_image,
+
                                 "text": text,
 
                                 "price": price,
@@ -4762,6 +4909,17 @@ class VendorImportJob(models.Model):
                             )
 
                             self._safe_commit_progress()
+
+                            _logger.warning(
+                                "[PDF PERSISTENCE] PAGE=%s "
+                                "| ORIGINAL_PAGE_IMAGE=%s "
+                                "| IMAGE_CHARS=%s "
+                                "| EXTRACTED_ASSETS=%s",
+                                block.get("page"),
+                                bool(block.get("page_image")),
+                                len(block.get("page_image") or ""),
+                                len(block.get("images") or []),
+                            )
 
                         self.env[
                             'vendor.import.page'
@@ -9783,9 +9941,6 @@ class VendorImportJob(models.Model):
 
             return False
 
-        
-
-
     # =========== PDF OPENAI BACKUP ================================
     
     def send_to_openai_pdf(self):
@@ -10801,6 +10956,134 @@ class VendorImportJob(models.Model):
                 next_record.page_number,
                 str(e)
             )
+        
+                # =====================================================
+        # FAMILY A AUTHORITATIVE PRODUCT IDENTITY
+        # =====================================================
+        #
+        # Build the authoritative product-group context for THIS
+        # PDF page from the Family A page review.
+        #
+        # IMPORTANT:
+        # current_family_a_page is already resolved above using
+        # next_record.page_number.
+        #
+        # Therefore this context is page-specific and must NOT be
+        # built from the entire family_a_review object.
+        # =====================================================
+
+        family_a_product_identity_context = (
+            self._build_family_a_product_identity_context(
+                current_family_a_page
+                if isinstance(
+                    current_family_a_page,
+                    dict
+                )
+                else {}
+            )
+        )
+
+        # =====================================================
+        # DIAGNOSTIC: FAMILY A PRODUCT GROUPS
+        # =====================================================
+
+        if isinstance(
+            current_family_a_page,
+            dict
+        ):
+
+            family_a_product_groups = (
+                current_family_a_page.get(
+                    "product_groups",
+                    []
+                )
+            )
+
+            if not isinstance(
+                family_a_product_groups,
+                list
+            ):
+                family_a_product_groups = []
+
+            _logger.warning(
+                "[PDF AI FAMILY A PRODUCT GROUPS] "
+                "JOB=%s | PAGE=%s | STRUCTURE=%s "
+                "| GROUP_COUNT=%s",
+                self.id,
+                next_record.page_number,
+                current_family_a_page.get(
+                    "product_structure"
+                ),
+                len(
+                    family_a_product_groups
+                ),
+            )
+
+            for group in family_a_product_groups:
+
+                if not isinstance(
+                    group,
+                    dict
+                ):
+                    continue
+
+                _logger.warning(
+                    "[PDF AI FAMILY A PRODUCT GROUP] "
+                    "JOB=%s | PAGE=%s "
+                    "| GROUP=%s "
+                    "| NAME=%s "
+                    "| TITLE=%s "
+                    "| RELATIONSHIP=%s "
+                    "| VARIANT_COUNT=%s",
+                    self.id,
+                    next_record.page_number,
+                    group.get(
+                        "group_id"
+                    ),
+                    group.get(
+                        "product_name"
+                    ),
+                    group.get(
+                        "product_title"
+                    ),
+                    group.get(
+                        "relationship"
+                    ),
+                    len(
+                        group.get(
+                            "variants",
+                            []
+                        )
+                        if isinstance(
+                            group.get(
+                                "variants",
+                                []
+                            ),
+                            list
+                        )
+                        else []
+                    ),
+                )
+
+        _logger.warning(
+            "[PDF AI FAMILY A PRODUCT IDENTITY] "
+            "PAGE=%s | GROUPS=%s\n%s",
+            next_record.page_number,
+            (
+                len(
+                    current_family_a_page.get(
+                        "product_groups",
+                        []
+                    )
+                )
+                if isinstance(
+                    current_family_a_page,
+                    dict
+                )
+                else 0
+            ),
+            family_a_product_identity_context,
+        )
 
         # =====================================================
         # RESOLVE FAMILY A ASSETS AGAINST CURRENT CLEAN INDEX
@@ -10943,6 +11226,68 @@ class VendorImportJob(models.Model):
                     ),
             })
 
+            # =====================================================
+            # DIAGNOSTIC: FAMILY A ASSET → PRODUCT GROUP
+            # =====================================================
+
+            _logger.warning(
+                "[PDF AI FAMILY A ASSET MAP] "
+                "JOB=%s | PAGE=%s "
+                "| FAMILY_A_IMAGE_INDEX=%s "
+                "| CURRENT_CLEAN_INDEX=%s "
+                "| HASH=%s "
+                "| PRODUCT_GROUP=%s "
+                "| COLOR=%s "
+                "| CLASSIFICATION=%s "
+                "| ROLE=%s "
+                "| COMPLETE=%s "
+                "| TRUSTWORTHY=%s "
+                "| PRESERVE=%s "
+                "| CONFIDENCE=%s",
+                self.id,
+                next_record.page_number,
+                family_asset.get(
+                    "image_index"
+                ),
+                current_clean_index,
+                image_hash,
+                family_asset.get(
+                    "product_group"
+                ),
+                family_asset.get(
+                    "color"
+                ),
+                family_asset.get(
+                    "classification",
+                    "UNKNOWN"
+                ),
+                family_asset.get(
+                    "asset_role",
+                    "UNKNOWN"
+                ),
+                bool(
+                    family_asset.get(
+                        "product_body_complete",
+                        False
+                    )
+                ),
+                bool(
+                    family_asset.get(
+                        "trustworthy",
+                        False
+                    )
+                ),
+                bool(
+                    family_asset.get(
+                        "preserve",
+                        False
+                    )
+                ),
+                family_asset.get(
+                    "confidence",
+                    0
+                ),
+            )
 
         family_a_authority_context = json.dumps(
             family_a_prompt_assets,
@@ -11287,6 +11632,64 @@ class VendorImportJob(models.Model):
         authoritative product identity established from the original page.
 
         {family_a_product_identity_context}
+
+
+        ==================================================
+        FAMILY A PRODUCT GROUP BOUNDARIES ARE AUTHORITATIVE
+        ==================================================
+
+        The Family A product_groups above define the authoritative
+        product boundaries for THIS PAGE.
+
+        You MUST preserve those product boundaries.
+
+        If Family A returns:
+
+            product_1
+            product_2
+            product_3
+
+        they represent THREE separate authoritative product groups.
+
+        NEVER merge separate Family A product_groups into one product.
+
+        NEVER collapse separate product_groups because they:
+
+            - share the same collection;
+            - share the same brand;
+            - share the same catalogue heading;
+            - have similar appearance;
+            - have similar colour;
+            - have similar materials;
+            - appear beside each other.
+
+        If Family A places multiple colour/material/size representations
+        inside the SAME product_group and identifies them as VARIANTS,
+        preserve that relationship.
+
+        PDF AI is responsible for extracting the information INSIDE each
+        Family A product_group.
+
+        PDF AI MUST NOT redefine the Family A product boundaries unless
+        the Family A structure is demonstrably malformed.
+
+        Product images MUST be assigned only to the product_group that
+        Family A identifies as owning them.
+
+        The authoritative relationship is:
+
+            Family A product_group
+                ↓
+            product identity
+                ↓
+            product-specific assets
+                ↓
+            legitimate variants
+                ↓
+            PDF AI product output
+
+        Do NOT reverse this relationship by using image similarity to
+        merge Family A product groups.
 
         ==================================================
         AUTHORITATIVE PRODUCT NAME PRIORITY
@@ -17242,10 +17645,10 @@ class VendorImportJob(models.Model):
                 "pages": review_pages,
             }
 
+
         # =====================================================
         # FAMILY A VISUAL QUALITY PROMPT
         # =====================================================
-
 
         review_prompt = """
         You are the FINAL visual quality-control and RECOVERY-TARGET
@@ -17401,38 +17804,480 @@ class VendorImportJob(models.Model):
         must be returned when the image is actually a lifestyle representation,
         even if the supplied is_lifestyle field says false.
 
+        # ================================================================
+        # AUTHORITATIVE CATALOGUE PRODUCT GROUPING — VISUAL + LAYOUT RULE
+        # ================================================================
+
+        PRODUCT GROUPING IS A VISUAL CATALOGUE INTERPRETATION TASK.
+
+        You must determine the actual purchasable product structure represented
+        on the original catalogue page BEFORE assigning images, variants,
+        colors, stock, or gallery assets.
+
+        Do NOT assume that a page represents one product simply because:
+
+        - the page has one general product description,
+        - the products share the same series/family name,
+        - the products look similar,
+        - the page uses one large lifestyle photograph,
+        - the page contains one general technical specification,
+        - or the page has one general heading such as "Series", "Collection",
+        "Range", or a brand/family name.
+
+        A SERIES / FAMILY / COLLECTION NAME IS NOT AUTOMATICALLY A PRODUCT NAME.
+
+        ----------------------------------------------------------------
+        CRITICAL MULTI-PRODUCT RULE
+        ----------------------------------------------------------------
+
+        When the original catalogue visually separates multiple product blocks,
+        each separately identified product block MUST become its own authoritative
+        product_group unless the catalogue explicitly shows that they are merely
+        variants of the same product.
+
+        Strong visual evidence for independent products includes, but is not
+        limited to:
+
+        1. A distinct product name or heading above a visual block.
+        2. Separate columns or panels with separate product headings.
+        3. Separate groups of product photographs belonging to each heading.
+        4. Separate stock quantities associated with different product blocks.
+        5. Different physical product designs shown in their respective blocks.
+        6. Separate packaging, detail, usage, or feature images clearly belonging
+        to different named products.
+
+        When these signals occur together, treat the products as INDEPENDENT
+        PRODUCTS, not as variants of one product.
+
+        ----------------------------------------------------------------
+        EXACT INTERPRETATION RULE FOR THIS CATALOGUE PATTERN
+        ----------------------------------------------------------------
+
+        If a page contains a general family/series section plus multiple
+        individually titled product columns, interpret the structure as:
+
+            SHARED FAMILY / SERIES INFORMATION
+                        |
+                        +---- PRODUCT GROUP 1
+                        |
+                        +---- PRODUCT GROUP 2
+                        |
+                        +---- PRODUCT GROUP 3
+                        etc.
+
+        The shared family section must NOT become an additional product.
+
+        Likewise, the shared family/lifestyle image must NOT automatically be
+        assigned as the hero image of every product.
+
+        Each named product column owns the visual assets physically located
+        inside its own catalogue block.
+
+        ----------------------------------------------------------------
+        REFERENCE EXAMPLE — DO NOT GENERALIZE
+        ----------------------------------------------------------------
+
+        For example, if a catalogue page contains a family heading followed
+        by two separately titled product columns, each separately titled
+        product must remain an independent product_group.
+
+        The family heading must remain family-level information.
+
+        This example is illustrative only. Do NOT assume these names,
+        products, or quantities exist on other catalogue pages.
+
+        ----------------------------------------------------------------
+        VISUAL OWNERSHIP OF ASSETS
+        ----------------------------------------------------------------
+
+        Determine asset ownership primarily from the ORIGINAL CATALOGUE PAGE
+        LAYOUT and visual proximity to the product heading.
+
+        For each product column:
+
+        - The main product photographs directly beneath that product's heading
+        belong to that product.
+        - Detail photographs inside that product's column belong to that product.
+        - Usage/capacity photographs inside that product's column belong to
+        that product.
+        - Packaging photographs inside that product's column belong to that
+        product.
+        - The stock quantity printed beneath that product column belongs to
+        that product.
+
+        Do NOT move an image from one product column to another merely because
+        the products have similar appearance, color, material, or construction.
+
+        ----------------------------------------------------------------
+        SHARED FAMILY ASSETS
+        ----------------------------------------------------------------
+
+        Images located in a separate family/series area outside the individual
+        product columns must be classified as FAMILY_LEVEL / SHARED unless the
+        catalogue explicitly associates them with one product.
+
+        For example, a large lifestyle image beside the general "Wally Series"
+        description is shared family imagery.
+
+        Do NOT automatically use such an image as the PRIMARY/HERO image for
+        Wally Carta or Wally Porto.
+
+        Likewise, a general RFID feature illustration positioned in the shared
+        family section should remain family-level unless visual evidence clearly
+        assigns it to one specific product.
+
+        ----------------------------------------------------------------
+        STOCK AS PRODUCT EVIDENCE
+        ----------------------------------------------------------------
+
+        Separate stock quantities are strong evidence of separate catalogue
+        products when each quantity is visually associated with a separate
+        named product block.
+
+        For this layout:
+
+            Wally Carta → Stock 59 pcs
+            Wally Porto → Stock 287 pcs
+
+        These stock quantities MUST NOT be merged into one product.
+
+        They must remain attached to their respective authoritative product
+        groups.
+
+        ----------------------------------------------------------------
+        PRODUCT NAME PRIORITY
+        ----------------------------------------------------------------
+
+        When a product heading is visibly printed in the original catalogue,
+        use that exact catalogue product name as the authoritative product name.
+
+        Do NOT replace an explicit catalogue product name with:
+
+        - the family name,
+        - a generated commercial name,
+        - a descriptive interpretation,
+        - a color name,
+        - a generic product category,
+        - or a name inferred from the shared family description.
+
+        For this page:
+
+            Wally Carta → authoritative product name
+            Wally Porto → authoritative product name
+
+        "Wally Series" is the family/series context, not the product name.
+
+        ----------------------------------------------------------------
+        VARIANT RULE
+        ----------------------------------------------------------------
+
+        Only create a variant relationship when the catalogue provides evidence
+        that multiple visual/product representations belong to the SAME named
+        product and differ by a genuine variant attribute such as:
+
+        - color,
+        - size,
+        - finish,
+        - capacity,
+        - configuration,
+        - or another explicitly supported product option.
+
+        Do NOT use variants to combine separately titled catalogue products.
+
+        Therefore:
+
+            Wally Carta ≠ variant of Wally Porto
+            Wally Porto ≠ variant of Wally Carta
+
+        They must remain separate product groups.
+
+        ----------------------------------------------------------------
+        AUTHORITATIVE DECISION REQUIREMENT
+        ----------------------------------------------------------------
+
+        Your final product grouping decision must be based on the combined
+        evidence of:
+
+            1. visible product headings,
+            2. page layout / column boundaries,
+            3. visual product identity,
+            4. asset proximity,
+            5. stock quantities,
+            6. supporting/detail imagery,
+            7. shared family/series context.
+
+        Visual layout evidence must be treated as first-class evidence.
+
+        If text extraction suggests SINGLE_PRODUCT but the original visual page
+        clearly shows multiple separately titled product blocks, the visual
+        catalogue evidence takes priority.
+
+        Do NOT collapse independently titled products into one group merely
+        because their descriptions are shared or their products look similar.
+        
+        # ================================================================
+        # PRODUCT STRUCTURE — FINAL SANITY CHECK
+        # ================================================================
+
+        The product grouping decision established above is authoritative.
+
+        Before returning the result, perform a final structural sanity check.
+
+        Do NOT re-interpret the page from the extracted images alone.
+
+        Verify that the product_groups are consistent with the ORIGINAL
+        CATALOGUE PAGE.
+
+        The validation order is:
+
+            STEP 1:
+                Count the distinct marketable products visibly represented
+                on the ORIGINAL CATALOGUE PAGE.
+
+            STEP 2:
+                Confirm that each distinct product has its own product_group.
+
+            STEP 3:
+                Confirm that legitimate variants remain inside their correct
+                product_group.
+
+            STEP 4:
+                Confirm that every Family A extracted image is mapped to the
+                correct product_group.
+
+            STEP 5:
+                Confirm that product_structure matches the resulting
+                product_groups.
+
+        The ORIGINAL CATALOGUE PAGE remains the authoritative source.
+
         ================================================================
-        PRODUCT STRUCTURE
+        DISTINCT PRODUCT RULE
         ================================================================
 
-        A catalogue page may contain:
+        A DISTINCT PRODUCT MUST RECEIVE ITS OWN product_group.
 
-        - one product;
-        - one product with multiple colour variants;
-        - one product with multiple gallery images;
-        - multiple independent products;
-        - multiple products with their own variants;
-        - folded/detail images;
-        - lifestyle/supporting images;
-        - composite catalogue layouts.
+        Do NOT merge two products merely because:
 
-        Determine the actual structure from the ORIGINAL PAGE.
+            - they belong to the same brand;
+            - they belong to the same collection;
+            - they belong to the same product family;
+            - they have similar visual styling;
+            - they appear next to each other;
+            - they share the same material;
+            - they share the same colour;
+            - they have similar dimensions;
+            - they use the same packaging;
+            - the catalogue page has one common heading;
+            - the catalogue page does not print a separate title beside
+              every product.
 
-        Do not assume:
+        A common family/collection does NOT make multiple products one
+        product.
 
-        - one image = one product;
-        - one figure = one product;
-        - one colour = a separate product;
-        - one folded/detail image = a variant.
+        ================================================================
+        VARIANT VS SEPARATE PRODUCT
+        ================================================================
 
-        Multiple independent products MUST remain separate products.
+        Treat two representations as variants of ONE product ONLY when
+        the ORIGINAL CATALOGUE PAGE provides strong visual evidence that
+        they are the SAME underlying selectable product and the difference
+        is limited to an actual product option such as:
 
-        Colour representations of the SAME product should be treated as
-        variants when the visual/contextual evidence supports that relationship.
+            - colour;
+            - material;
+            - size;
+            - explicitly selectable finish;
+            - explicitly selectable configuration.
 
-        Gallery, folded, detail and supporting images are NOT automatically
-        variants.
+        The products should have substantially the same:
 
+            - shape;
+            - construction;
+            - dimensions/proportions;
+            - functional design;
+            - branding/model identity.
+
+        If those conditions are not satisfied, create separate
+        product_groups.
+
+        ================================================================
+        MODEL / DESIGN DIFFERENCE RULE
+        ================================================================
+
+        A change in model, design, construction, shape, proportions,
+        functional configuration, or physical structure is a SEPARATE
+        PRODUCT unless the ORIGINAL CATALOGUE PAGE explicitly establishes
+        it as a selectable variant of the same product.
+
+        NEVER collapse two different physical products into one product
+        merely because they are visually related.
+
+        ================================================================
+        TITLE / PRODUCT IDENTITY RULE
+        ================================================================
+
+        For EACH product_group independently determine:
+
+            - product_name
+            - product_title
+            - name_source
+            - name_confidence
+            - name_trustworthy
+
+        The product name belongs to the PRODUCT GROUP, not to the page.
+
+        If the original catalogue visibly gives separate names/titles
+        for separate products, each product MUST retain its own name.
+
+        NEVER assign the page's most prominent title to every product
+        merely because the products appear under the same catalogue
+        section.
+
+        If no separate printed title exists, derive the identity from
+        the visual product itself and surrounding product-specific
+        evidence.
+
+        NEVER merge two distinct products merely because only one title
+        is visible.
+
+        ================================================================
+        ASSET-TO-PRODUCT RULE
+        ================================================================
+
+        Every Family A extracted image MUST be assigned to the
+        product_group it actually represents.
+
+        For every extracted image determine:
+
+            - product_group
+            - colour when identifiable
+            - classification
+            - asset_role
+            - matches_original
+            - product_body_complete
+            - trustworthy
+            - preserve
+            - confidence
+
+        NEVER leave product_group empty when the image clearly belongs
+        to a visible product.
+
+        NEVER assign one extracted image to multiple different products
+        when the image represents only one product.
+
+        If an image is a collage containing multiple distinct products,
+        classify it as supporting/collage evidence and DO NOT use it as
+        the sole primary asset for multiple products.
+
+        A COLLAGE MAY visually reference multiple product_groups, but the
+        collage asset itself must not be treated as the PRIMARY asset of
+        each referenced product.
+
+        ================================================================
+        PRODUCT COUNT SANITY CHECK
+        ================================================================
+
+        Before returning the result, perform this mandatory check:
+
+            1. Count every distinct marketable product visible on the
+               ORIGINAL CATALOGUE PAGE.
+
+            2. Count the returned product_groups.
+
+            3. These counts MUST agree unless a product is genuinely
+               visible but missing from Family A extraction.
+
+        If the ORIGINAL PAGE visibly contains multiple distinct products
+        but the returned product_groups contains only one group, this is
+        an extraction/grouping error.
+
+        DO NOT silently convert that situation into SINGLE_PRODUCT.
+
+        Instead:
+
+            - return MULTIPLE_PRODUCTS or MIXED;
+            - create the separate product_groups;
+            - identify missing product assets under missing_items when
+              applicable.
+
+        ================================================================
+        MULTIPLE PRODUCT EXAMPLE
+        ================================================================
+
+        If the original page visually shows:
+
+            PRODUCT A
+                - front image
+                - rear image
+                - Black version
+
+            PRODUCT B
+                - front image
+                - Grey version
+
+        return:
+
+            product_group = product_1
+            product_group = product_2
+
+        Do NOT return:
+
+            product_group = product_1
+            variants = [Black, Grey]
+
+        unless the ORIGINAL PAGE clearly establishes that A and B are
+        selectable variants of the SAME underlying product.
+
+        ================================================================
+        FAMILY / COLLECTION RULE
+        ================================================================
+
+        A shared family or collection name is NOT a product identity.
+
+        For example, if a catalogue section contains several products
+        from the same "Wally" family/collection, do NOT automatically
+        create:
+
+            product_1 = Wally
+
+        for the entire page.
+
+        Instead determine whether each visible item is:
+
+            - the same product with selectable variants; OR
+            - a separate product belonging to the same family.
+
+        Separate products MUST receive separate product_groups and,
+        where identifiable, separate authoritative names.
+
+        ================================================================
+        FINAL PRODUCT STRUCTURE
+        ================================================================
+
+        After product decomposition:
+
+            SINGLE_PRODUCT
+                = exactly one distinct product_group exists.
+
+            MULTIPLE_PRODUCTS
+                = two or more distinct product_groups exist.
+
+            MIXED
+                = the page contains multiple product groups and at least
+                  one group contains its own variants.
+
+        IMPORTANT:
+
+        Do NOT use SINGLE_PRODUCT simply because all extracted images
+        happen to share the same colour or visual style.
+
+        Do NOT use SINGLE_PRODUCT simply because Family A extracted only
+        one product image.
+
+        Product structure is determined from the ORIGINAL CATALOGUE PAGE,
+        not from the number of successfully extracted images.
+       
         ================================================================
         PARTIAL PAGE
         ================================================================
@@ -17799,9 +18644,102 @@ class VendorImportJob(models.Model):
           provides an identifiable name/title.
 
         ================================================================
+        PRODUCT GROUP / ASSET MAPPING CONSISTENCY REQUIREMENTS
+        ================================================================
+
+        Before returning the JSON, verify the following:
+
+        1. Every distinct marketable product visible on the ORIGINAL
+           CATALOGUE PAGE MUST have its own product_group.
+
+        2. Every product_group MUST have a unique group_id.
+
+        3. Every extracted_asset_mapping entry MUST reference an existing
+           product_group.group_id.
+
+        4. NEVER assign an extracted image to two different product_groups
+           when that image represents only one product.
+
+        5. NEVER merge two visually distinct marketable products into one
+           product_group merely because they:
+               - share a collection;
+               - share a brand;
+               - share a catalogue heading;
+               - have similar colours;
+               - have similar materials;
+               - appear beside each other;
+               - have similar visual styling.
+
+        6. If two products are separate physical products, they MUST remain
+           separate product_groups even when the catalogue gives only one
+           visible heading.
+
+        7. If multiple images represent different views of the SAME
+           product, they may remain in the same product_group without
+           becoming separate variants.
+
+        8. If multiple images represent actual selectable colour/material/
+           size options of the SAME product, they may belong to the same
+           product_group as variants.
+
+        9. A supporting, folded, pouch, accessory, detail, lifestyle,
+           packaging, marketing, logo, icon, or graphic image MUST NOT
+           create a new product_group or variant unless the ORIGINAL
+           CATALOGUE PAGE explicitly identifies it as a selectable
+           product or option.
+
+        10. If a visible product has no trustworthy extracted image,
+            still create its product_group and report the missing asset
+            through missing_items / missing_asset_requests.
+
+        11. The number of product_groups must reflect the number of
+            DISTINCT PRODUCTS visible on the ORIGINAL CATALOGUE PAGE,
+            not merely the number of extracted images.
+
+        12. product_structure MUST be consistent with product_groups:
+
+            SINGLE_PRODUCT
+                = exactly one distinct product_group.
+
+            MULTIPLE_PRODUCTS
+                = two or more distinct product_groups representing
+                  separate products.
+
+            MIXED
+                = multiple product_groups exist and at least one
+                  product_group contains legitimate variants.
+
+        13. If the original page visibly contains multiple distinct
+            products, NEVER return SINGLE_PRODUCT merely because the
+            extracted assets were incomplete.
+
+        14. Product grouping is determined from the ORIGINAL CATALOGUE
+            PAGE first. Extracted assets are then assigned to those
+            authoritative product groups.
+
+        ================================================================
+        FINAL PRE-OUTPUT CHECK
+        ================================================================
+
+        Before returning JSON, mentally verify:
+
+            ORIGINAL PAGE
+                ↓
+            DISTINCT PRODUCTS
+                ↓
+            product_groups
+                ↓
+            variants within each group
+                ↓
+            extracted_asset_mapping.product_group
+
+        These relationships MUST remain consistent.
+
+        ================================================================
         RETURN FORMAT
         ================================================================
 
+        
         Return ONLY valid JSON.
 
         Use this structure:
@@ -17828,16 +18766,18 @@ class VendorImportJob(models.Model):
                         or
                         "MIXED",
 
+
                     "product_groups": [
                         {
                             "group_id": "product_1",
 
                             "product_name":
-                                "EXACT PRODUCT NAME/TITLE VISIBLE
-                                 OR DERIVED FROM THE ORIGINAL CATALOGUE PAGE",
+                                "BEST AUTHORITATIVE PRODUCT NAME "
+                                "FOR THIS SPECIFIC PRODUCT",
 
                             "product_title":
-                                "EXACT CATALOGUE TITLE WHEN AVAILABLE",
+                                "EXACT VISIBLE CATALOGUE TITLE "
+                                "FOR THIS SPECIFIC PRODUCT WHEN AVAILABLE",
 
                             "name_source":
                                 "ORIGINAL_CATALOGUE_PAGE",
@@ -17856,7 +18796,8 @@ class VendorImportJob(models.Model):
                                 "SEPARATE_PRODUCT",
 
                             "description":
-                                "short visual description",
+                                "short visual description of THIS "
+                                "specific product",
 
                             "variants": [
                                 {
@@ -17879,7 +18820,6 @@ class VendorImportJob(models.Model):
                         }
                     ],
 
-                    
 
                     "missing_items": [
                         {
@@ -17943,6 +18883,7 @@ class VendorImportJob(models.Model):
                         }
                     ],
 
+
                     "extracted_asset_mapping": [
                         {
                             "image_index": 0,
@@ -17978,8 +18919,8 @@ class VendorImportJob(models.Model):
                                 0.98,
 
                             "reason":
-                                "Standalone Black product visible on the original page "
-                                "and correctly represented by the Family A extracted image."
+                                "This image represents the specific "
+                                "product_group identified above."
                         }
                     ]
                 }
@@ -18713,6 +19654,28 @@ class VendorImportJob(models.Model):
                         ),
                     )
 
+                # =================================================
+                # NORMALIZE AUTHORITATIVE PRODUCT STRUCTURE
+                # =================================================
+
+                product_structure_result = (
+                    self._normalize_family_a_product_structure(
+                        page_result
+                    )
+                )
+
+                if product_structure_result.get(
+                    "structure_error"
+                ):
+                    _logger.warning(
+                        "[FAMILY A STRUCTURE WARNING] "
+                        "JOB=%s | PAGE=%s | %s",
+                        self.id,
+                        page_number,
+                        product_structure_result.get(
+                            "structure_error"
+                        ),
+                    )
 
                 # =================================================
                 # NOW BUILD normalized_page
@@ -18744,13 +19707,13 @@ class VendorImportJob(models.Model):
                     # =================================================
 
                     "product_structure":
-                        page_result.get(
+                        product_structure_result.get(
                             "product_structure",
                             "UNKNOWN"
                         ),
 
                     "product_groups":
-                        page_result.get(
+                        product_structure_result.get(
                             "product_groups",
                             []
                         ),
@@ -19125,6 +20088,477 @@ class VendorImportJob(models.Model):
 
         return {}
 
+    # =========================================================
+    # FAMILY A PRODUCT STRUCTURE NORMALIZATION
+    # =========================================================
+
+    def _normalize_family_a_product_structure(
+        self,
+        page_result,
+    ):
+        """
+        Normalize and validate Family A's authoritative product
+        structure.
+
+        This does NOT invent products.
+
+        It only:
+            - validates product groups;
+            - validates group IDs;
+            - validates asset-to-group references;
+            - preserves authoritative names;
+            - prevents malformed structure from silently entering
+            downstream PDF AI.
+        """
+
+        if not isinstance(page_result, dict):
+            return {
+                "product_structure": "UNKNOWN",
+                "product_groups": [],
+                "structure_error": (
+                    "Family A page result is not a dictionary."
+                ),
+            }
+
+        raw_groups = page_result.get(
+            "product_groups",
+            []
+        )
+
+        raw_assets = page_result.get(
+            "extracted_asset_mapping",
+            []
+        )
+
+        if not isinstance(
+            raw_groups,
+            list
+        ):
+            raw_groups = []
+
+        if not isinstance(
+            raw_assets,
+            list
+        ):
+            raw_assets = []
+
+        normalized_groups = []
+        group_ids = set()
+
+        # =====================================================
+        # NORMALIZE PRODUCT GROUPS
+        # =====================================================
+
+        for position, group in enumerate(
+            raw_groups
+        ):
+
+            if not isinstance(
+                group,
+                dict
+            ):
+                continue
+
+            group_id = str(
+                group.get(
+                    "group_id"
+                )
+                or ""
+            ).strip()
+
+            if not group_id:
+                group_id = (
+                    f"product_{position + 1}"
+                )
+
+            if group_id in group_ids:
+                group_id = (
+                    f"{group_id}_{position + 1}"
+                )
+
+            group_ids.add(
+                group_id
+            )
+
+            product_name = str(
+                group.get(
+                    "product_name"
+                )
+                or ""
+            ).strip()
+
+            product_title = str(
+                group.get(
+                    "product_title"
+                )
+                or ""
+            ).strip()
+
+            name_source = str(
+                group.get(
+                    "name_source"
+                )
+                or ""
+            ).strip()
+
+            name_trustworthy = bool(
+                group.get(
+                    "name_trustworthy",
+                    False
+                )
+            )
+
+            relationship = str(
+                group.get(
+                    "relationship"
+                )
+                or "SINGLE_PRODUCT"
+            ).upper().strip()
+
+            if relationship not in (
+                "SINGLE_PRODUCT",
+                "VARIANTS",
+                "SEPARATE_PRODUCT",
+            ):
+                relationship = (
+                    "SINGLE_PRODUCT"
+                )
+
+            variants = group.get(
+                "variants",
+                []
+            )
+
+            if not isinstance(
+                variants,
+                list
+            ):
+                variants = []
+
+            normalized_variants = []
+
+            for variant in variants:
+
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+                indexes = variant.get(
+                    "extracted_image_indexes",
+                    []
+                )
+
+                if not isinstance(
+                    indexes,
+                    list
+                ):
+                    indexes = []
+
+                clean_indexes = []
+
+                for index in indexes:
+
+                    try:
+                        clean_indexes.append(
+                            int(index)
+                        )
+                    except (
+                        TypeError,
+                        ValueError,
+                    ):
+                        continue
+
+                normalized_variants.append({
+                    "color":
+                        variant.get(
+                            "color"
+                        ),
+
+                    "extracted_image_indexes":
+                        clean_indexes,
+
+                    "asset_role":
+                        str(
+                            variant.get(
+                                "asset_role",
+                                "PRIMARY"
+                            )
+                        ).upper().strip(),
+                })
+
+            normalized_groups.append({
+                "group_id":
+                    group_id,
+
+                "product_name":
+                    product_name,
+
+                "product_title":
+                    product_title,
+
+                "name_source":
+                    name_source,
+
+                "name_confidence":
+                    group.get(
+                        "name_confidence",
+                        0
+                    ),
+
+                "name_trustworthy":
+                    name_trustworthy,
+
+                "relationship":
+                    relationship,
+
+                "description":
+                    str(
+                        group.get(
+                            "description",
+                            ""
+                        )
+                    ),
+
+                "variants":
+                    normalized_variants,
+            })
+
+        # =====================================================
+        # VALIDATE ASSET → GROUP REFERENCES
+        # =====================================================
+
+        invalid_asset_groups = []
+
+        for asset in raw_assets:
+
+            if not isinstance(
+                asset,
+                dict
+            ):
+                continue
+
+            product_group = str(
+                asset.get(
+                    "product_group"
+                )
+                or ""
+            ).strip()
+
+            if (
+                product_group
+                and product_group not in group_ids
+            ):
+                invalid_asset_groups.append(
+                    product_group
+                )
+
+        invalid_asset_groups = sorted(
+            set(
+                invalid_asset_groups
+            )
+        )
+
+        # =====================================================
+        # DETERMINE STRUCTURE FROM GROUP COUNT
+        # =====================================================
+
+        declared_structure = str(
+            page_result.get(
+                "product_structure",
+                "UNKNOWN"
+            )
+            or "UNKNOWN"
+        ).upper().strip()
+
+        group_count = len(
+            normalized_groups
+        )
+
+        if group_count >= 2:
+
+            # Multiple product groups is authoritative.
+            #
+            # If at least one group has variants, retain MIXED.
+            #
+            # Otherwise MULTIPLE_PRODUCTS.
+
+            has_variants = any(
+                group.get(
+                    "relationship"
+                ) == "VARIANTS"
+                or len(
+                    group.get(
+                        "variants",
+                        []
+                    )
+                ) > 1
+                for group
+                in normalized_groups
+            )
+
+            normalized_structure = (
+                "MIXED"
+                if has_variants
+                else "MULTIPLE_PRODUCTS"
+            )
+
+        elif group_count == 1:
+
+            normalized_structure = (
+                "SINGLE_PRODUCT"
+            )
+
+        else:
+
+            normalized_structure = (
+                declared_structure
+                if declared_structure in (
+                    "SINGLE_PRODUCT",
+                    "MULTIPLE_PRODUCTS",
+                    "MIXED",
+                )
+                else "UNKNOWN"
+            )
+
+        structure_error = ""
+
+        if invalid_asset_groups:
+
+            structure_error = (
+                "Family A returned asset mappings "
+                "referencing unknown product groups: "
+                + ", ".join(
+                    invalid_asset_groups
+                )
+            )
+
+        # =====================================================
+        # IMPORTANT:
+        # DO NOT SILENTLY DOWNGRADE MULTIPLE GROUPS
+        # =====================================================
+
+        if (
+            group_count >= 2
+            and declared_structure
+            == "SINGLE_PRODUCT"
+        ):
+
+            _logger.warning(
+                "[FAMILY A STRUCTURE CORRECTION] "
+                "JOB=%s | DECLARED=SINGLE_PRODUCT "
+                "| GROUPS=%s | NORMALIZED=%s",
+                self.id,
+                group_count,
+                normalized_structure,
+            )
+
+        return {
+            "product_structure":
+                normalized_structure,
+
+            "product_groups":
+                normalized_groups,
+
+            "structure_error":
+                structure_error,
+        }
+
+
+    # =========================================================
+    # FAMILY A PRODUCT IDENTITY CONTEXT
+    # =========================================================
+
+    def _build_family_a_product_identity_context(
+        self,
+        page_result,
+    ):
+        groups = (
+            page_result.get(
+                "product_groups",
+                []
+            )
+            if isinstance(
+                page_result,
+                dict
+            )
+            else []
+        )
+
+        if not isinstance(
+            groups,
+            list
+        ):
+            groups = []
+
+        identity = []
+
+        for group in groups:
+
+            if not isinstance(
+                group,
+                dict
+            ):
+                continue
+
+            identity.append({
+                "group_id":
+                    group.get(
+                        "group_id"
+                    ),
+
+                "product_name":
+                    group.get(
+                        "product_name"
+                    ),
+
+                "product_title":
+                    group.get(
+                        "product_title"
+                    ),
+
+                "name_source":
+                    group.get(
+                        "name_source"
+                    ),
+
+                "name_confidence":
+                    group.get(
+                        "name_confidence",
+                        0
+                    ),
+
+                "name_trustworthy":
+                    bool(
+                        group.get(
+                            "name_trustworthy",
+                            False
+                        )
+                    ),
+
+                "relationship":
+                    group.get(
+                        "relationship"
+                    ),
+
+                "description":
+                    group.get(
+                        "description"
+                    ),
+
+                "variants":
+                    group.get(
+                        "variants",
+                        []
+                    ),
+            })
+
+        return json.dumps(
+            identity,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     # =========================================================
     # AZURE OPENAI CROP PROCESSOR
