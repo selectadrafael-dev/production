@@ -420,92 +420,42 @@ def extract_pdf(
         }
 
     }
+    
 
     response_data = {
 
-        # =================================================
-        # EXTRACTOR IDENTITY
-        # =================================================
-
-        "extractor_family": "B",
-        "extractor_version": "family_b_v1",
-
-        # =================================================
-        # ORIGINAL PAGE IMAGE
-        # =================================================
-
-        "page_image": page_base64,
-        "page_image_size": len(page_base64),
-        "page_width": image.width,
-        "page_height": image.height,
-
-        # =================================================
-        # EXISTING RESPONSE
-        # =================================================
-
         "family": preview_context["family"],
+
         "regions": preview_context["regions"],
+
         "selected": preview_context["selected"],
+
         "metadata": preview_context["metadata"],
+
         "candidates": preview_context["candidates"],
+
         "pipeline": preview_context["pipeline"],
+
         "statistics": preview_context["statistics"],
+
         "diagnostics": preview_context["diagnostics"],
+
         "recovery": preview_context["recovery"],
+
         "text": preview_context["text"],
+
+        # ORIGINAL PAGE IMAGE
+        "page_image": page_base64,
+
     }
 
-    # =================================================
-    # FAMILY B RESPONSE TRACE
-    # =================================================
-
-    response_data["extractor_trace"] = [{
-
-        "page": 1,
-
-        "extractor_family": "B",
-
-        "extractor_version": "family_b_v1",
-
-        "page_image_present":
-            bool(page_base64),
-
-        "page_image_chars":
-            len(page_base64),
-
-        "page_width":
-            image.width,
-
-        "page_height":
-            image.height,
-
-        "regions":
-            len(classified),
-
-        "selected_regions":
-            len(selected),
-
-        "candidates":
-            len(candidates),
-
-        "metadata_blocks":
-            len(metadata),
-    }]
-
-    _logger.warning(
-        "[FAMILY B RESPONSE] %s",
-        response_data["extractor_trace"]
-    )
 
     try:
         # existing processing logic...
 
         preview_type = request.args.get(
-
             "type",
-
             "boxes"
-
         )
 
         if preview:
@@ -513,24 +463,17 @@ def extract_pdf(
             if preview_type == "assets":
 
                 return asset_preview_generator.preview(
-
                     preview_context
-
                 )
 
             return preview_generator.preview(
-
                 preview_context
-
             )
-        
+
 
         response_data = family_b_response_builder.build(
-
             response_data,
-
             preview=preview
-
         )
 
         # =================================================
