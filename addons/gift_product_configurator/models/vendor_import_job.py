@@ -6671,6 +6671,7 @@ class VendorImportJob(models.Model):
             return crop
 
     #======================validate_variant_image_assignments===============
+
     def _validate_variant_image_assignments(
         self,
         products,
@@ -7043,24 +7044,6 @@ class VendorImportJob(models.Model):
                         image_index
                     )
 
-                    # image_hash = str(
-                    #     asset.get(
-                    #         "image_hash",
-                    #         ""
-                    #     )
-                    # ).strip()
-
-                    # if not image_hash:
-
-                    #     _logger.warning(
-                    #         "[FAMILY A REVIEW] "
-                    #         "MISSING IMAGE HASH "
-                    #         "| JOB=%s | PAGE=%s | IMAGE=%s",
-                    #         self.id,
-                    #         page_number,
-                    #         image_index,
-                    #     )
-
                 except (
                     TypeError,
                     ValueError
@@ -7126,6 +7109,12 @@ class VendorImportJob(models.Model):
             )
 
             # =====================================================
+            # BUILD AUTHORITATIVE SOURCE INDEX -> CLEAN INDEX
+            # =====================================================
+
+            source_index_lookup = {}
+
+            # =====================================================
             # BUILD COLOR -> ACTUAL CLEAN INDEX LOOKUP
             # =====================================================
 
@@ -7141,6 +7130,10 @@ class VendorImportJob(models.Model):
 
                 clean_index = asset.get(
                     "clean_index"
+                )
+
+                source_index = asset.get(
+                    "index"
                 )
 
                 dominant_color = str(
@@ -7166,34 +7159,84 @@ class VendorImportJob(models.Model):
                 _logger.warning(
                     "[CORRECTION ASSET] "
                     "JOB=%s | "
+                    "SOURCE_INDEX=%s | "
                     "CLEAN_INDEX=%s | "
                     "COLOR=%s | "
                     "PRODUCT=%s | "
                     "CROP=%s",
                     self.id,
+                    source_index,
                     clean_index,
                     dominant_color,
                     product_reference,
                     crop_id
                 )
 
+
+                # =====================================================
+                # AUTHORITATIVE FAMILY A INDEX -> CLEAN INDEX
+                # =====================================================
+
                 if (
-                    clean_index is None
-                    or clean_index == ""
+                    source_index is not None
+                    and
+                    clean_index is not None
+                    and
+                    clean_index != ""
                 ):
-                    continue
 
-                if dominant_color:
+                    if source_index in source_index_lookup:
 
-                    color_lookup[
-                        dominant_color
-                    ] = clean_index
+                        _logger.warning(
+                            "[SOURCE INDEX DUPLICATE] "
+                            "JOB=%s | "
+                            "SOURCE_INDEX=%s | "
+                            "EXISTING_CLEAN_INDEX=%s | "
+                            "NEW_CLEAN_INDEX=%s",
+                            self.id,
+                            source_index,
+                            source_index_lookup[source_index],
+                            clean_index
+                        )
+
+                    else:
+
+                        source_index_lookup[
+                            source_index
+                        ] = clean_index
+
+
+                # =====================================================
+                # COLOR FALLBACK LOOKUP
+                # =====================================================
+
+                if (
+                    clean_index is not None
+                    and
+                    clean_index != ""
+                    and
+                    dominant_color
+                ):
+
+                    color_lookup.setdefault(
+                        dominant_color,
+                        []
+                    ).append(
+                        clean_index
+                    )
 
             _logger.warning(
                 "[COLOR LOOKUP] "
                 "JOB=%s | %s",
                 self.id,
                 color_lookup
+            )
+
+            _logger.warning(
+                "[SOURCE INDEX LOOKUP] "
+                "JOB=%s | %s",
+                self.id,
+                source_index_lookup
             )
 
             # =====================================================
@@ -7244,20 +7287,48 @@ class VendorImportJob(models.Model):
                     old_index
                 )
 
+                if (
+                    old_index is not None
+                    and old_index in source_index_lookup
+                ):
+
+                    new_index = source_index_lookup[
+                        old_index
+                    ]
+
+                    variant[
+                        "source_image_index"
+                    ] = old_index
+
+                    variant["image_index"] = new_index
+
+                    _logger.warning(
+                        "[CORRECTION AUTHORITATIVE INDEX] "
+                        "JOB=%s | "
+                        "PRODUCT=%s | "
+                        "COLOR=%s | "
+                        "SOURCE_INDEX=%s | "
+                        "NEW_CLEAN_INDEX=%s",
+                        self.id,
+                        product_name,
+                        variant_color,
+                        old_index,
+                        new_index
+                    )
+
+                    continue
+
+
                 if not variant_color:
                     continue
 
                 # =================================================
-                # FIRST PRIORITY:
+                # SECOND PRIORITY:
                 # FIND AZURE CROP WHOSE PRODUCT REFERENCE
                 # EXPLICITLY MATCHES THIS VARIANT COLOR.
                 #
-                # Example:
-                #
-                # Sling Eco - Grey
-                # Sling Eco - Black
-                #
-                # This is stronger than dominant_color alone.
+                # This is only used when the authoritative
+                # Family A source index could not be resolved.
                 # =================================================
 
                 explicit_match = None
@@ -7329,18 +7400,17 @@ class VendorImportJob(models.Model):
                             "[CORRECTION EXPLICIT MATCH] "
                             "JOB=%s | "
                             "COLOR=%s | "
+                            "SOURCE_INDEX=%s | "
                             "CLEAN_INDEX=%s | "
                             "PRODUCT=%s | "
                             "CROP=%s",
+
                             self.id,
                             variant_color,
+                            asset.get("index"),
                             clean_index,
-                            asset.get(
-                                "product_reference"
-                            ),
-                            asset.get(
-                                "crop_id"
-                            )
+                            asset.get("product_reference"),
+                            asset.get("crop_id")
                         )
 
                         break
@@ -7356,31 +7426,59 @@ class VendorImportJob(models.Model):
                         "clean_index"
                     )
 
+                # elif variant_color in color_lookup:
+
+                #     new_index = color_lookup[
+                #         variant_color
+                #     ]
+
+                #     _logger.warning(
+                #         "[CORRECTION COLOR MATCH] "
+                #         "JOB=%s | "
+                #         "COLOR=%s | "
+                #         "CLEAN_INDEX=%s",
+                #         self.id,
+                #         variant_color,
+                #         new_index
+                #     )
+
                 elif variant_color in color_lookup:
 
-                    new_index = color_lookup[
+                    color_candidates = color_lookup[
                         variant_color
                     ]
 
-                    _logger.warning(
-                        "[CORRECTION COLOR MATCH] "
-                        "JOB=%s | "
-                        "COLOR=%s | "
-                        "CLEAN_INDEX=%s",
-                        self.id,
-                        variant_color,
-                        new_index
-                    )
+                    # -------------------------------------------------
+                    # Only use color when it identifies ONE asset.
+                    # Never guess between multiple assets sharing the
+                    # same color.
+                    # -------------------------------------------------
+
+                    if len(color_candidates) == 1:
+
+                        new_index = color_candidates[0]
+
+                        _logger.warning(
+                            "[CORRECTION COLOR MATCH] "
+                            "JOB=%s | "
+                            "COLOR=%s | "
+                            "CLEAN_INDEX=%s",
+                            self.id,
+                            variant_color,
+                            new_index
+                        )
 
                 else:
 
                     _logger.warning(
-                        "[CORRECTION NO MATCH] "
+                        "[CORRECTION COLOR AMBIGUOUS] "
                         "JOB=%s | "
                         "COLOR=%s | "
+                        "CANDIDATES=%s | "
                         "KEEPING_INDEX=%s",
                         self.id,
                         variant_color,
+                        color_candidates,
                         old_index
                     )
 
@@ -7397,10 +7495,12 @@ class VendorImportJob(models.Model):
                 _logger.warning(
                     "[CORRECTION APPLIED] "
                     "JOB=%s | "
+                    "PRODUCT=%s | "
                     "COLOR=%s | "
-                    "OLD=%s | "
+                    "SOURCE_INDEX=%s | "
                     "NEW_CLEAN_INDEX=%s",
                     self.id,
+                    product_name,
                     variant_color,
                     old_index,
                     new_index
@@ -7419,7 +7519,8 @@ class VendorImportJob(models.Model):
             )
 
             return product_data
-    
+
+
     #==========build_product_family========================
     def _build_product_family(
         self,
@@ -35530,6 +35631,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
+
     #==========pdf product CREATE/GET====================================
     
     def _get_or_create_pdf_product(
@@ -35871,6 +35973,7 @@ class VendorImportJob(models.Model):
 
             hero_asset
         )
+
 
     #==========pdf and excel stock helper(working helper)================
     def _apply_catalog_stock(
