@@ -9766,8 +9766,8 @@ class VendorImportJob(models.Model):
         if not token:
             raise Exception("Apify API token not configured")
 
-        ACTOR_ID = "selectad~my-actor"
-        #ACTOR_ID = "princ_adex~my-actor"
+        #ACTOR_ID = "selectad~my-actor"
+        ACTOR_ID = "princ_adex~my-actor"
 
         # ===========================================================
         # 🔥 STEP 1: START ACTOR (ONLY IF NOT STARTED)
@@ -34875,9 +34875,77 @@ class VendorImportJob(models.Model):
                         f"{vendor_id}_{variant_group}"
                     )
 
+                    vendor_fingerprint = (
+                        f"{vendor_id}_{variant_group}"
+                    )
+
+                    # =====================================================
+                    # DIAGNOSTIC: AUTHORITY BEFORE VARIANT CORRECTION
+                    # =====================================================
+
+                    _logger.warning(
+                        "[AUTHORITY BEFORE CORRECTION] "
+                        "JOB=%s | PRODUCT=%s | VARIANTS=%s",
+                        self.id,
+                        product_data.get("name"),
+                        json.dumps(
+                            product_data.get("variants", []),
+                            ensure_ascii=False,
+                            default=str
+                        )
+                    )
+
+                    for asset in asset_pool:
+
+                        if not isinstance(asset, dict):
+                            continue
+
+                        _logger.warning(
+                            "[AUTHORITY ASSET BEFORE CORRECTION] "
+                            "JOB=%s | PRODUCT=%s "
+                            "| INDEX=%s "
+                            "| CLEAN_INDEX=%s "
+                            "| COLOR=%s "
+                            "| PRODUCT_REF=%s "
+                            "| CLASSIFICATION=%s "
+                            "| ROLE=%s "
+                            "| AUTHORITATIVE=%s "
+                            "| TRUSTWORTHY=%s "
+                            "| PRESERVE=%s "
+                            "| LIFESTYLE=%s",
+                            self.id,
+                            product_data.get("name"),
+                            asset.get("index"),
+                            asset.get("clean_index"),
+                            asset.get("dominant_color"),
+                            asset.get("product_reference"),
+                            asset.get("classification"),
+                            asset.get("asset_role"),
+                            asset.get("family_a_authoritative"),
+                            asset.get("family_a_trustworthy"),
+                            asset.get("family_a_preserve"),
+                            asset.get("is_lifestyle"),
+                        )
+
+                    # =====================================================
+                    # EXISTING VARIANT CORRECTION
+                    # =====================================================
+
                     product_data = self._correct_variant_image_indexes(
                         product_data,
                         asset_pool
+                    )
+
+                    _logger.warning(
+                        "[AUTHORITY AFTER CORRECTION] "
+                        "JOB=%s | PRODUCT=%s | VARIANTS=%s",
+                        self.id,
+                        product_data.get("name"),
+                        json.dumps(
+                            product_data.get("variants", []),
+                            ensure_ascii=False,
+                            default=str
+                        )
                     )
 
             
