@@ -1456,6 +1456,7 @@ def extract_pdf(
             f"Pages Extracted: {len(pages_data)}"
         )
 
+
         for page in pages_data:
 
             _logger.warning(
@@ -1468,15 +1469,15 @@ def extract_pdf(
 
             )
 
-            for index, image in enumerate(page["images"]):
+            for index, asset in enumerate(page["images"]):
 
                 _logger.warning(
 
                     f"   Crop {index+1}: "
 
-                    f"{image.get('width')}x{image.get('height')} "
+                    f"{asset.get('width')}x{asset.get('height')} "
 
-                    f"Lifestyle={image.get('is_lifestyle')}"
+                    f"Lifestyle={asset.get('is_lifestyle')}"
 
                 )
 
