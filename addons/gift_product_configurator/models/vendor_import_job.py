@@ -4627,6 +4627,41 @@ class VendorImportJob(models.Model):
                                 []
                             )
 
+                            # =================================================
+                            # ORIGINAL CATALOGUE PAGE IMAGE
+                            # =================================================
+                            #
+                            # Preserve the complete original page image so
+                            # Family A Review can visually compare the extracted
+                            # assets against the actual catalogue page.
+                            #
+                            # This is authoritative visual evidence.
+                            # =================================================
+
+                            page_image = p.get(
+                                "page_image",
+                                ""
+                            )
+
+                            if page_image:
+
+                                _logger.warning(
+                                    "[PDF NORMALIZE] ORIGINAL PAGE IMAGE "
+                                    "| JOB=%s | PAGE=%s | CHARS=%s",
+                                    self.id,
+                                    i + 1,
+                                    len(page_image),
+                                )
+
+                            else:
+
+                                _logger.warning(
+                                    "[PDF NORMALIZE] ORIGINAL PAGE IMAGE MISSING "
+                                    "| JOB=%s | PAGE=%s",
+                                    self.id,
+                                    i + 1,
+                                )
+
                             # ===========================
                             # CLEAN CATALOG SEGMENTATION
                             # ===========================
@@ -4727,6 +4762,17 @@ class VendorImportJob(models.Model):
 
                                 "page": i + 1,
 
+                                # =================================================
+                                # ORIGINAL CATALOGUE PAGE
+                                # =================================================
+                                #
+                                # MUST survive normalization because Family A
+                                # Review uses the complete original page as its
+                                # authoritative visual source.
+                                # =================================================
+
+                                "page_image": page_image,
+
                                 "text": text,
 
                                 "price": price,
@@ -4762,6 +4808,17 @@ class VendorImportJob(models.Model):
                             )
 
                             self._safe_commit_progress()
+
+                            _logger.warning(
+                                "[PDF PERSISTENCE] PAGE=%s "
+                                "| ORIGINAL_PAGE_IMAGE=%s "
+                                "| IMAGE_CHARS=%s "
+                                "| EXTRACTED_ASSETS=%s",
+                                block.get("page"),
+                                bool(block.get("page_image")),
+                                len(block.get("page_image") or ""),
+                                len(block.get("images") or []),
+                            )
 
                         self.env[
                             'vendor.import.page'
