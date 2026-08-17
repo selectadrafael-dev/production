@@ -4566,8 +4566,7 @@ class VendorImportJob(models.Model):
                         )
 
 
-                       if response.status_code != 200:
-
+                        if response.status_code != 200:
                             _logger.error(
                                 "[PDF API ERROR] "
                                 "JOB=%s "
@@ -4581,8 +4580,9 @@ class VendorImportJob(models.Model):
                                 response.status_code,
                                 response.text[:5000],
                             )
-
+                            
                             continue
+
 
                         page_data = response.json()
 
