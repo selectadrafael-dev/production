@@ -4573,6 +4573,94 @@ class VendorImportJob(models.Model):
 
                         page_data = response.json()
 
+                        # =================================================
+                        # EXTRACTOR RESPONSE TRACE
+                        # =================================================
+
+                        if isinstance(page_data, dict):
+
+                            _logger.warning(
+                                "[PDF API RESPONSE] "
+                                "JOB=%s "
+                                "| FAMILY=%s "
+                                "| VERSION=%s "
+                                "| TOP_LEVEL_KEYS=%s",
+                                self.id,
+                                page_data.get(
+                                    "extractor_family"
+                                ),
+                                page_data.get(
+                                    "extractor_version"
+                                ),
+                                list(page_data.keys()),
+                            )
+
+                            extractor_trace = (
+                                page_data.get(
+                                    "extractor_trace",
+                                    []
+                                )
+                            )
+
+                            _logger.warning(
+                                "[PDF API EXTRACTOR TRACE] "
+                                "JOB=%s\n%s",
+                                self.id,
+                                json.dumps(
+                                    extractor_trace,
+                                    ensure_ascii=False,
+                                    indent=2
+                                )
+                            )
+
+                            for response_page in (
+                                page_data.get(
+                                    "pages",
+                                    []
+                                )
+                            ):
+
+                                _logger.warning(
+                                    "[PDF API PAGE] "
+                                    "JOB=%s "
+                                    "| PAGE=%s "
+                                    "| FAMILY=%s "
+                                    "| VERSION=%s "
+                                    "| PAGE_IMAGE=%s "
+                                    "| PAGE_IMAGE_CHARS=%s "
+                                    "| ASSETS=%s",
+                                    self.id,
+                                    response_page.get(
+                                        "page"
+                                    ),
+                                    response_page.get(
+                                        "extractor_family",
+                                        page_data.get(
+                                            "extractor_family"
+                                        )
+                                    ),
+                                    response_page.get(
+                                        "extractor_version",
+                                        page_data.get(
+                                            "extractor_version"
+                                        )
+                                    ),
+                                    bool(
+                                        response_page.get(
+                                            "page_image"
+                                        )
+                                    ),
+                                    len(
+                                        response_page.get(
+                                            "page_image"
+                                        ) or ""
+                                    ),
+                                    len(
+                                        response_page.get(
+                                            "images"
+                                        ) or []
+                                    ),
+                                )
 
                         # =========================
                         # RESPONSE FORMAT
