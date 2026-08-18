@@ -3081,13 +3081,13 @@ class VendorImportJob(models.Model):
             else:
 
                 _logger.warning(
-                    "[FAMILY A ROUTING] "
-                    "ALL PAGES PASS "
-                    "→ PDF AI "
+                    "[FAMILY A TEST ROUTING] "
+                    "PASS PAGES "
+                    "→ FAMILY A PARTIAL RECOVERY "
                     "| JOB=%s "
-                    "| PASSED_PAGES=%s",
+                    "| PAGES=%s",
                     self.id,
-                    passed_pages,
+                    passed_pages
                 )
 
                 self.last_known_state = (
@@ -3097,7 +3097,6 @@ class VendorImportJob(models.Model):
                 self.state = (
                     'pdf_ai'
                 )
-
 
             # =================================================
             # PERSIST ROUTING DECISION
@@ -4058,7 +4057,6 @@ class VendorImportJob(models.Model):
                 return
 
             
-
     #=========Variant color swatch logic===========================================
 
     COLOR_HEX_MAP = {
@@ -18775,47 +18773,67 @@ class VendorImportJob(models.Model):
         PARTIAL PAGE
         ================================================================
 
-        Classify a page as PARTIAL when ALL of the following are true:
+        Classify a page as PARTIAL when:
 
-        1. At least one trustworthy Family A product/image asset exists.
+        1. At least one trustworthy product/image asset survives
+        extraction as an individual marketable product representation.
 
-        2. One or more important products, variants, or required production
-        images are missing, incomplete, or unusable.
+        2. One or more important products, variants, or marketable product
+        images are missing, incomplete, chopped, cropped, or unusable.
 
-        3. The trustworthy Family A assets can safely be preserved.
+        3. The surviving trustworthy assets can safely be preserved.
 
-        4. The missing asset is visibly present on the ORIGINAL PAGE.
+        4. The missing or damaged product/image is visibly supported by the
+        ORIGINAL CATALOGUE PAGE.
 
-        5. The missing asset can be located precisely enough for a downstream
-        crop engine to recover it.
+        5. The defect represents a recoverable extraction problem rather than
+        a total extraction failure.
 
-        Example:
+        IMPORTANT:
 
-        ORIGINAL PAGE:
-            Black bag
-            Grey bag
-            Folded bag
+        A CHOPPED OR INCOMPLETE MARKETABLE PRODUCT IS A PARTIAL CONDITION.
 
-        FAMILY A:
-            Black bag
-            Folded bag
+        For example:
 
-        RESULT:
-            PARTIAL
+        - the original page contains a complete bottle;
+        - Family A extracted only the upper half of the bottle;
+        - another legitimate product image survives.
 
-        The Black and Folded Family A assets must be preserved.
+        Decision:
+        PARTIAL.
 
-        The Grey bag becomes a recovery target.
+        Likewise:
 
+        - the original page contains 11 colour variants;
+        - 5 or 10 successfully survived and visible;
+        - the remainning or 11th variant are/is visibly present on the original page.
+
+        Decision:
+        PARTIAL.
+
+        Likewise:
+
+        - several legitimate product images survive;
+        - one or more additional product images are missing.
+
+        Decision:
+        PARTIAL.
+
+        Do NOT classify such cases as FAIL merely because the extraction is
+        incomplete.
+
+        A page with at least one trustworthy individual marketable product
+        surviving extraction is NOT a total extraction failure.
+       
         ================================================================
         FAIL PAGE
         ================================================================
 
         Classify a page as FAIL when:
 
-        - no trustworthy Family A product/image asset exists;
-        - the Family A extraction is fundamentally unusable;
-        - surviving Family A assets cannot safely be preserved;
+        - no trustworthy product/image asset exists;
+        - the extraction is fundamentally unusable;
+        - surviving assets cannot safely be preserved;
         - product relationships are severely incorrect;
         - products are incorrectly merged in a way that prevents reliable
         preservation;
@@ -18831,7 +18849,7 @@ class VendorImportJob(models.Model):
         A page MUST NOT be classified as FAIL merely because one or more
         products, variants, or images are missing.
 
-        If trustworthy Family A assets exist and the missing assets can be
+        If trustworthy assets exist and the missing assets can be
         reliably identified and localized, classify the page as PARTIAL.
 
         ================================================================
@@ -18840,7 +18858,7 @@ class VendorImportJob(models.Model):
 
         For PARTIAL pages:
 
-        KEEP all trustworthy Family A assets.
+        KEEP all trustworthy assets.
 
         Do NOT replace them.
 
@@ -18860,7 +18878,7 @@ class VendorImportJob(models.Model):
         - colour/variant when visually identifiable;
         - required_image_role;
         - asset_type;
-        - reason the Family A asset is insufficient;
+        - reason the asset is insufficient;
         - confidence;
         - exact location on the ORIGINAL PAGE.
 
@@ -18876,7 +18894,7 @@ class VendorImportJob(models.Model):
         For every recoverable missing asset, provide a crop entry using the
         EXISTING AZURE CROP COORDINATE CONTRACT.
 
-        Do NOT invent a new Family A coordinate format.
+        Do NOT invent a new coordinate format.
 
         Coordinates MUST be:
 
@@ -18916,7 +18934,7 @@ class VendorImportJob(models.Model):
         7. Do not include another colour variant unless the target requires it.
         8. Do not return a broad catalogue-card crop when the individual
         product can be localized more precisely.
-        9. Do not use the Family A extracted image as the coordinate source.
+        9. Do not use the extracted image as the coordinate source.
         10. The ORIGINAL PAGE is the coordinate source.
 
         ================================================================
@@ -18951,7 +18969,7 @@ class VendorImportJob(models.Model):
 
         Do NOT create one large crop containing all three bags.
 
-        Likewise, if Family A contains only one combined crop containing:
+        Likewise, if assets contains only one combined crop containing:
 
         Grey + Black + Navy
 
