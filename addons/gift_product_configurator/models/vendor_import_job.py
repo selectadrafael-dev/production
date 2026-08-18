@@ -37100,14 +37100,25 @@ class VendorImportJob(models.Model):
         )
 
         # =====================================================
-        # PRODUCTION GALLERY AUTHORITY GATE
+        # GALLERY CANDIDATE AUTHORITY
         # =====================================================
         #
-        # ONLY Family A-authoritative REAL_PRODUCT assets
-        # are allowed into the final Odoo gallery.
+        # Gallery rule:
         #
-        # Family A is the authority for production asset
-        # identity and preservation.
+        #   A trustworthy REAL_PRODUCT is a gallery candidate.
+        #
+        #   Gallery membership is independent of:
+        #       - hero assignment
+        #       - variant assignment
+        #       - whether the image is PRIMARY or DETAIL
+        #
+        #   Recovery assets may also enter the gallery when they
+        #   are explicitly marked as trustworthy recovery assets.
+        #
+        #   Do NOT require every Family A bookkeeping flag here.
+        #   Those flags are useful for authority/recovery decisions,
+        #   but they must not accidentally remove a valid product
+        #   image from the gallery.
         # =====================================================
 
         def _is_gallery_eligible(asset):
@@ -37115,43 +37126,84 @@ class VendorImportJob(models.Model):
             if not isinstance(asset, dict):
                 return False
 
-            # =================================================
-            # FAMILY A AUTHORITY IS REQUIRED
-            # =================================================
+            image_data = asset.get("image")
 
-            if asset.get("family_a_authoritative") is not True:
+            if not image_data:
                 return False
 
-            # =================================================
-            # ASSET MUST BE A REAL PRODUCT
-            # =================================================
+            # -------------------------------------------------
+            # NEVER allow known lifestyle assets
+            # -------------------------------------------------
+
+            if asset.get("is_lifestyle") is True:
+                return False
+
+            # -------------------------------------------------
+            # RECOVERY ASSET
+            # -------------------------------------------------
+            #
+            # A trustworthy recovered product image is allowed
+            # into the gallery even if it does not carry all of
+            # the original Family A flags.
+            # -------------------------------------------------
+
+            if asset.get("promotion_source") == "recovery":
+
+                if (
+                    asset.get("family_a_trustworthy") is True
+                    or asset.get("trustworthy") is True
+                ):
+                    return True
+
+            # -------------------------------------------------
+            # NORMAL REAL PRODUCT
+            # -------------------------------------------------
 
             if asset.get("classification") != "REAL_PRODUCT":
+
+
+                _logger.warning(
+                    "[GALLERY GATE REJECT] "
+                    "INDEX=%s | REASON=NOT_REAL_PRODUCT "
+                    "| classification=%s "
+                    "| role=%s "
+                    "| family_authoritative=%s "
+                    "| family_trustworthy=%s "
+                    "| family_preserve=%s "
+                    "| asset_group=%s "
+                    "| recovery=%s",
+                    asset.get("clean_index"),
+                    asset.get("classification"),
+                    asset.get("asset_role"),
+                    asset.get("family_a_authoritative"),
+                    asset.get("family_a_trustworthy"),
+                    asset.get("family_a_preserve"),
+                    asset.get("asset_group"),
+                    asset.get("promotion_source"),
+                )
+
                 return False
 
-            # =================================================
-            # ASSET MUST BE TRUSTWORTHY
-            # =================================================
+            # --------------------------------------------------
+            # TRUSTWORTHINESS
+            # --------------------------------------------------
+            #
+            # Family A is preferred when available.
+            # Do not require family_a_authoritative AND
+            # family_a_preserve simultaneously because that can
+            # accidentally remove otherwise valid REAL_PRODUCT
+            # assets from the gallery.
+            # -------------------------------------------------
 
-            if asset.get("family_a_trustworthy") is not True:
-                return False
+            trustworthy = (
+                asset.get("family_a_trustworthy") is True
+                or asset.get("trustworthy") is True
+            )
 
-            # =================================================
-            # ASSET MUST BE PRESERVED
-            # =================================================
-
-            if asset.get("family_a_preserve") is not True:
-                return False
-
-            # =================================================
-            # ASSET GROUP MUST ALSO BE REAL
-            # =================================================
-
-            if asset.get("asset_group") != "real":
+            if not trustworthy:
                 return False
 
             return True
-
 
         gallery_indexes = list(
             product_data.get(
@@ -37548,6 +37600,7 @@ class VendorImportJob(models.Model):
             f"product={product_data.get('name')}"
 
         )
+
 
     #==========PDF TITLE NORMALIZATION====================================
     def _normalize_pdf_product_title(
