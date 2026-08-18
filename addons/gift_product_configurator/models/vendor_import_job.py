@@ -2932,23 +2932,103 @@ class VendorImportJob(models.Model):
 
                 elif partial_pages:
 
+                    # =================================================
+                    # CHECK WHETHER FAMILY A ACTUALLY REQUESTED
+                    # PRECISION RECOVERY
+                    # =================================================
+
+                    recovery_requests = (
+                        review_result.get(
+                            'missing_asset_requests',
+                            []
+                        )
+                    )
+
+                    if not isinstance(
+                        recovery_requests,
+                        list
+                    ):
+                        recovery_requests = []
+
+                    recovery_requests = [
+
+                        request
+
+                        for request in recovery_requests
+
+                        if isinstance(
+                            request,
+                            dict
+                        )
+                    ]
+
                     _logger.warning(
                         "[FAMILY A REVIEW] "
                         "PARTIAL PAGES "
-                        "→ FAMILY A PARTIAL RECOVERY "
                         "| JOB=%s "
-                        "| PAGES=%s",
+                        "| PAGES=%s "
+                        "| RECOVERY_REQUESTS=%s",
                         self.id,
-                        partial_pages
+                        partial_pages,
+                        len(recovery_requests)
                     )
 
-                    self.last_known_state = (
-                        'family_a_partial_recovery'
-                    )
+                    # =================================================
+                    # PARTIAL + ACTUAL RECOVERY REQUESTS
+                    # =================================================
 
-                    self.state = (
-                        'family_a_partial_recovery'
-                    )
+                    if recovery_requests:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] "
+                            "PARTIAL PAGES "
+                            "→ FAMILY A PARTIAL RECOVERY "
+                            "| JOB=%s "
+                            "| PAGES=%s "
+                            "| REQUESTS=%s",
+                            self.id,
+                            partial_pages,
+                            len(recovery_requests)
+                        )
+
+                        self.last_known_state = (
+                            'family_a_partial_recovery'
+                        )
+
+                        self.state = (
+                            'family_a_partial_recovery'
+                        )
+
+                    # =================================================
+                    # PARTIAL + NO RECOVERY REQUESTS
+                    #
+                    # Family A has completed its visual authority
+                    # but does not require additional asset recovery.
+                    #
+                    # Do NOT enter the recovery state.
+                    # Continue to PDF AI using the persisted
+                    # Family A authoritative review.
+                    # =================================================
+
+                    else:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] "
+                            "PARTIAL PAGES WITH NO RECOVERY REQUESTS "
+                            "→ PDF AI "
+                            "| JOB=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            partial_pages
+                        )
+
+                        self.last_known_state = (
+                            'pdf_ai'
+                        )
+
+                        self.state = (
+                            'pdf_ai'
+                        )
 
 
                 # =================================================
