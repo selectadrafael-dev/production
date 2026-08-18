@@ -2845,10 +2845,23 @@ class VendorImportJob(models.Model):
                 # =================================================
                 # SAVE COMPLETE REVIEW RESULT
                 # =================================================
+               
 
                 self.family_a_review_json = json.dumps(
                     review_result,
                     ensure_ascii=False
+                )
+
+                _logger.warning(
+                    "[FAMILY A RAW REVIEW RESULT] "
+                    "JOB=%s | RESULT=%s",
+                    self.id,
+                    json.dumps(
+                        review_result,
+                        ensure_ascii=False,
+                        indent=2,
+                        default=str
+                    )
                 )
 
                 # =================================================
@@ -2919,23 +2932,103 @@ class VendorImportJob(models.Model):
 
                 elif partial_pages:
 
+                    # =================================================
+                    # CHECK WHETHER FAMILY A ACTUALLY REQUESTED
+                    # PRECISION RECOVERY
+                    # =================================================
+
+                    recovery_requests = (
+                        review_result.get(
+                            'missing_asset_requests',
+                            []
+                        )
+                    )
+
+                    if not isinstance(
+                        recovery_requests,
+                        list
+                    ):
+                        recovery_requests = []
+
+                    recovery_requests = [
+
+                        request
+
+                        for request in recovery_requests
+
+                        if isinstance(
+                            request,
+                            dict
+                        )
+                    ]
+
                     _logger.warning(
                         "[FAMILY A REVIEW] "
                         "PARTIAL PAGES "
-                        "→ FAMILY A PARTIAL RECOVERY "
                         "| JOB=%s "
-                        "| PAGES=%s",
+                        "| PAGES=%s "
+                        "| RECOVERY_REQUESTS=%s",
                         self.id,
-                        partial_pages
+                        partial_pages,
+                        len(recovery_requests)
                     )
 
-                    self.last_known_state = (
-                        'family_a_partial_recovery'
-                    )
+                    # =================================================
+                    # PARTIAL + ACTUAL RECOVERY REQUESTS
+                    # =================================================
 
-                    self.state = (
-                        'family_a_partial_recovery'
-                    )
+                    if recovery_requests:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] "
+                            "PARTIAL PAGES "
+                            "→ FAMILY A PARTIAL RECOVERY "
+                            "| JOB=%s "
+                            "| PAGES=%s "
+                            "| REQUESTS=%s",
+                            self.id,
+                            partial_pages,
+                            len(recovery_requests)
+                        )
+
+                        self.last_known_state = (
+                            'family_a_partial_recovery'
+                        )
+
+                        self.state = (
+                            'family_a_partial_recovery'
+                        )
+
+                    # =================================================
+                    # PARTIAL + NO RECOVERY REQUESTS
+                    #
+                    # Family A has completed its visual authority
+                    # but does not require additional asset recovery.
+                    #
+                    # Do NOT enter the recovery state.
+                    # Continue to PDF AI using the persisted
+                    # Family A authoritative review.
+                    # =================================================
+
+                    else:
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] "
+                            "PARTIAL PAGES WITH NO RECOVERY REQUESTS "
+                            "→ PDF AI "
+                            "| JOB=%s "
+                            "| PAGES=%s",
+                            self.id,
+                            partial_pages
+                        )
+
+                        self.last_known_state = (
+                            'pdf_ai'
+                        )
+
+                        self.state = (
+                            'pdf_ai'
+                        )
 
 
                 # =================================================
@@ -6671,6 +6764,7 @@ class VendorImportJob(models.Model):
             return crop
 
     #======================validate_variant_image_assignments===============
+
     def _validate_variant_image_assignments(
         self,
         products,
@@ -7043,24 +7137,6 @@ class VendorImportJob(models.Model):
                         image_index
                     )
 
-                    # image_hash = str(
-                    #     asset.get(
-                    #         "image_hash",
-                    #         ""
-                    #     )
-                    # ).strip()
-
-                    # if not image_hash:
-
-                    #     _logger.warning(
-                    #         "[FAMILY A REVIEW] "
-                    #         "MISSING IMAGE HASH "
-                    #         "| JOB=%s | PAGE=%s | IMAGE=%s",
-                    #         self.id,
-                    #         page_number,
-                    #         image_index,
-                    #     )
-
                 except (
                     TypeError,
                     ValueError
@@ -7126,6 +7202,12 @@ class VendorImportJob(models.Model):
             )
 
             # =====================================================
+            # BUILD AUTHORITATIVE SOURCE INDEX -> CLEAN INDEX
+            # =====================================================
+
+            source_index_lookup = {}
+
+            # =====================================================
             # BUILD COLOR -> ACTUAL CLEAN INDEX LOOKUP
             # =====================================================
 
@@ -7141,6 +7223,10 @@ class VendorImportJob(models.Model):
 
                 clean_index = asset.get(
                     "clean_index"
+                )
+
+                source_index = asset.get(
+                    "index"
                 )
 
                 dominant_color = str(
@@ -7166,34 +7252,84 @@ class VendorImportJob(models.Model):
                 _logger.warning(
                     "[CORRECTION ASSET] "
                     "JOB=%s | "
+                    "SOURCE_INDEX=%s | "
                     "CLEAN_INDEX=%s | "
                     "COLOR=%s | "
                     "PRODUCT=%s | "
                     "CROP=%s",
                     self.id,
+                    source_index,
                     clean_index,
                     dominant_color,
                     product_reference,
                     crop_id
                 )
 
+
+                # ================================================
+                # AUTHORITATIVE FAMILY A INDEX -> CLEAN INDEX
+                # ================================================
+
                 if (
-                    clean_index is None
-                    or clean_index == ""
+                    source_index is not None
+                    and
+                    clean_index is not None
+                    and
+                    clean_index != ""
                 ):
-                    continue
 
-                if dominant_color:
+                    if source_index in source_index_lookup:
 
-                    color_lookup[
-                        dominant_color
-                    ] = clean_index
+                        _logger.warning(
+                            "[SOURCE INDEX DUPLICATE] "
+                            "JOB=%s | "
+                            "SOURCE_INDEX=%s | "
+                            "EXISTING_CLEAN_INDEX=%s | "
+                            "NEW_CLEAN_INDEX=%s",
+                            self.id,
+                            source_index,
+                            source_index_lookup[source_index],
+                            clean_index
+                        )
+
+                    else:
+
+                        source_index_lookup[
+                            source_index
+                        ] = clean_index
+
+
+                # =====================================================
+                # COLOR FALLBACK LOOKUP
+                # =====================================================
+
+                if (
+                    clean_index is not None
+                    and
+                    clean_index != ""
+                    and
+                    dominant_color
+                ):
+
+                    color_lookup.setdefault(
+                        dominant_color,
+                        []
+                    ).append(
+                        clean_index
+                    )
 
             _logger.warning(
                 "[COLOR LOOKUP] "
                 "JOB=%s | %s",
                 self.id,
                 color_lookup
+            )
+
+            _logger.warning(
+                "[SOURCE INDEX LOOKUP] "
+                "JOB=%s | %s",
+                self.id,
+                source_index_lookup
             )
 
             # =====================================================
@@ -7244,20 +7380,48 @@ class VendorImportJob(models.Model):
                     old_index
                 )
 
+                if (
+                    old_index is not None
+                    and old_index in source_index_lookup
+                ):
+
+                    new_index = source_index_lookup[
+                        old_index
+                    ]
+
+                    variant[
+                        "source_image_index"
+                    ] = old_index
+
+                    variant["image_index"] = new_index
+
+                    _logger.warning(
+                        "[CORRECTION AUTHORITATIVE INDEX] "
+                        "JOB=%s | "
+                        "PRODUCT=%s | "
+                        "COLOR=%s | "
+                        "SOURCE_INDEX=%s | "
+                        "NEW_CLEAN_INDEX=%s",
+                        self.id,
+                        product_name,
+                        variant_color,
+                        old_index,
+                        new_index
+                    )
+
+                    continue
+
+
                 if not variant_color:
                     continue
 
                 # =================================================
-                # FIRST PRIORITY:
+                # SECOND PRIORITY:
                 # FIND AZURE CROP WHOSE PRODUCT REFERENCE
                 # EXPLICITLY MATCHES THIS VARIANT COLOR.
                 #
-                # Example:
-                #
-                # Sling Eco - Grey
-                # Sling Eco - Black
-                #
-                # This is stronger than dominant_color alone.
+                # This is only used when the authoritative
+                # Family A source index could not be resolved.
                 # =================================================
 
                 explicit_match = None
@@ -7329,18 +7493,17 @@ class VendorImportJob(models.Model):
                             "[CORRECTION EXPLICIT MATCH] "
                             "JOB=%s | "
                             "COLOR=%s | "
+                            "SOURCE_INDEX=%s | "
                             "CLEAN_INDEX=%s | "
                             "PRODUCT=%s | "
                             "CROP=%s",
+
                             self.id,
                             variant_color,
+                            asset.get("index"),
                             clean_index,
-                            asset.get(
-                                "product_reference"
-                            ),
-                            asset.get(
-                                "crop_id"
-                            )
+                            asset.get("product_reference"),
+                            asset.get("crop_id")
                         )
 
                         break
@@ -7356,31 +7519,59 @@ class VendorImportJob(models.Model):
                         "clean_index"
                     )
 
+                # elif variant_color in color_lookup:
+
+                #     new_index = color_lookup[
+                #         variant_color
+                #     ]
+
+                #     _logger.warning(
+                #         "[CORRECTION COLOR MATCH] "
+                #         "JOB=%s | "
+                #         "COLOR=%s | "
+                #         "CLEAN_INDEX=%s",
+                #         self.id,
+                #         variant_color,
+                #         new_index
+                #     )
+
                 elif variant_color in color_lookup:
 
-                    new_index = color_lookup[
+                    color_candidates = color_lookup[
                         variant_color
                     ]
 
-                    _logger.warning(
-                        "[CORRECTION COLOR MATCH] "
-                        "JOB=%s | "
-                        "COLOR=%s | "
-                        "CLEAN_INDEX=%s",
-                        self.id,
-                        variant_color,
-                        new_index
-                    )
+                    # -------------------------------------------------
+                    # Only use color when it identifies ONE asset.
+                    # Never guess between multiple assets sharing the
+                    # same color.
+                    # -------------------------------------------------
+
+                    if len(color_candidates) == 1:
+
+                        new_index = color_candidates[0]
+
+                        _logger.warning(
+                            "[CORRECTION COLOR MATCH] "
+                            "JOB=%s | "
+                            "COLOR=%s | "
+                            "CLEAN_INDEX=%s",
+                            self.id,
+                            variant_color,
+                            new_index
+                        )
 
                 else:
 
                     _logger.warning(
-                        "[CORRECTION NO MATCH] "
+                        "[CORRECTION COLOR AMBIGUOUS] "
                         "JOB=%s | "
                         "COLOR=%s | "
+                        "CANDIDATES=%s | "
                         "KEEPING_INDEX=%s",
                         self.id,
                         variant_color,
+                        color_candidates,
                         old_index
                     )
 
@@ -7397,10 +7588,12 @@ class VendorImportJob(models.Model):
                 _logger.warning(
                     "[CORRECTION APPLIED] "
                     "JOB=%s | "
+                    "PRODUCT=%s | "
                     "COLOR=%s | "
-                    "OLD=%s | "
+                    "SOURCE_INDEX=%s | "
                     "NEW_CLEAN_INDEX=%s",
                     self.id,
+                    product_name,
                     variant_color,
                     old_index,
                     new_index
@@ -7419,7 +7612,8 @@ class VendorImportJob(models.Model):
             )
 
             return product_data
-    
+
+
     #==========build_product_family========================
     def _build_product_family(
         self,
@@ -14331,6 +14525,99 @@ class VendorImportJob(models.Model):
 
         return family_a_review
 
+    # =========================================================
+    # FAMILY A AUTHORITATIVE PRODUCT IDENTITY
+    # =========================================================
+    def _get_family_a_authoritative_product_identity(
+        self,
+        product_group
+    ):
+        """
+        Return the authoritative Family A product identity.
+
+        Family A is authoritative for product_name/product_title.
+
+        Returns:
+            {
+                "name": "...",
+                "title": "...",
+                "name_source": "...",
+                "name_confidence": 0.0,
+                "name_trustworthy": False,
+                "group_id": "..."
+            }
+        """
+
+        if not isinstance(
+            product_group,
+            dict
+        ):
+            return {
+                "name": "",
+                "title": "",
+                "name_source": "",
+                "name_confidence": 0,
+                "name_trustworthy": False,
+                "group_id": None,
+            }
+
+        product_name = str(
+            product_group.get(
+                "product_name"
+            )
+            or ""
+        ).strip()
+
+        product_title = str(
+            product_group.get(
+                "product_title"
+            )
+            or ""
+        ).strip()
+
+        name_trustworthy = bool(
+            product_group.get(
+                "name_trustworthy",
+                False
+            )
+        )
+
+        return {
+            "name": (
+                product_name
+                if name_trustworthy and product_name
+                else (
+                    product_title
+                    if name_trustworthy and product_title
+                    else ""
+                )
+            ),
+
+            "title": product_title,
+
+            "name_source": str(
+                product_group.get(
+                    "name_source"
+                )
+                or ""
+            ).strip(),
+
+            "name_confidence": (
+                product_group.get(
+                    "name_confidence",
+                    0
+                )
+                or 0
+            ),
+
+            "name_trustworthy":
+                name_trustworthy,
+
+            "group_id":
+                product_group.get(
+                    "group_id"
+                ),
+        }
 
     # =========================================================
     # AUTHORITATIVE FAMILY A PAGE SPECIFICATION
@@ -34401,7 +34688,123 @@ class VendorImportJob(models.Model):
             )
 
             return
+        
+        # =========================================================
+        # LOAD FAMILY A AUTHORITATIVE SPECIFICATION
+        # =========================================================
 
+        family_a_authority = self._get_family_a_authoritative_spec()
+
+        _logger.warning(
+            "[FAMILY A AUTHORITY LOADED] "
+            "JOB=%s | KEYS=%s",
+            self.id,
+            list(family_a_authority.keys())
+        )
+
+
+        # =====================================================
+        # BUILD FAMILY A AUTHORITATIVE PRODUCT NAME MAP
+        # =====================================================
+
+        family_a_product_name_map = {}
+
+        try:
+
+            family_a_review = (
+                self._get_family_a_authoritative_spec()
+            )
+
+            for family_a_page in (
+                family_a_review.get(
+                    "pages",
+                    []
+                )
+            ):
+
+                if not isinstance(
+                    family_a_page,
+                    dict
+                ):
+                    continue
+
+                for group in (
+                    family_a_page.get(
+                        "product_groups",
+                        []
+                    )
+                ):
+
+                    if not isinstance(
+                        group,
+                        dict
+                    ):
+                        continue
+
+                    group_id = str(
+                        group.get(
+                            "group_id",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+
+                    product_name = str(
+                        group.get(
+                            "product_name",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+
+                    product_title = str(
+                        group.get(
+                            "product_title",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+
+                    name_trustworthy = (
+                        group.get(
+                            "name_trustworthy"
+                        )
+                        is True
+                    )
+
+                    authoritative_name = (
+                        product_name
+                        or product_title
+                    )
+
+                    if (
+                        group_id
+                        and
+                        authoritative_name
+                        and
+                        name_trustworthy
+                    ):
+
+                        family_a_product_name_map[
+                            group_id
+                        ] = authoritative_name
+
+            _logger.warning(
+                "[PDF CREATE FAMILY A NAME MAP] "
+                "JOB=%s | MAP=%s",
+                self.id,
+                family_a_product_name_map
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                "[PDF CREATE FAMILY A NAME MAP FAILED] "
+                "JOB=%s | ERROR=%s",
+                self.id,
+                str(e),
+                exc_info=True
+            )
         product_obj = self.env[
             'product.template'
         ]
@@ -34532,6 +34935,62 @@ class VendorImportJob(models.Model):
             )
 
             for product_data in products:
+
+                # =====================================================
+                # APPLY FAMILY A AUTHORITATIVE PRODUCT NAME
+                # =====================================================
+
+                pdf_ai_name = (
+                    product_data.get(
+                        "name"
+                    )
+                    or ""
+                ).strip()
+
+                family_a_group_id = str(
+                    product_data.get(
+                        "product_group",
+                        ""
+                    )
+                    or ""
+                ).strip()
+
+                family_a_authoritative_name = (
+                    family_a_product_name_map.get(
+                        family_a_group_id
+                    )
+                    or ""
+                ).strip()
+
+                if family_a_authoritative_name:
+
+                    _logger.warning(
+                        "[PDF NAME AUTHORITY APPLIED] "
+                        "JOB=%s | "
+                        "GROUP=%s | "
+                        "PDF_AI_NAME=%s | "
+                        "FAMILY_A_NAME=%s",
+                        self.id,
+                        family_a_group_id,
+                        pdf_ai_name,
+                        family_a_authoritative_name
+                    )
+
+                    product_data["name"] = (
+                        family_a_authoritative_name
+                    )
+
+                else:
+
+                    _logger.warning(
+                        "[PDF NAME AUTHORITY NOT FOUND] "
+                        "JOB=%s | "
+                        "GROUP=%s | "
+                        "PDF_AI_NAME=%s",
+                        self.id,
+                        family_a_group_id,
+                        pdf_ai_name
+                    )
 
                 # =====================================
                 # PRODUCT IMAGE PREP
@@ -34875,9 +35334,77 @@ class VendorImportJob(models.Model):
                         f"{vendor_id}_{variant_group}"
                     )
 
+                    vendor_fingerprint = (
+                        f"{vendor_id}_{variant_group}"
+                    )
+
+                    # =====================================================
+                    # DIAGNOSTIC: AUTHORITY BEFORE VARIANT CORRECTION
+                    # =====================================================
+
+                    _logger.warning(
+                        "[AUTHORITY BEFORE CORRECTION] "
+                        "JOB=%s | PRODUCT=%s | VARIANTS=%s",
+                        self.id,
+                        product_data.get("name"),
+                        json.dumps(
+                            product_data.get("variants", []),
+                            ensure_ascii=False,
+                            default=str
+                        )
+                    )
+
+                    for asset in asset_pool:
+
+                        if not isinstance(asset, dict):
+                            continue
+
+                        _logger.warning(
+                            "[AUTHORITY ASSET BEFORE CORRECTION] "
+                            "JOB=%s | PRODUCT=%s "
+                            "| INDEX=%s "
+                            "| CLEAN_INDEX=%s "
+                            "| COLOR=%s "
+                            "| PRODUCT_REF=%s "
+                            "| CLASSIFICATION=%s "
+                            "| ROLE=%s "
+                            "| AUTHORITATIVE=%s "
+                            "| TRUSTWORTHY=%s "
+                            "| PRESERVE=%s "
+                            "| LIFESTYLE=%s",
+                            self.id,
+                            product_data.get("name"),
+                            asset.get("index"),
+                            asset.get("clean_index"),
+                            asset.get("dominant_color"),
+                            asset.get("product_reference"),
+                            asset.get("classification"),
+                            asset.get("asset_role"),
+                            asset.get("family_a_authoritative"),
+                            asset.get("family_a_trustworthy"),
+                            asset.get("family_a_preserve"),
+                            asset.get("is_lifestyle"),
+                        )
+
+                    # =====================================================
+                    # EXISTING VARIANT CORRECTION
+                    # =====================================================
+
                     product_data = self._correct_variant_image_indexes(
                         product_data,
                         asset_pool
+                    )
+
+                    _logger.warning(
+                        "[AUTHORITY AFTER CORRECTION] "
+                        "JOB=%s | PRODUCT=%s | VARIANTS=%s",
+                        self.id,
+                        product_data.get("name"),
+                        json.dumps(
+                            product_data.get("variants", []),
+                            ensure_ascii=False,
+                            default=str
+                        )
                     )
 
             
@@ -35462,6 +35989,7 @@ class VendorImportJob(models.Model):
 
         self._safe_commit_progress()
 
+
     #==========pdf product CREATE/GET====================================
     
     def _get_or_create_pdf_product(
@@ -35607,12 +36135,50 @@ class VendorImportJob(models.Model):
 
 
         # =====================================
-        # NORMALIZE PRODUCT TITLE
+        # AUTHORITATIVE PRODUCT TITLE
         # =====================================
 
-        clean_title = self._normalize_pdf_product_title(
-            product_data
-        )
+        authoritative_name = (
+            product_data.get(
+                "_family_a_authoritative_name"
+            )
+            or ""
+        ).strip()
+
+        if authoritative_name:
+
+            clean_title = authoritative_name
+
+            _logger.warning(
+                "[PDF TITLE AUTHORITY APPLIED] "
+                "JOB=%s | "
+                "AI_NAME=%s | "
+                "AUTHORITATIVE_NAME=%s",
+                self.id,
+                product_data.get("name"),
+                authoritative_name
+            )
+
+        else:
+
+            clean_title = (
+                self._normalize_pdf_product_title(
+                    product_data
+                )
+                or product_data.get("name")
+                or product_data.get("title")
+                or ""
+            ).strip()
+
+            _logger.warning(
+                "[PDF TITLE AUTHORITY MISSING] "
+                "JOB=%s | "
+                "AI_NAME=%s | "
+                "USING_NORMALIZATION=%s",
+                self.id,
+                product_data.get("name"),
+                clean_title
+            )
 
         currency = self._resolve_catalogue_currency(
 
@@ -35629,6 +36195,22 @@ class VendorImportJob(models.Model):
                     )
                 ),
 
+        )
+
+        _logger.warning(
+            "[PDF FINAL PRODUCT IDENTITY] "
+            "JOB=%s | "
+            "AI_NAME=%s | "
+            "AUTHORITY_NAME=%s | "
+            "FINAL_ODDO_NAME=%s | "
+            "VARIANT_GROUP=%s | "
+            "FINGERPRINT=%s",
+            self.id,
+            product_data.get("name"),
+            authoritative_name or None,
+            clean_title,
+            variant_group,
+            vendor_fingerprint
         )
 
         vals = {
@@ -35674,9 +36256,87 @@ class VendorImportJob(models.Model):
                 currency.id,
         }
 
-        hero_index = product_data.get(
-            "hero_image_index"
+
+        # =====================================
+        # AUTHORITATIVE HERO IMAGE INDEX
+        # =====================================
+
+        hero_index = None
+
+        variants = product_data.get(
+            "variants",
+            []
         )
+
+        if isinstance(variants, list):
+
+            # -------------------------------------
+            # FIRST PRIORITY:
+            # Use the corrected Family A-authorized
+            # variant image index.
+            #
+            # image_index = CURRENT CLEAN INDEX
+            # source_image_index = ORIGINAL SOURCE INDEX
+            # -------------------------------------
+
+            for variant in variants:
+
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+                corrected_index = variant.get(
+                    "image_index"
+                )
+
+                if (
+                    corrected_index is not None
+                    and
+                    corrected_index != ""
+                ):
+
+                    hero_index = corrected_index
+
+                    _logger.warning(
+                        "[PDF HERO AUTHORITY] "
+                        "JOB=%s | "
+                        "PRODUCT=%s | "
+                        "SOURCE_INDEX=%s | "
+                        "CLEAN_INDEX=%s",
+                        self.id,
+                        product_data.get("name"),
+                        variant.get(
+                            "source_image_index"
+                        ),
+                        corrected_index
+                    )
+
+                    break
+
+
+        # -------------------------------------
+        # FALLBACK:
+        # Only use the original AI hero index
+        # when no corrected variant image exists.
+        # -------------------------------------
+
+        if hero_index is None:
+
+            hero_index = product_data.get(
+                "hero_image_index"
+            )
+
+            _logger.warning(
+                "[PDF HERO FALLBACK] "
+                "JOB=%s | "
+                "PRODUCT=%s | "
+                "AI_HERO_INDEX=%s",
+                self.id,
+                product_data.get("name"),
+                hero_index
+            )
         
         # =====================================
         # PROFESSIONAL HERO IMAGE SELECTION
@@ -35803,6 +36463,7 @@ class VendorImportJob(models.Model):
 
             hero_asset
         )
+
 
     #==========pdf and excel stock helper(working helper)================
     def _apply_catalog_stock(
@@ -36065,6 +36726,57 @@ class VendorImportJob(models.Model):
             f"assets={len(asset_pool)}"
         )
 
+        # =====================================================
+        # PRODUCTION GALLERY AUTHORITY GATE
+        # =====================================================
+        #
+        # The asset pool may contain recovery/source assets
+        # that must remain available for recovery.
+        #
+        # However, ONLY production-eligible assets may enter
+        # product.image / the final Odoo gallery.
+        #
+        # Family A authority takes precedence whenever it exists.
+        # =====================================================
+
+        def _is_gallery_eligible(asset):
+
+            if not isinstance(asset, dict):
+                return False
+
+            # ---------------------------------------------
+            # Never allow non-real assets into production
+            # gallery.
+            # ---------------------------------------------
+
+            if asset.get("asset_group") != "real":
+                return False
+
+            # ---------------------------------------------
+            # If Family A explicitly reviewed this asset,
+            # its trust/preserve decision is authoritative.
+            # ---------------------------------------------
+
+            if asset.get("family_a_authoritative") is True:
+
+                if asset.get("family_a_trustworthy") is not True:
+                    return False
+
+                if asset.get("family_a_preserve") is not True:
+                    return False
+
+            # ---------------------------------------------
+            # Explicit Family A rejection always wins.
+            # ---------------------------------------------
+
+            if asset.get("family_a_trustworthy") is False:
+                return False
+
+            if asset.get("family_a_preserve") is False:
+                return False
+
+            return True
+
         gallery_indexes = product_data.get(
             "gallery_image_indexes",
             []
@@ -36081,12 +36793,8 @@ class VendorImportJob(models.Model):
             for a in asset_pool
 
             if (
-
                 a.get("promotion_source") == "recovery"
-
-                and
-
-                a.get("asset_group") == "real"
+                and _is_gallery_eligible(a)
             )
         ]
 
@@ -36147,7 +36855,8 @@ class VendorImportJob(models.Model):
                 for a in sorted_gallery_assets
 
                 if (
-
+                    _is_gallery_eligible(a)
+                    and
                     a.get(
                         "gallery_score",
                         a.get(
@@ -36155,7 +36864,6 @@ class VendorImportJob(models.Model):
                             0
                         )
                     ) >= 28
-
                 )
             ]
 
@@ -36207,13 +36915,19 @@ class VendorImportJob(models.Model):
 
         if len(gallery_indexes) < 4:
 
+
+
             fallback_indexes = [
 
                 a.get("clean_index")
 
                 for a in sorted(
 
-                    asset_pool,
+                    (
+                        a
+                        for a in asset_pool
+                        if _is_gallery_eligible(a)
+                    ),
 
                     key=lambda x: (
 
@@ -36304,18 +37018,36 @@ class VendorImportJob(models.Model):
 
                 )
 
-                if asset.get("asset_group") != "real":
+
+                # =====================================================
+                # FINAL PRODUCTION AUTHORITY GATE
+                # =====================================================
+
+                if not _is_gallery_eligible(asset):
 
                     _logger.warning(
-
-                        f"[NON-REAL GALLERY] "
-
-                        f"index={index} "
-
-                        f"group={asset.get('asset_group')} "
-
-                        f"confidence={asset.get('confidence')}"
+                        "[GALLERY REJECTED BY AUTHORITY] "
+                        "index=%s "
+                        "| group=%s "
+                        "| classification=%s "
+                        "| role=%s "
+                        "| family_a_authoritative=%s "
+                        "| trustworthy=%s "
+                        "| preserve=%s "
+                        "| lifestyle=%s "
+                        "| confidence=%s",
+                        index,
+                        asset.get("asset_group"),
+                        asset.get("classification"),
+                        asset.get("asset_role"),
+                        asset.get("family_a_authoritative"),
+                        asset.get("family_a_trustworthy"),
+                        asset.get("family_a_preserve"),
+                        asset.get("is_lifestyle"),
+                        asset.get("confidence"),
                     )
+
+                    continue
 
                 gallery_image = (
                     self._resolve_asset_image(
@@ -36408,11 +37140,10 @@ class VendorImportJob(models.Model):
 
     #==========PDF TITLE NORMALIZATION====================================
     def _normalize_pdf_product_title(
-
         self,
-
-        product_data
-     ):
+        product_data,
+        authoritative_name=None,
+    ):
 
         import re
 
@@ -36420,6 +37151,26 @@ class VendorImportJob(models.Model):
             product_data.get("name")
             or ""
         ).strip()
+
+        # =====================================================
+        # FAMILY A AUTHORITATIVE PRODUCT NAME
+        # =====================================================
+
+        authoritative_name = str(
+            authoritative_name
+            or ""
+        ).strip()
+
+        if authoritative_name:
+
+            _logger.warning(
+                "[PDF TITLE AUTHORITY] "
+                "Using Family A authoritative name | "
+                "name=%s",
+                authoritative_name
+            )
+
+            return authoritative_name
 
         subtitle = (
             product_data.get("subtitle")
@@ -36596,6 +37347,7 @@ class VendorImportJob(models.Model):
                 "score": score
             })
 
+
         # =====================================
         # SORT BEST TITLE
         # =====================================
@@ -36618,7 +37370,7 @@ class VendorImportJob(models.Model):
         )
 
         # =====================================
-        # FINAL TITLE
+        # FINAL TITLE FALLBACK
         # =====================================
 
         if scored:
