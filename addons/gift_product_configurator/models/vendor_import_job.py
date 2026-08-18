@@ -10764,16 +10764,6 @@ class VendorImportJob(models.Model):
             len(family_a_precision_crop_assets)
         )
 
-        _logger.warning(
-            "[PDF AI] AZURE CROP METADATA PRESERVED "
-            "| PAGE=%s "
-            "| COUNT=%s",
-            next_record.page_number,
-            len(
-                azure_crop_assets
-            )
-        )
-
         for asset in azure_crop_assets:
 
             _logger.warning(
@@ -10806,8 +10796,9 @@ class VendorImportJob(models.Model):
                 )
             )
 
+
         # =====================================================
-        # 2. LOAD PERSISTED AZURE CROP ASSETS
+        # 2. LOAD PERSISTED RECOVERY ASSETS
         # =====================================================
         #
         # page_images_json contains persisted page assets.
@@ -10819,6 +10810,8 @@ class VendorImportJob(models.Model):
         #
         # Only add assets explicitly marked as Azure crops.
         # =====================================================
+
+        persisted_assets = []
 
         try:
 
