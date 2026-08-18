@@ -2968,6 +2968,14 @@ class VendorImportJob(models.Model):
                     )
                 })
 
+                passed_pages = sorted({
+                    int(page)
+                    for page in review_result.get(
+                        'passed_pages',
+                        []
+                    )
+                })
+
 
                 _logger.warning(
                     "[FAMILY A REVIEW] ROUTING DECISION "
@@ -2983,221 +2991,132 @@ class VendorImportJob(models.Model):
                     partial_pages,
                     failed_pages
                 )
+                
+
+            # =================================================
+            # FAMILY A REVIEW → AUTHORITATIVE ROUTING
+            # =================================================
+
+            _logger.warning(
+                "[FAMILY A ROUTING] "
+                "JOB=%s | FAILED=%s | PARTIAL=%s | PASSED=%s",
+                self.id,
+                failed_pages,
+                partial_pages,
+                passed_pages,
+            )
 
 
-                # =================================================
-                # FULL PAGE FAILURE
-                # =================================================
+            # =================================================
+            # FULL PAGE FAILURE
+            # → AZURE FULL FALLBACK
+            # =================================================
 
-                if failed_pages:
+            if failed_pages:
 
-                    _logger.warning(
-                        "[FAMILY A REVIEW] "
-                        "FULL FAILED PAGES "
-                        "→ AZURE FALLBACK "
-                        "| JOB=%s "
-                        "| PAGES=%s",
-                        self.id,
-                        failed_pages
-                    )
+                _logger.error(
+                    "[FAMILY A ROUTING] "
+                    "FULL FAILURE "
+                    "→ AZURE FALLBACK "
+                    "| JOB=%s "
+                    "| FAILED_PAGES=%s "
+                    "| PARTIAL_PAGES=%s "
+                    "| PASSED_PAGES=%s",
+                    self.id,
+                    failed_pages,
+                    partial_pages,
+                    passed_pages,
+                )
 
-                    self.last_known_state = (
-                        'azure_fallback'
-                    )
+                self.last_known_state = (
+                    'azure_fallback'
+                )
 
-                    self.state = (
-                        'azure_fallback'
-                    )
-
-
-                # =================================================
-                # PARTIAL FAMILY A RECOVERY
-                # =================================================
-
-                elif partial_pages:
-
-                    # =================================================
-                    # CHECK WHETHER FAMILY A ACTUALLY REQUESTED
-                    # PRECISION RECOVERY
-                    # =================================================
-
-                    recovery_requests = (
-                        review_result.get(
-                            'missing_asset_requests',
-                            []
-                        )
-                    )
-
-                    if not isinstance(
-                        recovery_requests,
-                        list
-                    ):
-                        recovery_requests = []
-
-                    recovery_requests = [
-
-                        request
-
-                        for request in recovery_requests
-
-                        if isinstance(
-                            request,
-                            dict
-                        )
-                    ]
-
-                    _logger.warning(
-                        "[FAMILY A REVIEW] "
-                        "PARTIAL PAGES "
-                        "| JOB=%s "
-                        "| PAGES=%s "
-                        "| RECOVERY_REQUESTS=%s",
-                        self.id,
-                        partial_pages,
-                        len(recovery_requests)
-                    )
-
-                    # =================================================
-                    # PARTIAL + ACTUAL RECOVERY REQUESTS
-                    # =================================================
-
-                    if recovery_requests:
-
-                        _logger.warning(
-                            "[FAMILY A RECOVERY REQUEST DIAGNOSTIC] "
-                            "JOB=%s | PAGE=%s | "
-                            "PAGE_DECISION=%s | "
-                            "REQUEST_KEY_PRESENT=%s | "
-                            "REQUEST_TYPE=%s | "
-                            "REQUEST_COUNT=%s | "
-                            "REQUESTS=%s",
-                            self.id,
-                            page_number,
-                            page_decision,
-                            "missing_asset_requests" in page_result,
-                            type(requests).__name__,
-                            len(requests)
-                            if isinstance(requests, list)
-                            else "N/A",
-                            json.dumps(
-                                requests,
-                                ensure_ascii=False,
-                                default=str
-                            )
-                            if isinstance(requests, (list, dict))
-                            else repr(requests)
-                        )
-
-                        self.last_known_state = (
-                            'family_a_partial_recovery'
-                        )
-
-                        self.state = (
-                            'family_a_partial_recovery'
-                        )
-
-                    # =================================================
-                    # PARTIAL + NO RECOVERY REQUESTS
-                    #
-                    # Family A has completed its visual authority
-                    # but does not require additional asset recovery.
-                    #
-                    # Do NOT enter the recovery state.
-                    # Continue to PDF AI using the persisted
-                    # Family A authoritative review.
-                    # =================================================
-
-                    else:
-
-                        _logger.warning(
-                            "[FAMILY A REVIEW] "
-                            "PARTIAL PAGES WITH NO RECOVERY REQUESTS "
-                            "→ PDF AI "
-                            "| JOB=%s "
-                            "| PAGES=%s",
-                            self.id,
-                            partial_pages
-                        )
-
-                        self.last_known_state = (
-                            'pdf_ai'
-                        )
-
-                        self.state = (
-                            'pdf_ai'
-                        )
+                self.state = (
+                    'azure_fallback'
+                )
 
 
-                # =================================================
-                # COMPLETE FAMILY A SUCCESS
-                # =================================================
+            # =================================================
+            # PARTIAL FAMILY A RESULT
+            # → ALWAYS ENTER PARTIAL RECOVERY
+            #
+            # TEMPORARY TEST RULE:
+            # Do NOT require recovery-request count here.
+            #
+            # We are testing whether the PARTIAL state itself
+            # correctly enters the recovery state.
+            # =================================================
 
-                # else:
+            elif partial_pages:
 
-                #     _logger.warning(
-                #         "[FAMILY A REVIEW] "
-                #         "ALL PAGES PASS "
-                #         "→ PDF AI "
-                #         "| JOB=%s",
-                #         self.id
-                #     )
+                _logger.warning(
+                    "[FAMILY A ROUTING] "
+                    "PARTIAL RESULT "
+                    "→ FAMILY A PARTIAL RECOVERY "
+                    "| JOB=%s "
+                    "| PARTIAL_PAGES=%s "
+                    "| PASSED_PAGES=%s "
+                    "| FAILED_PAGES=%s",
+                    self.id,
+                    partial_pages,
+                    passed_pages,
+                    failed_pages,
+                )
 
-                #     self.last_known_state = (
-                #         'pdf_ai'
-                #     )
+                self.last_known_state = (
+                    'family_a_partial_recovery'
+                )
 
-                #     self.state = (
-                #         'pdf_ai'
-                #     )
-
-                # =================================================
-                # COMPLETE FAMILY A SUCCESS — TEMPORARY TEST
-                # =================================================
-                #
-                # TEMPORARY TEST ONLY:
-                #
-                # Normally:
-                #     PASS → pdf_ai
-                #
-                # For this test:
-                #     PASS → family_a_partial_recovery
-                #
-                # This allows us to test whether the existing
-                # Family A partial-recovery / precision-crop route
-                # can successfully consume a PASS catalogue.
-                #
-                # FAILED pages and PARTIAL pages are NOT changed.
-                # =================================================
-
-                else:
-
-                    _logger.warning(
-                        "[FAMILY A REVIEW TEST] "
-                        "ALL PAGES PASS "
-                        "→ TEMPORARILY ROUTING TO "
-                        "FAMILY A PARTIAL RECOVERY "
-                        "| JOB=%s | PAGES=%s",
-                        self.id,
-                        review_result.get(
-                            'passed_pages',
-                            []
-                        )
-                    )
-
-                    self.last_known_state = (
-                        'family_a_partial_recovery'
-                    )
-
-                    self.state = (
-                        'family_a_partial_recovery'
-                    )
+                self.state = (
+                    'family_a_partial_recovery'
+                )
 
 
-                self.flush_recordset()
-                self.env.cr.commit()
+            # =================================================
+            # COMPLETE FAMILY A SUCCESS
+            # → PDF AI
+            # =================================================
 
-                return
+            else:
 
+                _logger.warning(
+                    "[FAMILY A ROUTING] "
+                    "ALL PAGES PASS "
+                    "→ PDF AI "
+                    "| JOB=%s "
+                    "| PASSED_PAGES=%s",
+                    self.id,
+                    passed_pages,
+                )
+
+                self.last_known_state = (
+                    'pdf_ai'
+                )
+
+                self.state = (
+                    'pdf_ai'
+                )
+
+
+            # =================================================
+            # PERSIST ROUTING DECISION
+            # =================================================
+
+                _logger.warning(
+                    "[FAMILY A ROUTING] "
+                    "FINAL STATE=%s "
+                    "| LAST_KNOWN_STATE=%s "
+                    "| JOB=%s",
+                    self.state,
+                    self.last_known_state,
+                    self.id,
+                )
+
+                # self.flush_recordset()
+                # self.env.cr.commit()
+
+                # return
             
             # =================================================
             # FAMILY A PARTIAL PRECISION RECOVERY
