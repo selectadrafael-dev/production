@@ -2787,6 +2787,83 @@ class VendorImportJob(models.Model):
                         fallback_pages
                     )
 
+                    # =================================================
+                    # DIAGNOSTIC: COMPLETE FAMILY A REVIEW OUTPUT
+                    # =================================================
+
+                    _logger.warning(
+                        "[FAMILY A RAW REVIEW DIAGNOSTIC] "
+                        "JOB=%s | TYPE=%s | KEYS=%s",
+                        self.id,
+                        type(review_result).__name__,
+                        (
+                            list(review_result.keys())
+                            if isinstance(review_result, dict)
+                            else None
+                        )
+                    )
+
+                    if isinstance(review_result, dict):
+
+                        _logger.warning(
+                            "[FAMILY A RAW REVIEW DIAGNOSTIC] "
+                            "JOB=%s | DECISION=%s | "
+                            "PASSED_PAGES=%s | "
+                            "PARTIAL_PAGES=%s | "
+                            "FAILED_PAGES=%s",
+                            self.id,
+                            review_result.get("decision"),
+                            review_result.get("passed_pages"),
+                            review_result.get("partial_pages"),
+                            review_result.get("failed_pages"),
+                        )
+
+                        family_a_pages = review_result.get(
+                            "pages",
+                            []
+                        )
+
+                        _logger.warning(
+                            "[FAMILY A RAW REVIEW DIAGNOSTIC] "
+                            "JOB=%s | PAGE_RECORD_COUNT=%s",
+                            self.id,
+                            len(family_a_pages)
+                            if isinstance(family_a_pages, list)
+                            else "NOT_A_LIST"
+                        )
+
+                        for page_result in (
+                            family_a_pages
+                            if isinstance(family_a_pages, list)
+                            else []
+                        ):
+
+                            if not isinstance(
+                                page_result,
+                                dict
+                            ):
+                                _logger.warning(
+                                    "[FAMILY A RAW PAGE INVALID] "
+                                    "JOB=%s | VALUE=%r",
+                                    self.id,
+                                    page_result
+                                )
+                                continue
+
+                            _logger.warning(
+                                "[FAMILY A RAW PAGE] "
+                                "JOB=%s | PAGE=%s | "
+                                "DECISION=%s | KEYS=%s | "
+                                "MISSING_ASSET_REQUESTS=%s",
+                                self.id,
+                                page_result.get("page"),
+                                page_result.get("decision"),
+                                list(page_result.keys()),
+                                page_result.get(
+                                    "missing_asset_requests"
+                                ),
+                            )
+
                     self.family_a_review_json = json.dumps(
                         {
                             "decision": "FAIL",
@@ -2853,6 +2930,13 @@ class VendorImportJob(models.Model):
                 )
 
                 _logger.warning(
+                    "[FAMILY A REVIEW JSON SAVED] "
+                    "JOB=%s | CHARS=%s",
+                    self.id,
+                    len(self.family_a_review_json or "")
+                )
+
+                _logger.warning(
                     "[FAMILY A RAW REVIEW RESULT] "
                     "JOB=%s | RESULT=%s",
                     self.id,
@@ -2884,6 +2968,14 @@ class VendorImportJob(models.Model):
                     )
                 })
 
+                passed_pages = sorted({
+                    int(page)
+                    for page in review_result.get(
+                        'passed_pages',
+                        []
+                    )
+                })
+
 
                 _logger.warning(
                     "[FAMILY A REVIEW] ROUTING DECISION "
@@ -2900,21 +2992,38 @@ class VendorImportJob(models.Model):
                     failed_pages
                 )
 
+                # =================================================
+                # FAMILY A REVIEW → AUTHORITATIVE ROUTING
+                # =================================================
+
+                _logger.warning(
+                    "[FAMILY A ROUTING] "
+                    "JOB=%s | FAILED=%s | PARTIAL=%s | PASSED=%s",
+                    self.id,
+                    failed_pages,
+                    partial_pages,
+                    passed_pages,
+                )
 
                 # =================================================
                 # FULL PAGE FAILURE
+                # → AZURE FULL FALLBACK
                 # =================================================
 
                 if failed_pages:
 
-                    _logger.warning(
-                        "[FAMILY A REVIEW] "
-                        "FULL FAILED PAGES "
+                    _logger.error(
+                        "[FAMILY A ROUTING] "
+                        "FULL FAILURE "
                         "→ AZURE FALLBACK "
                         "| JOB=%s "
-                        "| PAGES=%s",
+                        "| FAILED_PAGES=%s "
+                        "| PARTIAL_PAGES=%s "
+                        "| PASSED_PAGES=%s",
                         self.id,
-                        failed_pages
+                        failed_pages,
+                        partial_pages,
+                        passed_pages,
                     )
 
                     self.last_known_state = (
@@ -2927,122 +3036,56 @@ class VendorImportJob(models.Model):
 
 
                 # =================================================
-                # PARTIAL FAMILY A RECOVERY
+                # PARTIAL FAMILY A RESULT
+                # → ALWAYS ENTER PARTIAL RECOVERY
+                #
+                # TEMPORARY TEST RULE:
+                # Do NOT require recovery-request count here.
+                #
+                # We are testing whether the PARTIAL state itself
+                # correctly enters the recovery state.
                 # =================================================
 
                 elif partial_pages:
 
-                    # =================================================
-                    # CHECK WHETHER FAMILY A ACTUALLY REQUESTED
-                    # PRECISION RECOVERY
-                    # =================================================
-
-                    recovery_requests = (
-                        review_result.get(
-                            'missing_asset_requests',
-                            []
-                        )
-                    )
-
-                    if not isinstance(
-                        recovery_requests,
-                        list
-                    ):
-                        recovery_requests = []
-
-                    recovery_requests = [
-
-                        request
-
-                        for request in recovery_requests
-
-                        if isinstance(
-                            request,
-                            dict
-                        )
-                    ]
-
                     _logger.warning(
-                        "[FAMILY A REVIEW] "
-                        "PARTIAL PAGES "
+                        "[FAMILY A ROUTING] "
+                        "PARTIAL RESULT "
+                        "→ FAMILY A PARTIAL RECOVERY "
                         "| JOB=%s "
-                        "| PAGES=%s "
-                        "| RECOVERY_REQUESTS=%s",
+                        "| PARTIAL_PAGES=%s "
+                        "| PASSED_PAGES=%s "
+                        "| FAILED_PAGES=%s",
                         self.id,
                         partial_pages,
-                        len(recovery_requests)
+                        passed_pages,
+                        failed_pages,
                     )
 
-                    # =================================================
-                    # PARTIAL + ACTUAL RECOVERY REQUESTS
-                    # =================================================
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
 
-                    if recovery_requests:
-
-                        _logger.warning(
-                            "[FAMILY A REVIEW] "
-                            "PARTIAL PAGES "
-                            "→ FAMILY A PARTIAL RECOVERY "
-                            "| JOB=%s "
-                            "| PAGES=%s "
-                            "| REQUESTS=%s",
-                            self.id,
-                            partial_pages,
-                            len(recovery_requests)
-                        )
-
-                        self.last_known_state = (
-                            'family_a_partial_recovery'
-                        )
-
-                        self.state = (
-                            'family_a_partial_recovery'
-                        )
-
-                    # =================================================
-                    # PARTIAL + NO RECOVERY REQUESTS
-                    #
-                    # Family A has completed its visual authority
-                    # but does not require additional asset recovery.
-                    #
-                    # Do NOT enter the recovery state.
-                    # Continue to PDF AI using the persisted
-                    # Family A authoritative review.
-                    # =================================================
-
-                    else:
-
-                        _logger.warning(
-                            "[FAMILY A REVIEW] "
-                            "PARTIAL PAGES WITH NO RECOVERY REQUESTS "
-                            "→ PDF AI "
-                            "| JOB=%s "
-                            "| PAGES=%s",
-                            self.id,
-                            partial_pages
-                        )
-
-                        self.last_known_state = (
-                            'pdf_ai'
-                        )
-
-                        self.state = (
-                            'pdf_ai'
-                        )
+                    self.state = (
+                        'family_a_partial_recovery'
+                    )
 
 
                 # =================================================
                 # COMPLETE FAMILY A SUCCESS
+                # → PDF AI
                 # =================================================
 
                 else:
 
                     _logger.warning(
-                        "[FAMILY A REVIEW] "
-                        "ALL PAGES PASS "
+                        "[FAMILY A TEST ROUTING] "
+                        "PASS PAGES "
                         "→ PDF AI "
-                        "| JOB=%s",
-                        self.id
+                        "| JOB=%s "
+                        "| PAGES=%s",
+                        self.id,
+                        passed_pages
                     )
 
                     self.last_known_state = (
@@ -3054,12 +3097,27 @@ class VendorImportJob(models.Model):
                     )
 
 
+                # =================================================
+                # PERSIST ROUTING DECISION
+                # =================================================
+
+                _logger.warning(
+                    "[FAMILY A ROUTING] "
+                    "FINAL STATE=%s "
+                    "| LAST_KNOWN_STATE=%s "
+                    "| JOB=%s",
+                    self.state,
+                    self.last_known_state,
+                    self.id,
+                )
+
                 self.flush_recordset()
                 self.env.cr.commit()
 
                 return
-
             
+
+
             # =================================================
             # FAMILY A PARTIAL PRECISION RECOVERY
             # =================================================
@@ -3139,10 +3197,33 @@ class VendorImportJob(models.Model):
                         []
                     ):
 
+                        _logger.warning(
+                            "[FAMILY A RECOVERY PAGE INSPECT] "
+                            "JOB=%s | RAW_PAGE_RESULT=%s",
+                            self.id,
+                            json.dumps(
+                                page_result,
+                                ensure_ascii=False,
+                                default=str
+                            )
+                            if isinstance(page_result, dict)
+                            else repr(page_result)
+                        )
+
+
                         if not isinstance(
                             page_result,
                             dict
                         ):
+
+                            _logger.error(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | REASON=PAGE_RESULT_NOT_DICT "
+                                "| VALUE=%r",
+                                self.id,
+                                page_result
+                            )
+
                             continue
 
                         try:
@@ -3153,10 +3234,32 @@ class VendorImportJob(models.Model):
                         except (
                             TypeError,
                             ValueError
-                        ):
+                        ) as e:
+
+                            _logger.error(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | REASON=INVALID_PAGE_NUMBER "
+                                "| RAW_PAGE=%r | ERROR=%s",
+                                self.id,
+                                page_result.get("page"),
+                                str(e)
+                            )
+
                             continue
 
+
                         if page_number not in partial_pages:
+
+                            _logger.warning(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | PAGE=%s "
+                                "| REASON=PAGE_NOT_IN_PARTIAL_PAGES "
+                                "| PARTIAL_PAGES=%s",
+                                self.id,
+                                page_number,
+                                partial_pages
+                            )
+
                             continue
 
                         page_decision = str(
@@ -3166,7 +3269,20 @@ class VendorImportJob(models.Model):
                             )
                         ).upper().strip()
 
+
                         if page_decision != "PARTIAL":
+
+                            _logger.warning(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | PAGE=%s "
+                                "| REASON=PAGE_DECISION_NOT_PARTIAL "
+                                "| DECISION=%s "
+                                "| EXPECTED=PARTIAL",
+                                self.id,
+                                page_number,
+                                page_decision
+                            )
+
                             continue
 
                         requests = page_result.get(
@@ -3199,11 +3315,39 @@ class VendorImportJob(models.Model):
                                 request,
                                 dict
                             ):
+
+                                _logger.error(
+                                    "[FAMILY A RECOVERY REQUEST SKIP] "
+                                    "JOB=%s | PAGE=%s "
+                                    "| REASON=REQUEST_NOT_DICT "
+                                    "| VALUE=%r",
+                                    self.id,
+                                    page_number,
+                                    request
+                                )
+
                                 continue
 
                             crop = request.get(
                                 "crop",
                                 {}
+                            )
+
+                            _logger.warning(
+                                "[FAMILY A RECOVERY REQUEST INSPECT] "
+                                "JOB=%s | PAGE=%s | "
+                                "PRODUCT=%s | COLOR=%s | "
+                                "REQUEST_KEYS=%s | CROP=%s",
+                                self.id,
+                                page_number,
+                                request.get("product_reference"),
+                                request.get("color"),
+                                list(request.keys()),
+                                json.dumps(
+                                    request.get("crop"),
+                                    ensure_ascii=False,
+                                    default=str
+                                )
                             )
 
                             if not isinstance(
@@ -3342,6 +3486,32 @@ class VendorImportJob(models.Model):
                     # =================================================
                     # SAFETY CHECK
                     # =================================================
+                    _logger.warning(
+                        "[FAMILY A RECOVERY BUILD RESULT] "
+                        "JOB=%s | "
+                        "PARTIAL_PAGES=%s | "
+                        "TOTAL_REQUESTS=%s | "
+                        "REQUEST_PAGES=%s",
+                        self.id,
+                        partial_pages,
+                        len(recovery_requests),
+                        sorted({
+                            item.get("page")
+                            for item in recovery_requests
+                            if isinstance(item, dict)
+                        })
+                    )
+
+                    _logger.warning(
+                        "[FAMILY A RECOVERY BUILD PAYLOAD] "
+                        "JOB=%s | REQUESTS=%s",
+                        self.id,
+                        json.dumps(
+                            recovery_requests,
+                            ensure_ascii=False,
+                            default=str
+                        )
+                    )
 
                     pages_with_requests = {
                         item["page"]
@@ -3355,11 +3525,46 @@ class VendorImportJob(models.Model):
 
                     if pages_without_requests:
 
-                        raise ValueError(
-                            "Family A marked pages PARTIAL "
-                            "but supplied no recovery targets "
-                            f"for pages: {pages_without_requests}"
-                        )
+                        if pages_without_requests:
+
+                            diagnostic = {
+                                "partial_pages": partial_pages,
+                                "pages_with_requests": sorted(
+                                    pages_with_requests
+                                ),
+                                "pages_without_requests": (
+                                    pages_without_requests
+                                ),
+                                "total_recovery_requests": (
+                                    len(recovery_requests)
+                                ),
+                                "family_a_page_count": len(
+                                    family_a_review.get(
+                                        "pages",
+                                        []
+                                    )
+                                )
+                            }
+
+                            _logger.error(
+                                "[FAMILY A PARTIAL RECOVERY] "
+                                "MISSING RECOVERY TARGETS "
+                                "| JOB=%s | DIAGNOSTIC=%s",
+                                self.id,
+                                json.dumps(
+                                    diagnostic,
+                                    ensure_ascii=False,
+                                    default=str
+                                )
+                            )
+
+                            raise ValueError(
+                                "Family A PARTIAL recovery target construction failed. "
+                                f"Partial pages={partial_pages}; "
+                                f"pages with requests={sorted(pages_with_requests)}; "
+                                f"pages without requests={pages_without_requests}; "
+                                f"total requests={len(recovery_requests)}."
+                            )
 
                     if not recovery_requests:
 
@@ -3853,7 +4058,6 @@ class VendorImportJob(models.Model):
                 return
 
             
-
     #=========Variant color swatch logic===========================================
 
     COLOR_HEX_MAP = {
@@ -10502,32 +10706,70 @@ class VendorImportJob(models.Model):
                         "is_collage": False
                     })
 
+
+        persisted_assets = []
+
+        try:
+
+            persisted_assets = json.loads(
+                next_record.page_images_json
+                or "[]"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                "[PDF AI] PAGE IMAGE JSON LOAD FAILED "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| ERROR=%s",
+                self.id,
+                next_record.page_number,
+                str(e)
+            )
+
+            persisted_assets = []
+
+
+        if not isinstance(
+            persisted_assets,
+            list
+        ):
+
+            _logger.warning(
+                "[PDF AI] PERSISTED ASSETS INVALID TYPE "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| TYPE=%s",
+                self.id,
+                next_record.page_number,
+                type(persisted_assets).__name__
+            )
+
+            persisted_assets = []
+
+
+        _logger.warning(
+            "[PDF AI] PERSISTED ASSETS LOADED "
+            "| JOB=%s "
+            "| PAGE=%s "
+            "| COUNT=%s",
+            self.id,
+            next_record.page_number,
+            len(persisted_assets)
+        )
+
+
         # =========================================================
-        # PRESERVE ENRICHED AZURE CROP OBJECTS
-        # =========================================================
-        #
-        # Azure crops must retain ALL metadata.
-        #
-        # Do not reduce them to:
-        #
-        #     {"image": "..."}
-        #
-        # because PDF Create and variant correction need:
-        #
-        #     crop_id
-        #     product_reference
-        #     figure_id
-        #     purpose
-        #     azure_crop
-        #     color (when available)
-        #     clean_index
-        #
-        # The image itself is not enough to reliably map variants.
+        # CLASSIFY PERSISTED RECOVERY ASSETS
         # =========================================================
 
         azure_crop_assets = []
 
-        for asset in page_images:
+        family_a_precision_crop_assets = []
+
+
+        for asset in persisted_assets:
 
             if not isinstance(
                 asset,
@@ -10536,31 +10778,51 @@ class VendorImportJob(models.Model):
                 continue
 
             if not asset.get(
+                "image"
+            ):
+                continue
+
+
+            # -----------------------------------------
+            # AZURE RECOVERY
+            # -----------------------------------------
+
+            if asset.get(
                 "azure_crop"
-            ):
+            ) is True:
+
+                azure_crop_assets.append(
+                    asset
+                )
+
                 continue
 
-            if not asset.get(
-                "crop_id"
-            ):
-                continue
 
-            # Keep the ORIGINAL dictionary.
-            # Do not create a reduced copy.
+            # -----------------------------------------
+            # FAMILY A PRECISION RECOVERY
+            # -----------------------------------------
 
-            azure_crop_assets.append(
-                asset
-            )
+            if asset.get(
+                "family_a_precision_crop"
+            ) is True:
+
+                family_a_precision_crop_assets.append(
+                    asset
+                )
+
 
         _logger.warning(
-            "[PDF AI] AZURE CROP METADATA PRESERVED "
+            "[PDF AI] PERSISTED RECOVERY ASSETS "
+            "| JOB=%s "
             "| PAGE=%s "
-            "| COUNT=%s",
+            "| AZURE=%s "
+            "| FAMILY_A_PRECISION=%s",
+            self.id,
             next_record.page_number,
-            len(
-                azure_crop_assets
-            )
+            len(azure_crop_assets),
+            len(family_a_precision_crop_assets)
         )
+
 
         for asset in azure_crop_assets:
 
@@ -10594,85 +10856,9 @@ class VendorImportJob(models.Model):
                 )
             )
 
-        # =====================================================
-        # 2. LOAD PERSISTED AZURE CROP ASSETS
-        # =====================================================
-        #
-        # page_images_json contains persisted page assets.
-        #
-        # IMPORTANT:
-        # Do NOT blindly append every persisted asset because
-        # the original extracted images may already exist inside
-        # extracted_json.
-        #
-        # Only add assets explicitly marked as Azure crops.
-        # =====================================================
-
-        try:
-
-            persisted_assets = json.loads(
-                next_record.page_images_json
-                or "[]"
-            )
-
-        except Exception as e:
-
-            _logger.warning(
-                "[PDF AI] PAGE IMAGE JSON LOAD FAILED "
-                "| PAGE=%s | %s",
-                next_record.page_number,
-                str(e)
-            )
-
-            persisted_assets = []
-
-
-        if not isinstance(
-            persisted_assets,
-            list
-        ):
-
-            persisted_assets = []
-
-
-        azure_crop_assets = []
-
-        for asset in persisted_assets:
-
-            if not isinstance(
-                asset,
-                dict
-            ):
-
-                continue
-
-            if not asset.get(
-                "image"
-            ):
-
-                continue
-
-            if asset.get(
-                "azure_crop"
-            ) is not True:
-
-                continue
-
-            azure_crop_assets.append(
-                asset
-            )
-
-
-        _logger.warning(
-            "[PDF AI] PERSISTED AZURE CROPS "
-            "| PAGE=%s | COUNT=%s",
-            next_record.page_number,
-            len(azure_crop_assets)
-        )
-
 
         # =====================================================
-        # 3. ADD AZURE CROP ASSETS
+        # 3. ADD PERSISTED RECOVERY ASSETS
         # =====================================================
 
         for asset in azure_crop_assets:
@@ -10682,15 +10868,40 @@ class VendorImportJob(models.Model):
             )
 
 
+        for asset in family_a_precision_crop_assets:
+
+            page_images.append(
+                asset
+            )
+
+
+        _logger.warning(
+            "[PDF AI] RECOVERY ASSETS APPENDED "
+            "| PAGE=%s "
+            "| AZURE=%s "
+            "| FAMILY_A_PRECISION=%s "
+            "| TOTAL_PAGE_ASSETS=%s",
+            next_record.page_number,
+            len(azure_crop_assets),
+            len(family_a_precision_crop_assets),
+            len(page_images)
+        )
+
         _logger.warning(
             "[PDF AI] COMBINED PAGE ASSETS "
             "| PAGE=%s "
             "| ORIGINAL=%s "
             "| AZURE_CROPS=%s "
+            "| FAMILY_A_PRECISION=%s "
             "| TOTAL=%s",
             next_record.page_number,
-            len(page_images) - len(azure_crop_assets),
+            (
+                len(page_images)
+                - len(azure_crop_assets)
+                - len(family_a_precision_crop_assets)
+            ),
             len(azure_crop_assets),
+            len(family_a_precision_crop_assets),
             len(page_images)
         )
 
@@ -17709,6 +17920,7 @@ class VendorImportJob(models.Model):
                     record.page_number
                 )
 
+
                 continue
 
             if not isinstance(
@@ -18569,47 +18781,67 @@ class VendorImportJob(models.Model):
         PARTIAL PAGE
         ================================================================
 
-        Classify a page as PARTIAL when ALL of the following are true:
+        Classify a page as PARTIAL when:
 
-        1. At least one trustworthy Family A product/image asset exists.
+        1. At least one trustworthy product/image asset survives
+        extraction as an individual marketable product representation.
 
-        2. One or more important products, variants, or required production
-        images are missing, incomplete, or unusable.
+        2. One or more important products, variants, or marketable product
+        images are missing, incomplete, chopped, cropped, or unusable.
 
-        3. The trustworthy Family A assets can safely be preserved.
+        3. The surviving trustworthy assets can safely be preserved.
 
-        4. The missing asset is visibly present on the ORIGINAL PAGE.
+        4. The missing or damaged product/image is visibly supported by the
+        ORIGINAL CATALOGUE PAGE.
 
-        5. The missing asset can be located precisely enough for a downstream
-        crop engine to recover it.
+        5. The defect represents a recoverable extraction problem rather than
+        a total extraction failure.
 
-        Example:
+        IMPORTANT:
 
-        ORIGINAL PAGE:
-            Black bag
-            Grey bag
-            Folded bag
+        A CHOPPED OR INCOMPLETE MARKETABLE PRODUCT IS A PARTIAL CONDITION.
 
-        FAMILY A:
-            Black bag
-            Folded bag
+        For example:
 
-        RESULT:
-            PARTIAL
+        - the original page contains a complete bottle;
+        - Family A extracted only the upper half of the bottle;
+        - another legitimate product image survives.
 
-        The Black and Folded Family A assets must be preserved.
+        Decision:
+        PARTIAL.
 
-        The Grey bag becomes a recovery target.
+        Likewise:
 
+        - the original page contains 11 colour variants;
+        - 5 or 10 successfully survived and visible;
+        - the remainning or 11th variant are/is visibly present on the original page.
+
+        Decision:
+        PARTIAL.
+
+        Likewise:
+
+        - several legitimate product images survive;
+        - one or more additional product images are missing.
+
+        Decision:
+        PARTIAL.
+
+        Do NOT classify such cases as FAIL merely because the extraction is
+        incomplete.
+
+        A page with at least one trustworthy individual marketable product
+        surviving extraction is NOT a total extraction failure.
+       
         ================================================================
         FAIL PAGE
         ================================================================
 
         Classify a page as FAIL when:
 
-        - no trustworthy Family A product/image asset exists;
-        - the Family A extraction is fundamentally unusable;
-        - surviving Family A assets cannot safely be preserved;
+        - no trustworthy product/image asset exists;
+        - the extraction is fundamentally unusable;
+        - surviving assets cannot safely be preserved;
         - product relationships are severely incorrect;
         - products are incorrectly merged in a way that prevents reliable
         preservation;
@@ -18625,7 +18857,7 @@ class VendorImportJob(models.Model):
         A page MUST NOT be classified as FAIL merely because one or more
         products, variants, or images are missing.
 
-        If trustworthy Family A assets exist and the missing assets can be
+        If trustworthy assets exist and the missing assets can be
         reliably identified and localized, classify the page as PARTIAL.
 
         ================================================================
@@ -18634,7 +18866,7 @@ class VendorImportJob(models.Model):
 
         For PARTIAL pages:
 
-        KEEP all trustworthy Family A assets.
+        KEEP all trustworthy assets.
 
         Do NOT replace them.
 
@@ -18654,7 +18886,7 @@ class VendorImportJob(models.Model):
         - colour/variant when visually identifiable;
         - required_image_role;
         - asset_type;
-        - reason the Family A asset is insufficient;
+        - reason the asset is insufficient;
         - confidence;
         - exact location on the ORIGINAL PAGE.
 
@@ -18670,7 +18902,7 @@ class VendorImportJob(models.Model):
         For every recoverable missing asset, provide a crop entry using the
         EXISTING AZURE CROP COORDINATE CONTRACT.
 
-        Do NOT invent a new Family A coordinate format.
+        Do NOT invent a new coordinate format.
 
         Coordinates MUST be:
 
@@ -18710,7 +18942,7 @@ class VendorImportJob(models.Model):
         7. Do not include another colour variant unless the target requires it.
         8. Do not return a broad catalogue-card crop when the individual
         product can be localized more precisely.
-        9. Do not use the Family A extracted image as the coordinate source.
+        9. Do not use the extracted image as the coordinate source.
         10. The ORIGINAL PAGE is the coordinate source.
 
         ================================================================
@@ -18745,7 +18977,7 @@ class VendorImportJob(models.Model):
 
         Do NOT create one large crop containing all three bags.
 
-        Likewise, if Family A contains only one combined crop containing:
+        Likewise, if assets contains only one combined crop containing:
 
         Grey + Black + Navy
 
@@ -19330,6 +19562,10 @@ class VendorImportJob(models.Model):
                 timeout=90
             )
 
+            # =================================================
+            # FAMILY A RAW RESPONSE DEBUG
+            # =================================================
+
             raw_output = (
                 response.output_text
                 or ""
@@ -19340,6 +19576,13 @@ class VendorImportJob(models.Model):
                 "| JOB=%s | LENGTH=%s",
                 self.id,
                 len(raw_output)
+            )
+
+            _logger.warning(
+                "[FAMILY A REVIEW] RAW RESPONSE "
+                "| JOB=%s\n%s",
+                self.id,
+                raw_output
             )
 
             # =================================================
@@ -19519,6 +19762,60 @@ class VendorImportJob(models.Model):
                             json_start
                         )
                     )
+
+                    # =================================================
+                    # FAMILY A PARSED RESULT DEBUG
+                    # =================================================
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] PARSED RESULT "
+                        "| JOB=%s "
+                        "| DECISION=%s "
+                        "| PAGES=%s "
+                        "| PARTIAL_PAGES=%s "
+                        "| FAILED_PAGES=%s",
+                        self.id,
+                        result.get("decision"),
+                        len(result.get("pages", []) or []),
+                        result.get("partial_pages", []),
+                        result.get("failed_pages", []),
+                    )
+
+                    for parsed_page in result.get("pages", []) or []:
+
+                        if not isinstance(parsed_page, dict):
+                            continue
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] PARSED PAGE "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| DECISION=%s "
+                            "| PRODUCT_GROUPS=%s "
+                            "| MISSING_ITEMS=%s "
+                            "| RECOVERY_REQUESTS=%s",
+                            self.id,
+                            parsed_page.get("page"),
+                            parsed_page.get("decision"),
+                            len(
+                                parsed_page.get(
+                                    "product_groups",
+                                    []
+                                ) or []
+                            ),
+                            len(
+                                parsed_page.get(
+                                    "missing_items",
+                                    []
+                                ) or []
+                            ),
+                            len(
+                                parsed_page.get(
+                                    "missing_asset_requests",
+                                    []
+                                ) or []
+                            ),
+                        )
 
 
                     # -------------------------------------------------
@@ -19968,6 +20265,45 @@ class VendorImportJob(models.Model):
                 # NOW BUILD normalized_page
                 # =================================================
 
+                _logger.warning(
+                    "[FAMILY A NORMALIZATION INPUT] "
+                    "JOB=%s | PAGE=%s | DECISION=%s "
+                    "| MISSING_ITEMS=%s | RECOVERY_REQUESTS=%s",
+                    self.id,
+                    page_number,
+                    page_result.get("decision"),
+                    len(
+                        page_result.get(
+                            "missing_items",
+                            []
+                        ) or []
+                    ),
+                    len(
+                        page_result.get(
+                            "missing_asset_requests",
+                            []
+                        ) or []
+                    ),
+                )
+
+                if page_result.get("decision") == "PARTIAL":
+
+                    _logger.warning(
+                        "[FAMILY A NORMALIZATION INPUT] "
+                        "PARTIAL PAGE RAW RECOVERY TARGETS "
+                        "| JOB=%s | PAGE=%s\n%s",
+                        self.id,
+                        page_number,
+                        json.dumps(
+                            page_result.get(
+                                "missing_asset_requests",
+                                []
+                            ),
+                            indent=2,
+                            ensure_ascii=False,
+                        )
+                    )
+
                 normalized_page = {
                     "page":
                         page_number,
@@ -20024,6 +20360,42 @@ class VendorImportJob(models.Model):
                     "extracted_asset_mapping":
                         normalized_asset_mapping,
                 }
+
+                # =================================================
+                # DEBUG: FAMILY A PARTIAL RECOVERY CONTRACT
+                # =================================================
+
+                _logger.warning(
+                    "[FAMILY A RECOVERY DEBUG] "
+                    "PAGE=%s "
+                    "| DECISION=%s "
+                    "| MISSING_ITEMS=%s "
+                    "| RECOVERY_REQUESTS=%s\n%s",
+                    page_result.get("page"),
+                    page_result.get("decision"),
+                    len(
+                        page_result.get(
+                            "missing_items",
+                            []
+                        )
+                        or []
+                    ),
+                    len(
+                        page_result.get(
+                            "missing_asset_requests",
+                            []
+                        )
+                        or []
+                    ),
+                    json.dumps(
+                        page_result.get(
+                            "missing_asset_requests",
+                            []
+                        ),
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                )
 
                 normalized_pages.append(
                     normalized_page
@@ -36705,7 +37077,8 @@ class VendorImportJob(models.Model):
 
         return category
 
-    #=========pdf product GALLERY CREATOR==============================
+    #=========pdf product GALLERY CREATOR ==============================
+
     def _create_pdf_gallery(
 
         self,
@@ -36730,13 +37103,11 @@ class VendorImportJob(models.Model):
         # PRODUCTION GALLERY AUTHORITY GATE
         # =====================================================
         #
-        # The asset pool may contain recovery/source assets
-        # that must remain available for recovery.
+        # ONLY Family A-authoritative REAL_PRODUCT assets
+        # are allowed into the final Odoo gallery.
         #
-        # However, ONLY production-eligible assets may enter
-        # product.image / the final Odoo gallery.
-        #
-        # Family A authority takes precedence whenever it exists.
+        # Family A is the authority for production asset
+        # identity and preservation.
         # =====================================================
 
         def _is_gallery_eligible(asset):
@@ -36744,42 +37115,111 @@ class VendorImportJob(models.Model):
             if not isinstance(asset, dict):
                 return False
 
-            # ---------------------------------------------
-            # Never allow non-real assets into production
-            # gallery.
-            # ---------------------------------------------
+            # =================================================
+            # FAMILY A AUTHORITY IS REQUIRED
+            # =================================================
+
+            if asset.get("family_a_authoritative") is not True:
+                return False
+
+            # =================================================
+            # ASSET MUST BE A REAL PRODUCT
+            # =================================================
+
+            if asset.get("classification") != "REAL_PRODUCT":
+                return False
+
+            # =================================================
+            # ASSET MUST BE TRUSTWORTHY
+            # =================================================
+
+            if asset.get("family_a_trustworthy") is not True:
+                return False
+
+            # =================================================
+            # ASSET MUST BE PRESERVED
+            # =================================================
+
+            if asset.get("family_a_preserve") is not True:
+                return False
+
+            # =================================================
+            # ASSET GROUP MUST ALSO BE REAL
+            # =================================================
 
             if asset.get("asset_group") != "real":
                 return False
 
-            # ---------------------------------------------
-            # If Family A explicitly reviewed this asset,
-            # its trust/preserve decision is authoritative.
-            # ---------------------------------------------
-
-            if asset.get("family_a_authoritative") is True:
-
-                if asset.get("family_a_trustworthy") is not True:
-                    return False
-
-                if asset.get("family_a_preserve") is not True:
-                    return False
-
-            # ---------------------------------------------
-            # Explicit Family A rejection always wins.
-            # ---------------------------------------------
-
-            if asset.get("family_a_trustworthy") is False:
-                return False
-
-            if asset.get("family_a_preserve") is False:
-                return False
-
             return True
 
-        gallery_indexes = product_data.get(
-            "gallery_image_indexes",
-            []
+
+        gallery_indexes = list(
+            product_data.get(
+                "gallery_image_indexes",
+                []
+            )
+            or []
+        )
+
+        # =====================================================
+        # FAMILY A AUTHORITATIVE REAL PRODUCT ASSETS
+        # =====================================================
+        #
+        # Every authoritative REAL_PRODUCT supplied by
+        # Family A is a gallery candidate.
+        #
+        # Do NOT rely exclusively on PDF AI's
+        # gallery_image_indexes.
+        #
+        # Example:
+        #
+        #   Family A → 11 REAL_PRODUCT assets
+        #   Result   → all 11 become gallery candidates
+        #
+        # The hero image is NOT excluded here.
+        # =====================================================
+
+        family_a_gallery_indexes = []
+
+        for asset in asset_pool:
+
+            if not _is_gallery_eligible(asset):
+                continue
+
+            clean_index = asset.get(
+                "clean_index"
+            )
+
+            if clean_index is None or clean_index == "":
+                continue
+
+            family_a_gallery_indexes.append(
+                clean_index
+            )
+
+        _logger.warning(
+            "[FAMILY A GALLERY AUTHORITY] "
+            "JOB=%s | PRODUCT=%s | "
+            "REAL_PRODUCT_GALLERY_COUNT=%s | "
+            "INDEXES=%s",
+            self.id,
+            product_data.get("name"),
+            len(family_a_gallery_indexes),
+            family_a_gallery_indexes
+        )
+
+        # =====================================================
+        # AUTHORITATIVE ASSETS ALWAYS JOIN THE GALLERY
+        # =====================================================
+
+        gallery_indexes.extend(
+            family_a_gallery_indexes
+        )
+
+        gallery_indexes = list(
+            dict.fromkeys(
+                gallery_indexes
+            )
         )
 
         # =====================================
@@ -36876,9 +37316,8 @@ class VendorImportJob(models.Model):
                 dict.fromkeys(
                     gallery_indexes
                 )
-            )[:10]
+            )
 
-        used_images = set()
         used_hashes = set()
 
         existing_gallery = self.env[
@@ -36903,63 +37342,13 @@ class VendorImportJob(models.Model):
 
                 )
 
-        if product.image_1920:
-
-            used_images.add(
-                product.image_1920
-            )
 
         # =====================================
         # ENSURE MINIMUM GALLERY RICHNESS
         # =====================================
 
-        if len(gallery_indexes) < 4:
+        # if len(gallery_indexes) < 4:
 
-
-
-            fallback_indexes = [
-
-                a.get("clean_index")
-
-                for a in sorted(
-
-                    (
-                        a
-                        for a in asset_pool
-                        if _is_gallery_eligible(a)
-                    ),
-
-                    key=lambda x: (
-
-                        x.get(
-                            "gallery_score",
-                            0
-                        ),
-
-                        x.get(
-                            "score",
-                            0
-                        )
-
-                    ),
-
-                    reverse=True
-
-                )
-
-            ]
-
-            gallery_indexes.extend(
-                fallback_indexes
-            )
-
-            gallery_indexes = list(
-
-                dict.fromkeys(
-                    gallery_indexes
-                )
-
-            )[:10]
 
         for index in gallery_indexes:
 
@@ -36973,9 +37362,31 @@ class VendorImportJob(models.Model):
                     {}
                 )
 
-                # =====================================
+                _logger.warning(
+                    "[GALLERY AUTHORITY DECISION] "
+                    "JOB=%s | "
+                    "INDEX=%s | "
+                    "CLASSIFICATION=%s | "
+                    "ROLE=%s | "
+                    "FAMILY_A_AUTHORITATIVE=%s | "
+                    "TRUSTWORTHY=%s | "
+                    "PRESERVE=%s | "
+                    "GROUP=%s | "
+                    "LIFESTYLE=%s",
+                    self.id,
+                    index,
+                    asset.get("classification"),
+                    asset.get("asset_role"),
+                    asset.get("family_a_authoritative"),
+                    asset.get("family_a_trustworthy"),
+                    asset.get("family_a_preserve"),
+                    asset.get("asset_group"),
+                    asset.get("is_lifestyle"),
+                )
+
+                # =======================================
                 # RECOVERY PRIORITY
-                # =====================================
+                # =======================================
 
                 if (
 
