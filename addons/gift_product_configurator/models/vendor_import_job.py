@@ -17979,48 +17979,22 @@ class VendorImportJob(models.Model):
 
         for record in page_records:
 
-            # try:
-
-            #     page_blocks = json.loads(
-            #         record.extracted_json
-            #         or "[]"
-            #     )
-
-            # except Exception:
-
-            #     _logger.exception(
-            #         "[FAMILY A REVIEW] INVALID extracted_json "
-            #         "| JOB=%s | PAGE=%s",
-            #         self.id,
-            #         record.page_number
-            #     )
-
             try:
 
                 page_blocks = json.loads(
                     record.extracted_json
-                        or "[]"
+                    or "[]"
                 )
 
-                # =================================================
-                # DEBUG: RAW FAMILY A PARSED RESPONSE
-                # =================================================
+            except Exception:
 
-                _logger.warning(
-                    "[FAMILY A REVIEW DEBUG] "
-                    "RAW PARSED RESULT "
-                    "| JOB=%s\n%s",
+                _logger.exception(
+                    "[FAMILY A REVIEW] INVALID extracted_json "
+                    "| JOB=%s | PAGE=%s",
                     self.id,
-                    json.dumps(
-                        result,
-                        indent=2,
-                        ensure_ascii=False,
-                    ),
+                    record.page_number
                 )
 
-                # NEXT EXISTING CODE HERE
-
-            except json.JSONDecodeError as json_error:
 
                 continue
 
@@ -19643,6 +19617,10 @@ class VendorImportJob(models.Model):
                 timeout=90
             )
 
+            # =================================================
+            # FAMILY A RAW RESPONSE DEBUG
+            # =================================================
+
             raw_output = (
                 response.output_text
                 or ""
@@ -19653,6 +19631,13 @@ class VendorImportJob(models.Model):
                 "| JOB=%s | LENGTH=%s",
                 self.id,
                 len(raw_output)
+            )
+
+            _logger.warning(
+                "[FAMILY A REVIEW] RAW RESPONSE "
+                "| JOB=%s\n%s",
+                self.id,
+                raw_output
             )
 
             # =================================================
@@ -19832,6 +19817,60 @@ class VendorImportJob(models.Model):
                             json_start
                         )
                     )
+
+                    # =================================================
+                    # FAMILY A PARSED RESULT DEBUG
+                    # =================================================
+
+                    _logger.warning(
+                        "[FAMILY A REVIEW] PARSED RESULT "
+                        "| JOB=%s "
+                        "| DECISION=%s "
+                        "| PAGES=%s "
+                        "| PARTIAL_PAGES=%s "
+                        "| FAILED_PAGES=%s",
+                        self.id,
+                        result.get("decision"),
+                        len(result.get("pages", []) or []),
+                        result.get("partial_pages", []),
+                        result.get("failed_pages", []),
+                    )
+
+                    for parsed_page in result.get("pages", []) or []:
+
+                        if not isinstance(parsed_page, dict):
+                            continue
+
+                        _logger.warning(
+                            "[FAMILY A REVIEW] PARSED PAGE "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| DECISION=%s "
+                            "| PRODUCT_GROUPS=%s "
+                            "| MISSING_ITEMS=%s "
+                            "| RECOVERY_REQUESTS=%s",
+                            self.id,
+                            parsed_page.get("page"),
+                            parsed_page.get("decision"),
+                            len(
+                                parsed_page.get(
+                                    "product_groups",
+                                    []
+                                ) or []
+                            ),
+                            len(
+                                parsed_page.get(
+                                    "missing_items",
+                                    []
+                                ) or []
+                            ),
+                            len(
+                                parsed_page.get(
+                                    "missing_asset_requests",
+                                    []
+                                ) or []
+                            ),
+                        )
 
 
                     # -------------------------------------------------
@@ -20280,6 +20319,45 @@ class VendorImportJob(models.Model):
                 # =================================================
                 # NOW BUILD normalized_page
                 # =================================================
+
+                _logger.warning(
+                    "[FAMILY A NORMALIZATION INPUT] "
+                    "JOB=%s | PAGE=%s | DECISION=%s "
+                    "| MISSING_ITEMS=%s | RECOVERY_REQUESTS=%s",
+                    self.id,
+                    page_number,
+                    page_result.get("decision"),
+                    len(
+                        page_result.get(
+                            "missing_items",
+                            []
+                        ) or []
+                    ),
+                    len(
+                        page_result.get(
+                            "missing_asset_requests",
+                            []
+                        ) or []
+                    ),
+                )
+
+                if page_result.get("decision") == "PARTIAL":
+
+                    _logger.warning(
+                        "[FAMILY A NORMALIZATION INPUT] "
+                        "PARTIAL PAGE RAW RECOVERY TARGETS "
+                        "| JOB=%s | PAGE=%s\n%s",
+                        self.id,
+                        page_number,
+                        json.dumps(
+                            page_result.get(
+                                "missing_asset_requests",
+                                []
+                            ),
+                            indent=2,
+                            ensure_ascii=False,
+                        )
+                    )
 
                 normalized_page = {
                     "page":
