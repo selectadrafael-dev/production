@@ -10706,13 +10706,68 @@ class VendorImportJob(models.Model):
                         "is_collage": False
                     })
 
+
+        persisted_assets = []
+
+        try:
+
+            persisted_assets = json.loads(
+                next_record.page_images_json
+                or "[]"
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                "[PDF AI] PAGE IMAGE JSON LOAD FAILED "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| ERROR=%s",
+                self.id,
+                next_record.page_number,
+                str(e)
+            )
+
+            persisted_assets = []
+
+
+        if not isinstance(
+            persisted_assets,
+            list
+        ):
+
+            _logger.warning(
+                "[PDF AI] PERSISTED ASSETS INVALID TYPE "
+                "| JOB=%s "
+                "| PAGE=%s "
+                "| TYPE=%s",
+                self.id,
+                next_record.page_number,
+                type(persisted_assets).__name__
+            )
+
+            persisted_assets = []
+
+
+        _logger.warning(
+            "[PDF AI] PERSISTED ASSETS LOADED "
+            "| JOB=%s "
+            "| PAGE=%s "
+            "| COUNT=%s",
+            self.id,
+            next_record.page_number,
+            len(persisted_assets)
+        )
+
+
         # =========================================================
-        # PRESERVE ENRICHED AZURE CROP OBJECTS
+        # CLASSIFY PERSISTED RECOVERY ASSETS
         # =========================================================
 
         azure_crop_assets = []
 
         family_a_precision_crop_assets = []
+
 
         for asset in persisted_assets:
 
@@ -10727,6 +10782,7 @@ class VendorImportJob(models.Model):
             ):
                 continue
 
+
             # -----------------------------------------
             # AZURE RECOVERY
             # -----------------------------------------
@@ -10740,6 +10796,7 @@ class VendorImportJob(models.Model):
                 )
 
                 continue
+
 
             # -----------------------------------------
             # FAMILY A PRECISION RECOVERY
@@ -10756,13 +10813,16 @@ class VendorImportJob(models.Model):
 
         _logger.warning(
             "[PDF AI] PERSISTED RECOVERY ASSETS "
+            "| JOB=%s "
             "| PAGE=%s "
             "| AZURE=%s "
             "| FAMILY_A_PRECISION=%s",
+            self.id,
             next_record.page_number,
             len(azure_crop_assets),
             len(family_a_precision_crop_assets)
         )
+
 
         for asset in azure_crop_assets:
 
