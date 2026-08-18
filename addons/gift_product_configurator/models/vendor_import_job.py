@@ -2845,10 +2845,23 @@ class VendorImportJob(models.Model):
                 # =================================================
                 # SAVE COMPLETE REVIEW RESULT
                 # =================================================
+               
 
                 self.family_a_review_json = json.dumps(
                     review_result,
                     ensure_ascii=False
+                )
+
+                _logger.warning(
+                    "[FAMILY A RAW REVIEW RESULT] "
+                    "JOB=%s | RESULT=%s",
+                    self.id,
+                    json.dumps(
+                        review_result,
+                        ensure_ascii=False,
+                        indent=2,
+                        default=str
+                    )
                 )
 
                 # =================================================
