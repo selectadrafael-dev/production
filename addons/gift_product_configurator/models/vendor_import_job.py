@@ -2991,116 +2991,115 @@ class VendorImportJob(models.Model):
                     partial_pages,
                     failed_pages
                 )
-                
 
-            # =================================================
-            # FAMILY A REVIEW → AUTHORITATIVE ROUTING
-            # =================================================
+                # =================================================
+                # FAMILY A REVIEW → AUTHORITATIVE ROUTING
+                # =================================================
 
-            _logger.warning(
-                "[FAMILY A ROUTING] "
-                "JOB=%s | FAILED=%s | PARTIAL=%s | PASSED=%s",
-                self.id,
-                failed_pages,
-                partial_pages,
-                passed_pages,
-            )
-
-
-            # =================================================
-            # FULL PAGE FAILURE
-            # → AZURE FULL FALLBACK
-            # =================================================
-
-            if failed_pages:
-
-                _logger.error(
+                _logger.warning(
                     "[FAMILY A ROUTING] "
-                    "FULL FAILURE "
-                    "→ AZURE FALLBACK "
-                    "| JOB=%s "
-                    "| FAILED_PAGES=%s "
-                    "| PARTIAL_PAGES=%s "
-                    "| PASSED_PAGES=%s",
+                    "JOB=%s | FAILED=%s | PARTIAL=%s | PASSED=%s",
                     self.id,
                     failed_pages,
                     partial_pages,
                     passed_pages,
                 )
 
-                self.last_known_state = (
-                    'azure_fallback'
-                )
+                # =================================================
+                # FULL PAGE FAILURE
+                # → AZURE FULL FALLBACK
+                # =================================================
 
-                self.state = (
-                    'azure_fallback'
-                )
+                if failed_pages:
 
+                    _logger.error(
+                        "[FAMILY A ROUTING] "
+                        "FULL FAILURE "
+                        "→ AZURE FALLBACK "
+                        "| JOB=%s "
+                        "| FAILED_PAGES=%s "
+                        "| PARTIAL_PAGES=%s "
+                        "| PASSED_PAGES=%s",
+                        self.id,
+                        failed_pages,
+                        partial_pages,
+                        passed_pages,
+                    )
 
-            # =================================================
-            # PARTIAL FAMILY A RESULT
-            # → ALWAYS ENTER PARTIAL RECOVERY
-            #
-            # TEMPORARY TEST RULE:
-            # Do NOT require recovery-request count here.
-            #
-            # We are testing whether the PARTIAL state itself
-            # correctly enters the recovery state.
-            # =================================================
+                    self.last_known_state = (
+                        'azure_fallback'
+                    )
 
-            elif partial_pages:
-
-                _logger.warning(
-                    "[FAMILY A ROUTING] "
-                    "PARTIAL RESULT "
-                    "→ FAMILY A PARTIAL RECOVERY "
-                    "| JOB=%s "
-                    "| PARTIAL_PAGES=%s "
-                    "| PASSED_PAGES=%s "
-                    "| FAILED_PAGES=%s",
-                    self.id,
-                    partial_pages,
-                    passed_pages,
-                    failed_pages,
-                )
-
-                self.last_known_state = (
-                    'family_a_partial_recovery'
-                )
-
-                self.state = (
-                    'family_a_partial_recovery'
-                )
+                    self.state = (
+                        'azure_fallback'
+                    )
 
 
-            # =================================================
-            # COMPLETE FAMILY A SUCCESS
-            # → PDF AI
-            # =================================================
+                # =================================================
+                # PARTIAL FAMILY A RESULT
+                # → ALWAYS ENTER PARTIAL RECOVERY
+                #
+                # TEMPORARY TEST RULE:
+                # Do NOT require recovery-request count here.
+                #
+                # We are testing whether the PARTIAL state itself
+                # correctly enters the recovery state.
+                # =================================================
 
-            else:
+                elif partial_pages:
 
-                _logger.warning(
-                    "[FAMILY A TEST ROUTING] "
-                    "PASS PAGES "
-                    "→ FAMILY A PARTIAL RECOVERY "
-                    "| JOB=%s "
-                    "| PAGES=%s",
-                    self.id,
-                    passed_pages
-                )
+                    _logger.warning(
+                        "[FAMILY A ROUTING] "
+                        "PARTIAL RESULT "
+                        "→ FAMILY A PARTIAL RECOVERY "
+                        "| JOB=%s "
+                        "| PARTIAL_PAGES=%s "
+                        "| PASSED_PAGES=%s "
+                        "| FAILED_PAGES=%s",
+                        self.id,
+                        partial_pages,
+                        passed_pages,
+                        failed_pages,
+                    )
 
-                self.last_known_state = (
-                    'pdf_ai'
-                )
+                    self.last_known_state = (
+                        'family_a_partial_recovery'
+                    )
 
-                self.state = (
-                    'pdf_ai'
-                )
+                    self.state = (
+                        'family_a_partial_recovery'
+                    )
 
-            # =================================================
-            # PERSIST ROUTING DECISION
-            # =================================================
+
+                # =================================================
+                # COMPLETE FAMILY A SUCCESS
+                # → PDF AI
+                # =================================================
+
+                else:
+
+                    _logger.warning(
+                        "[FAMILY A TEST ROUTING] "
+                        "PASS PAGES "
+                        "→ PDF AI "
+                        "| JOB=%s "
+                        "| PAGES=%s",
+                        self.id,
+                        passed_pages
+                    )
+
+                    self.last_known_state = (
+                        'pdf_ai'
+                    )
+
+                    self.state = (
+                        'pdf_ai'
+                    )
+
+
+                # =================================================
+                # PERSIST ROUTING DECISION
+                # =================================================
 
                 _logger.warning(
                     "[FAMILY A ROUTING] "
@@ -3112,11 +3111,13 @@ class VendorImportJob(models.Model):
                     self.id,
                 )
 
-                # self.flush_recordset()
-                # self.env.cr.commit()
+                self.flush_recordset()
+                self.env.cr.commit()
 
-                # return
+                return
             
+
+
             # =================================================
             # FAMILY A PARTIAL PRECISION RECOVERY
             # =================================================
