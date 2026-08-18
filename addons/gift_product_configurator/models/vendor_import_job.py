@@ -35844,9 +35844,87 @@ class VendorImportJob(models.Model):
                 currency.id,
         }
 
-        hero_index = product_data.get(
-            "hero_image_index"
+
+        # =====================================
+        # AUTHORITATIVE HERO IMAGE INDEX
+        # =====================================
+
+        hero_index = None
+
+        variants = product_data.get(
+            "variants",
+            []
         )
+
+        if isinstance(variants, list):
+
+            # -------------------------------------
+            # FIRST PRIORITY:
+            # Use the corrected Family A-authorized
+            # variant image index.
+            #
+            # image_index = CURRENT CLEAN INDEX
+            # source_image_index = ORIGINAL SOURCE INDEX
+            # -------------------------------------
+
+            for variant in variants:
+
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+                corrected_index = variant.get(
+                    "image_index"
+                )
+
+                if (
+                    corrected_index is not None
+                    and
+                    corrected_index != ""
+                ):
+
+                    hero_index = corrected_index
+
+                    _logger.warning(
+                        "[PDF HERO AUTHORITY] "
+                        "JOB=%s | "
+                        "PRODUCT=%s | "
+                        "SOURCE_INDEX=%s | "
+                        "CLEAN_INDEX=%s",
+                        self.id,
+                        product_data.get("name"),
+                        variant.get(
+                            "source_image_index"
+                        ),
+                        corrected_index
+                    )
+
+                    break
+
+
+        # -------------------------------------
+        # FALLBACK:
+        # Only use the original AI hero index
+        # when no corrected variant image exists.
+        # -------------------------------------
+
+        if hero_index is None:
+
+            hero_index = product_data.get(
+                "hero_image_index"
+            )
+
+            _logger.warning(
+                "[PDF HERO FALLBACK] "
+                "JOB=%s | "
+                "PRODUCT=%s | "
+                "AI_HERO_INDEX=%s",
+                self.id,
+                product_data.get("name"),
+                hero_index
+            )
         
         # =====================================
         # PROFESSIONAL HERO IMAGE SELECTION
