@@ -14432,6 +14432,99 @@ class VendorImportJob(models.Model):
 
         return family_a_review
 
+    # =========================================================
+    # FAMILY A AUTHORITATIVE PRODUCT IDENTITY
+    # =========================================================
+    def _get_family_a_authoritative_product_identity(
+        self,
+        product_group
+    ):
+        """
+        Return the authoritative Family A product identity.
+
+        Family A is authoritative for product_name/product_title.
+
+        Returns:
+            {
+                "name": "...",
+                "title": "...",
+                "name_source": "...",
+                "name_confidence": 0.0,
+                "name_trustworthy": False,
+                "group_id": "..."
+            }
+        """
+
+        if not isinstance(
+            product_group,
+            dict
+        ):
+            return {
+                "name": "",
+                "title": "",
+                "name_source": "",
+                "name_confidence": 0,
+                "name_trustworthy": False,
+                "group_id": None,
+            }
+
+        product_name = str(
+            product_group.get(
+                "product_name"
+            )
+            or ""
+        ).strip()
+
+        product_title = str(
+            product_group.get(
+                "product_title"
+            )
+            or ""
+        ).strip()
+
+        name_trustworthy = bool(
+            product_group.get(
+                "name_trustworthy",
+                False
+            )
+        )
+
+        return {
+            "name": (
+                product_name
+                if name_trustworthy and product_name
+                else (
+                    product_title
+                    if name_trustworthy and product_title
+                    else ""
+                )
+            ),
+
+            "title": product_title,
+
+            "name_source": str(
+                product_group.get(
+                    "name_source"
+                )
+                or ""
+            ).strip(),
+
+            "name_confidence": (
+                product_group.get(
+                    "name_confidence",
+                    0
+                )
+                or 0
+            ),
+
+            "name_trustworthy":
+                name_trustworthy,
+
+            "group_id":
+                product_group.get(
+                    "group_id"
+                ),
+        }
 
     # =========================================================
     # AUTHORITATIVE FAMILY A PAGE SPECIFICATION
@@ -34502,7 +34595,123 @@ class VendorImportJob(models.Model):
             )
 
             return
+        
+        # =========================================================
+        # LOAD FAMILY A AUTHORITATIVE SPECIFICATION
+        # =========================================================
 
+        family_a_authority = self._get_family_a_authoritative_spec()
+
+        _logger.warning(
+            "[FAMILY A AUTHORITY LOADED] "
+            "JOB=%s | KEYS=%s",
+            self.id,
+            list(family_a_authority.keys())
+        )
+
+
+        # =====================================================
+        # BUILD FAMILY A AUTHORITATIVE PRODUCT NAME MAP
+        # =====================================================
+
+        family_a_product_name_map = {}
+
+        try:
+
+            family_a_review = (
+                self._get_family_a_authoritative_spec()
+            )
+
+            for family_a_page in (
+                family_a_review.get(
+                    "pages",
+                    []
+                )
+            ):
+
+                if not isinstance(
+                    family_a_page,
+                    dict
+                ):
+                    continue
+
+                for group in (
+                    family_a_page.get(
+                        "product_groups",
+                        []
+                    )
+                ):
+
+                    if not isinstance(
+                        group,
+                        dict
+                    ):
+                        continue
+
+                    group_id = str(
+                        group.get(
+                            "group_id",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+
+                    product_name = str(
+                        group.get(
+                            "product_name",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+
+                    product_title = str(
+                        group.get(
+                            "product_title",
+                            ""
+                        )
+                        or ""
+                    ).strip()
+
+                    name_trustworthy = (
+                        group.get(
+                            "name_trustworthy"
+                        )
+                        is True
+                    )
+
+                    authoritative_name = (
+                        product_name
+                        or product_title
+                    )
+
+                    if (
+                        group_id
+                        and
+                        authoritative_name
+                        and
+                        name_trustworthy
+                    ):
+
+                        family_a_product_name_map[
+                            group_id
+                        ] = authoritative_name
+
+            _logger.warning(
+                "[PDF CREATE FAMILY A NAME MAP] "
+                "JOB=%s | MAP=%s",
+                self.id,
+                family_a_product_name_map
+            )
+
+        except Exception as e:
+
+            _logger.warning(
+                "[PDF CREATE FAMILY A NAME MAP FAILED] "
+                "JOB=%s | ERROR=%s",
+                self.id,
+                str(e),
+                exc_info=True
+            )
         product_obj = self.env[
             'product.template'
         ]
@@ -34633,6 +34842,62 @@ class VendorImportJob(models.Model):
             )
 
             for product_data in products:
+
+                # =====================================================
+                # APPLY FAMILY A AUTHORITATIVE PRODUCT NAME
+                # =====================================================
+
+                pdf_ai_name = (
+                    product_data.get(
+                        "name"
+                    )
+                    or ""
+                ).strip()
+
+                family_a_group_id = str(
+                    product_data.get(
+                        "product_group",
+                        ""
+                    )
+                    or ""
+                ).strip()
+
+                family_a_authoritative_name = (
+                    family_a_product_name_map.get(
+                        family_a_group_id
+                    )
+                    or ""
+                ).strip()
+
+                if family_a_authoritative_name:
+
+                    _logger.warning(
+                        "[PDF NAME AUTHORITY APPLIED] "
+                        "JOB=%s | "
+                        "GROUP=%s | "
+                        "PDF_AI_NAME=%s | "
+                        "FAMILY_A_NAME=%s",
+                        self.id,
+                        family_a_group_id,
+                        pdf_ai_name,
+                        family_a_authoritative_name
+                    )
+
+                    product_data["name"] = (
+                        family_a_authoritative_name
+                    )
+
+                else:
+
+                    _logger.warning(
+                        "[PDF NAME AUTHORITY NOT FOUND] "
+                        "JOB=%s | "
+                        "GROUP=%s | "
+                        "PDF_AI_NAME=%s",
+                        self.id,
+                        family_a_group_id,
+                        pdf_ai_name
+                    )
 
                 # =====================================
                 # PRODUCT IMAGE PREP
@@ -35777,12 +36042,50 @@ class VendorImportJob(models.Model):
 
 
         # =====================================
-        # NORMALIZE PRODUCT TITLE
+        # AUTHORITATIVE PRODUCT TITLE
         # =====================================
 
-        clean_title = self._normalize_pdf_product_title(
-            product_data
-        )
+        authoritative_name = (
+            product_data.get(
+                "_family_a_authoritative_name"
+            )
+            or ""
+        ).strip()
+
+        if authoritative_name:
+
+            clean_title = authoritative_name
+
+            _logger.warning(
+                "[PDF TITLE AUTHORITY APPLIED] "
+                "JOB=%s | "
+                "AI_NAME=%s | "
+                "AUTHORITATIVE_NAME=%s",
+                self.id,
+                product_data.get("name"),
+                authoritative_name
+            )
+
+        else:
+
+            clean_title = (
+                self._normalize_pdf_product_title(
+                    product_data
+                )
+                or product_data.get("name")
+                or product_data.get("title")
+                or ""
+            ).strip()
+
+            _logger.warning(
+                "[PDF TITLE AUTHORITY MISSING] "
+                "JOB=%s | "
+                "AI_NAME=%s | "
+                "USING_NORMALIZATION=%s",
+                self.id,
+                product_data.get("name"),
+                clean_title
+            )
 
         currency = self._resolve_catalogue_currency(
 
@@ -35799,6 +36102,22 @@ class VendorImportJob(models.Model):
                     )
                 ),
 
+        )
+
+        _logger.warning(
+            "[PDF FINAL PRODUCT IDENTITY] "
+            "JOB=%s | "
+            "AI_NAME=%s | "
+            "AUTHORITY_NAME=%s | "
+            "FINAL_ODDO_NAME=%s | "
+            "VARIANT_GROUP=%s | "
+            "FINGERPRINT=%s",
+            self.id,
+            product_data.get("name"),
+            authoritative_name or None,
+            clean_title,
+            variant_group,
+            vendor_fingerprint
         )
 
         vals = {
@@ -36314,6 +36633,57 @@ class VendorImportJob(models.Model):
             f"assets={len(asset_pool)}"
         )
 
+        # =====================================================
+        # PRODUCTION GALLERY AUTHORITY GATE
+        # =====================================================
+        #
+        # The asset pool may contain recovery/source assets
+        # that must remain available for recovery.
+        #
+        # However, ONLY production-eligible assets may enter
+        # product.image / the final Odoo gallery.
+        #
+        # Family A authority takes precedence whenever it exists.
+        # =====================================================
+
+        def _is_gallery_eligible(asset):
+
+            if not isinstance(asset, dict):
+                return False
+
+            # ---------------------------------------------
+            # Never allow non-real assets into production
+            # gallery.
+            # ---------------------------------------------
+
+            if asset.get("asset_group") != "real":
+                return False
+
+            # ---------------------------------------------
+            # If Family A explicitly reviewed this asset,
+            # its trust/preserve decision is authoritative.
+            # ---------------------------------------------
+
+            if asset.get("family_a_authoritative") is True:
+
+                if asset.get("family_a_trustworthy") is not True:
+                    return False
+
+                if asset.get("family_a_preserve") is not True:
+                    return False
+
+            # ---------------------------------------------
+            # Explicit Family A rejection always wins.
+            # ---------------------------------------------
+
+            if asset.get("family_a_trustworthy") is False:
+                return False
+
+            if asset.get("family_a_preserve") is False:
+                return False
+
+            return True
+
         gallery_indexes = product_data.get(
             "gallery_image_indexes",
             []
@@ -36330,12 +36700,8 @@ class VendorImportJob(models.Model):
             for a in asset_pool
 
             if (
-
                 a.get("promotion_source") == "recovery"
-
-                and
-
-                a.get("asset_group") == "real"
+                and _is_gallery_eligible(a)
             )
         ]
 
@@ -36396,7 +36762,8 @@ class VendorImportJob(models.Model):
                 for a in sorted_gallery_assets
 
                 if (
-
+                    _is_gallery_eligible(a)
+                    and
                     a.get(
                         "gallery_score",
                         a.get(
@@ -36404,7 +36771,6 @@ class VendorImportJob(models.Model):
                             0
                         )
                     ) >= 28
-
                 )
             ]
 
@@ -36456,13 +36822,19 @@ class VendorImportJob(models.Model):
 
         if len(gallery_indexes) < 4:
 
+
+
             fallback_indexes = [
 
                 a.get("clean_index")
 
                 for a in sorted(
 
-                    asset_pool,
+                    (
+                        a
+                        for a in asset_pool
+                        if _is_gallery_eligible(a)
+                    ),
 
                     key=lambda x: (
 
@@ -36553,18 +36925,36 @@ class VendorImportJob(models.Model):
 
                 )
 
-                if asset.get("asset_group") != "real":
+
+                # =====================================================
+                # FINAL PRODUCTION AUTHORITY GATE
+                # =====================================================
+
+                if not _is_gallery_eligible(asset):
 
                     _logger.warning(
-
-                        f"[NON-REAL GALLERY] "
-
-                        f"index={index} "
-
-                        f"group={asset.get('asset_group')} "
-
-                        f"confidence={asset.get('confidence')}"
+                        "[GALLERY REJECTED BY AUTHORITY] "
+                        "index=%s "
+                        "| group=%s "
+                        "| classification=%s "
+                        "| role=%s "
+                        "| family_a_authoritative=%s "
+                        "| trustworthy=%s "
+                        "| preserve=%s "
+                        "| lifestyle=%s "
+                        "| confidence=%s",
+                        index,
+                        asset.get("asset_group"),
+                        asset.get("classification"),
+                        asset.get("asset_role"),
+                        asset.get("family_a_authoritative"),
+                        asset.get("family_a_trustworthy"),
+                        asset.get("family_a_preserve"),
+                        asset.get("is_lifestyle"),
+                        asset.get("confidence"),
                     )
+
+                    continue
 
                 gallery_image = (
                     self._resolve_asset_image(
@@ -36657,11 +37047,10 @@ class VendorImportJob(models.Model):
 
     #==========PDF TITLE NORMALIZATION====================================
     def _normalize_pdf_product_title(
-
         self,
-
-        product_data
-     ):
+        product_data,
+        authoritative_name=None,
+    ):
 
         import re
 
@@ -36669,6 +37058,26 @@ class VendorImportJob(models.Model):
             product_data.get("name")
             or ""
         ).strip()
+
+        # =====================================================
+        # FAMILY A AUTHORITATIVE PRODUCT NAME
+        # =====================================================
+
+        authoritative_name = str(
+            authoritative_name
+            or ""
+        ).strip()
+
+        if authoritative_name:
+
+            _logger.warning(
+                "[PDF TITLE AUTHORITY] "
+                "Using Family A authoritative name | "
+                "name=%s",
+                authoritative_name
+            )
+
+            return authoritative_name
 
         subtitle = (
             product_data.get("subtitle")
@@ -36845,6 +37254,7 @@ class VendorImportJob(models.Model):
                 "score": score
             })
 
+
         # =====================================
         # SORT BEST TITLE
         # =====================================
@@ -36867,7 +37277,7 @@ class VendorImportJob(models.Model):
         )
 
         # =====================================
-        # FINAL TITLE
+        # FINAL TITLE FALLBACK
         # =====================================
 
         if scored:
