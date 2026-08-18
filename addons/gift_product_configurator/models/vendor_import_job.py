@@ -10709,29 +10709,12 @@ class VendorImportJob(models.Model):
         # =========================================================
         # PRESERVE ENRICHED AZURE CROP OBJECTS
         # =========================================================
-        #
-        # Azure crops must retain ALL metadata.
-        #
-        # Do not reduce them to:
-        #
-        #     {"image": "..."}
-        #
-        # because PDF Create and variant correction need:
-        #
-        #     crop_id
-        #     product_reference
-        #     figure_id
-        #     purpose
-        #     azure_crop
-        #     color (when available)
-        #     clean_index
-        #
-        # The image itself is not enough to reliably map variants.
-        # =========================================================
 
         azure_crop_assets = []
 
-        for asset in page_images:
+        family_a_precision_crop_assets = []
+
+        for asset in persisted_assets:
 
             if not isinstance(
                 asset,
@@ -10740,21 +10723,46 @@ class VendorImportJob(models.Model):
                 continue
 
             if not asset.get(
+                "image"
+            ):
+                continue
+
+            # -----------------------------------------
+            # AZURE RECOVERY
+            # -----------------------------------------
+
+            if asset.get(
                 "azure_crop"
-            ):
+            ) is True:
+
+                azure_crop_assets.append(
+                    asset
+                )
+
                 continue
 
-            if not asset.get(
-                "crop_id"
-            ):
-                continue
+            # -----------------------------------------
+            # FAMILY A PRECISION RECOVERY
+            # -----------------------------------------
 
-            # Keep the ORIGINAL dictionary.
-            # Do not create a reduced copy.
+            if asset.get(
+                "family_a_precision_crop"
+            ) is True:
 
-            azure_crop_assets.append(
-                asset
-            )
+                family_a_precision_crop_assets.append(
+                    asset
+                )
+
+
+        _logger.warning(
+            "[PDF AI] PERSISTED RECOVERY ASSETS "
+            "| PAGE=%s "
+            "| AZURE=%s "
+            "| FAMILY_A_PRECISION=%s",
+            next_record.page_number,
+            len(azure_crop_assets),
+            len(family_a_precision_crop_assets)
+        )
 
         _logger.warning(
             "[PDF AI] AZURE CROP METADATA PRESERVED "
@@ -10876,7 +10884,7 @@ class VendorImportJob(models.Model):
 
 
         # =====================================================
-        # 3. ADD AZURE CROP ASSETS
+        # 3. ADD PERSISTED RECOVERY ASSETS
         # =====================================================
 
         for asset in azure_crop_assets:
@@ -10886,15 +10894,40 @@ class VendorImportJob(models.Model):
             )
 
 
+        for asset in family_a_precision_crop_assets:
+
+            page_images.append(
+                asset
+            )
+
+
+        _logger.warning(
+            "[PDF AI] RECOVERY ASSETS APPENDED "
+            "| PAGE=%s "
+            "| AZURE=%s "
+            "| FAMILY_A_PRECISION=%s "
+            "| TOTAL_PAGE_ASSETS=%s",
+            next_record.page_number,
+            len(azure_crop_assets),
+            len(family_a_precision_crop_assets),
+            len(page_images)
+        )
+
         _logger.warning(
             "[PDF AI] COMBINED PAGE ASSETS "
             "| PAGE=%s "
             "| ORIGINAL=%s "
             "| AZURE_CROPS=%s "
+            "| FAMILY_A_PRECISION=%s "
             "| TOTAL=%s",
             next_record.page_number,
-            len(page_images) - len(azure_crop_assets),
+            (
+                len(page_images)
+                - len(azure_crop_assets)
+                - len(family_a_precision_crop_assets)
+            ),
             len(azure_crop_assets),
+            len(family_a_precision_crop_assets),
             len(page_images)
         )
 
