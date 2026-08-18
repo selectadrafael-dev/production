@@ -2787,6 +2787,83 @@ class VendorImportJob(models.Model):
                         fallback_pages
                     )
 
+                    # =================================================
+                    # DIAGNOSTIC: COMPLETE FAMILY A REVIEW OUTPUT
+                    # =================================================
+
+                    _logger.warning(
+                        "[FAMILY A RAW REVIEW DIAGNOSTIC] "
+                        "JOB=%s | TYPE=%s | KEYS=%s",
+                        self.id,
+                        type(review_result).__name__,
+                        (
+                            list(review_result.keys())
+                            if isinstance(review_result, dict)
+                            else None
+                        )
+                    )
+
+                    if isinstance(review_result, dict):
+
+                        _logger.warning(
+                            "[FAMILY A RAW REVIEW DIAGNOSTIC] "
+                            "JOB=%s | DECISION=%s | "
+                            "PASSED_PAGES=%s | "
+                            "PARTIAL_PAGES=%s | "
+                            "FAILED_PAGES=%s",
+                            self.id,
+                            review_result.get("decision"),
+                            review_result.get("passed_pages"),
+                            review_result.get("partial_pages"),
+                            review_result.get("failed_pages"),
+                        )
+
+                        family_a_pages = review_result.get(
+                            "pages",
+                            []
+                        )
+
+                        _logger.warning(
+                            "[FAMILY A RAW REVIEW DIAGNOSTIC] "
+                            "JOB=%s | PAGE_RECORD_COUNT=%s",
+                            self.id,
+                            len(family_a_pages)
+                            if isinstance(family_a_pages, list)
+                            else "NOT_A_LIST"
+                        )
+
+                        for page_result in (
+                            family_a_pages
+                            if isinstance(family_a_pages, list)
+                            else []
+                        ):
+
+                            if not isinstance(
+                                page_result,
+                                dict
+                            ):
+                                _logger.warning(
+                                    "[FAMILY A RAW PAGE INVALID] "
+                                    "JOB=%s | VALUE=%r",
+                                    self.id,
+                                    page_result
+                                )
+                                continue
+
+                            _logger.warning(
+                                "[FAMILY A RAW PAGE] "
+                                "JOB=%s | PAGE=%s | "
+                                "DECISION=%s | KEYS=%s | "
+                                "MISSING_ASSET_REQUESTS=%s",
+                                self.id,
+                                page_result.get("page"),
+                                page_result.get("decision"),
+                                list(page_result.keys()),
+                                page_result.get(
+                                    "missing_asset_requests"
+                                ),
+                            )
+
                     self.family_a_review_json = json.dumps(
                         {
                             "decision": "FAIL",
@@ -2850,6 +2927,13 @@ class VendorImportJob(models.Model):
                 self.family_a_review_json = json.dumps(
                     review_result,
                     ensure_ascii=False
+                )
+
+                _logger.warning(
+                    "[FAMILY A REVIEW JSON SAVED] "
+                    "JOB=%s | CHARS=%s",
+                    self.id,
+                    len(self.family_a_review_json or "")
                 )
 
                 _logger.warning(
@@ -2980,15 +3064,28 @@ class VendorImportJob(models.Model):
                     if recovery_requests:
 
                         _logger.warning(
-                            "[FAMILY A REVIEW] "
-                            "PARTIAL PAGES "
-                            "→ FAMILY A PARTIAL RECOVERY "
-                            "| JOB=%s "
-                            "| PAGES=%s "
-                            "| REQUESTS=%s",
+                            "[FAMILY A RECOVERY REQUEST DIAGNOSTIC] "
+                            "JOB=%s | PAGE=%s | "
+                            "PAGE_DECISION=%s | "
+                            "REQUEST_KEY_PRESENT=%s | "
+                            "REQUEST_TYPE=%s | "
+                            "REQUEST_COUNT=%s | "
+                            "REQUESTS=%s",
                             self.id,
-                            partial_pages,
-                            len(recovery_requests)
+                            page_number,
+                            page_decision,
+                            "missing_asset_requests" in page_result,
+                            type(requests).__name__,
+                            len(requests)
+                            if isinstance(requests, list)
+                            else "N/A",
+                            json.dumps(
+                                requests,
+                                ensure_ascii=False,
+                                default=str
+                            )
+                            if isinstance(requests, (list, dict))
+                            else repr(requests)
                         )
 
                         self.last_known_state = (
@@ -3035,22 +3132,64 @@ class VendorImportJob(models.Model):
                 # COMPLETE FAMILY A SUCCESS
                 # =================================================
 
+                # else:
+
+                #     _logger.warning(
+                #         "[FAMILY A REVIEW] "
+                #         "ALL PAGES PASS "
+                #         "→ PDF AI "
+                #         "| JOB=%s",
+                #         self.id
+                #     )
+
+                #     self.last_known_state = (
+                #         'pdf_ai'
+                #     )
+
+                #     self.state = (
+                #         'pdf_ai'
+                #     )
+
+                # =================================================
+                # COMPLETE FAMILY A SUCCESS — TEMPORARY TEST
+                # =================================================
+                #
+                # TEMPORARY TEST ONLY:
+                #
+                # Normally:
+                #     PASS → pdf_ai
+                #
+                # For this test:
+                #     PASS → family_a_partial_recovery
+                #
+                # This allows us to test whether the existing
+                # Family A partial-recovery / precision-crop route
+                # can successfully consume a PASS catalogue.
+                #
+                # FAILED pages and PARTIAL pages are NOT changed.
+                # =================================================
+
                 else:
 
                     _logger.warning(
-                        "[FAMILY A REVIEW] "
+                        "[FAMILY A REVIEW TEST] "
                         "ALL PAGES PASS "
-                        "→ PDF AI "
-                        "| JOB=%s",
-                        self.id
+                        "→ TEMPORARILY ROUTING TO "
+                        "FAMILY A PARTIAL RECOVERY "
+                        "| JOB=%s | PAGES=%s",
+                        self.id,
+                        review_result.get(
+                            'passed_pages',
+                            []
+                        )
                     )
 
                     self.last_known_state = (
-                        'pdf_ai'
+                        'family_a_partial_recovery'
                     )
 
                     self.state = (
-                        'pdf_ai'
+                        'family_a_partial_recovery'
                     )
 
 
@@ -3139,10 +3278,33 @@ class VendorImportJob(models.Model):
                         []
                     ):
 
+                        _logger.warning(
+                            "[FAMILY A RECOVERY PAGE INSPECT] "
+                            "JOB=%s | RAW_PAGE_RESULT=%s",
+                            self.id,
+                            json.dumps(
+                                page_result,
+                                ensure_ascii=False,
+                                default=str
+                            )
+                            if isinstance(page_result, dict)
+                            else repr(page_result)
+                        )
+
+
                         if not isinstance(
                             page_result,
                             dict
                         ):
+
+                            _logger.error(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | REASON=PAGE_RESULT_NOT_DICT "
+                                "| VALUE=%r",
+                                self.id,
+                                page_result
+                            )
+
                             continue
 
                         try:
@@ -3153,10 +3315,32 @@ class VendorImportJob(models.Model):
                         except (
                             TypeError,
                             ValueError
-                        ):
+                        ) as e:
+
+                            _logger.error(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | REASON=INVALID_PAGE_NUMBER "
+                                "| RAW_PAGE=%r | ERROR=%s",
+                                self.id,
+                                page_result.get("page"),
+                                str(e)
+                            )
+
                             continue
 
+
                         if page_number not in partial_pages:
+
+                            _logger.warning(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | PAGE=%s "
+                                "| REASON=PAGE_NOT_IN_PARTIAL_PAGES "
+                                "| PARTIAL_PAGES=%s",
+                                self.id,
+                                page_number,
+                                partial_pages
+                            )
+
                             continue
 
                         page_decision = str(
@@ -3166,7 +3350,20 @@ class VendorImportJob(models.Model):
                             )
                         ).upper().strip()
 
+
                         if page_decision != "PARTIAL":
+
+                            _logger.warning(
+                                "[FAMILY A RECOVERY SKIP] "
+                                "JOB=%s | PAGE=%s "
+                                "| REASON=PAGE_DECISION_NOT_PARTIAL "
+                                "| DECISION=%s "
+                                "| EXPECTED=PARTIAL",
+                                self.id,
+                                page_number,
+                                page_decision
+                            )
+
                             continue
 
                         requests = page_result.get(
@@ -3199,11 +3396,39 @@ class VendorImportJob(models.Model):
                                 request,
                                 dict
                             ):
+
+                                _logger.error(
+                                    "[FAMILY A RECOVERY REQUEST SKIP] "
+                                    "JOB=%s | PAGE=%s "
+                                    "| REASON=REQUEST_NOT_DICT "
+                                    "| VALUE=%r",
+                                    self.id,
+                                    page_number,
+                                    request
+                                )
+
                                 continue
 
                             crop = request.get(
                                 "crop",
                                 {}
+                            )
+
+                            _logger.warning(
+                                "[FAMILY A RECOVERY REQUEST INSPECT] "
+                                "JOB=%s | PAGE=%s | "
+                                "PRODUCT=%s | COLOR=%s | "
+                                "REQUEST_KEYS=%s | CROP=%s",
+                                self.id,
+                                page_number,
+                                request.get("product_reference"),
+                                request.get("color"),
+                                list(request.keys()),
+                                json.dumps(
+                                    request.get("crop"),
+                                    ensure_ascii=False,
+                                    default=str
+                                )
                             )
 
                             if not isinstance(
@@ -3342,6 +3567,32 @@ class VendorImportJob(models.Model):
                     # =================================================
                     # SAFETY CHECK
                     # =================================================
+                    _logger.warning(
+                        "[FAMILY A RECOVERY BUILD RESULT] "
+                        "JOB=%s | "
+                        "PARTIAL_PAGES=%s | "
+                        "TOTAL_REQUESTS=%s | "
+                        "REQUEST_PAGES=%s",
+                        self.id,
+                        partial_pages,
+                        len(recovery_requests),
+                        sorted({
+                            item.get("page")
+                            for item in recovery_requests
+                            if isinstance(item, dict)
+                        })
+                    )
+
+                    _logger.warning(
+                        "[FAMILY A RECOVERY BUILD PAYLOAD] "
+                        "JOB=%s | REQUESTS=%s",
+                        self.id,
+                        json.dumps(
+                            recovery_requests,
+                            ensure_ascii=False,
+                            default=str
+                        )
+                    )
 
                     pages_with_requests = {
                         item["page"]
@@ -3355,11 +3606,46 @@ class VendorImportJob(models.Model):
 
                     if pages_without_requests:
 
-                        raise ValueError(
-                            "Family A marked pages PARTIAL "
-                            "but supplied no recovery targets "
-                            f"for pages: {pages_without_requests}"
-                        )
+                        if pages_without_requests:
+
+                            diagnostic = {
+                                "partial_pages": partial_pages,
+                                "pages_with_requests": sorted(
+                                    pages_with_requests
+                                ),
+                                "pages_without_requests": (
+                                    pages_without_requests
+                                ),
+                                "total_recovery_requests": (
+                                    len(recovery_requests)
+                                ),
+                                "family_a_page_count": len(
+                                    family_a_review.get(
+                                        "pages",
+                                        []
+                                    )
+                                )
+                            }
+
+                            _logger.error(
+                                "[FAMILY A PARTIAL RECOVERY] "
+                                "MISSING RECOVERY TARGETS "
+                                "| JOB=%s | DIAGNOSTIC=%s",
+                                self.id,
+                                json.dumps(
+                                    diagnostic,
+                                    ensure_ascii=False,
+                                    default=str
+                                )
+                            )
+
+                            raise ValueError(
+                                "Family A PARTIAL recovery target construction failed. "
+                                f"Partial pages={partial_pages}; "
+                                f"pages with requests={sorted(pages_with_requests)}; "
+                                f"pages without requests={pages_without_requests}; "
+                                f"total requests={len(recovery_requests)}."
+                            )
 
                     if not recovery_requests:
 
