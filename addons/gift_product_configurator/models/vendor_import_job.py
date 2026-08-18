@@ -17979,21 +17979,48 @@ class VendorImportJob(models.Model):
 
         for record in page_records:
 
+            # try:
+
+            #     page_blocks = json.loads(
+            #         record.extracted_json
+            #         or "[]"
+            #     )
+
+            # except Exception:
+
+            #     _logger.exception(
+            #         "[FAMILY A REVIEW] INVALID extracted_json "
+            #         "| JOB=%s | PAGE=%s",
+            #         self.id,
+            #         record.page_number
+            #     )
+
             try:
 
                 page_blocks = json.loads(
                     record.extracted_json
-                    or "[]"
+                        or "[]"
                 )
 
-            except Exception:
+                # =================================================
+                # DEBUG: RAW FAMILY A PARSED RESPONSE
+                # =================================================
 
-                _logger.exception(
-                    "[FAMILY A REVIEW] INVALID extracted_json "
-                    "| JOB=%s | PAGE=%s",
+                _logger.warning(
+                    "[FAMILY A REVIEW DEBUG] "
+                    "RAW PARSED RESULT "
+                    "| JOB=%s\n%s",
                     self.id,
-                    record.page_number
+                    json.dumps(
+                        result,
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
                 )
+
+                # NEXT EXISTING CODE HERE
+
+            except json.JSONDecodeError as json_error:
 
                 continue
 
@@ -20310,6 +20337,42 @@ class VendorImportJob(models.Model):
                     "extracted_asset_mapping":
                         normalized_asset_mapping,
                 }
+
+                # =================================================
+                # DEBUG: FAMILY A PARTIAL RECOVERY CONTRACT
+                # =================================================
+
+                _logger.warning(
+                    "[FAMILY A RECOVERY DEBUG] "
+                    "PAGE=%s "
+                    "| DECISION=%s "
+                    "| MISSING_ITEMS=%s "
+                    "| RECOVERY_REQUESTS=%s\n%s",
+                    page_result.get("page"),
+                    page_result.get("decision"),
+                    len(
+                        page_result.get(
+                            "missing_items",
+                            []
+                        )
+                        or []
+                    ),
+                    len(
+                        page_result.get(
+                            "missing_asset_requests",
+                            []
+                        )
+                        or []
+                    ),
+                    json.dumps(
+                        page_result.get(
+                            "missing_asset_requests",
+                            []
+                        ),
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                )
 
                 normalized_pages.append(
                     normalized_page
