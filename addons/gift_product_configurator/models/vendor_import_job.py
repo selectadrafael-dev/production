@@ -18325,6 +18325,184 @@ class VendorImportJob(models.Model):
 
         A SERIES / FAMILY / COLLECTION NAME IS NOT AUTOMATICALLY A PRODUCT NAME.
 
+        # ================================================================
+        # SAME PRODUCT / VARIANT OVERRIDE
+        # ================================================================
+        #
+        # This rule MUST be evaluated BEFORE deciding that visually
+        # separated product images are separate product_groups.
+        #
+        # A catalogue may display several individual product images
+        # side-by-side without giving each image its own product title.
+        # Those images can represent selectable variants of ONE product.
+        #
+        # ================================================================
+
+        SAME_PRODUCT_VARIANT TEST:
+
+        When multiple visible product representations appear on the
+        ORIGINAL CATALOGUE PAGE, FIRST determine whether they represent
+        the SAME underlying purchasable product before creating separate
+        product_groups.
+
+        Treat the representations as variants of ONE product when the
+        combined evidence strongly supports ALL or nearly all of the
+        following:
+
+        1. SAME MODEL / PRODUCT CODE
+           - The same model number, SKU, reference, article code, or
+             product code is visibly associated with the representations.
+
+        2. SAME PRODUCT IDENTITY
+           - The same catalogue product name, model family, or explicit
+             product identity applies to all representations.
+
+        3. SAME PHYSICAL DESIGN
+           - Same shape.
+           - Same construction.
+           - Same proportions.
+           - Same functional design.
+           - Same branding.
+           - Same dimensions or substantially matching dimensions.
+
+        4. SAME TECHNICAL SPECIFICATION
+           - Same capacity, size, dimensions, material, or other technical
+             specifications where those specifications are applicable.
+
+        5. DIFFERENCE IS A REAL SELECTABLE OPTION
+           - The visible difference is primarily:
+               color,
+               finish,
+               material,
+               size,
+               capacity,
+               configuration,
+             or another legitimate selectable product option.
+
+        6. NO EVIDENCE OF DIFFERENT PRODUCT DESIGNS
+           - There must be no strong evidence that the representations are
+             independently named products with different physical designs
+             or different functional configurations.
+
+        ================================================================
+        IMPORTANT:
+        ================================================================
+
+        A visually separated image DOES NOT automatically mean a separate
+        product.
+
+        Separate columns, separate stock quantities, or separate visual
+        representations are NOT sufficient by themselves to create
+        separate product_groups when the underlying product identity,
+        model/reference, physical design, and specifications establish
+        that the representations are selectable variants of the SAME
+        product.
+
+        ================================================================
+        MODEL / REFERENCE HAS STRONG WEIGHT
+        ================================================================
+
+        When multiple product representations share the SAME explicit
+        model/reference/product code AND the same physical product design,
+        strongly prefer:
+
+            ONE product_group
+                |
+                +-- variant: Color/Finish A
+                +-- variant: Color/Finish B
+                +-- variant: Color/Finish C
+
+        rather than:
+
+            product_group_1
+            product_group_2
+            product_group_3
+
+        unless the ORIGINAL CATALOGUE PAGE provides clear evidence that
+        the same model/reference is actually being used for independently
+        purchasable products.
+
+        ================================================================
+        COLOR / FINISH VARIANT EXAMPLE
+        ================================================================
+
+        If the original page shows:
+
+            Model: YH-VA60
+            Product: YAHA
+            Capacity: 0.6 L
+            Size: 73 x 260 mm
+
+            [WHITE BOTTLE] [BLACK BOTTLE] [SILVER/CHROME BOTTLE]
+
+        and the bottles have the same physical design and specifications,
+        interpret them as:
+
+            ONE PRODUCT GROUP
+                YAHA / YH-VA60
+
+                VARIANT:
+                    Color = White
+
+                VARIANT:
+                    Color = Black
+
+                VARIANT:
+                    Color = Silver
+
+        DO NOT create:
+
+            Yaha White Vacuum Bottle
+            Yaha Black Vacuum Bottle
+            Yaha Silver Vacuum Bottle
+
+        as three separate product_groups.
+
+        The color belongs in the variant data, not in the authoritative
+        base product identity.
+
+        ================================================================
+        IMPORTANT DISTINCTION
+        ================================================================
+
+        This rule does NOT merge genuinely different products merely
+        because they share:
+
+            - a brand,
+            - a collection,
+            - a family name,
+            - similar appearance,
+            - similar material,
+            - or a common page heading.
+
+        A DIFFERENT MODEL, DIFFERENT PRODUCT CODE, DIFFERENT PHYSICAL
+        DESIGN, DIFFERENT FUNCTION, OR DIFFERENT PRODUCT IDENTITY remains
+        evidence for separate product_groups.
+
+        ================================================================
+        DECISION PRIORITY
+        ================================================================
+
+        Before returning SEPARATE_PRODUCT, explicitly test:
+
+            SAME MODEL?
+            SAME PRODUCT IDENTITY?
+            SAME PHYSICAL DESIGN?
+            SAME SPECIFICATIONS?
+            DIFFERENCE ONLY SELECTABLE OPTION?
+
+        If YES:
+
+            relationship = "VARIANTS"
+
+            Create ONE product_group containing the legitimate variants.
+
+        Only return:
+
+            relationship = "SEPARATE_PRODUCT"
+
+        when the evidence supports genuinely independent products.
+
         ----------------------------------------------------------------
         CRITICAL MULTI-PRODUCT RULE
         ----------------------------------------------------------------
@@ -18573,6 +18751,16 @@ class VendorImportJob(models.Model):
 
         A common family/collection does NOT make multiple products one
         product.
+
+        IMPORTANT EXCEPTION:
+
+        The rules above do NOT prohibit variant grouping when the SAME
+        MODEL / PRODUCT CODE, SAME PRODUCT IDENTITY, SAME PHYSICAL DESIGN,
+        and SAME PRODUCT SPECIFICATIONS establish that the visible
+        representations are selectable variants of ONE underlying product.
+
+        In that situation, color/finish/size/etc. differences belong inside
+        the SAME product_group as legitimate variants.
 
         ================================================================
         VARIANT VS SEPARATE PRODUCT
