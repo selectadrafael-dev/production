@@ -37184,9 +37184,9 @@ class VendorImportJob(models.Model):
 
                 return False
 
-            # -------------------------------------------------
+            # --------------------------------------------------
             # TRUSTWORTHINESS
-            # -------------------------------------------------
+            # --------------------------------------------------
             #
             # Family A is preferred when available.
             # Do not require family_a_authoritative AND
