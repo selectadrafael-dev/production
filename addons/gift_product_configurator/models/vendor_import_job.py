@@ -37077,7 +37077,7 @@ class VendorImportJob(models.Model):
 
         return category
 
-    #=========pdf product GALLERY CREATOR==============================
+    #=========pdf product GALLERY CREATOR (PREVIOUS COPY)======================
     def _create_pdf_gallery(
 
         self,
@@ -37102,11 +37102,13 @@ class VendorImportJob(models.Model):
         # PRODUCTION GALLERY AUTHORITY GATE
         # =====================================================
         #
-        # ONLY Family A-authoritative REAL_PRODUCT assets
-        # are allowed into the final Odoo gallery.
+        # The asset pool may contain recovery/source assets
+        # that must remain available for recovery.
         #
-        # Family A is the authority for production asset
-        # identity and preservation.
+        # However, ONLY production-eligible assets may enter
+        # product.image / the final Odoo gallery.
+        #
+        # Family A authority takes precedence whenever it exists.
         # =====================================================
 
         def _is_gallery_eligible(asset):
@@ -37114,111 +37116,42 @@ class VendorImportJob(models.Model):
             if not isinstance(asset, dict):
                 return False
 
-            # =================================================
-            # FAMILY A AUTHORITY IS REQUIRED
-            # =================================================
-
-            if asset.get("family_a_authoritative") is not True:
-                return False
-
-            # =================================================
-            # ASSET MUST BE A REAL PRODUCT
-            # =================================================
-
-            if asset.get("classification") != "REAL_PRODUCT":
-                return False
-
-            # =================================================
-            # ASSET MUST BE TRUSTWORTHY
-            # =================================================
-
-            if asset.get("family_a_trustworthy") is not True:
-                return False
-
-            # =================================================
-            # ASSET MUST BE PRESERVED
-            # =================================================
-
-            if asset.get("family_a_preserve") is not True:
-                return False
-
-            # =================================================
-            # ASSET GROUP MUST ALSO BE REAL
-            # =================================================
+            # ---------------------------------------------
+            # Never allow non-real assets into production
+            # gallery.
+            # ---------------------------------------------
 
             if asset.get("asset_group") != "real":
                 return False
 
+            # ---------------------------------------------
+            # If Family A explicitly reviewed this asset,
+            # its trust/preserve decision is authoritative.
+            # ---------------------------------------------
+
+            if asset.get("family_a_authoritative") is True:
+
+                if asset.get("family_a_trustworthy") is not True:
+                    return False
+
+                if asset.get("family_a_preserve") is not True:
+                    return False
+
+            # ---------------------------------------------
+            # Explicit Family A rejection always wins.
+            # ---------------------------------------------
+
+            if asset.get("family_a_trustworthy") is False:
+                return False
+
+            if asset.get("family_a_preserve") is False:
+                return False
+
             return True
 
-
-        gallery_indexes = list(
-            product_data.get(
-                "gallery_image_indexes",
-                []
-            )
-            or []
-        )
-
-        # =====================================================
-        # FAMILY A AUTHORITATIVE REAL PRODUCT ASSETS
-        # =====================================================
-        #
-        # Every authoritative REAL_PRODUCT supplied by
-        # Family A is a gallery candidate.
-        #
-        # Do NOT rely exclusively on PDF AI's
-        # gallery_image_indexes.
-        #
-        # Example:
-        #
-        #   Family A → 11 REAL_PRODUCT assets
-        #   Result   → all 11 become gallery candidates
-        #
-        # The hero image is NOT excluded here.
-        # =====================================================
-
-        family_a_gallery_indexes = []
-
-        for asset in asset_pool:
-
-            if not _is_gallery_eligible(asset):
-                continue
-
-            clean_index = asset.get(
-                "clean_index"
-            )
-
-            if clean_index is None or clean_index == "":
-                continue
-
-            family_a_gallery_indexes.append(
-                clean_index
-            )
-
-        _logger.warning(
-            "[FAMILY A GALLERY AUTHORITY] "
-            "JOB=%s | PRODUCT=%s | "
-            "REAL_PRODUCT_GALLERY_COUNT=%s | "
-            "INDEXES=%s",
-            self.id,
-            product_data.get("name"),
-            len(family_a_gallery_indexes),
-            family_a_gallery_indexes
-        )
-
-        # =====================================================
-        # AUTHORITATIVE ASSETS ALWAYS JOIN THE GALLERY
-        # =====================================================
-
-        gallery_indexes.extend(
-            family_a_gallery_indexes
-        )
-
-        gallery_indexes = list(
-            dict.fromkeys(
-                gallery_indexes
-            )
+        gallery_indexes = product_data.get(
+            "gallery_image_indexes",
+            []
         )
 
         # =====================================
@@ -37315,8 +37248,9 @@ class VendorImportJob(models.Model):
                 dict.fromkeys(
                     gallery_indexes
                 )
-            )
+            )[:10]
 
+        used_images = set()
         used_hashes = set()
 
         existing_gallery = self.env[
@@ -37341,13 +37275,63 @@ class VendorImportJob(models.Model):
 
                 )
 
+        if product.image_1920:
+
+            used_images.add(
+                product.image_1920
+            )
 
         # =====================================
         # ENSURE MINIMUM GALLERY RICHNESS
         # =====================================
 
-        # if len(gallery_indexes) < 4:
+        if len(gallery_indexes) < 4:
 
+
+
+            fallback_indexes = [
+
+                a.get("clean_index")
+
+                for a in sorted(
+
+                    (
+                        a
+                        for a in asset_pool
+                        if _is_gallery_eligible(a)
+                    ),
+
+                    key=lambda x: (
+
+                        x.get(
+                            "gallery_score",
+                            0
+                        ),
+
+                        x.get(
+                            "score",
+                            0
+                        )
+
+                    ),
+
+                    reverse=True
+
+                )
+
+            ]
+
+            gallery_indexes.extend(
+                fallback_indexes
+            )
+
+            gallery_indexes = list(
+
+                dict.fromkeys(
+                    gallery_indexes
+                )
+
+            )[:10]
 
         for index in gallery_indexes:
 
@@ -37361,31 +37345,9 @@ class VendorImportJob(models.Model):
                     {}
                 )
 
-                _logger.warning(
-                    "[GALLERY AUTHORITY DECISION] "
-                    "JOB=%s | "
-                    "INDEX=%s | "
-                    "CLASSIFICATION=%s | "
-                    "ROLE=%s | "
-                    "FAMILY_A_AUTHORITATIVE=%s | "
-                    "TRUSTWORTHY=%s | "
-                    "PRESERVE=%s | "
-                    "GROUP=%s | "
-                    "LIFESTYLE=%s",
-                    self.id,
-                    index,
-                    asset.get("classification"),
-                    asset.get("asset_role"),
-                    asset.get("family_a_authoritative"),
-                    asset.get("family_a_trustworthy"),
-                    asset.get("family_a_preserve"),
-                    asset.get("asset_group"),
-                    asset.get("is_lifestyle"),
-                )
-
-                # =======================================
+                # =====================================
                 # RECOVERY PRIORITY
-                # =======================================
+                # =====================================
 
                 if (
 
