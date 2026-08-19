@@ -26928,6 +26928,101 @@ class VendorImportJob(models.Model):
                                 )
                             )
 
+
+                    # =====================================================
+                    # 3. FAMILY A PRECISION-RECOVERY ASSET
+                    # =====================================================
+                    #
+                    # Precision recovery assets such as:
+                    #
+                    #     family_crop_1
+                    #
+                    # are created AFTER the original Family A
+                    # extracted_asset_mapping was produced.
+                    #
+                    # Therefore they may NOT have a normal
+                    # Family A (page_number, image_index) entry.
+                    #
+                    # However, the recovery asset itself carries
+                    # authoritative Family A metadata.
+                    #
+                    # If this is a Family A precision crop, preserve
+                    # that authority directly.
+                    # =====================================================
+
+                    is_family_a_precision_crop = (
+                        isinstance(asset, dict)
+                        and (
+                            asset.get("family_a_precision_crop") is True
+                            or asset.get("family_a_recovery") is True
+                            or (
+                                asset.get("crop_id")
+                                and str(
+                                    asset.get("crop_id")
+                                ).startswith(
+                                    "family_crop_"
+                                )
+                            )
+                        )
+                    )
+
+                    if is_family_a_precision_crop:
+
+                        recovery_classification = (
+                            asset.get(
+                                "classification"
+                            )
+                            or "REAL_PRODUCT"
+                        )
+
+                        recovery_role = (
+                            asset.get(
+                                "asset_role"
+                            )
+                            or asset.get(
+                                "role"
+                            )
+                            or "PRIMARY"
+                        )
+
+                        family_a_authority = {
+                            "image_index": incoming_index,
+                            "image_hash": incoming_hash,
+                            "classification": recovery_classification,
+                            "asset_role": recovery_role,
+                            "preserve": True,
+                            "trustworthy": True,
+                            "confidence": asset.get(
+                                "confidence",
+                                0.98
+                            ),
+                            "product_reference": asset.get(
+                                "product_reference"
+                            ),
+                            "crop_id": asset.get(
+                                "crop_id"
+                            ),
+                            "family_a_precision_crop": True,
+                        }
+
+                        _logger.warning(
+                            "[POOL FAMILY A RECOVERY AUTHORITY] "
+                            "page=%s "
+                            "| clean_index=%s "
+                            "| crop_id=%s "
+                            "| product=%s "
+                            "| classification=%s "
+                            "| role=%s "
+                            "| authority=TRUE",
+                            current_page,
+                            incoming_index,
+                            asset.get("crop_id"),
+                            asset.get(
+                                "product_reference"
+                            ),
+                            recovery_classification,
+                            recovery_role,
+                        )
                     # =====================================================
                     # 3. CURRENT PDF PAGE + CLEAN INDEX
                     #
