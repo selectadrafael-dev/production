@@ -7384,40 +7384,95 @@ class VendorImportJob(models.Model):
     # =========================================================
     # CORRECT VARIANT IMAGE INDEXES
     # =========================================================
+
     def _correct_variant_image_indexes(
         self,
-        product_data,
-        asset_pool
+        product,
+        page_images,
+        job_id=None,
     ):
+        """
+        Correct variant image indexes using Family-A authority.
+
+        RULE:
+            1. An authoritative Family-A clean_index ALWAYS wins.
+            2. Color matching is ONLY a fallback.
+            3. Never convert an authoritative clean_index through
+            pool/source-position mappings.
+            4. Never allow two variants to silently collapse onto the
+            same authoritative asset when distinct authoritative
+            assets exist.
+        """
 
         try:
 
-            product_name = (
-                product_data.get("name")
-                or ""
-            ).strip()
+            # ==========================================================
+            # BASIC VALIDATION
+            # ==========================================================
+
+            if not isinstance(product, dict):
+
+                _logger.warning(
+                    "[VARIANT CORRECTION SKIPPED] "
+                    "JOB=%s | PRODUCT IS NOT DICT",
+                    job_id
+                )
+
+                return product
+
+
+            variants = product.get(
+                "variants"
+            )
+
+            if not isinstance(
+                variants,
+                list
+            ):
+
+                _logger.warning(
+                    "[VARIANT CORRECTION SKIPPED] "
+                    "JOB=%s | PRODUCT=%s | NO VARIANTS",
+                    job_id,
+                    product.get("name", "")
+                )
+
+                return product
+
+
+            if not isinstance(
+                page_images,
+                list
+            ):
+
+                _logger.warning(
+                    "[VARIANT CORRECTION SKIPPED] "
+                    "JOB=%s | PRODUCT=%s | INVALID ASSETS",
+                    job_id,
+                    product.get("name", "")
+                )
+
+                return product
+
 
             _logger.warning(
                 "[VARIANT CORRECTION START] "
                 "JOB=%s | PRODUCT=%s | ASSETS=%s",
-                self.id,
-                product_name,
-                len(asset_pool)
+                job_id,
+                product.get("name", ""),
+                len(page_images)
             )
 
-            # =====================================================
-            # BUILD AUTHORITATIVE SOURCE INDEX -> CLEAN INDEX
-            # =====================================================
 
-            source_index_lookup = {}
+            # ==========================================================
+            # NORMALIZE ASSETS
+            # ==========================================================
 
-            # =====================================================
-            # BUILD COLOR -> ACTUAL CLEAN INDEX LOOKUP
-            # =====================================================
+            normalized_assets = []
 
-            color_lookup = {}
-
-            for asset in asset_pool:
+            for source_position, asset in enumerate(
+                page_images
+            ):
 
                 if not isinstance(
                     asset,
@@ -7425,125 +7480,203 @@ class VendorImportJob(models.Model):
                 ):
                     continue
 
+
                 clean_index = asset.get(
                     "clean_index"
                 )
 
-                source_index = asset.get(
-                    "index"
+                if clean_index is None:
+
+                    # Do NOT invent a clean index if one
+                    # does not exist.
+                    continue
+
+
+                try:
+
+                    clean_index = int(
+                        clean_index
+                    )
+
+                except Exception:
+
+                    continue
+
+
+                color = (
+                    asset.get("color")
+                    or asset.get("dominant_color")
+                    or ""
                 )
 
-                dominant_color = str(
-                    asset.get(
-                        "dominant_color",
-                        ""
-                    )
-                    or ""
-                ).strip().lower()
 
-                product_reference = str(
-                    asset.get(
-                        "product_reference",
-                        ""
-                    )
+                product_ref = (
+                    asset.get("product")
+                    or asset.get("product_name")
                     or ""
-                ).strip()
-
-                crop_id = asset.get(
-                    "crop_id"
                 )
+
+
+                crop = (
+                    asset.get("crop")
+                    or asset.get("crop_name")
+                    or asset.get("asset_group")
+                )
+
+
+                normalized_assets.append({
+                    "source_position": source_position,
+                    "clean_index": clean_index,
+                    "color": str(color).strip().lower(),
+                    "product": str(product_ref).strip(),
+                    "crop": crop,
+                    "asset": asset,
+                })
+
 
                 _logger.warning(
                     "[CORRECTION ASSET] "
-                    "JOB=%s | "
-                    "SOURCE_INDEX=%s | "
-                    "CLEAN_INDEX=%s | "
-                    "COLOR=%s | "
-                    "PRODUCT=%s | "
-                    "CROP=%s",
-                    self.id,
-                    source_index,
+                    "JOB=%s | SOURCE_INDEX=%s "
+                    "| CLEAN_INDEX=%s "
+                    "| COLOR=%s "
+                    "| PRODUCT=%s "
+                    "| CROP=%s",
+                    job_id,
+                    source_position,
                     clean_index,
-                    dominant_color,
-                    product_reference,
-                    crop_id
+                    color,
+                    product_ref,
+                    crop
                 )
 
 
-                # ================================================
-                # AUTHORITATIVE FAMILY A INDEX -> CLEAN INDEX
-                # ================================================
+            if not normalized_assets:
 
-                if (
-                    source_index is not None
-                    and
-                    clean_index is not None
-                    and
-                    clean_index != ""
-                ):
+                _logger.warning(
+                    "[VARIANT CORRECTION NO ASSETS] "
+                    "JOB=%s | PRODUCT=%s",
+                    job_id,
+                    product.get("name", "")
+                )
 
-                    if source_index in source_index_lookup:
-
-                        _logger.warning(
-                            "[SOURCE INDEX DUPLICATE] "
-                            "JOB=%s | "
-                            "SOURCE_INDEX=%s | "
-                            "EXISTING_CLEAN_INDEX=%s | "
-                            "NEW_CLEAN_INDEX=%s",
-                            self.id,
-                            source_index,
-                            source_index_lookup[source_index],
-                            clean_index
-                        )
-
-                    else:
-
-                        source_index_lookup[
-                            source_index
-                        ] = clean_index
+                return product
 
 
-                # =====================================================
-                # COLOR FALLBACK LOOKUP
-                # =====================================================
+            # ==========================================================
+            # BUILD LOOKUPS
+            #
+            # IMPORTANT:
+            # clean_index is the authoritative identity.
+            #
+            # Do NOT treat source position as clean_index.
+            # ==========================================================
 
-                if (
-                    clean_index is not None
-                    and
-                    clean_index != ""
-                    and
-                    dominant_color
-                ):
+            clean_lookup = {}
+
+            color_lookup = {}
+
+
+            for item in normalized_assets:
+
+                clean_index = item[
+                    "clean_index"
+                ]
+
+                clean_lookup.setdefault(
+                    clean_index,
+                    []
+                ).append(
+                    item
+                )
+
+
+                color = item[
+                    "color"
+                ]
+
+                if color:
 
                     color_lookup.setdefault(
-                        dominant_color,
+                        color,
                         []
                     ).append(
                         clean_index
                     )
 
+
             _logger.warning(
                 "[COLOR LOOKUP] "
                 "JOB=%s | %s",
-                self.id,
+                job_id,
                 color_lookup
             )
 
+
             _logger.warning(
-                "[SOURCE INDEX LOOKUP] "
+                "[CLEAN INDEX LOOKUP] "
                 "JOB=%s | %s",
-                self.id,
-                source_index_lookup
+                job_id,
+                {
+                    k: [
+                        x["source_position"]
+                        for x in v
+                    ]
+                    for k, v in clean_lookup.items()
+                }
             )
 
-            # =====================================================
-            # CORRECT EACH VARIANT
-            # =====================================================
 
-            for variant in product_data.get(
-                "variants",
-                []
-            ):
+            # ==========================================================
+            # COLOR NORMALIZATION HELPER
+            # ==========================================================
+
+            def normalize_color(value):
+
+                value = str(
+                    value or ""
+                ).strip().lower()
+
+                value = value.replace(
+                    "_",
+                    " "
+                )
+
+                value = value.replace(
+                    "-",
+                    " "
+                )
+
+                value = " ".join(
+                    value.split()
+                )
+
+                aliases = {
+
+                    "silver/chrome": "silver",
+                    "silver chrome": "silver",
+                    "chrome": "silver",
+
+                    "grey": "grey",
+                    "gray": "grey",
+
+                    "white": "white",
+                    "black": "black",
+                }
+
+                return aliases.get(
+                    value,
+                    value
+                )
+
+
+            # ==========================================================
+            # PROCESS VARIANTS
+            # ==========================================================
+
+            used_clean_indexes = set()
+
+
+            for variant in variants:
 
                 if not isinstance(
                     variant,
@@ -7551,9 +7684,9 @@ class VendorImportJob(models.Model):
                 ):
                     continue
 
+
                 attributes = variant.get(
-                    "attributes",
-                    {}
+                    "attributes"
                 )
 
                 if not isinstance(
@@ -7562,261 +7695,308 @@ class VendorImportJob(models.Model):
                 ):
                     attributes = {}
 
-                variant_color = str(
-                    attributes.get(
-                        "Color",
-                        ""
-                    )
+
+                variant_color = (
+                    attributes.get("Color")
+                    or attributes.get("color")
                     or ""
-                ).strip().lower()
+                )
+
+
+                normalized_variant_color = (
+                    normalize_color(
+                        variant_color
+                    )
+                )
+
 
                 old_index = variant.get(
                     "image_index"
                 )
 
+
                 _logger.warning(
                     "[CORRECTION VARIANT] "
-                    "JOB=%s | "
-                    "COLOR=%s | "
-                    "OLD_INDEX=%s",
-                    self.id,
+                    "JOB=%s | COLOR=%s "
+                    "| OLD_INDEX=%s",
+                    job_id,
                     variant_color,
                     old_index
                 )
 
-                if (
-                    old_index is not None
-                    and old_index in source_index_lookup
-                ):
 
-                    new_index = source_index_lookup[
-                        old_index
-                    ]
+                # ======================================================
+                # STEP 1
+                # AUTHORITATIVE CLEAN INDEX
+                #
+                # If the existing image_index corresponds to an actual
+                # clean_index in the authoritative pool, PRESERVE IT.
+                #
+                # THIS IS THE CRITICAL FIX.
+                # ======================================================
+
+                authoritative_index = None
+
+
+                if old_index is not None:
+
+                    try:
+
+                        candidate_index = int(
+                            old_index
+                        )
+
+                    except Exception:
+
+                        candidate_index = None
+
+
+                    if (
+                        candidate_index is not None
+                        and
+                        candidate_index in clean_lookup
+                    ):
+
+                        authoritative_index = (
+                            candidate_index
+                        )
+
+
+                # ======================================================
+                # STEP 2
+                # AUTHORITATIVE INDEX WINS
+                # ======================================================
+
+                if authoritative_index is not None:
+
+                    variant[
+                        "image_index"
+                    ] = authoritative_index
+
 
                     variant[
                         "source_image_index"
-                    ] = old_index
+                    ] = authoritative_index
 
-                    variant["image_index"] = new_index
+
+                    used_clean_indexes.add(
+                        authoritative_index
+                    )
+
 
                     _logger.warning(
                         "[CORRECTION AUTHORITATIVE INDEX] "
-                        "JOB=%s | "
-                        "PRODUCT=%s | "
-                        "COLOR=%s | "
-                        "SOURCE_INDEX=%s | "
-                        "NEW_CLEAN_INDEX=%s",
-                        self.id,
-                        product_name,
+                        "JOB=%s | PRODUCT=%s "
+                        "| COLOR=%s "
+                        "| SOURCE_INDEX=%s "
+                        "| NEW_CLEAN_INDEX=%s",
+                        job_id,
+                        product.get("name", ""),
                         variant_color,
-                        old_index,
-                        new_index
+                        authoritative_index,
+                        authoritative_index
                     )
 
+
                     continue
 
 
-                if not variant_color:
-                    continue
-
-                # =================================================
-                # SECOND PRIORITY:
-                # FIND AZURE CROP WHOSE PRODUCT REFERENCE
-                # EXPLICITLY MATCHES THIS VARIANT COLOR.
+                # ======================================================
+                # STEP 3
+                # COLOR FALLBACK ONLY
                 #
-                # This is only used when the authoritative
-                # Family A source index could not be resolved.
-                # =================================================
+                # We reach here ONLY when no valid authoritative
+                # clean_index exists.
+                # ======================================================
 
-                explicit_match = None
+                candidates = []
 
-                for asset in asset_pool:
 
-                    if not isinstance(
-                        asset,
-                        dict
-                    ):
-                        continue
+                if normalized_variant_color:
 
-                    clean_index = asset.get(
-                        "clean_index"
+                    candidates = (
+                        color_lookup.get(
+                            normalized_variant_color,
+                            []
+                        )
                     )
 
-                    if (
-                        clean_index is None
-                        or clean_index == ""
-                    ):
-                        continue
 
-                    product_reference = str(
-                        asset.get(
-                            "product_reference",
-                            ""
-                        )
-                        or ""
-                    ).strip().lower()
+                # ------------------------------------------------------
+                # Remove already-used assets when another suitable
+                # candidate exists.
+                # ------------------------------------------------------
 
-                    crop_id = str(
-                        asset.get(
-                            "crop_id",
-                            ""
-                        )
-                        or ""
-                    ).strip().lower()
+                unused_candidates = [
+                    idx
+                    for idx in candidates
+                    if idx not in used_clean_indexes
+                ]
 
-                    # -------------------------------------------------
-                    # Do not use pouch/folded/supporting assets as the
-                    # explicit variant image.
-                    # -------------------------------------------------
 
-                    supporting_text = (
-                        f"{product_reference} "
-                        f"{crop_id}"
+                if unused_candidates:
+
+                    candidates = (
+                        unused_candidates
                     )
 
-                    if any(
-                        keyword in supporting_text
-                        for keyword in (
-                            "pouch",
-                            "folded",
-                            "supporting",
-                            "gallery"
-                        )
-                    ):
-                        continue
 
-                    if (
-                        variant_color
-                        and
-                        variant_color in product_reference
-                    ):
+                if candidates:
 
-                        explicit_match = asset
-
-                        _logger.warning(
-                            "[CORRECTION EXPLICIT MATCH] "
-                            "JOB=%s | "
-                            "COLOR=%s | "
-                            "SOURCE_INDEX=%s | "
-                            "CLEAN_INDEX=%s | "
-                            "PRODUCT=%s | "
-                            "CROP=%s",
-
-                            self.id,
-                            variant_color,
-                            asset.get("index"),
-                            clean_index,
-                            asset.get("product_reference"),
-                            asset.get("crop_id")
-                        )
-
-                        break
-
-                # =================================================
-                # SECOND PRIORITY:
-                # MATCH BY DOMINANT COLOR
-                # =================================================
-
-                if explicit_match:
-
-                    new_index = explicit_match.get(
-                        "clean_index"
+                    selected_index = (
+                        candidates[0]
                     )
 
-                # elif variant_color in color_lookup:
 
-                #     new_index = color_lookup[
-                #         variant_color
-                #     ]
+                    variant[
+                        "image_index"
+                    ] = selected_index
 
-                #     _logger.warning(
-                #         "[CORRECTION COLOR MATCH] "
-                #         "JOB=%s | "
-                #         "COLOR=%s | "
-                #         "CLEAN_INDEX=%s",
-                #         self.id,
-                #         variant_color,
-                #         new_index
-                #     )
 
-                elif variant_color in color_lookup:
+                    variant[
+                        "source_image_index"
+                    ] = selected_index
 
-                    color_candidates = color_lookup[
-                        variant_color
-                    ]
 
-                    # -------------------------------------------------
-                    # Only use color when it identifies ONE asset.
-                    # Never guess between multiple assets sharing the
-                    # same color.
-                    # -------------------------------------------------
+                    used_clean_indexes.add(
+                        selected_index
+                    )
 
-                    if len(color_candidates) == 1:
-
-                        new_index = color_candidates[0]
-
-                        _logger.warning(
-                            "[CORRECTION COLOR MATCH] "
-                            "JOB=%s | "
-                            "COLOR=%s | "
-                            "CLEAN_INDEX=%s",
-                            self.id,
-                            variant_color,
-                            new_index
-                        )
-
-                else:
 
                     _logger.warning(
-                        "[CORRECTION COLOR AMBIGUOUS] "
-                        "JOB=%s | "
-                        "COLOR=%s | "
-                        "CANDIDATES=%s | "
-                        "KEEPING_INDEX=%s",
-                        self.id,
+                        "[CORRECTION COLOR MATCH] "
+                        "JOB=%s | COLOR=%s "
+                        "| CLEAN_INDEX=%s",
+                        job_id,
                         variant_color,
-                        color_candidates,
-                        old_index
+                        selected_index
                     )
+
 
                     continue
 
-                # =================================================
-                # APPLY CORRECTED CLEAN INDEX
-                # =================================================
 
-                variant[
-                    "image_index"
-                ] = new_index
+                # ======================================================
+                # STEP 4
+                # NO CORRECTION AVAILABLE
+                # ======================================================
 
                 _logger.warning(
-                    "[CORRECTION APPLIED] "
-                    "JOB=%s | "
-                    "PRODUCT=%s | "
-                    "COLOR=%s | "
-                    "SOURCE_INDEX=%s | "
-                    "NEW_CLEAN_INDEX=%s",
-                    self.id,
-                    product_name,
+                    "[CORRECTION NO MATCH] "
+                    "JOB=%s | PRODUCT=%s "
+                    "| COLOR=%s "
+                    "| OLD_INDEX=%s",
+                    job_id,
+                    product.get("name", ""),
                     variant_color,
-                    old_index,
-                    new_index
+                    old_index
                 )
 
-            return product_data
+
+            # ==========================================================
+            # FINAL COLLISION CHECK
+            # ==========================================================
+
+            final_index_map = {}
+
+
+            for variant in variants:
+
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+
+                attributes = variant.get(
+                    "attributes"
+                )
+
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    attributes = {}
+
+
+                color = (
+                    attributes.get("Color")
+                    or attributes.get("color")
+                    or ""
+                )
+
+
+                index = variant.get(
+                    "image_index"
+                )
+
+
+                if index is None:
+                    continue
+
+
+                try:
+
+                    index = int(
+                        index
+                    )
+
+                except Exception:
+
+                    continue
+
+
+                final_index_map.setdefault(
+                    index,
+                    []
+                ).append(
+                    color
+                )
+
+
+            for index, colors in (
+                final_index_map.items()
+            ):
+
+                if len(colors) > 1:
+
+                    _logger.warning(
+                        "[CORRECTION INDEX COLLISION] "
+                        "JOB=%s | CLEAN_INDEX=%s "
+                        "| COLORS=%s",
+                        job_id,
+                        index,
+                        colors
+                    )
+
+
+            # ==========================================================
+            # FINAL AUTHORITY LOG
+            # ==========================================================
+
+            _logger.warning(
+                "[AUTHORITY AFTER CORRECTION] "
+                "JOB=%s | PRODUCT=%s | VARIANTS=%s",
+                job_id,
+                product.get("name", ""),
+                variants
+            )
+
+
+            return product
+
 
         except Exception as e:
 
-            _logger.warning(
+            _logger.exception(
                 "[VARIANT CORRECTION FAILED] "
-                "JOB=%s | %s",
-                self.id,
-                str(e),
-                exc_info=True
+                "JOB=%s | ERROR=%s",
+                job_id,
+                str(e)
             )
 
-            return product_data
-
+            return product
 
     #==========build_product_family========================
     def _build_product_family(
