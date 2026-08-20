@@ -3034,42 +3034,167 @@ class VendorImportJob(models.Model):
                         'azure_fallback'
                     )
 
-
                 # =================================================
                 # PARTIAL FAMILY A RESULT
-                # → ALWAYS ENTER PARTIAL RECOVERY
-                #
-                # TEMPORARY TEST RULE:
-                # Do NOT require recovery-request count here.
-                #
-                # We are testing whether the PARTIAL state itself
-                # correctly enters the recovery state.
+                # → ENTER PARTIAL RECOVERY ONLY WHEN
+                #   ACTUAL RECOVERY REQUESTS EXIST
                 # =================================================
 
                 elif partial_pages:
 
+                    # -------------------------------------------------
+                    # Determine whether PARTIAL actually requires
+                    # recovery work.
+                    #
+                    # A PARTIAL decision by itself is NOT sufficient.
+                    #
+                    # Example:
+                    #
+                    # PARTIAL
+                    # missing_asset_requests = []
+                    #
+                    # means:
+                    #   Review has classified the page as PARTIAL,
+                    #   but there is nothing to crop/recover.
+                    #
+                    # Such a page must continue to PDF AI normally.
+                    # -------------------------------------------------
+
+                    recovery_request_count = 0
+                    recovery_request_pages = set()
+
+                    for page_result in review_result.get(
+                        "pages",
+                        []
+                    ):
+
+                        if not isinstance(
+                            page_result,
+                            dict
+                        ):
+                            continue
+
+                        try:
+                            page_number = int(
+                                page_result.get("page")
+                            )
+                        except (
+                            TypeError,
+                            ValueError
+                        ):
+                            continue
+
+                        if page_number not in partial_pages:
+                            continue
+
+                        page_decision = str(
+                            page_result.get(
+                                "decision",
+                                ""
+                            )
+                        ).upper().strip()
+
+                        if page_decision != "PARTIAL":
+                            continue
+
+                        requests = page_result.get(
+                            "missing_asset_requests",
+                            []
+                        )
+
+                        if not isinstance(
+                            requests,
+                            list
+                        ):
+                            continue
+
+                        # Only actual recovery requests count.
+                        valid_requests = [
+                            request
+                            for request in requests
+                            if isinstance(
+                                request,
+                                dict
+                            )
+                        ]
+
+                        if valid_requests:
+
+                            recovery_request_count += (
+                                len(valid_requests)
+                            )
+
+                            recovery_request_pages.add(
+                                page_number
+                            )
+
                     _logger.warning(
-                        "[FAMILY A ROUTING] "
-                        "PARTIAL RESULT "
-                        "→ FAMILY A PARTIAL RECOVERY "
+                        "[FAMILY A ROUTING] PARTIAL ANALYSIS "
                         "| JOB=%s "
                         "| PARTIAL_PAGES=%s "
-                        "| PASSED_PAGES=%s "
-                        "| FAILED_PAGES=%s",
+                        "| RECOVERY_REQUEST_PAGES=%s "
+                        "| RECOVERY_REQUEST_COUNT=%s",
                         self.id,
                         partial_pages,
-                        passed_pages,
-                        failed_pages,
+                        sorted(
+                            recovery_request_pages
+                        ),
+                        recovery_request_count,
                     )
 
-                    self.last_known_state = (
-                        'family_a_partial_recovery'
-                    )
+                    # =================================================
+                    # ACTIONABLE PARTIAL
+                    # =================================================
 
-                    self.state = (
-                        'family_a_partial_recovery'
-                    )
+                    if recovery_request_count > 0:
 
+                        _logger.warning(
+                            "[FAMILY A ROUTING] "
+                            "ACTIONABLE PARTIAL "
+                            "→ FAMILY A PARTIAL RECOVERY "
+                            "| JOB=%s "
+                            "| PARTIAL_PAGES=%s "
+                            "| RECOVERY_PAGES=%s "
+                            "| REQUESTS=%s",
+                            self.id,
+                            partial_pages,
+                            sorted(
+                                recovery_request_pages
+                            ),
+                            recovery_request_count,
+                        )
+
+                        self.last_known_state = (
+                            'family_a_partial_recovery'
+                        )
+
+                        self.state = (
+                            'family_a_partial_recovery'
+                        )
+
+                    # =================================================
+                    # NON-ACTIONABLE PARTIAL
+                    # =================================================
+
+                    else:
+
+                        _logger.warning(
+                            "[FAMILY A ROUTING] "
+                            "PARTIAL BUT NO RECOVERY REQUIRED "
+                            "→ PDF AI "
+                            "| JOB=%s "
+                            "| PARTIAL_PAGES=%s",
+                            self.id,
+                            partial_pages,
+                        )
+
+                        self.last_known_state = (
+                            'pdf_ai'
+                        )
+
+                        self.state = (
+                            'pdf_ai'
+                        )
 
                 # =================================================
                 # COMPLETE FAMILY A SUCCESS
@@ -3513,9 +3638,18 @@ class VendorImportJob(models.Model):
                         )
                     )
 
+
+                    # =================================================
+                    # RECOVERY REQUEST SAFETY
+                    # =================================================
+
                     pages_with_requests = {
                         item["page"]
                         for item in recovery_requests
+                        if isinstance(
+                            item,
+                            dict
+                        )
                     }
 
                     pages_without_requests = sorted(
@@ -3523,54 +3657,99 @@ class VendorImportJob(models.Model):
                         - pages_with_requests
                     )
 
-                    if pages_without_requests:
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "REQUEST COVERAGE "
+                        "| JOB=%s "
+                        "| PARTIAL_PAGES=%s "
+                        "| PAGES_WITH_REQUESTS=%s "
+                        "| PAGES_WITHOUT_REQUESTS=%s "
+                        "| TOTAL_REQUESTS=%s",
+                        self.id,
+                        partial_pages,
+                        sorted(
+                            pages_with_requests
+                        ),
+                        pages_without_requests,
+                        len(recovery_requests),
+                    )
 
-                        if pages_without_requests:
-
-                            diagnostic = {
-                                "partial_pages": partial_pages,
-                                "pages_with_requests": sorted(
-                                    pages_with_requests
-                                ),
-                                "pages_without_requests": (
-                                    pages_without_requests
-                                ),
-                                "total_recovery_requests": (
-                                    len(recovery_requests)
-                                ),
-                                "family_a_page_count": len(
-                                    family_a_review.get(
-                                        "pages",
-                                        []
-                                    )
-                                )
-                            }
-
-                            _logger.error(
-                                "[FAMILY A PARTIAL RECOVERY] "
-                                "MISSING RECOVERY TARGETS "
-                                "| JOB=%s | DIAGNOSTIC=%s",
-                                self.id,
-                                json.dumps(
-                                    diagnostic,
-                                    ensure_ascii=False,
-                                    default=str
-                                )
-                            )
-
-                            raise ValueError(
-                                "Family A PARTIAL recovery target construction failed. "
-                                f"Partial pages={partial_pages}; "
-                                f"pages with requests={sorted(pages_with_requests)}; "
-                                f"pages without requests={pages_without_requests}; "
-                                f"total requests={len(recovery_requests)}."
-                            )
+                    # -------------------------------------------------
+                    # No actual recovery work.
+                    #
+                    # This should normally be prevented by the routing
+                    # block above, but keep this guard here as a second
+                    # line of protection.
+                    # -------------------------------------------------
 
                     if not recovery_requests:
 
-                        raise ValueError(
-                            "Family A partial recovery contains "
-                            "no recovery requests."
+                        _logger.warning(
+                            "[FAMILY A PARTIAL RECOVERY] "
+                            "NO ACTIONABLE RECOVERY REQUESTS "
+                            "→ PDF AI "
+                            "| JOB=%s "
+                            "| PARTIAL_PAGES=%s",
+                            self.id,
+                            partial_pages,
+                        )
+
+                        self.family_a_partial_recovery_json = (
+                            json.dumps(
+                                {
+                                    "decision":
+                                        "NO_RECOVERY_REQUIRED",
+
+                                    "partial_pages":
+                                        partial_pages,
+
+                                    "recovery_requests":
+                                        [],
+                                },
+                                ensure_ascii=False
+                            )
+                        )
+
+                        self.stage_retry_count = 0
+                        self.last_error = False
+
+                        self.last_known_state = (
+                            'pdf_ai'
+                        )
+
+                        self.state = (
+                            'pdf_ai'
+                        )
+
+                        self.flush_recordset()
+                        self.env.cr.commit()
+
+                        return
+
+
+                    # -------------------------------------------------
+                    # Some PARTIAL pages may legitimately have no
+                    # recovery request.
+                    #
+                    # They are NOT an error.
+                    #
+                    # Only pages represented in recovery_requests
+                    # require precision recovery.
+                    # -------------------------------------------------
+
+                    if pages_without_requests:
+
+                        _logger.warning(
+                            "[FAMILY A PARTIAL RECOVERY] "
+                            "NON-ACTIONABLE PARTIAL PAGES "
+                            "| JOB=%s "
+                            "| PAGES=%s "
+                            "| ACTIONABLE_PAGES=%s",
+                            self.id,
+                            pages_without_requests,
+                            sorted(
+                                pages_with_requests
+                            ),
                         )
 
                     # =================================================
@@ -4136,6 +4315,10 @@ class VendorImportJob(models.Model):
         # =====================================
 
         "silver": "#C0C0C0",
+        "chrome": "#C0C0C0",
+        "silver/chrome": "#C0C0C0",
+        "silver chrome": "#C0C0C0",
+        "chrome finish": "#C0C0C0",
         "gold": "#D4AF37",
 
         # =====================================
@@ -7384,40 +7567,95 @@ class VendorImportJob(models.Model):
     # =========================================================
     # CORRECT VARIANT IMAGE INDEXES
     # =========================================================
+
     def _correct_variant_image_indexes(
         self,
-        product_data,
-        asset_pool
+        product,
+        page_images,
+        job_id=None,
     ):
+        """
+        Correct variant image indexes using Family-A authority.
+
+        RULE:
+            1. An authoritative Family-A clean_index ALWAYS wins.
+            2. Color matching is ONLY a fallback.
+            3. Never convert an authoritative clean_index through
+            pool/source-position mappings.
+            4. Never allow two variants to silently collapse onto the
+            same authoritative asset when distinct authoritative
+            assets exist.
+        """
 
         try:
 
-            product_name = (
-                product_data.get("name")
-                or ""
-            ).strip()
+            # ==========================================================
+            # BASIC VALIDATION
+            # ==========================================================
+
+            if not isinstance(product, dict):
+
+                _logger.warning(
+                    "[VARIANT CORRECTION SKIPPED] "
+                    "JOB=%s | PRODUCT IS NOT DICT",
+                    job_id
+                )
+
+                return product
+
+
+            variants = product.get(
+                "variants"
+            )
+
+            if not isinstance(
+                variants,
+                list
+            ):
+
+                _logger.warning(
+                    "[VARIANT CORRECTION SKIPPED] "
+                    "JOB=%s | PRODUCT=%s | NO VARIANTS",
+                    job_id,
+                    product.get("name", "")
+                )
+
+                return product
+
+
+            if not isinstance(
+                page_images,
+                list
+            ):
+
+                _logger.warning(
+                    "[VARIANT CORRECTION SKIPPED] "
+                    "JOB=%s | PRODUCT=%s | INVALID ASSETS",
+                    job_id,
+                    product.get("name", "")
+                )
+
+                return product
+
 
             _logger.warning(
                 "[VARIANT CORRECTION START] "
                 "JOB=%s | PRODUCT=%s | ASSETS=%s",
-                self.id,
-                product_name,
-                len(asset_pool)
+                job_id,
+                product.get("name", ""),
+                len(page_images)
             )
 
-            # =====================================================
-            # BUILD AUTHORITATIVE SOURCE INDEX -> CLEAN INDEX
-            # =====================================================
 
-            source_index_lookup = {}
+            # ==========================================================
+            # NORMALIZE ASSETS
+            # ==========================================================
 
-            # =====================================================
-            # BUILD COLOR -> ACTUAL CLEAN INDEX LOOKUP
-            # =====================================================
+            normalized_assets = []
 
-            color_lookup = {}
-
-            for asset in asset_pool:
+            for source_position, asset in enumerate(
+                page_images
+            ):
 
                 if not isinstance(
                     asset,
@@ -7425,125 +7663,203 @@ class VendorImportJob(models.Model):
                 ):
                     continue
 
+
                 clean_index = asset.get(
                     "clean_index"
                 )
 
-                source_index = asset.get(
-                    "index"
+                if clean_index is None:
+
+                    # Do NOT invent a clean index if one
+                    # does not exist.
+                    continue
+
+
+                try:
+
+                    clean_index = int(
+                        clean_index
+                    )
+
+                except Exception:
+
+                    continue
+
+
+                color = (
+                    asset.get("color")
+                    or asset.get("dominant_color")
+                    or ""
                 )
 
-                dominant_color = str(
-                    asset.get(
-                        "dominant_color",
-                        ""
-                    )
-                    or ""
-                ).strip().lower()
 
-                product_reference = str(
-                    asset.get(
-                        "product_reference",
-                        ""
-                    )
+                product_ref = (
+                    asset.get("product")
+                    or asset.get("product_name")
                     or ""
-                ).strip()
-
-                crop_id = asset.get(
-                    "crop_id"
                 )
+
+
+                crop = (
+                    asset.get("crop")
+                    or asset.get("crop_name")
+                    or asset.get("asset_group")
+                )
+
+
+                normalized_assets.append({
+                    "source_position": source_position,
+                    "clean_index": clean_index,
+                    "color": str(color).strip().lower(),
+                    "product": str(product_ref).strip(),
+                    "crop": crop,
+                    "asset": asset,
+                })
+
 
                 _logger.warning(
                     "[CORRECTION ASSET] "
-                    "JOB=%s | "
-                    "SOURCE_INDEX=%s | "
-                    "CLEAN_INDEX=%s | "
-                    "COLOR=%s | "
-                    "PRODUCT=%s | "
-                    "CROP=%s",
-                    self.id,
-                    source_index,
+                    "JOB=%s | SOURCE_INDEX=%s "
+                    "| CLEAN_INDEX=%s "
+                    "| COLOR=%s "
+                    "| PRODUCT=%s "
+                    "| CROP=%s",
+                    job_id,
+                    source_position,
                     clean_index,
-                    dominant_color,
-                    product_reference,
-                    crop_id
+                    color,
+                    product_ref,
+                    crop
                 )
 
 
-                # ================================================
-                # AUTHORITATIVE FAMILY A INDEX -> CLEAN INDEX
-                # ================================================
+            if not normalized_assets:
 
-                if (
-                    source_index is not None
-                    and
-                    clean_index is not None
-                    and
-                    clean_index != ""
-                ):
+                _logger.warning(
+                    "[VARIANT CORRECTION NO ASSETS] "
+                    "JOB=%s | PRODUCT=%s",
+                    job_id,
+                    product.get("name", "")
+                )
 
-                    if source_index in source_index_lookup:
-
-                        _logger.warning(
-                            "[SOURCE INDEX DUPLICATE] "
-                            "JOB=%s | "
-                            "SOURCE_INDEX=%s | "
-                            "EXISTING_CLEAN_INDEX=%s | "
-                            "NEW_CLEAN_INDEX=%s",
-                            self.id,
-                            source_index,
-                            source_index_lookup[source_index],
-                            clean_index
-                        )
-
-                    else:
-
-                        source_index_lookup[
-                            source_index
-                        ] = clean_index
+                return product
 
 
-                # =====================================================
-                # COLOR FALLBACK LOOKUP
-                # =====================================================
+            # ==========================================================
+            # BUILD LOOKUPS
+            #
+            # IMPORTANT:
+            # clean_index is the authoritative identity.
+            #
+            # Do NOT treat source position as clean_index.
+            # ==========================================================
 
-                if (
-                    clean_index is not None
-                    and
-                    clean_index != ""
-                    and
-                    dominant_color
-                ):
+            clean_lookup = {}
+
+            color_lookup = {}
+
+
+            for item in normalized_assets:
+
+                clean_index = item[
+                    "clean_index"
+                ]
+
+                clean_lookup.setdefault(
+                    clean_index,
+                    []
+                ).append(
+                    item
+                )
+
+
+                color = item[
+                    "color"
+                ]
+
+                if color:
 
                     color_lookup.setdefault(
-                        dominant_color,
+                        color,
                         []
                     ).append(
                         clean_index
                     )
 
+
             _logger.warning(
                 "[COLOR LOOKUP] "
                 "JOB=%s | %s",
-                self.id,
+                job_id,
                 color_lookup
             )
 
+
             _logger.warning(
-                "[SOURCE INDEX LOOKUP] "
+                "[CLEAN INDEX LOOKUP] "
                 "JOB=%s | %s",
-                self.id,
-                source_index_lookup
+                job_id,
+                {
+                    k: [
+                        x["source_position"]
+                        for x in v
+                    ]
+                    for k, v in clean_lookup.items()
+                }
             )
 
-            # =====================================================
-            # CORRECT EACH VARIANT
-            # =====================================================
 
-            for variant in product_data.get(
-                "variants",
-                []
-            ):
+            # ==========================================================
+            # COLOR NORMALIZATION HELPER
+            # ==========================================================
+
+            def normalize_color(value):
+
+                value = str(
+                    value or ""
+                ).strip().lower()
+
+                value = value.replace(
+                    "_",
+                    " "
+                )
+
+                value = value.replace(
+                    "-",
+                    " "
+                )
+
+                value = " ".join(
+                    value.split()
+                )
+
+                aliases = {
+
+                    "silver/chrome": "silver",
+                    "silver chrome": "silver",
+                    "chrome": "silver",
+
+                    "grey": "grey",
+                    "gray": "grey",
+
+                    "white": "white",
+                    "black": "black",
+                }
+
+                return aliases.get(
+                    value,
+                    value
+                )
+
+
+            # ==========================================================
+            # PROCESS VARIANTS
+            # ==========================================================
+
+            used_clean_indexes = set()
+
+
+            for variant in variants:
 
                 if not isinstance(
                     variant,
@@ -7551,9 +7867,9 @@ class VendorImportJob(models.Model):
                 ):
                     continue
 
+
                 attributes = variant.get(
-                    "attributes",
-                    {}
+                    "attributes"
                 )
 
                 if not isinstance(
@@ -7562,261 +7878,308 @@ class VendorImportJob(models.Model):
                 ):
                     attributes = {}
 
-                variant_color = str(
-                    attributes.get(
-                        "Color",
-                        ""
-                    )
+
+                variant_color = (
+                    attributes.get("Color")
+                    or attributes.get("color")
                     or ""
-                ).strip().lower()
+                )
+
+
+                normalized_variant_color = (
+                    normalize_color(
+                        variant_color
+                    )
+                )
+
 
                 old_index = variant.get(
                     "image_index"
                 )
 
+
                 _logger.warning(
                     "[CORRECTION VARIANT] "
-                    "JOB=%s | "
-                    "COLOR=%s | "
-                    "OLD_INDEX=%s",
-                    self.id,
+                    "JOB=%s | COLOR=%s "
+                    "| OLD_INDEX=%s",
+                    job_id,
                     variant_color,
                     old_index
                 )
 
-                if (
-                    old_index is not None
-                    and old_index in source_index_lookup
-                ):
 
-                    new_index = source_index_lookup[
-                        old_index
-                    ]
+                # ======================================================
+                # STEP 1
+                # AUTHORITATIVE CLEAN INDEX
+                #
+                # If the existing image_index corresponds to an actual
+                # clean_index in the authoritative pool, PRESERVE IT.
+                #
+                # THIS IS THE CRITICAL FIX.
+                # ======================================================
+
+                authoritative_index = None
+
+
+                if old_index is not None:
+
+                    try:
+
+                        candidate_index = int(
+                            old_index
+                        )
+
+                    except Exception:
+
+                        candidate_index = None
+
+
+                    if (
+                        candidate_index is not None
+                        and
+                        candidate_index in clean_lookup
+                    ):
+
+                        authoritative_index = (
+                            candidate_index
+                        )
+
+
+                # ======================================================
+                # STEP 2
+                # AUTHORITATIVE INDEX WINS
+                # ======================================================
+
+                if authoritative_index is not None:
+
+                    variant[
+                        "image_index"
+                    ] = authoritative_index
+
 
                     variant[
                         "source_image_index"
-                    ] = old_index
+                    ] = authoritative_index
 
-                    variant["image_index"] = new_index
+
+                    used_clean_indexes.add(
+                        authoritative_index
+                    )
+
 
                     _logger.warning(
                         "[CORRECTION AUTHORITATIVE INDEX] "
-                        "JOB=%s | "
-                        "PRODUCT=%s | "
-                        "COLOR=%s | "
-                        "SOURCE_INDEX=%s | "
-                        "NEW_CLEAN_INDEX=%s",
-                        self.id,
-                        product_name,
+                        "JOB=%s | PRODUCT=%s "
+                        "| COLOR=%s "
+                        "| SOURCE_INDEX=%s "
+                        "| NEW_CLEAN_INDEX=%s",
+                        job_id,
+                        product.get("name", ""),
                         variant_color,
-                        old_index,
-                        new_index
+                        authoritative_index,
+                        authoritative_index
                     )
 
+
                     continue
 
 
-                if not variant_color:
-                    continue
-
-                # =================================================
-                # SECOND PRIORITY:
-                # FIND AZURE CROP WHOSE PRODUCT REFERENCE
-                # EXPLICITLY MATCHES THIS VARIANT COLOR.
+                # ======================================================
+                # STEP 3
+                # COLOR FALLBACK ONLY
                 #
-                # This is only used when the authoritative
-                # Family A source index could not be resolved.
-                # =================================================
+                # We reach here ONLY when no valid authoritative
+                # clean_index exists.
+                # ======================================================
 
-                explicit_match = None
+                candidates = []
 
-                for asset in asset_pool:
 
-                    if not isinstance(
-                        asset,
-                        dict
-                    ):
-                        continue
+                if normalized_variant_color:
 
-                    clean_index = asset.get(
-                        "clean_index"
+                    candidates = (
+                        color_lookup.get(
+                            normalized_variant_color,
+                            []
+                        )
                     )
 
-                    if (
-                        clean_index is None
-                        or clean_index == ""
-                    ):
-                        continue
 
-                    product_reference = str(
-                        asset.get(
-                            "product_reference",
-                            ""
-                        )
-                        or ""
-                    ).strip().lower()
+                # ------------------------------------------------------
+                # Remove already-used assets when another suitable
+                # candidate exists.
+                # ------------------------------------------------------
 
-                    crop_id = str(
-                        asset.get(
-                            "crop_id",
-                            ""
-                        )
-                        or ""
-                    ).strip().lower()
+                unused_candidates = [
+                    idx
+                    for idx in candidates
+                    if idx not in used_clean_indexes
+                ]
 
-                    # -------------------------------------------------
-                    # Do not use pouch/folded/supporting assets as the
-                    # explicit variant image.
-                    # -------------------------------------------------
 
-                    supporting_text = (
-                        f"{product_reference} "
-                        f"{crop_id}"
+                if unused_candidates:
+
+                    candidates = (
+                        unused_candidates
                     )
 
-                    if any(
-                        keyword in supporting_text
-                        for keyword in (
-                            "pouch",
-                            "folded",
-                            "supporting",
-                            "gallery"
-                        )
-                    ):
-                        continue
 
-                    if (
-                        variant_color
-                        and
-                        variant_color in product_reference
-                    ):
+                if candidates:
 
-                        explicit_match = asset
-
-                        _logger.warning(
-                            "[CORRECTION EXPLICIT MATCH] "
-                            "JOB=%s | "
-                            "COLOR=%s | "
-                            "SOURCE_INDEX=%s | "
-                            "CLEAN_INDEX=%s | "
-                            "PRODUCT=%s | "
-                            "CROP=%s",
-
-                            self.id,
-                            variant_color,
-                            asset.get("index"),
-                            clean_index,
-                            asset.get("product_reference"),
-                            asset.get("crop_id")
-                        )
-
-                        break
-
-                # =================================================
-                # SECOND PRIORITY:
-                # MATCH BY DOMINANT COLOR
-                # =================================================
-
-                if explicit_match:
-
-                    new_index = explicit_match.get(
-                        "clean_index"
+                    selected_index = (
+                        candidates[0]
                     )
 
-                # elif variant_color in color_lookup:
 
-                #     new_index = color_lookup[
-                #         variant_color
-                #     ]
+                    variant[
+                        "image_index"
+                    ] = selected_index
 
-                #     _logger.warning(
-                #         "[CORRECTION COLOR MATCH] "
-                #         "JOB=%s | "
-                #         "COLOR=%s | "
-                #         "CLEAN_INDEX=%s",
-                #         self.id,
-                #         variant_color,
-                #         new_index
-                #     )
 
-                elif variant_color in color_lookup:
+                    variant[
+                        "source_image_index"
+                    ] = selected_index
 
-                    color_candidates = color_lookup[
-                        variant_color
-                    ]
 
-                    # -------------------------------------------------
-                    # Only use color when it identifies ONE asset.
-                    # Never guess between multiple assets sharing the
-                    # same color.
-                    # -------------------------------------------------
+                    used_clean_indexes.add(
+                        selected_index
+                    )
 
-                    if len(color_candidates) == 1:
-
-                        new_index = color_candidates[0]
-
-                        _logger.warning(
-                            "[CORRECTION COLOR MATCH] "
-                            "JOB=%s | "
-                            "COLOR=%s | "
-                            "CLEAN_INDEX=%s",
-                            self.id,
-                            variant_color,
-                            new_index
-                        )
-
-                else:
 
                     _logger.warning(
-                        "[CORRECTION COLOR AMBIGUOUS] "
-                        "JOB=%s | "
-                        "COLOR=%s | "
-                        "CANDIDATES=%s | "
-                        "KEEPING_INDEX=%s",
-                        self.id,
+                        "[CORRECTION COLOR MATCH] "
+                        "JOB=%s | COLOR=%s "
+                        "| CLEAN_INDEX=%s",
+                        job_id,
                         variant_color,
-                        color_candidates,
-                        old_index
+                        selected_index
                     )
+
 
                     continue
 
-                # =================================================
-                # APPLY CORRECTED CLEAN INDEX
-                # =================================================
 
-                variant[
-                    "image_index"
-                ] = new_index
+                # ======================================================
+                # STEP 4
+                # NO CORRECTION AVAILABLE
+                # ======================================================
 
                 _logger.warning(
-                    "[CORRECTION APPLIED] "
-                    "JOB=%s | "
-                    "PRODUCT=%s | "
-                    "COLOR=%s | "
-                    "SOURCE_INDEX=%s | "
-                    "NEW_CLEAN_INDEX=%s",
-                    self.id,
-                    product_name,
+                    "[CORRECTION NO MATCH] "
+                    "JOB=%s | PRODUCT=%s "
+                    "| COLOR=%s "
+                    "| OLD_INDEX=%s",
+                    job_id,
+                    product.get("name", ""),
                     variant_color,
-                    old_index,
-                    new_index
+                    old_index
                 )
 
-            return product_data
+
+            # ==========================================================
+            # FINAL COLLISION CHECK
+            # ==========================================================
+
+            final_index_map = {}
+
+
+            for variant in variants:
+
+                if not isinstance(
+                    variant,
+                    dict
+                ):
+                    continue
+
+
+                attributes = variant.get(
+                    "attributes"
+                )
+
+                if not isinstance(
+                    attributes,
+                    dict
+                ):
+                    attributes = {}
+
+
+                color = (
+                    attributes.get("Color")
+                    or attributes.get("color")
+                    or ""
+                )
+
+
+                index = variant.get(
+                    "image_index"
+                )
+
+
+                if index is None:
+                    continue
+
+
+                try:
+
+                    index = int(
+                        index
+                    )
+
+                except Exception:
+
+                    continue
+
+
+                final_index_map.setdefault(
+                    index,
+                    []
+                ).append(
+                    color
+                )
+
+
+            for index, colors in (
+                final_index_map.items()
+            ):
+
+                if len(colors) > 1:
+
+                    _logger.warning(
+                        "[CORRECTION INDEX COLLISION] "
+                        "JOB=%s | CLEAN_INDEX=%s "
+                        "| COLORS=%s",
+                        job_id,
+                        index,
+                        colors
+                    )
+
+
+            # ==========================================================
+            # FINAL AUTHORITY LOG
+            # ==========================================================
+
+            _logger.warning(
+                "[AUTHORITY AFTER CORRECTION] "
+                "JOB=%s | PRODUCT=%s | VARIANTS=%s",
+                job_id,
+                product.get("name", ""),
+                variants
+            )
+
+
+            return product
+
 
         except Exception as e:
 
-            _logger.warning(
+            _logger.exception(
                 "[VARIANT CORRECTION FAILED] "
-                "JOB=%s | %s",
-                self.id,
-                str(e),
-                exc_info=True
+                "JOB=%s | ERROR=%s",
+                job_id,
+                str(e)
             )
 
-            return product_data
-
+            return product
 
     #==========build_product_family========================
     def _build_product_family(
@@ -13570,29 +13933,118 @@ class VendorImportJob(models.Model):
                     best_index not in valid_indexes
                 ):
 
-                    best_index = (
+                
+                    # =====================================================
+                    # OPTIONAL HERO IMAGE MATCH
+                    # =====================================================
+
+                    matched_clean_index = (
                         self.match_image_index_with_ai(
                             product_name,
                             page_images
                         )
                     )
 
-                    if isinstance(best_index, int):
+
+                    # =====================================================
+                    # HERO MATCH RESULT IS NON-DESTRUCTIVE
+                    # =====================================================
+
+                    if isinstance(
+                        matched_clean_index,
+                        int
+                    ):
 
                         try:
 
-                            matched_asset = page_images[
-                                best_index
-                            ]
+                            # =================================================
+                            # RESOLVE BY CLEAN INDEX
+                            # =================================================
+                            #
+                            # DO NOT use:
+                            #
+                            #     page_images[matched_clean_index]
+                            #
+                            # because clean_index is an identity value,
+                            # not necessarily the Python list position.
+                            # =================================================
 
-                            if isinstance(matched_asset, dict):
+                            matched_asset = next(
+                                (
+                                    asset
+                                    for asset in page_images
+                                    if (
+                                        isinstance(
+                                            asset,
+                                            dict
+                                        )
+                                        and asset.get(
+                                            "clean_index"
+                                        ) == matched_clean_index
+                                    )
+                                ),
+                                None
+                            )
 
-                                best_index = matched_asset.get(
-                                    "clean_index"
+
+                            if isinstance(
+                                matched_asset,
+                                dict
+                            ):
+
+                                best_index = (
+                                    matched_asset.get(
+                                        "clean_index"
+                                    )
                                 )
 
-                        except Exception:
-                            pass
+
+                                _logger.warning(
+                                    "[PDF HERO MATCH] "
+                                    "PRODUCT=%s "
+                                    "| CLEAN_INDEX=%s "
+                                    "| HERO_INDEX=%s",
+                                    product_name,
+                                    matched_clean_index,
+                                    best_index
+                                )
+
+
+                            else:
+
+                                _logger.warning(
+                                    "[PDF HERO MATCH RESOLUTION FAILED] "
+                                    "PRODUCT=%s "
+                                    "| CLEAN_INDEX=%s "
+                                    "| REASON=ASSET_NOT_FOUND",
+                                    product_name,
+                                    matched_clean_index
+                                )
+
+
+                        except Exception as e:
+
+                            _logger.warning(
+                                "[PDF HERO MATCH RESOLUTION FAILED] "
+                                "PRODUCT=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| ERROR=%s",
+                                product_name,
+                                matched_clean_index,
+                                str(e)
+                            )
+
+
+                    else:
+
+                        _logger.warning(
+                            "[PDF HERO MATCH] "
+                            "PRODUCT=%s "
+                            "| NO OVERRIDE "
+                            "| EXISTING_HERO=%s",
+                            product_name,
+                            best_index
+                        )
 
                 if best_index is not None:
 
@@ -13612,19 +14064,48 @@ class VendorImportJob(models.Model):
             except Exception as e:
 
                 _logger.warning(
-
                     f"[PDF IMAGE MATCH FAILED] "
-
                     f"{str(e)}"
-
                 )
+
+
+        # =====================================================
+        # VARIANT IMAGE AUTHORITY
+        # =====================================================
+
+        _logger.warning(
+            "[VARIANT IMAGE AUTHORITY] "
+            "PRODUCT=%s | VARIANTS=%s",
+            product_name,
+            [
+                {
+                    "color": (
+                        v.get(
+                            "attributes",
+                            {}
+                        ).get(
+                            "Color"
+                        )
+                    ),
+                    "image_index": (
+                        v.get(
+                            "image_index"
+                        )
+                    )
+                }
+                for v in prod.get(
+                    "variants",
+                    []
+                )
+            ]
+        )
+
 
         # =====================================================
         # MERGE RESULTS
         # =====================================================
 
         existing_map = {}
-
 
         for p in existing_pages:
 
@@ -18964,6 +19445,93 @@ class VendorImportJob(models.Model):
 
         Product structure is determined from the ORIGINAL CATALOGUE PAGE,
         not from the number of successfully extracted images.
+
+        =====================================================
+        ASSETS RECEIVED DECISION RULES — AUTHORITATIVE
+        =====================================================
+
+        The decision MUST be based on the condition of the
+        REQUIRED MARKETABLE PRODUCTS, not on the mere presence
+        of unwanted or non-product extracted assets.
+
+        PASS
+        ----
+        Return PASS when ALL required marketable products or
+        variants visible on the catalogue page have trustworthy,
+        complete, individually usable product images.
+
+        A page MUST remain PASS when:
+        - all required product/variant members are present;
+        - their marketable product bodies are complete and
+        trustworthy;
+        - no required product/variant is missing;
+        - no required product image is materially chopped,
+        truncated, or unusable; and
+        - extra extracted assets are correctly identified as
+        DECORATIVE, irrelevant, non-product, or otherwise
+        unnecessary and marked preserve=false.
+
+        IMPORTANT:
+        The presence of a decorative, graphic, irrelevant,
+        or other unwanted extracted asset by itself MUST NOT
+        change PASS to PARTIAL.
+
+        Do NOT use PARTIAL merely because an unwanted asset
+        was extracted.
+
+        PARTIAL
+        -------
+        Return PARTIAL ONLY when the extraction contains a
+        REAL MARKETABLE PRODUCT defect that requires recovery.
+
+        Examples:
+        - one required variant/member is missing;
+        - a required marketable product image is badly cropped;
+        - a required marketable product is chopped/truncated;
+        - only part of a required marketable product survived;
+        - a required product image is otherwise not trustworthy
+        enough to represent the complete marketable product.
+
+        A page with all required marketable products complete
+        and trustworthy MUST NOT be PARTIAL merely because
+        an additional decorative/non-product asset exists.
+
+        FAIL
+        ----
+        Return FAIL only when the extraction has fundamentally
+        failed to recover trustworthy individual marketable
+        product imagery.
+
+        FAIL means that NONE of the extracted product images
+        can be trusted as a usable individual marketable product
+        image, or the page's product imagery has fundamentally
+        failed.
+
+        Do NOT use FAIL merely because one variant is missing
+        or one product image is badly cropped. Those are PARTIAL
+        conditions when at least one trustworthy marketable
+        product survives.
+
+        =====================================================
+        RECOVERY CONSISTENCY RULE
+        =====================================================
+
+        Before returning PARTIAL, verify that the PARTIAL
+        condition represents an actual missing or defective
+        marketable product asset.
+
+        If:
+        - all required marketable variants/products are present,
+        - their product bodies are complete,
+        - they are trustworthy,
+        - missing_items is empty, and
+        - missing_asset_requests is empty,
+
+        then the decision MUST be PASS, even if one or more
+        extra assets are classified as DECORATIVE or otherwise
+        unnecessary.
+
+        Do not return PARTIAL in that situation.
        
         ================================================================
         PARTIAL PAGE
@@ -26904,6 +27472,25 @@ class VendorImportJob(models.Model):
                             img.encode("utf-8")
                         ).hexdigest()
 
+
+                    # =====================================================
+                    # INCOMING CLEAN INDEX
+                    # =====================================================
+                    #
+                    # This must be available BEFORE the Family A
+                    # precision-recovery branch.
+                    #
+                    # Precision recovery assets are created after the
+                    # original Family A extracted_asset_mapping, so they
+                    # may not have a normal Family A page/index lookup.
+                    # Their own clean_index is therefore the identity
+                    # we must preserve.
+                    # =====================================================
+
+                    incoming_index = asset.get(
+                        "clean_index"
+                    )
+
                     family_a_authority = (
                         family_a_authority_by_hash.get(
                             incoming_hash
@@ -26928,6 +27515,102 @@ class VendorImportJob(models.Model):
                                 )
                             )
 
+
+                    # ======================================================
+                    # 3. FAMILY A PRECISION-RECOVERY ASSET
+                    # ======================================================
+                    #
+                    # Precision recovery assets such as:
+                    #
+                    #     family_crop_1
+                    #
+                    # are created AFTER the original Family A
+                    # extracted_asset_mapping was produced.
+                    #
+                    # Therefore they may NOT have a normal
+                    # Family A (page_number, image_index) entry.
+                    #
+                    # However, the recovery asset itself carries
+                    # authoritative Family A metadata.
+                    #
+                    # If this is a Family A precision crop, preserve
+                    # that authority directly.
+                    # ======================================================
+
+                    is_family_a_precision_crop = (
+                        isinstance(asset, dict)
+                        and (
+                            asset.get("family_a_precision_crop") is True
+                            or asset.get("family_a_recovery") is True
+                            or (
+                                asset.get("crop_id")
+                                and str(
+                                    asset.get("crop_id")
+                                ).startswith(
+                                    "family_crop_"
+                                )
+                            )
+                        )
+                    )
+
+                    if is_family_a_precision_crop:
+
+                        recovery_classification = (
+                            asset.get(
+                                "classification"
+                            )
+                            or "REAL_PRODUCT"
+                        )
+
+                        recovery_role = (
+                            asset.get(
+                                "asset_role"
+                            )
+                            or asset.get(
+                                "role"
+                            )
+                            or "PRIMARY"
+                        )
+
+                        family_a_authority = {
+                            "image_index": incoming_index,
+                            "clean_index": incoming_index,
+                            "image_hash": incoming_hash,
+                            "classification": recovery_classification,
+                            "asset_role": recovery_role,
+                            "preserve": True,
+                            "trustworthy": True,
+                            "confidence": asset.get(
+                                "confidence",
+                                0.98
+                            ),
+                            "product_reference": asset.get(
+                                "product_reference"
+                            ),
+                            "crop_id": asset.get(
+                                "crop_id"
+                            ),
+                            "family_a_precision_crop": True,
+                        }
+
+                        _logger.warning(
+                            "[POOL FAMILY A RECOVERY AUTHORITY] "
+                            "page=%s "
+                            "| clean_index=%s "
+                            "| crop_id=%s "
+                            "| product=%s "
+                            "| classification=%s "
+                            "| role=%s "
+                            "| authority=TRUE",
+                            current_page,
+                            incoming_index,
+                            asset.get("crop_id"),
+                            asset.get(
+                                "product_reference"
+                            ),
+                            recovery_classification,
+                            recovery_role,
+                        )
                     # =====================================================
                     # 3. CURRENT PDF PAGE + CLEAN INDEX
                     #
@@ -34691,9 +35374,13 @@ class VendorImportJob(models.Model):
             _logger.warning(f"AI IMAGE MATCH FAILED → {str(e)}")
 
         return None
-    
+
     #======== returning images indexes========================================
-    def match_image_index_with_ai( self, product_name, images):
+    def match_image_index_with_ai(
+        self,
+        product_name,
+        images
+    ):
 
         api_key = self.env[
             'ir.config_parameter'
@@ -34701,69 +35388,287 @@ class VendorImportJob(models.Model):
             'openai.api.key'
         )
 
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(
+            api_key=api_key
+        )
 
         if not images:
             return None
 
 
+        # =====================================================
+        # BUILD FILTERED ASSET LIST
+        # =====================================================
+
         filtered_images = []
 
-        for img in images:
+        bad_keywords = [
+
+            "banner",
+            "lifestyle",
+            "infographic",
+            "specification",
+            "sizechart",
+            "dimensions"
+        ]
+
+
+        for asset in images:
 
             try:
+
+                if isinstance(
+                    asset,
+                    dict
+                ):
+
+                    img = asset.get(
+                        "image"
+                    )
+
+                else:
+
+                    img = asset
+
 
                 if not img:
                     continue
 
-                img_lower = img.lower()
 
-                bad_keywords = [
+                # -------------------------------------------------
+                # Only inspect strings for keyword filtering
+                # -------------------------------------------------
 
-                    "banner",
-
-                    "lifestyle",
-
-                    "infographic",
-
-                    "specification",
-
-                    "sizechart",
-
-                    "dimensions"
-                ]
-
-                if any(
-                    k in img_lower
-                    for k in bad_keywords
+                if isinstance(
+                    img,
+                    str
                 ):
-                    continue
 
-                filtered_images.append(img)
+                    img_lower = img.lower()
 
-            except Exception:
+                    if any(
+                        keyword in img_lower
+                        for keyword in bad_keywords
+                    ):
+                        continue
+
+
+                filtered_images.append(
+                    asset
+                )
+
+
+            except Exception as e:
+
+                _logger.warning(
+                    "[IMAGE MATCH FILTER FAILED] "
+                    "PRODUCT=%s "
+                    "| ERROR=%s",
+                    product_name,
+                    str(e)
+                )
+
                 continue
+
 
         if filtered_images:
 
             images = filtered_images
 
+
+        # =====================================================
+        # LIMIT SECONDARY AI MATCHING
+        # =====================================================
+
         images = images[:8]
+
+
+        # =====================================================
+        # BUILD OPENAI IMAGE INPUTS
+        # =====================================================
 
         image_inputs = []
 
-        for idx, img in enumerate(images):
+        image_index_map = []
 
-            image_inputs.append({
-                "type": "input_text",
-                "text": f"IMAGE INDEX: {idx}"
-            })
 
-            image_inputs.append({
-                "type": "input_image",
-                "image_url":
-                    f"data:image/jpeg;base64,{img}"
-            })
+        for source_position, asset in enumerate(
+            images
+        ):
+
+            try:
+
+                # =================================================
+                # RESOLVE IMAGE PAYLOAD
+                # =================================================
+
+                if isinstance(
+                    asset,
+                    dict
+                ):
+
+                    img = asset.get(
+                        "image"
+                    )
+
+                    clean_index = asset.get(
+                        "clean_index"
+                    )
+
+                    # ---------------------------------------------
+                    # Fallback only for malformed/unindexed assets
+                    # ---------------------------------------------
+
+                    if clean_index is None:
+
+                        clean_index = (
+                            source_position
+                        )
+
+                else:
+
+                    img = asset
+
+                    clean_index = (
+                        source_position
+                    )
+
+
+                if not img:
+
+                    continue
+
+
+                # =================================================
+                # NORMALIZE DATA URL
+                # =================================================
+
+                if (
+                    isinstance(
+                        img,
+                        str
+                    )
+                    and img.startswith(
+                        "data:image/"
+                    )
+                ):
+
+                    image_url = img
+
+                else:
+
+                    image_url = (
+                        "data:image/jpeg;base64,"
+                        + str(img)
+                    )
+
+
+                if not image_url.startswith(
+                    "data:image/"
+                ):
+
+                    _logger.warning(
+                        "[IMAGE MATCH SKIP] "
+                        "PRODUCT=%s "
+                        "| SOURCE_POSITION=%s "
+                        "| CLEAN_INDEX=%s "
+                        "| REASON=INVALID_DATA_URL",
+                        product_name,
+                        source_position,
+                        clean_index
+                    )
+
+                    continue
+
+
+                # =================================================
+                # LOCAL OPENAI POSITION
+                # =================================================
+
+                match_position = len(
+                    image_index_map
+                )
+
+
+                # -------------------------------------------------
+                # CRITICAL:
+                #
+                # OpenAI sees LOCAL position.
+                #
+                # We remember which clean_index that position
+                # belongs to.
+                # -------------------------------------------------
+
+                image_index_map.append(
+                    clean_index
+                )
+
+
+                image_inputs.append({
+
+                    "type": "input_text",
+
+                    "text": (
+                        f"IMAGE INDEX: "
+                        f"{match_position}"
+                    )
+                })
+
+
+                image_inputs.append({
+
+                    "type": "input_image",
+
+                    "image_url": image_url
+                })
+
+
+                _logger.warning(
+                    "[IMAGE MATCH INPUT] "
+                    "PRODUCT=%s "
+                    "| MATCH_POSITION=%s "
+                    "| CLEAN_INDEX=%s",
+                    product_name,
+                    match_position,
+                    clean_index
+                )
+
+
+            except Exception as e:
+
+                _logger.warning(
+                    "[IMAGE MATCH IMAGE PREP FAILED] "
+                    "PRODUCT=%s "
+                    "| SOURCE_POSITION=%s "
+                    "| ERROR=%s",
+                    product_name,
+                    source_position,
+                    str(e)
+                )
+
+                continue
+
+
+        # =====================================================
+        # NO VALID IMAGE INPUT
+        # =====================================================
+
+        if not image_index_map:
+
+            _logger.warning(
+                "[IMAGE INDEX MATCH FAILED] "
+                "PRODUCT=%s "
+                "| ERROR=NO_VALID_IMAGE_INPUT "
+                "| RESULT=NO_HERO_OVERRIDE",
+                product_name
+            )
+
+            return None
+
+
+        # =====================================================
+        # AI PROMPT
+        # =====================================================
 
         prompt = f"""
         You are an ecommerce
@@ -34792,6 +35697,11 @@ class VendorImportJob(models.Model):
         Return ONLY integer index.
         """
 
+
+        # =====================================================
+        # OPENAI REQUEST
+        # =====================================================
+
         try:
 
             response = client.responses.create(
@@ -34799,36 +35709,96 @@ class VendorImportJob(models.Model):
                 model="gpt-4.1",
 
                 input=[{
+
                     "role": "user",
+
                     "content": [
+
                         {
                             "type": "input_text",
                             "text": prompt
                         }
+
                     ] + image_inputs
+
                 }],
 
                 timeout=30
             )
 
+
             result = (
-                response.output_text or ""
+                response.output_text
+                or ""
             ).strip()
 
-            index = int(result)
 
-            if 0 <= index < len(images):
+            match_position = int(
+                result
+            )
 
-                return index
+
+            # =====================================================
+            # RESOLVE LOCAL AI POSITION → CLEAN INDEX
+            # =====================================================
+
+            if (
+                0 <= match_position
+                < len(image_index_map)
+            ):
+
+                matched_clean_index = (
+                    image_index_map[
+                        match_position
+                    ]
+                )
+
+
+                _logger.warning(
+                    "[IMAGE MATCH RESULT] "
+                    "PRODUCT=%s "
+                    "| MATCH_POSITION=%s "
+                    "| CLEAN_INDEX=%s",
+                    product_name,
+                    match_position,
+                    matched_clean_index
+                )
+
+
+                # IMPORTANT:
+                #
+                # Return CLEAN INDEX.
+                #
+                # The caller will resolve the actual asset
+                # by clean_index.
+                #
+
+                return matched_clean_index
+
+
+            _logger.warning(
+                "[IMAGE INDEX MATCH FAILED] "
+                "PRODUCT=%s "
+                "| INVALID_AI_INDEX=%s "
+                "| IMAGE_COUNT=%s "
+                "| RESULT=NO_HERO_OVERRIDE",
+                product_name,
+                match_position,
+                len(image_index_map)
+            )
+
 
         except Exception as e:
 
             _logger.warning(
-
-                f"[IMAGE INDEX MATCH FAILED] "
-
-                f"{str(e)}"
+                "[IMAGE INDEX MATCH FAILED] "
+                "PRODUCT=%s "
+                "| ERROR=%s "
+                "| RESULT=NO_HERO_OVERRIDE",
+                product_name,
+                str(e)
             )
+
 
         return None
 
