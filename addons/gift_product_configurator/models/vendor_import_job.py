@@ -19082,6 +19082,93 @@ class VendorImportJob(models.Model):
 
         Product structure is determined from the ORIGINAL CATALOGUE PAGE,
         not from the number of successfully extracted images.
+
+        =====================================================
+        ASSETS RECEIVED DECISION RULES — AUTHORITATIVE
+        =====================================================
+
+        The decision MUST be based on the condition of the
+        REQUIRED MARKETABLE PRODUCTS, not on the mere presence
+        of unwanted or non-product extracted assets.
+
+        PASS
+        ----
+        Return PASS when ALL required marketable products or
+        variants visible on the catalogue page have trustworthy,
+        complete, individually usable product images.
+
+        A page MUST remain PASS when:
+        - all required product/variant members are present;
+        - their marketable product bodies are complete and
+        trustworthy;
+        - no required product/variant is missing;
+        - no required product image is materially chopped,
+        truncated, or unusable; and
+        - extra extracted assets are correctly identified as
+        DECORATIVE, irrelevant, non-product, or otherwise
+        unnecessary and marked preserve=false.
+
+        IMPORTANT:
+        The presence of a decorative, graphic, irrelevant,
+        or other unwanted extracted asset by itself MUST NOT
+        change PASS to PARTIAL.
+
+        Do NOT use PARTIAL merely because an unwanted asset
+        was extracted.
+
+        PARTIAL
+        -------
+        Return PARTIAL ONLY when the extraction contains a
+        REAL MARKETABLE PRODUCT defect that requires recovery.
+
+        Examples:
+        - one required variant/member is missing;
+        - a required marketable product image is badly cropped;
+        - a required marketable product is chopped/truncated;
+        - only part of a required marketable product survived;
+        - a required product image is otherwise not trustworthy
+        enough to represent the complete marketable product.
+
+        A page with all required marketable products complete
+        and trustworthy MUST NOT be PARTIAL merely because
+        an additional decorative/non-product asset exists.
+
+        FAIL
+        ----
+        Return FAIL only when the extraction has fundamentally
+        failed to recover trustworthy individual marketable
+        product imagery.
+
+        FAIL means that NONE of the extracted product images
+        can be trusted as a usable individual marketable product
+        image, or the page's product imagery has fundamentally
+        failed.
+
+        Do NOT use FAIL merely because one variant is missing
+        or one product image is badly cropped. Those are PARTIAL
+        conditions when at least one trustworthy marketable
+        product survives.
+
+        =====================================================
+        RECOVERY CONSISTENCY RULE
+        =====================================================
+
+        Before returning PARTIAL, verify that the PARTIAL
+        condition represents an actual missing or defective
+        marketable product asset.
+
+        If:
+        - all required marketable variants/products are present,
+        - their product bodies are complete,
+        - they are trustworthy,
+        - missing_items is empty, and
+        - missing_asset_requests is empty,
+
+        then the decision MUST be PASS, even if one or more
+        extra assets are classified as DECORATIVE or otherwise
+        unnecessary.
+
+        Do not return PARTIAL in that situation.
        
         ================================================================
         PARTIAL PAGE
