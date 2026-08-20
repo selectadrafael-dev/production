@@ -26948,9 +26948,9 @@ class VendorImportJob(models.Model):
                             )
 
 
-                    # =====================================================
+                    # ======================================================
                     # 3. FAMILY A PRECISION-RECOVERY ASSET
-                    # =====================================================
+                    # ======================================================
                     #
                     # Precision recovery assets such as:
                     #
@@ -26967,7 +26967,7 @@ class VendorImportJob(models.Model):
                     #
                     # If this is a Family A precision crop, preserve
                     # that authority directly.
-                    # =====================================================
+                    # ======================================================
 
                     is_family_a_precision_crop = (
                         isinstance(asset, dict)
