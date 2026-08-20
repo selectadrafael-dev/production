@@ -26904,6 +26904,25 @@ class VendorImportJob(models.Model):
                             img.encode("utf-8")
                         ).hexdigest()
 
+
+                    # =====================================================
+                    # INCOMING CLEAN INDEX
+                    # =====================================================
+                    #
+                    # This must be available BEFORE the Family A
+                    # precision-recovery branch.
+                    #
+                    # Precision recovery assets are created after the
+                    # original Family A extracted_asset_mapping, so they
+                    # may not have a normal Family A page/index lookup.
+                    # Their own clean_index is therefore the identity
+                    # we must preserve.
+                    # =====================================================
+
+                    incoming_index = asset.get(
+                        "clean_index"
+                    )
+
                     family_a_authority = (
                         family_a_authority_by_hash.get(
                             incoming_hash
@@ -26987,6 +27006,7 @@ class VendorImportJob(models.Model):
 
                         family_a_authority = {
                             "image_index": incoming_index,
+                            "clean_index": incoming_index,
                             "image_hash": incoming_hash,
                             "classification": recovery_classification,
                             "asset_role": recovery_role,
