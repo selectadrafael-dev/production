@@ -3034,42 +3034,167 @@ class VendorImportJob(models.Model):
                         'azure_fallback'
                     )
 
-
                 # =================================================
                 # PARTIAL FAMILY A RESULT
-                # → ALWAYS ENTER PARTIAL RECOVERY
-                #
-                # TEMPORARY TEST RULE:
-                # Do NOT require recovery-request count here.
-                #
-                # We are testing whether the PARTIAL state itself
-                # correctly enters the recovery state.
+                # → ENTER PARTIAL RECOVERY ONLY WHEN
+                #   ACTUAL RECOVERY REQUESTS EXIST
                 # =================================================
 
                 elif partial_pages:
 
+                    # -------------------------------------------------
+                    # Determine whether PARTIAL actually requires
+                    # recovery work.
+                    #
+                    # A PARTIAL decision by itself is NOT sufficient.
+                    #
+                    # Example:
+                    #
+                    # PARTIAL
+                    # missing_asset_requests = []
+                    #
+                    # means:
+                    #   Review has classified the page as PARTIAL,
+                    #   but there is nothing to crop/recover.
+                    #
+                    # Such a page must continue to PDF AI normally.
+                    # -------------------------------------------------
+
+                    recovery_request_count = 0
+                    recovery_request_pages = set()
+
+                    for page_result in review_result.get(
+                        "pages",
+                        []
+                    ):
+
+                        if not isinstance(
+                            page_result,
+                            dict
+                        ):
+                            continue
+
+                        try:
+                            page_number = int(
+                                page_result.get("page")
+                            )
+                        except (
+                            TypeError,
+                            ValueError
+                        ):
+                            continue
+
+                        if page_number not in partial_pages:
+                            continue
+
+                        page_decision = str(
+                            page_result.get(
+                                "decision",
+                                ""
+                            )
+                        ).upper().strip()
+
+                        if page_decision != "PARTIAL":
+                            continue
+
+                        requests = page_result.get(
+                            "missing_asset_requests",
+                            []
+                        )
+
+                        if not isinstance(
+                            requests,
+                            list
+                        ):
+                            continue
+
+                        # Only actual recovery requests count.
+                        valid_requests = [
+                            request
+                            for request in requests
+                            if isinstance(
+                                request,
+                                dict
+                            )
+                        ]
+
+                        if valid_requests:
+
+                            recovery_request_count += (
+                                len(valid_requests)
+                            )
+
+                            recovery_request_pages.add(
+                                page_number
+                            )
+
                     _logger.warning(
-                        "[FAMILY A ROUTING] "
-                        "PARTIAL RESULT "
-                        "→ FAMILY A PARTIAL RECOVERY "
+                        "[FAMILY A ROUTING] PARTIAL ANALYSIS "
                         "| JOB=%s "
                         "| PARTIAL_PAGES=%s "
-                        "| PASSED_PAGES=%s "
-                        "| FAILED_PAGES=%s",
+                        "| RECOVERY_REQUEST_PAGES=%s "
+                        "| RECOVERY_REQUEST_COUNT=%s",
                         self.id,
                         partial_pages,
-                        passed_pages,
-                        failed_pages,
+                        sorted(
+                            recovery_request_pages
+                        ),
+                        recovery_request_count,
                     )
 
-                    self.last_known_state = (
-                        'family_a_partial_recovery'
-                    )
+                    # =================================================
+                    # ACTIONABLE PARTIAL
+                    # =================================================
 
-                    self.state = (
-                        'family_a_partial_recovery'
-                    )
+                    if recovery_request_count > 0:
 
+                        _logger.warning(
+                            "[FAMILY A ROUTING] "
+                            "ACTIONABLE PARTIAL "
+                            "→ FAMILY A PARTIAL RECOVERY "
+                            "| JOB=%s "
+                            "| PARTIAL_PAGES=%s "
+                            "| RECOVERY_PAGES=%s "
+                            "| REQUESTS=%s",
+                            self.id,
+                            partial_pages,
+                            sorted(
+                                recovery_request_pages
+                            ),
+                            recovery_request_count,
+                        )
+
+                        self.last_known_state = (
+                            'family_a_partial_recovery'
+                        )
+
+                        self.state = (
+                            'family_a_partial_recovery'
+                        )
+
+                    # =================================================
+                    # NON-ACTIONABLE PARTIAL
+                    # =================================================
+
+                    else:
+
+                        _logger.warning(
+                            "[FAMILY A ROUTING] "
+                            "PARTIAL BUT NO RECOVERY REQUIRED "
+                            "→ PDF AI "
+                            "| JOB=%s "
+                            "| PARTIAL_PAGES=%s",
+                            self.id,
+                            partial_pages,
+                        )
+
+                        self.last_known_state = (
+                            'pdf_ai'
+                        )
+
+                        self.state = (
+                            'pdf_ai'
+                        )
 
                 # =================================================
                 # COMPLETE FAMILY A SUCCESS
@@ -3513,9 +3638,18 @@ class VendorImportJob(models.Model):
                         )
                     )
 
+
+                    # =================================================
+                    # RECOVERY REQUEST SAFETY
+                    # =================================================
+
                     pages_with_requests = {
                         item["page"]
                         for item in recovery_requests
+                        if isinstance(
+                            item,
+                            dict
+                        )
                     }
 
                     pages_without_requests = sorted(
@@ -3523,54 +3657,99 @@ class VendorImportJob(models.Model):
                         - pages_with_requests
                     )
 
-                    if pages_without_requests:
+                    _logger.warning(
+                        "[FAMILY A PARTIAL RECOVERY] "
+                        "REQUEST COVERAGE "
+                        "| JOB=%s "
+                        "| PARTIAL_PAGES=%s "
+                        "| PAGES_WITH_REQUESTS=%s "
+                        "| PAGES_WITHOUT_REQUESTS=%s "
+                        "| TOTAL_REQUESTS=%s",
+                        self.id,
+                        partial_pages,
+                        sorted(
+                            pages_with_requests
+                        ),
+                        pages_without_requests,
+                        len(recovery_requests),
+                    )
 
-                        if pages_without_requests:
-
-                            diagnostic = {
-                                "partial_pages": partial_pages,
-                                "pages_with_requests": sorted(
-                                    pages_with_requests
-                                ),
-                                "pages_without_requests": (
-                                    pages_without_requests
-                                ),
-                                "total_recovery_requests": (
-                                    len(recovery_requests)
-                                ),
-                                "family_a_page_count": len(
-                                    family_a_review.get(
-                                        "pages",
-                                        []
-                                    )
-                                )
-                            }
-
-                            _logger.error(
-                                "[FAMILY A PARTIAL RECOVERY] "
-                                "MISSING RECOVERY TARGETS "
-                                "| JOB=%s | DIAGNOSTIC=%s",
-                                self.id,
-                                json.dumps(
-                                    diagnostic,
-                                    ensure_ascii=False,
-                                    default=str
-                                )
-                            )
-
-                            raise ValueError(
-                                "Family A PARTIAL recovery target construction failed. "
-                                f"Partial pages={partial_pages}; "
-                                f"pages with requests={sorted(pages_with_requests)}; "
-                                f"pages without requests={pages_without_requests}; "
-                                f"total requests={len(recovery_requests)}."
-                            )
+                    # -------------------------------------------------
+                    # No actual recovery work.
+                    #
+                    # This should normally be prevented by the routing
+                    # block above, but keep this guard here as a second
+                    # line of protection.
+                    # -------------------------------------------------
 
                     if not recovery_requests:
 
-                        raise ValueError(
-                            "Family A partial recovery contains "
-                            "no recovery requests."
+                        _logger.warning(
+                            "[FAMILY A PARTIAL RECOVERY] "
+                            "NO ACTIONABLE RECOVERY REQUESTS "
+                            "→ PDF AI "
+                            "| JOB=%s "
+                            "| PARTIAL_PAGES=%s",
+                            self.id,
+                            partial_pages,
+                        )
+
+                        self.family_a_partial_recovery_json = (
+                            json.dumps(
+                                {
+                                    "decision":
+                                        "NO_RECOVERY_REQUIRED",
+
+                                    "partial_pages":
+                                        partial_pages,
+
+                                    "recovery_requests":
+                                        [],
+                                },
+                                ensure_ascii=False
+                            )
+                        )
+
+                        self.stage_retry_count = 0
+                        self.last_error = False
+
+                        self.last_known_state = (
+                            'pdf_ai'
+                        )
+
+                        self.state = (
+                            'pdf_ai'
+                        )
+
+                        self.flush_recordset()
+                        self.env.cr.commit()
+
+                        return
+
+
+                    # -------------------------------------------------
+                    # Some PARTIAL pages may legitimately have no
+                    # recovery request.
+                    #
+                    # They are NOT an error.
+                    #
+                    # Only pages represented in recovery_requests
+                    # require precision recovery.
+                    # -------------------------------------------------
+
+                    if pages_without_requests:
+
+                        _logger.warning(
+                            "[FAMILY A PARTIAL RECOVERY] "
+                            "NON-ACTIONABLE PARTIAL PAGES "
+                            "| JOB=%s "
+                            "| PAGES=%s "
+                            "| ACTIONABLE_PAGES=%s",
+                            self.id,
+                            pages_without_requests,
+                            sorted(
+                                pages_with_requests
+                            ),
                         )
 
                     # =================================================
@@ -4136,6 +4315,10 @@ class VendorImportJob(models.Model):
         # =====================================
 
         "silver": "#C0C0C0",
+        "chrome": "#C0C0C0",
+        "silver/chrome": "#C0C0C0",
+        "silver chrome": "#C0C0C0",
+        "chrome finish": "#C0C0C0",
         "gold": "#D4AF37",
 
         # =====================================
