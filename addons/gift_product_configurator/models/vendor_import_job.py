@@ -13569,30 +13569,118 @@ class VendorImportJob(models.Model):
 
                     best_index not in valid_indexes
                 ):
+                
+                # =====================================================
+                # OPTIONAL HERO IMAGE MATCH
+                # =====================================================
 
-                    best_index = (
-                        self.match_image_index_with_ai(
-                            product_name,
-                            page_images
-                        )
+                matched_clean_index = (
+                    self.match_image_index_with_ai(
+                        product_name,
+                        page_images
                     )
+                )
 
-                    if isinstance(best_index, int):
 
-                        try:
+                # =====================================================
+                # HERO MATCH RESULT IS NON-DESTRUCTIVE
+                # =====================================================
 
-                            matched_asset = page_images[
-                                best_index
-                            ]
+                if isinstance(
+                    matched_clean_index,
+                    int
+                ):
 
-                            if isinstance(matched_asset, dict):
+                    try:
 
-                                best_index = matched_asset.get(
+                        # =================================================
+                        # RESOLVE BY CLEAN INDEX
+                        # =================================================
+                        #
+                        # DO NOT use:
+                        #
+                        #     page_images[matched_clean_index]
+                        #
+                        # because clean_index is an identity value,
+                        # not necessarily the Python list position.
+                        # =================================================
+
+                        matched_asset = next(
+                            (
+                                asset
+                                for asset in page_images
+                                if (
+                                    isinstance(
+                                        asset,
+                                        dict
+                                    )
+                                    and asset.get(
+                                        "clean_index"
+                                    ) == matched_clean_index
+                                )
+                            ),
+                            None
+                        )
+
+
+                        if isinstance(
+                            matched_asset,
+                            dict
+                        ):
+
+                            best_index = (
+                                matched_asset.get(
                                     "clean_index"
                                 )
+                            )
 
-                        except Exception:
-                            pass
+
+                            _logger.warning(
+                                "[PDF HERO MATCH] "
+                                "PRODUCT=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| HERO_INDEX=%s",
+                                product_name,
+                                matched_clean_index,
+                                best_index
+                            )
+
+
+                        else:
+
+                            _logger.warning(
+                                "[PDF HERO MATCH RESOLUTION FAILED] "
+                                "PRODUCT=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| REASON=ASSET_NOT_FOUND",
+                                product_name,
+                                matched_clean_index
+                            )
+
+
+                    except Exception as e:
+
+                        _logger.warning(
+                            "[PDF HERO MATCH RESOLUTION FAILED] "
+                            "PRODUCT=%s "
+                            "| CLEAN_INDEX=%s "
+                            "| ERROR=%s",
+                            product_name,
+                            matched_clean_index,
+                            str(e)
+                        )
+
+
+                else:
+
+                    _logger.warning(
+                        "[PDF HERO MATCH] "
+                        "PRODUCT=%s "
+                        "| NO OVERRIDE "
+                        "| EXISTING_HERO=%s",
+                        product_name,
+                        best_index
+                    )
 
                 if best_index is not None:
 
@@ -13612,19 +13700,48 @@ class VendorImportJob(models.Model):
             except Exception as e:
 
                 _logger.warning(
-
                     f"[PDF IMAGE MATCH FAILED] "
-
                     f"{str(e)}"
-
                 )
+
+
+        # =====================================================
+        # VARIANT IMAGE AUTHORITY
+        # =====================================================
+
+        _logger.warning(
+            "[VARIANT IMAGE AUTHORITY] "
+            "PRODUCT=%s | VARIANTS=%s",
+            product_name,
+            [
+                {
+                    "color": (
+                        v.get(
+                            "attributes",
+                            {}
+                        ).get(
+                            "Color"
+                        )
+                    ),
+                    "image_index": (
+                        v.get(
+                            "image_index"
+                        )
+                    )
+                }
+                for v in prod.get(
+                    "variants",
+                    []
+                )
+            ]
+        )
+
 
         # =====================================================
         # MERGE RESULTS
         # =====================================================
 
         existing_map = {}
-
 
         for p in existing_pages:
 
@@ -34806,9 +34923,13 @@ class VendorImportJob(models.Model):
             _logger.warning(f"AI IMAGE MATCH FAILED → {str(e)}")
 
         return None
-    
+
     #======== returning images indexes========================================
-    def match_image_index_with_ai( self, product_name, images):
+    def match_image_index_with_ai(
+        self,
+        product_name,
+        images
+    ):
 
         api_key = self.env[
             'ir.config_parameter'
@@ -34816,69 +34937,287 @@ class VendorImportJob(models.Model):
             'openai.api.key'
         )
 
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(
+            api_key=api_key
+        )
 
         if not images:
             return None
 
 
+        # =====================================================
+        # BUILD FILTERED ASSET LIST
+        # =====================================================
+
         filtered_images = []
 
-        for img in images:
+        bad_keywords = [
+
+            "banner",
+            "lifestyle",
+            "infographic",
+            "specification",
+            "sizechart",
+            "dimensions"
+        ]
+
+
+        for asset in images:
 
             try:
+
+                if isinstance(
+                    asset,
+                    dict
+                ):
+
+                    img = asset.get(
+                        "image"
+                    )
+
+                else:
+
+                    img = asset
+
 
                 if not img:
                     continue
 
-                img_lower = img.lower()
 
-                bad_keywords = [
+                # -------------------------------------------------
+                # Only inspect strings for keyword filtering
+                # -------------------------------------------------
 
-                    "banner",
-
-                    "lifestyle",
-
-                    "infographic",
-
-                    "specification",
-
-                    "sizechart",
-
-                    "dimensions"
-                ]
-
-                if any(
-                    k in img_lower
-                    for k in bad_keywords
+                if isinstance(
+                    img,
+                    str
                 ):
-                    continue
 
-                filtered_images.append(img)
+                    img_lower = img.lower()
 
-            except Exception:
+                    if any(
+                        keyword in img_lower
+                        for keyword in bad_keywords
+                    ):
+                        continue
+
+
+                filtered_images.append(
+                    asset
+                )
+
+
+            except Exception as e:
+
+                _logger.warning(
+                    "[IMAGE MATCH FILTER FAILED] "
+                    "PRODUCT=%s "
+                    "| ERROR=%s",
+                    product_name,
+                    str(e)
+                )
+
                 continue
+
 
         if filtered_images:
 
             images = filtered_images
 
+
+        # =====================================================
+        # LIMIT SECONDARY AI MATCHING
+        # =====================================================
+
         images = images[:8]
+
+
+        # =====================================================
+        # BUILD OPENAI IMAGE INPUTS
+        # =====================================================
 
         image_inputs = []
 
-        for idx, img in enumerate(images):
+        image_index_map = []
 
-            image_inputs.append({
-                "type": "input_text",
-                "text": f"IMAGE INDEX: {idx}"
-            })
 
-            image_inputs.append({
-                "type": "input_image",
-                "image_url":
-                    f"data:image/jpeg;base64,{img}"
-            })
+        for source_position, asset in enumerate(
+            images
+        ):
+
+            try:
+
+                # =================================================
+                # RESOLVE IMAGE PAYLOAD
+                # =================================================
+
+                if isinstance(
+                    asset,
+                    dict
+                ):
+
+                    img = asset.get(
+                        "image"
+                    )
+
+                    clean_index = asset.get(
+                        "clean_index"
+                    )
+
+                    # ---------------------------------------------
+                    # Fallback only for malformed/unindexed assets
+                    # ---------------------------------------------
+
+                    if clean_index is None:
+
+                        clean_index = (
+                            source_position
+                        )
+
+                else:
+
+                    img = asset
+
+                    clean_index = (
+                        source_position
+                    )
+
+
+                if not img:
+
+                    continue
+
+
+                # =================================================
+                # NORMALIZE DATA URL
+                # =================================================
+
+                if (
+                    isinstance(
+                        img,
+                        str
+                    )
+                    and img.startswith(
+                        "data:image/"
+                    )
+                ):
+
+                    image_url = img
+
+                else:
+
+                    image_url = (
+                        "data:image/jpeg;base64,"
+                        + str(img)
+                    )
+
+
+                if not image_url.startswith(
+                    "data:image/"
+                ):
+
+                    _logger.warning(
+                        "[IMAGE MATCH SKIP] "
+                        "PRODUCT=%s "
+                        "| SOURCE_POSITION=%s "
+                        "| CLEAN_INDEX=%s "
+                        "| REASON=INVALID_DATA_URL",
+                        product_name,
+                        source_position,
+                        clean_index
+                    )
+
+                    continue
+
+
+                # =================================================
+                # LOCAL OPENAI POSITION
+                # =================================================
+
+                match_position = len(
+                    image_index_map
+                )
+
+
+                # -------------------------------------------------
+                # CRITICAL:
+                #
+                # OpenAI sees LOCAL position.
+                #
+                # We remember which clean_index that position
+                # belongs to.
+                # -------------------------------------------------
+
+                image_index_map.append(
+                    clean_index
+                )
+
+
+                image_inputs.append({
+
+                    "type": "input_text",
+
+                    "text": (
+                        f"IMAGE INDEX: "
+                        f"{match_position}"
+                    )
+                })
+
+
+                image_inputs.append({
+
+                    "type": "input_image",
+
+                    "image_url": image_url
+                })
+
+
+                _logger.warning(
+                    "[IMAGE MATCH INPUT] "
+                    "PRODUCT=%s "
+                    "| MATCH_POSITION=%s "
+                    "| CLEAN_INDEX=%s",
+                    product_name,
+                    match_position,
+                    clean_index
+                )
+
+
+            except Exception as e:
+
+                _logger.warning(
+                    "[IMAGE MATCH IMAGE PREP FAILED] "
+                    "PRODUCT=%s "
+                    "| SOURCE_POSITION=%s "
+                    "| ERROR=%s",
+                    product_name,
+                    source_position,
+                    str(e)
+                )
+
+                continue
+
+
+        # =====================================================
+        # NO VALID IMAGE INPUT
+        # =====================================================
+
+        if not image_index_map:
+
+            _logger.warning(
+                "[IMAGE INDEX MATCH FAILED] "
+                "PRODUCT=%s "
+                "| ERROR=NO_VALID_IMAGE_INPUT "
+                "| RESULT=NO_HERO_OVERRIDE",
+                product_name
+            )
+
+            return None
+
+
+        # =====================================================
+        # AI PROMPT
+        # =====================================================
 
         prompt = f"""
         You are an ecommerce
@@ -34907,6 +35246,11 @@ class VendorImportJob(models.Model):
         Return ONLY integer index.
         """
 
+
+        # =====================================================
+        # OPENAI REQUEST
+        # =====================================================
+
         try:
 
             response = client.responses.create(
@@ -34914,36 +35258,96 @@ class VendorImportJob(models.Model):
                 model="gpt-4.1",
 
                 input=[{
+
                     "role": "user",
+
                     "content": [
+
                         {
                             "type": "input_text",
                             "text": prompt
                         }
+
                     ] + image_inputs
+
                 }],
 
                 timeout=30
             )
 
+
             result = (
-                response.output_text or ""
+                response.output_text
+                or ""
             ).strip()
 
-            index = int(result)
 
-            if 0 <= index < len(images):
+            match_position = int(
+                result
+            )
 
-                return index
+
+            # =====================================================
+            # RESOLVE LOCAL AI POSITION → CLEAN INDEX
+            # =====================================================
+
+            if (
+                0 <= match_position
+                < len(image_index_map)
+            ):
+
+                matched_clean_index = (
+                    image_index_map[
+                        match_position
+                    ]
+                )
+
+
+                _logger.warning(
+                    "[IMAGE MATCH RESULT] "
+                    "PRODUCT=%s "
+                    "| MATCH_POSITION=%s "
+                    "| CLEAN_INDEX=%s",
+                    product_name,
+                    match_position,
+                    matched_clean_index
+                )
+
+
+                # IMPORTANT:
+                #
+                # Return CLEAN INDEX.
+                #
+                # The caller will resolve the actual asset
+                # by clean_index.
+                #
+
+                return matched_clean_index
+
+
+            _logger.warning(
+                "[IMAGE INDEX MATCH FAILED] "
+                "PRODUCT=%s "
+                "| INVALID_AI_INDEX=%s "
+                "| IMAGE_COUNT=%s "
+                "| RESULT=NO_HERO_OVERRIDE",
+                product_name,
+                match_position,
+                len(image_index_map)
+            )
+
 
         except Exception as e:
 
             _logger.warning(
-
-                f"[IMAGE INDEX MATCH FAILED] "
-
-                f"{str(e)}"
+                "[IMAGE INDEX MATCH FAILED] "
+                "PRODUCT=%s "
+                "| ERROR=%s "
+                "| RESULT=NO_HERO_OVERRIDE",
+                product_name,
+                str(e)
             )
+
 
         return None
 
