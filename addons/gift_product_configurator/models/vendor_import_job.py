@@ -11321,20 +11321,91 @@ class VendorImportJob(models.Model):
                 )
 
         page_images = valid_page_images
-        # =========================================
-        # REBUILD CLEAN IMAGE INDEX MAP
-        # =========================================
+
+        # =========================================================
+        # PRESERVE STABLE IMAGE IDENTITY
+        # =========================================================
+        #
+        # IMPORTANT:
+        # Family A image_index / the extractor clean_index is the
+        # stable identity of the physical asset.
+        #
+        # PDF-AI filtering/sorting MUST NOT renumber existing assets.
+        #
+        # "index" is allowed to represent current list position.
+        # "clean_index" must remain the stable source identity.
+        # =========================================================
 
         normalized_page_images = []
 
-        for idx, asset in enumerate(page_images):
+        used_clean_indexes = set()
 
-            if isinstance(asset, dict):
+        for position, asset in enumerate(page_images):
 
-                asset["clean_index"] = idx
+            if not isinstance(asset, dict):
+                continue
 
-                normalized_page_images.append(asset)
+            existing_clean_index = asset.get(
+                "clean_index"
+            )
 
+            # -----------------------------------------------------
+            # Preserve the original stable identity
+            # -----------------------------------------------------
+            if existing_clean_index is not None:
+
+                try:
+                    existing_clean_index = int(
+                        existing_clean_index
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+
+                    existing_clean_index = None
+
+            # -----------------------------------------------------
+            # Only assign a new clean_index when the asset truly
+            # has no stable identity.
+            # -----------------------------------------------------
+            if existing_clean_index is None:
+
+                candidate_index = position
+
+                while candidate_index in used_clean_indexes:
+                    candidate_index += 1
+
+                existing_clean_index = candidate_index
+
+                asset["clean_index"] = (
+                    existing_clean_index
+                )
+
+            used_clean_indexes.add(
+                existing_clean_index
+            )
+
+            # -----------------------------------------------------
+            # Preserve explicit Family-A identity
+            # -----------------------------------------------------
+            if asset.get(
+                "family_a_image_index"
+            ) is None:
+
+                asset["family_a_image_index"] = (
+                    existing_clean_index
+                )
+
+            # -----------------------------------------------------
+            # Current list position is NOT clean_index.
+            # -----------------------------------------------------
+            asset["index"] = position
+
+            normalized_page_images.append(
+                asset
+            )
 
         page_images = normalized_page_images
 
@@ -11578,11 +11649,76 @@ class VendorImportJob(models.Model):
                     page_images
                 )
 
-                for idx, asset in enumerate(page_images):
+                # =========================================================
+                # PRESERVE STABLE IDENTITY AFTER RECOVERY
+                # =========================================================
 
-                    if isinstance(asset, dict):
+                used_clean_indexes = set()
 
-                        asset["clean_index"] = idx
+                for position, asset in enumerate(page_images):
+
+                    if not isinstance(asset, dict):
+                        continue
+
+                    clean_index = asset.get(
+                        "clean_index"
+                    )
+
+                    try:
+                        clean_index = int(
+                            clean_index
+                        )
+
+                    except (
+                        TypeError,
+                        ValueError
+                    ):
+                        clean_index = None
+
+                    if clean_index is None:
+
+                        clean_index = position
+
+                        while clean_index in used_clean_indexes:
+                            clean_index += 1
+
+                        asset["clean_index"] = (
+                            clean_index
+                        )
+
+                    used_clean_indexes.add(
+                        clean_index
+                    )
+
+                    if asset.get(
+                        "family_a_image_index"
+                    ) is None:
+
+                        asset["family_a_image_index"] = (
+                            clean_index
+                        )
+
+                    # -----------------------------------------------------
+                    # Current list position is NOT clean_index.
+                    # -----------------------------------------------------
+                    asset["index"] = position
+
+                    _logger.warning(
+                        "[PDF STABLE IMAGE IDENTITY] "
+                        "PAGE=%s | POSITION=%s "
+                        "| CLEAN_INDEX=%s "
+                        "| FAMILY_A_INDEX=%s "
+                        "| IMAGE_HASH=%s",
+                        next_record.page_number,
+                        position,
+                        asset.get("clean_index"),
+                        asset.get("family_a_image_index"),
+                        asset.get("image_hash"),
+                    )
+
+                    normalized_page_images.append(
+                        asset
+                    )
 
                 page_images = self._prepare_asset_intelligence(
 
