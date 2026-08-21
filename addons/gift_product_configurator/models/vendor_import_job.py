@@ -7952,9 +7952,7 @@ class VendorImportJob(models.Model):
 
                         if candidate_index not in used_clean_indexes:
 
-                            authoritative_index = (
-                                candidate_index
-                            )
+                            authoritative_index = candidate_index
 
                             _logger.warning(
                                 "[CORRECTION INDEX CLAIM] "
@@ -7968,27 +7966,41 @@ class VendorImportJob(models.Model):
 
                         else:
 
-                            _logger.warning(
-                                "[CORRECTION INDEX ALREADY USED] "
-                                "JOB=%s | COLOR=%s "
-                                "| CLEAN_INDEX=%s "
-                                "| ACTION=COLOR_FALLBACK",
-                                job_id,
-                                variant_color,
-                                candidate_index
-                            )
+                            # ==========================================================
+                            # AUTHORITATIVE INDEX COLLISION
+                            # ==========================================================
+                            #
+                            # DO NOT immediately fall back to color.
+                            #
+                            # The existing clean_index is authoritative. If another
+                            # variant already owns it, we must NOT replace that identity
+                            # with a potentially incorrect color-based asset.
+                            #
+                            # Leave this variant unresolved for now.
+                            # The final collision log will expose the condition.
+                            # ==========================================================
 
-                            _logger.warning(
-                                "[CORRECTION COLLISION PREVENTED] "
+                            _logger.error(
+                                "[CORRECTION AUTHORITATIVE INDEX COLLISION] "
                                 "JOB=%s | COLOR=%s "
                                 "| REQUESTED_INDEX=%s "
                                 "| USED_INDEXES=%s "
-                                "| ACTION=COLOR_FALLBACK",
+                                "| ACTION=NO_COLOR_REPLACEMENT",
                                 job_id,
                                 variant_color,
                                 candidate_index,
                                 sorted(used_clean_indexes),
                             )
+
+                            authoritative_index = None
+
+                            # IMPORTANT:
+                            # Do NOT enter color fallback merely because the
+                            # authoritative index was already claimed.
+                            #
+                            # Mark this variant explicitly so downstream creation
+                            # knows that no trustworthy replacement was found.
+                            variant["_image_index_authority_conflict"] = True
 
 
                 # ======================================================
@@ -8029,6 +8041,46 @@ class VendorImportJob(models.Model):
 
                     continue
 
+
+                # ======================================================
+                # AUTHORITATIVE INDEX CONFLICT
+                # ======================================================
+                #
+                # An existing authoritative image_index was already claimed
+                # by another variant.
+                #
+                # DO NOT replace it with color fallback.
+                # ======================================================
+
+                if variant.get(
+                    "_image_index_authority_conflict"
+                ) is True:
+
+                    _logger.error(
+                        "[CORRECTION BLOCKED COLOR FALLBACK] "
+                        "JOB=%s | PRODUCT=%s "
+                        "| COLOR=%s "
+                        "| OLD_INDEX=%s "
+                        "| ACTION=KEEP_UNRESOLVED",
+                        job_id,
+                        product.get("name", ""),
+                        variant_color,
+                        old_index,
+                    )
+
+                    # Remove stale image_index so downstream code cannot
+                    # accidentally use the collided identity.
+                    variant.pop(
+                        "image_index",
+                        None
+                    )
+
+                    variant.pop(
+                        "source_image_index",
+                        None
+                    )
+
+                    continue
 
                 # ======================================================
                 # STEP 3
@@ -37861,16 +37913,92 @@ class VendorImportJob(models.Model):
 
                                 matched_asset = None
 
+                                # =====================================================
+                                # 1. FAMILY-A AUTHORITATIVE IDENTITY LOOKUP
+                                # =====================================================
+                                #
+                                # If Family A has established an authoritative asset for
+                                # this clean/image index, ALWAYS prefer that asset.
+                                #
+                                # This prevents a conflicting asset that happens to carry
+                                # the same clean_index from being selected.
+                                # =====================================================
+
                                 if ai_image_index is not None:
 
+                                    family_a_candidates = [
+                                        a
+                                        for a in asset_pool
+                                        if (
+                                            isinstance(a, dict)
+                                            and a.get("family_a_image_index") is not None
+                                            and str(a.get("family_a_image_index"))
+                                                == str(ai_image_index)
+                                            and (
+                                                a.get("family_a_authoritative") is True
+                                                or a.get("family_a_trustworthy") is True
+                                                or a.get("family_a_preserve") is True
+                                            )
+                                        )
+                                    ]
+
+                                    if family_a_candidates:
+
+                                        # Prefer an explicitly authoritative asset.
+                                        family_a_candidates.sort(
+                                            key=lambda a: (
+                                                0
+                                                if a.get("family_a_authoritative") is True
+                                                else 1,
+                                                0
+                                                if a.get("family_a_trustworthy") is True
+                                                else 1,
+                                                0
+                                                if a.get("family_a_preserve") is True
+                                                else 1,
+                                            )
+                                        )
+
+                                        matched_asset = family_a_candidates[0]
+
+                                        _logger.warning(
+                                            "[VARIANT FAMILY A EXACT MATCH] "
+                                            "color=%s "
+                                            "| requested_index=%s "
+                                            "| asset=%s "
+                                            "| clean_index=%s "
+                                            "| family_a_index=%s "
+                                            "| pool_color=%s "
+                                            "| lifestyle=%s",
+                                            variant.get("attributes", {}).get("Color"),
+                                            ai_image_index,
+                                            matched_asset.get("index"),
+                                            matched_asset.get("clean_index"),
+                                            matched_asset.get("family_a_image_index"),
+                                            matched_asset.get("dominant_color"),
+                                            matched_asset.get("is_lifestyle"),
+                                        )
+
+
+                                # =====================================================
+                                # 2. EXACT CLEAN-INDEX LOOKUP
+                                # =====================================================
+                                #
+                                # Only use this when Family A did not provide a more
+                                # authoritative asset.
+                                # =====================================================
+
+                                if not matched_asset and ai_image_index is not None:
+
                                     matched_asset = next(
-                                    (
+                                        (
                                             a
                                             for a in asset_pool
                                             if (
-                                                a.get("clean_index") is not None
-                                                and ai_image_index is not None
-                                                and str(a.get("clean_index")) == str(ai_image_index)
+                                                isinstance(a, dict)
+                                                and a.get("clean_index") is not None
+                                                and str(a.get("clean_index"))
+                                                    == str(ai_image_index)
                                             )
                                         ),
                                         None
@@ -37879,20 +38007,68 @@ class VendorImportJob(models.Model):
                                     if matched_asset:
 
                                         _logger.warning(
-                                            "[AI IMAGE USED] "
-                                            "color=%s | "
-                                            "clean_index=%s | "
-                                            "pool_index=%s | "
-                                            "pool_color=%s",
-                                            variant.get(
-                                                "attributes",
-                                                {}
-                                            ).get("Color"),
-                                            matched_asset.get("clean_index"),
+                                            "[VARIANT CLEAN INDEX MATCH] "
+                                            "color=%s "
+                                            "| requested_index=%s "
+                                            "| asset=%s "
+                                            "| clean_index=%s "
+                                            "| family_a_index=%s "
+                                            "| pool_color=%s "
+                                            "| lifestyle=%s",
+                                            variant.get("attributes", {}).get("Color"),
+                                            ai_image_index,
                                             matched_asset.get("index"),
+                                            matched_asset.get("clean_index"),
+                                            matched_asset.get("family_a_image_index"),
                                             matched_asset.get("dominant_color"),
+                                            matched_asset.get("is_lifestyle"),
                                         )
 
+
+                                # =====================================================
+                                # 3. DO NOT COLOR-GUESS WHEN AN IMAGE INDEX EXISTS
+                                # =====================================================
+                                #
+                                # THIS IS THE CRITICAL CHANGE.
+                                #
+                                # Previously:
+                                #
+                                #     exact lookup fails
+                                #           ↓
+                                #     _match_variant_image()
+                                #           ↓
+                                #     color/pool guess
+                                #
+                                # That is how a variant can receive the wrong color
+                                # image or a lifestyle image.
+                                #
+                                # If PDF-AI/correction supplied image_index but that
+                                # identity cannot be resolved, leave the image unmatched.
+                                # Do NOT substitute another asset.
+                                # =====================================================
+
+                                if not matched_asset and ai_image_index is not None:
+
+                                    _logger.error(
+                                        "[VARIANT IMAGE IDENTITY UNRESOLVED] "
+                                        "JOB=%s "
+                                        "| PRODUCT=%s "
+                                        "| VARIANT=%s "
+                                        "| REQUESTED_CLEAN_INDEX=%s "
+                                        "| ACTION=NO_COLOR_FALLBACK",
+                                        self.id,
+                                        product_data.get("name"),
+                                        variant.get("attributes", {}),
+                                        ai_image_index,
+                                    )
+
+                                    continue
+
+
+                                # =====================================================
+                                # 4. ONLY ALLOW LEGACY MATCHING WHEN NO IMAGE IDENTITY
+                                #    WAS PROVIDED AT ALL
+                                # =====================================================
 
                                 if not matched_asset:
 
@@ -37920,6 +38096,53 @@ class VendorImportJob(models.Model):
 
                                     continue
 
+
+                                # =====================================================
+                                # HARD VARIANT LIFESTYLE PROTECTION
+                                # =====================================================
+
+                                # if matched_asset.get("is_lifestyle") is True:
+
+                                #     _logger.error(
+                                #         "[VARIANT LIFESTYLE BLOCKED] "
+                                #         "JOB=%s "
+                                #         "| PRODUCT=%s "
+                                #         "| VARIANT=%s "
+                                #         "| ASSET=%s "
+                                #         "| CLEAN_INDEX=%s "
+                                #         "| FAMILY_A_INDEX=%s "
+                                #         "| COLOR=%s",
+                                #         self.id,
+                                #         product_data.get("name"),
+                                #         variant.get("attributes", {}),
+                                #         matched_asset.get("index"),
+                                #         matched_asset.get("clean_index"),
+                                #         matched_asset.get("family_a_image_index"),
+                                #         matched_asset.get("dominant_color"),
+                                #     )
+
+                                #     continue
+
+
+                                # if str(
+                                #     matched_asset.get("classification", "")
+                                # ).upper() == "LIFESTYLE":
+
+                                #     _logger.error(
+                                #         "[VARIANT LIFESTYLE CLASSIFICATION BLOCKED] "
+                                #         "JOB=%s "
+                                #         "| PRODUCT=%s "
+                                #         "| VARIANT=%s "
+                                #         "| ASSET=%s "
+                                #         "| CLEAN_INDEX=%s",
+                                #         self.id,
+                                #         product_data.get("name"),
+                                #         variant.get("attributes", {}),
+                                #         matched_asset.get("index"),
+                                #         matched_asset.get("clean_index"),
+                                #     )
+
+                                #     continue
 
                                 clean_index = matched_asset.get(
                                     "clean_index"
@@ -37965,6 +38188,7 @@ class VendorImportJob(models.Model):
                                     matched_asset = None
 
                                     continue
+
 
                                 if clean_index in page_validation["used_indexes"]:
 
