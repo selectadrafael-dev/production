@@ -7952,7 +7952,9 @@ class VendorImportJob(models.Model):
 
                         if candidate_index not in used_clean_indexes:
 
-                            authoritative_index = candidate_index
+                            authoritative_index = (
+                                candidate_index
+                            )
 
                             _logger.warning(
                                 "[CORRECTION INDEX CLAIM] "
@@ -7966,41 +7968,27 @@ class VendorImportJob(models.Model):
 
                         else:
 
-                            # ==========================================================
-                            # AUTHORITATIVE INDEX COLLISION
-                            # ==========================================================
-                            #
-                            # DO NOT immediately fall back to color.
-                            #
-                            # The existing clean_index is authoritative. If another
-                            # variant already owns it, we must NOT replace that identity
-                            # with a potentially incorrect color-based asset.
-                            #
-                            # Leave this variant unresolved for now.
-                            # The final collision log will expose the condition.
-                            # ==========================================================
+                            _logger.warning(
+                                "[CORRECTION INDEX ALREADY USED] "
+                                "JOB=%s | COLOR=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| ACTION=COLOR_FALLBACK",
+                                job_id,
+                                variant_color,
+                                candidate_index
+                            )
 
-                            _logger.error(
-                                "[CORRECTION AUTHORITATIVE INDEX COLLISION] "
+                            _logger.warning(
+                                "[CORRECTION COLLISION PREVENTED] "
                                 "JOB=%s | COLOR=%s "
                                 "| REQUESTED_INDEX=%s "
                                 "| USED_INDEXES=%s "
-                                "| ACTION=NO_COLOR_REPLACEMENT",
+                                "| ACTION=COLOR_FALLBACK",
                                 job_id,
                                 variant_color,
                                 candidate_index,
                                 sorted(used_clean_indexes),
                             )
-
-                            authoritative_index = None
-
-                            # IMPORTANT:
-                            # Do NOT enter color fallback merely because the
-                            # authoritative index was already claimed.
-                            #
-                            # Mark this variant explicitly so downstream creation
-                            # knows that no trustworthy replacement was found.
-                            variant["_image_index_authority_conflict"] = True
 
 
                 # ======================================================
@@ -8041,46 +8029,6 @@ class VendorImportJob(models.Model):
 
                     continue
 
-
-                # ======================================================
-                # AUTHORITATIVE INDEX CONFLICT
-                # ======================================================
-                #
-                # An existing authoritative image_index was already claimed
-                # by another variant.
-                #
-                # DO NOT replace it with color fallback.
-                # ======================================================
-
-                if variant.get(
-                    "_image_index_authority_conflict"
-                ) is True:
-
-                    _logger.error(
-                        "[CORRECTION BLOCKED COLOR FALLBACK] "
-                        "JOB=%s | PRODUCT=%s "
-                        "| COLOR=%s "
-                        "| OLD_INDEX=%s "
-                        "| ACTION=KEEP_UNRESOLVED",
-                        job_id,
-                        product.get("name", ""),
-                        variant_color,
-                        old_index,
-                    )
-
-                    # Remove stale image_index so downstream code cannot
-                    # accidentally use the collided identity.
-                    variant.pop(
-                        "image_index",
-                        None
-                    )
-
-                    variant.pop(
-                        "source_image_index",
-                        None
-                    )
-
-                    continue
 
                 # ======================================================
                 # STEP 3
@@ -8278,6 +8226,7 @@ class VendorImportJob(models.Model):
             )
 
             return product
+
 
     #==========build_product_family========================
     def _build_product_family(
@@ -30215,11 +30164,16 @@ class VendorImportJob(models.Model):
                 f"keys={list(sample.keys())}"
             )
 
+
             _logger.warning(
                 f"[SEGMENT RETURN VALUES] "
                 f"hero={sample.get('hero_score')} "
                 f"gallery={sample.get('gallery_score')} "
                 f"lifestyle={sample.get('is_lifestyle')} "
+                f"clean_index={sample.get('clean_index')} "
+                f"source_asset_id={sample.get('source_asset_id')} "
+                f"classification={sample.get('classification')} "
+                f"asset_role={sample.get('asset_role')} "
                 f"width={sample.get('width')} "
                 f"height={sample.get('height')} "
                 f"x={sample.get('x')} "
@@ -38096,53 +38050,6 @@ class VendorImportJob(models.Model):
 
                                     continue
 
-
-                                # =====================================================
-                                # HARD VARIANT LIFESTYLE PROTECTION
-                                # =====================================================
-
-                                # if matched_asset.get("is_lifestyle") is True:
-
-                                #     _logger.error(
-                                #         "[VARIANT LIFESTYLE BLOCKED] "
-                                #         "JOB=%s "
-                                #         "| PRODUCT=%s "
-                                #         "| VARIANT=%s "
-                                #         "| ASSET=%s "
-                                #         "| CLEAN_INDEX=%s "
-                                #         "| FAMILY_A_INDEX=%s "
-                                #         "| COLOR=%s",
-                                #         self.id,
-                                #         product_data.get("name"),
-                                #         variant.get("attributes", {}),
-                                #         matched_asset.get("index"),
-                                #         matched_asset.get("clean_index"),
-                                #         matched_asset.get("family_a_image_index"),
-                                #         matched_asset.get("dominant_color"),
-                                #     )
-
-                                #     continue
-
-
-                                # if str(
-                                #     matched_asset.get("classification", "")
-                                # ).upper() == "LIFESTYLE":
-
-                                #     _logger.error(
-                                #         "[VARIANT LIFESTYLE CLASSIFICATION BLOCKED] "
-                                #         "JOB=%s "
-                                #         "| PRODUCT=%s "
-                                #         "| VARIANT=%s "
-                                #         "| ASSET=%s "
-                                #         "| CLEAN_INDEX=%s",
-                                #         self.id,
-                                #         product_data.get("name"),
-                                #         variant.get("attributes", {}),
-                                #         matched_asset.get("index"),
-                                #         matched_asset.get("clean_index"),
-                                #     )
-
-                                #     continue
 
                                 clean_index = matched_asset.get(
                                     "clean_index"
