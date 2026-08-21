@@ -27853,33 +27853,16 @@ class VendorImportJob(models.Model):
                             ):
 
                                 family_a_authority = None
-                
                 # =========================================================
                 # FAMILY A IDENTITY INTEGRITY CHECK
                 # =========================================================
                 #
                 # Family A image_index is the authoritative source identity.
+                # The incoming clean_index must point to the same asset.
                 #
-                # clean_index must identify the SAME logical asset.
-                #
-                # IMPORTANT:
-                # A hash mismatch is NOT automatically an error.
-                #
-                # Family A precision-recovery / crop assets are allowed to
-                # have a new image hash because the crop itself is a new
-                # physical image derived from the authoritative source.
-                #
-                # For ordinary incoming assets, however:
-                #
-                #     same clean_index
-                #     +
-                #     different hash
-                #
-                # means we must NOT silently allow the incoming physical
-                # image to masquerade as the Family-A authoritative asset.
+                # Verify the identity using image_hash whenever possible.
+                # Never silently trust a clean_index if the hash disagrees.
                 # =========================================================
-
-                family_a_identity_conflict = False
 
                 if (
                     family_a_authority
@@ -27887,91 +27870,32 @@ class VendorImportJob(models.Model):
                 ):
 
                     authority_index = (
-                        family_a_authority.get(
-                            "image_index"
-                        )
+                        family_a_authority.get("image_index")
                     )
 
                     authority_hash = (
-                        family_a_authority.get(
-                            "image_hash"
-                        )
+                        family_a_authority.get("image_hash")
                     )
 
                     incoming_index = (
-                        asset.get(
-                            "clean_index"
-                        )
+                        asset.get("clean_index")
                     )
 
                     incoming_hash = (
-                        asset.get(
-                            "image_hash"
-                        )
+                        asset.get("image_hash")
                         or incoming_hash
                     )
 
                     index_match = (
                         authority_index is not None
                         and incoming_index is not None
-                        and str(authority_index)
-                        == str(incoming_index)
+                        and str(authority_index) == str(incoming_index)
                     )
 
                     hash_match = (
                         not authority_hash
                         or not incoming_hash
-                        or str(authority_hash)
-                        == str(incoming_hash)
-                    )
-
-                    # --------------------------------------------------------
-                    # DETERMINE WHETHER THIS IS A LEGITIMATE RECOVERY ASSET
-                    # --------------------------------------------------------
-
-                    is_precision_recovery_asset = (
-                        bool(
-                            asset.get(
-                                "family_a_precision_crop"
-                            )
-                        )
-                        or bool(
-                            asset.get(
-                                "family_a_recovery"
-                            )
-                        )
-                        or (
-                            asset.get("crop_id")
-                            and str(
-                                asset.get("crop_id")
-                            ).startswith(
-                                "family_crop_"
-                            )
-                        )
-                    )
-
-                    is_azure_recovery_asset = (
-                        bool(
-                            asset.get(
-                                "azure_crop"
-                            )
-                        )
-                        or bool(
-                            asset.get(
-                                "azure_figure_id"
-                            )
-                        )
-                        or asset.get(
-                            "source"
-                        ) == "azure"
-                    )
-
-                    is_authoritative_recovery_asset = (
-                        is_precision_recovery_asset
-                        or is_azure_recovery_asset
-                        or asset.get(
-                            "recovered"
-                        ) is True
+                        or str(authority_hash) == str(incoming_hash)
                     )
 
                     _logger.warning(
@@ -27981,7 +27905,6 @@ class VendorImportJob(models.Model):
                         "| incoming_clean_index=%s "
                         "| index_match=%s "
                         "| hash_match=%s "
-                        "| recovery=%s "
                         "| authority_hash=%s "
                         "| incoming_hash=%s",
                         current_page,
@@ -27989,14 +27912,9 @@ class VendorImportJob(models.Model):
                         incoming_index,
                         index_match,
                         hash_match,
-                        is_authoritative_recovery_asset,
                         authority_hash,
                         incoming_hash,
                     )
-
-                    # ---------------------------------------------------------
-                    # INDEX MISMATCH
-                    # ---------------------------------------------------------
 
                     if (
                         authority_index is not None
@@ -28009,25 +27927,12 @@ class VendorImportJob(models.Model):
                             "page=%s "
                             "| authority_index=%s "
                             "| incoming_clean_index=%s "
-                            "| color=%s "
-                            "| ACTION=REJECT_ASSET",
+                            "| color=%s",
                             current_page,
                             authority_index,
                             incoming_index,
                             asset.get("color"),
                         )
-
-                        family_a_identity_conflict = True
-
-                    # ---------------------------------------------------------
-                    # HASH MISMATCH
-                    # ---------------------------------------------------------
-                    #
-                    # A recovery crop is allowed to have a different hash.
-                    #
-                    # A normal asset with the same clean_index but a different
-                    # hash is NOT allowed to silently inherit Family-A authority.
-                    # ---------------------------------------------------------
 
                     if (
                         authority_hash
@@ -28035,83 +27940,22 @@ class VendorImportJob(models.Model):
                         and not hash_match
                     ):
 
-                        if is_authoritative_recovery_asset:
+                        _logger.error(
+                            "[POOL FAMILY A HASH MISMATCH] "
+                            "page=%s "
+                            "| authority_index=%s "
+                            "| incoming_clean_index=%s "
+                            "| authority_hash=%s "
+                            "| incoming_hash=%s "
+                            "| color=%s",
+                            current_page,
+                            authority_index,
+                            incoming_index,
+                            authority_hash,
+                            incoming_hash,
+                            asset.get("color"),
+                        )
 
-                            _logger.warning(
-                                "[POOL FAMILY A HASH MISMATCH ALLOWED] "
-                                "page=%s "
-                                "| clean_index=%s "
-                                "| authority_hash=%s "
-                                "| incoming_hash=%s "
-                                "| recovery=%s "
-                                "| ACTION=KEEP_RECOVERY_ASSET",
-                                current_page,
-                                incoming_index,
-                                authority_hash,
-                                incoming_hash,
-                                is_authoritative_recovery_asset,
-                            )
-
-                        else:
-
-                            _logger.error(
-                                "[POOL FAMILY A HASH CONFLICT] "
-                                "page=%s "
-                                "| authority_index=%s "
-                                "| incoming_clean_index=%s "
-                                "| authority_hash=%s "
-                                "| incoming_hash=%s "
-                                "| color=%s "
-                                "| ACTION=REJECT_ASSET",
-                                current_page,
-                                authority_index,
-                                incoming_index,
-                                authority_hash,
-                                incoming_hash,
-                                asset.get("color"),
-                            )
-
-                            family_a_identity_conflict = True
-
-
-                # =========================================================
-                # REJECT CONFLICTING NON-AUTHORITATIVE ASSET
-                # =========================================================
-                #
-                # IMPORTANT:
-                # Do this BEFORE:
-                #
-                #     SAFE COLOR DETECTION
-                #     DUPLICATE CHECK
-                #     HUMAN/LIFESTYLE CHECK
-                #     prepared.append(...)
-                #
-                # Otherwise the conflicting image can still enter the pool.
-                # =========================================================
-
-                if family_a_identity_conflict:
-
-                    _logger.warning(
-                        "[POOL FAMILY A CONFLICT REMOVED] "
-                        "page=%s "
-                        "| clean_index=%s "
-                        "| color=%s "
-                        "| image_hash=%s",
-                        current_page,
-                        (
-                            asset.get("clean_index")
-                            if isinstance(asset, dict)
-                            else None
-                        ),
-                        (
-                            asset.get("color")
-                            if isinstance(asset, dict)
-                            else None
-                        ),
-                        incoming_hash,
-                    )
-
-                    continue
 
                 _logger.warning(
                     "[POOL FAMILY A DECISION] "
@@ -29831,16 +29675,19 @@ class VendorImportJob(models.Model):
                     ).hexdigest()[:10]
 
                     source_asset_id = asset.get("asset_id")
-
                     source_hash = asset.get("image_hash")
+
+                    # Preserve the original extractor asset identity.
+                    # This must NEVER be regenerated from the sorted position.
+                    clean_index = asset.get("clean_index")
+
+                    if clean_index is None:
+                        clean_index = source_asset_id
 
                     audit = list(
                         asset.get("audit", [])
                     )
                     audit.append("SEGMENT_CREATED")
-
-                    
-
                    
                     candidate_crops.append({
 
@@ -29884,9 +29731,14 @@ class VendorImportJob(models.Model):
 
                         "image_hash": image_hash,
 
+
+                        # IMPORTANT: preserve original source identity
+                        "clean_index": clean_index,
+                       
                         "source_asset_id": source_asset_id,
 
                         "source_hash": source_hash,
+
 
                         "extractor_rank": asset.get(
                             "extractor_rank"
