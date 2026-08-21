@@ -27749,7 +27749,7 @@ class VendorImportJob(models.Model):
                             current_page,
                             authority_index,
                             incoming_index,
-                            dominant_color,
+                            asset.get("color"),
                         )
 
                     if (
@@ -27771,7 +27771,7 @@ class VendorImportJob(models.Model):
                             incoming_index,
                             authority_hash,
                             incoming_hash,
-                            dominant_color,
+                            asset.get("color"),
                         )
 
                 _logger.warning(
@@ -36583,6 +36583,36 @@ class VendorImportJob(models.Model):
                 "images",
                 []
             )
+
+            for asset in page_images:
+
+                if not isinstance(asset, dict):
+                    continue
+
+                _logger.warning(
+                    "[PDF PAGE IMAGE IDENTITY] "
+                    "JOB=%s | PAGE=%s "
+                    "| CLEAN_INDEX=%s "
+                    "| IMAGE_HASH=%s "
+                    "| SOURCE_HASH=%s "
+                    "| SOURCE_ASSET_ID=%s "
+                    "| ASSET_ID=%s "
+                    "| FAMILY_A_INDEX=%s "
+                    "| PRODUCT_REF=%s "
+                    "| CROP_ID=%s "
+                    "| AZURE_CROP=%s",
+                    self.id,
+                    page_number,
+                    asset.get("clean_index"),
+                    asset.get("image_hash"),
+                    asset.get("source_hash"),
+                    asset.get("source_asset_id"),
+                    asset.get("asset_id"),
+                    asset.get("family_a_image_index"),
+                    asset.get("product_reference"),
+                    asset.get("crop_id"),
+                    asset.get("azure_crop"),
+                )
 
             if not page_images:
 
