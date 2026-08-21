@@ -7907,19 +7907,13 @@ class VendorImportJob(models.Model):
                     old_index
                 )
 
-
+           
                 # ======================================================
                 # STEP 1
                 # AUTHORITATIVE CLEAN INDEX
-                #
-                # If the existing image_index corresponds to an actual
-                # clean_index in the authoritative pool, PRESERVE IT.
-                #
-                # THIS IS THE CRITICAL FIX.
                 # ======================================================
 
                 authoritative_index = None
-
 
                 if old_index is not None:
 
@@ -7933,16 +7927,68 @@ class VendorImportJob(models.Model):
 
                         candidate_index = None
 
-
                     if (
                         candidate_index is not None
                         and
                         candidate_index in clean_lookup
                     ):
 
-                        authoritative_index = (
-                            candidate_index
-                        )
+                        # ==================================================
+                        # IMPORTANT:
+                        # A CLEAN INDEX MAY ONLY BELONG TO ONE VARIANT.
+                        #
+                        # If another variant already owns this index,
+                        # do NOT silently reuse it.
+                        #
+                        # Example:
+                        #
+                        # White  -> 0
+                        # Silver -> 0
+                        #
+                        # White claims 0 first.
+                        # Silver MUST NOT treat 0 as authoritative.
+                        # Silver must continue to color fallback.
+                        # ==================================================
+
+                        if candidate_index not in used_clean_indexes:
+
+                            authoritative_index = (
+                                candidate_index
+                            )
+
+                            _logger.warning(
+                                "[CORRECTION INDEX CLAIM] "
+                                "JOB=%s | COLOR=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| OWNER=AVAILABLE",
+                                job_id,
+                                variant_color,
+                                candidate_index
+                            )
+
+                        else:
+
+                            _logger.warning(
+                                "[CORRECTION INDEX ALREADY USED] "
+                                "JOB=%s | COLOR=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| ACTION=COLOR_FALLBACK",
+                                job_id,
+                                variant_color,
+                                candidate_index
+                            )
+
+                            _logger.warning(
+                                "[CORRECTION COLLISION PREVENTED] "
+                                "JOB=%s | COLOR=%s "
+                                "| REQUESTED_INDEX=%s "
+                                "| USED_INDEXES=%s "
+                                "| ACTION=COLOR_FALLBACK",
+                                job_id,
+                                variant_color,
+                                candidate_index,
+                                sorted(used_clean_indexes),
+                            )
 
 
                 # ======================================================
