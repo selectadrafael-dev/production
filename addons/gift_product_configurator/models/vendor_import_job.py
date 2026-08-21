@@ -28297,7 +28297,15 @@ class VendorImportJob(models.Model):
         )
        
         # =====================================
-        # PRESERVE ORIGINAL EXTRACT INDEXES
+        # ASSIGN CURRENT SORTED POOL POSITION
+        # =====================================
+        #
+        # IMPORTANT:
+        #
+        # clean_index = stable source/extraction identity
+        # index       = current position AFTER pool sorting
+        #
+        # These two values MUST NOT be treated as interchangeable.
         # =====================================
 
         for idx, asset in enumerate(prepared):
@@ -28305,7 +28313,6 @@ class VendorImportJob(models.Model):
             asset["index"] = idx
 
             if asset.get("clean_index") is None:
-
                 asset["clean_index"] = idx
 
         _logger.warning(
@@ -30891,6 +30898,14 @@ class VendorImportJob(models.Model):
 
                         return explicit_asset
 
+                    # _logger.warning(
+                    #     "[EXPLICIT VARIANT ALREADY USED] "
+                    #     "variant=%s | "
+                    #     "clean_index=%s",
+                    #     variant_text,
+                    #     requested_image_index
+                    # )
+
                     _logger.warning(
                         "[EXPLICIT VARIANT ALREADY USED] "
                         "variant=%s | "
@@ -30899,7 +30914,21 @@ class VendorImportJob(models.Model):
                         requested_image_index
                     )
 
-                    break
+                    # =====================================================
+                    # AUTHORITATIVE IMAGE MUST NOT BE REPLACED
+                    # =====================================================
+                    #
+                    # If PDF-AI / correction explicitly supplied an image
+                    # index, do NOT let CLIP or generic color scoring
+                    # silently substitute another asset.
+                    #
+                    # Returning False allows create_products_pdf()
+                    # to record the missing/duplicate condition rather
+                    # than assigning the wrong color image.
+                    # =====================================================
+
+                    return False
+
 
             clip_asset = None
 
@@ -37272,31 +37301,33 @@ class VendorImportJob(models.Model):
                                 if ai_image_index is not None:
 
                                     matched_asset = next(
-
-                                        (
-
+                                    (
                                             a
-
                                             for a in asset_pool
-
-                                            if a.get("clean_index") == ai_image_index
-
+                                            if (
+                                                a.get("clean_index") is not None
+                                                and ai_image_index is not None
+                                                and str(a.get("clean_index")) == str(ai_image_index)
+                                            )
                                         ),
-
                                         None
-
                                     )
 
                                     if matched_asset:
 
                                         _logger.warning(
-
-                                            f"[AI IMAGE USED] "
-
-                                            f"color={variant.get('attributes', {}).get('Color')} "
-
-                                            f"clean_index={ai_image_index}"
-
+                                            "[AI IMAGE USED] "
+                                            "color=%s | "
+                                            "clean_index=%s | "
+                                            "pool_index=%s | "
+                                            "pool_color=%s",
+                                            variant.get(
+                                                "attributes",
+                                                {}
+                                            ).get("Color"),
+                                            matched_asset.get("clean_index"),
+                                            matched_asset.get("index"),
+                                            matched_asset.get("dominant_color"),
                                         )
 
 
@@ -37326,9 +37357,51 @@ class VendorImportJob(models.Model):
 
                                     continue
 
+
                                 clean_index = matched_asset.get(
                                     "clean_index"
                                 )
+
+                                requested_clean_index = variant.get(
+                                    "image_index"
+                                )
+
+                                # =====================================================
+                                # AUTHORITATIVE IMAGE IDENTITY CHECK
+                                # =====================================================
+                                #
+                                # image_index from PDF-AI / correction is a CLEAN INDEX.
+                                # It must resolve to the same clean_index on the asset.
+                                #
+                                # Never silently apply a different asset.
+                                # =====================================================
+
+                                if (
+                                    requested_clean_index is not None
+                                    and clean_index is not None
+                                    and str(requested_clean_index) != str(clean_index)
+                                ):
+
+                                    _logger.error(
+                                        "[VARIANT IMAGE IDENTITY MISMATCH] "
+                                        "JOB=%s | PRODUCT=%s | VARIANT=%s | "
+                                        "REQUESTED_CLEAN_INDEX=%s | "
+                                        "RESOLVED_CLEAN_INDEX=%s | "
+                                        "POOL_INDEX=%s | "
+                                        "POOL_COLOR=%s",
+                                        self.id,
+                                        product_data.get("name"),
+                                        variant.get("attributes", {}),
+                                        requested_clean_index,
+                                        clean_index,
+                                        matched_asset.get("index"),
+                                        matched_asset.get("dominant_color"),
+                                    )
+
+                                    # Do NOT attach a potentially wrong image.
+                                    matched_asset = None
+
+                                    continue
 
                                 if clean_index in page_validation["used_indexes"]:
 
@@ -37372,20 +37445,31 @@ class VendorImportJob(models.Model):
                                         )
                                     )
 
-                            
-                                    asset_index = matched_asset.get("index")
 
-                                    if asset_index is not None:
+                                    asset_clean_index = matched_asset.get(
+                                        "clean_index"
+                                    )
 
-                                        used_asset_indexes.add(asset_index)
+                                    asset_pool_index = matched_asset.get(
+                                        "index"
+                                    )
+
+                                    if asset_clean_index is not None:
+
+                                        used_asset_indexes.add(
+                                            asset_clean_index
+                                        )
 
                                         _logger.warning(
-
-                                            f"[ASSET INDEX USED] "
-
-                                            f"{variant_name} "
-
-                                            f"| index={asset_index}"
+                                            "[ASSET INDEX USED] "
+                                            "variant=%s | "
+                                            "clean_index=%s | "
+                                            "pool_index=%s | "
+                                            "color=%s",
+                                            variant_name,
+                                            asset_clean_index,
+                                            asset_pool_index,
+                                            matched_asset.get("dominant_color"),
                                         )
 
 
