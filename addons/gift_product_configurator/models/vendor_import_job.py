@@ -27671,6 +27671,108 @@ class VendorImportJob(models.Model):
                             ):
 
                                 family_a_authority = None
+                # =========================================================
+                # FAMILY A IDENTITY INTEGRITY CHECK
+                # =========================================================
+                #
+                # Family A image_index is the authoritative source identity.
+                # The incoming clean_index must point to the same asset.
+                #
+                # Verify the identity using image_hash whenever possible.
+                # Never silently trust a clean_index if the hash disagrees.
+                # =========================================================
+
+                if (
+                    family_a_authority
+                    and isinstance(asset, dict)
+                ):
+
+                    authority_index = (
+                        family_a_authority.get("image_index")
+                    )
+
+                    authority_hash = (
+                        family_a_authority.get("image_hash")
+                    )
+
+                    incoming_index = (
+                        asset.get("clean_index")
+                    )
+
+                    incoming_hash = (
+                        asset.get("image_hash")
+                        or incoming_hash
+                    )
+
+                    index_match = (
+                        authority_index is not None
+                        and incoming_index is not None
+                        and str(authority_index) == str(incoming_index)
+                    )
+
+                    hash_match = (
+                        not authority_hash
+                        or not incoming_hash
+                        or str(authority_hash) == str(incoming_hash)
+                    )
+
+                    _logger.warning(
+                        "[POOL FAMILY A IDENTITY] "
+                        "page=%s "
+                        "| authority_index=%s "
+                        "| incoming_clean_index=%s "
+                        "| index_match=%s "
+                        "| hash_match=%s "
+                        "| authority_hash=%s "
+                        "| incoming_hash=%s",
+                        current_page,
+                        authority_index,
+                        incoming_index,
+                        index_match,
+                        hash_match,
+                        authority_hash,
+                        incoming_hash,
+                    )
+
+                    if (
+                        authority_index is not None
+                        and incoming_index is not None
+                        and not index_match
+                    ):
+
+                        _logger.error(
+                            "[POOL FAMILY A INDEX MISMATCH] "
+                            "page=%s "
+                            "| authority_index=%s "
+                            "| incoming_clean_index=%s "
+                            "| color=%s",
+                            current_page,
+                            authority_index,
+                            incoming_index,
+                            dominant_color,
+                        )
+
+                    if (
+                        authority_hash
+                        and incoming_hash
+                        and not hash_match
+                    ):
+
+                        _logger.error(
+                            "[POOL FAMILY A HASH MISMATCH] "
+                            "page=%s "
+                            "| authority_index=%s "
+                            "| incoming_clean_index=%s "
+                            "| authority_hash=%s "
+                            "| incoming_hash=%s "
+                            "| color=%s",
+                            current_page,
+                            authority_index,
+                            incoming_index,
+                            authority_hash,
+                            incoming_hash,
+                            dominant_color,
+                        )
 
                 _logger.warning(
                     "[POOL FAMILY A DECISION] "
@@ -28075,6 +28177,12 @@ class VendorImportJob(models.Model):
                     "centered_object": centered_object,
 
                     "asset_id": asset.get("asset_id"),
+
+                    "family_a_image_index": (
+                        family_a_authority.get("image_index")
+                        if family_a_authority
+                        else asset.get("family_a_image_index")
+                    ),
 
                     "image_hash": asset.get("image_hash"),
 
@@ -36772,6 +36880,33 @@ class VendorImportJob(models.Model):
 
                             "is_collage": False
                         })
+
+                # =====================================================
+                # PDF CREATE INPUT ASSET IDENTITY
+                # =====================================================
+
+                for asset in segmented_assets:
+
+                    if not isinstance(asset, dict):
+                        continue
+
+                    _logger.warning(
+                        "[PDF CREATE ASSET INPUT] "
+                        "JOB=%s "
+                        "| PRODUCT=%s "
+                        "| CLEAN_INDEX=%s "
+                        "| IMAGE_HASH=%s "
+                        "| COLOR=%s "
+                        "| PRODUCT_REF=%s "
+                        "| FAMILY_A_INDEX=%s",
+                        self.id,
+                        product_data.get("name"),
+                        asset.get("clean_index"),
+                        asset.get("image_hash"),
+                        asset.get("dominant_color"),
+                        asset.get("product_reference"),
+                        asset.get("family_a_image_index"),
+                    )
 
                 # =====================================
                 # BUILD ASSET POOL
