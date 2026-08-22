@@ -18819,7 +18819,7 @@ class VendorImportJob(models.Model):
                                 ),
 
                             "image_hash": hashlib.md5(
-                                image_data.encode("utf-8")
+                                base64.b64decode(image_data)
                             ).hexdigest(),
 
                             "width":
@@ -18863,6 +18863,26 @@ class VendorImportJob(models.Model):
                                 ),
                                 
                         })
+
+                        _logger.warning(
+                            "[FAMILY A SOURCE HASH CANONICAL] "
+                            "IMAGE_INDEX=%s "
+                            "| IMAGE_HASH=%s "
+                            "| HASH_LENGTH=%s",
+                            image.get(
+                                "index",
+                                len(extracted_indexes)
+                            ),
+                            extracted_indexes[-1].get(
+                                "image_hash"
+                            ),
+                            len(
+                                extracted_indexes[-1].get(
+                                    "image_hash",
+                                    ""
+                                )
+                            ),
+                        )
 
 
                 review_pages.append({
@@ -29528,7 +29548,7 @@ class VendorImportJob(models.Model):
 
                 asset["image_hash"] = hashlib.md5(
                     image_bytes
-                ).hexdigest()[:10]
+                ).hexdigest()
 
                 asset["audit"] = ["EXTRACTOR"]
 
@@ -30319,6 +30339,18 @@ class VendorImportJob(models.Model):
 
                     source_asset_id = asset.get("asset_id")
                     source_hash = asset.get("image_hash")
+
+                    _logger.warning(
+                        "[SOURCE HASH CANONICAL] "
+                        "SOURCE_ASSET_ID=%s "
+                        "| SOURCE_HASH=%s "
+                        "| HASH_LENGTH=%s "
+                        "| CLEAN_INDEX=%s",
+                        source_asset_id,
+                        source_hash,
+                        len(source_hash) if source_hash else 0,
+                        asset.get("clean_index"),
+                    )
 
                     # Preserve the original extractor asset identity.
                     # This must NEVER be regenerated from the sorted position.
