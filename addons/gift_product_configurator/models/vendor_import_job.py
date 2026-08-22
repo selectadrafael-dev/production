@@ -27838,6 +27838,33 @@ class VendorImportJob(models.Model):
                         "clean_index"
                     )
 
+                    _logger.warning(
+                        "[INDEX LINEAGE INCOMING] "
+                        "JOB=%s "
+                        "| PAGE=%s "
+                        "| RAW_ASSET_INDEX=%s "
+                        "| CLEAN_INDEX=%s "
+                        "| EXISTING_FAMILY_A_IMAGE_INDEX=%s "
+                        "| ASSET_ID=%s "
+                        "| SOURCE_ASSET_ID=%s "
+                        "| IMAGE_HASH=%s "
+                        "| SOURCE_HASH=%s "
+                        "| PRODUCT_REF=%s "
+                        "| CROP_ID=%s",
+                        self.id,
+                        current_page,
+                        asset.get("index"),
+                        incoming_index,
+                        asset.get("family_a_image_index"),
+                        asset.get("asset_id"),
+                        asset.get("source_asset_id"),
+                        asset.get("image_hash"),
+                        asset.get("source_hash"),
+                        asset.get("product_reference"),
+                        asset.get("crop_id"),
+                    )
+
+
                     family_a_authority = (
                         family_a_authority_by_hash.get(
                             incoming_hash
@@ -28037,6 +28064,58 @@ class VendorImportJob(models.Model):
                 # Verify the identity using image_hash whenever possible.
                 # Never silently trust a clean_index if the hash disagrees.
                 # =========================================================
+
+                if isinstance(asset, dict):
+                    _logger.warning(
+                        "[INDEX LINEAGE RESOLVED] "
+                        "JOB=%s "
+                        "| PAGE=%s "
+                        "| LOOKUP_SOURCE=%s "
+                        "| RAW_ASSET_INDEX=%s "
+                        "| CLEAN_INDEX=%s "
+                        "| FAMILY_A_INDEX=%s "
+                        "| FAMILY_A_CLEAN_INDEX=%s "
+                        "| ASSET_ID=%s "
+                        "| SOURCE_ASSET_ID=%s "
+                        "| INCOMING_HASH=%s "
+                        "| AUTHORITY_HASH=%s "
+                        "| FAMILY_A_CLASS=%s "
+                        "| FAMILY_A_ROLE=%s",
+                        self.id,
+                        current_page,
+                        family_a_lookup_source,
+                        asset.get("index"),
+                        asset.get("clean_index"),
+                        (
+                            family_a_authority.get("image_index")
+                            if family_a_authority
+                            else None
+                        ),
+                        (
+                            family_a_authority.get("clean_index")
+                            if family_a_authority
+                            else None
+                        ),
+                        asset.get("asset_id"),
+                        asset.get("source_asset_id"),
+                        incoming_hash,
+                        (
+                            family_a_authority.get("image_hash")
+                            if family_a_authority
+                            else None
+                        ),
+                        (
+                            family_a_authority.get("classification")
+                            if family_a_authority
+                            else None
+                        ),
+                        (
+                            family_a_authority.get("asset_role")
+                            if family_a_authority
+                            else None
+                        ),
+                    )
+                    
 
                 if (
                     family_a_authority
