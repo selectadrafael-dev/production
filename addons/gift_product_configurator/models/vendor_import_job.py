@@ -27865,16 +27865,120 @@ class VendorImportJob(models.Model):
                     )
 
 
-                    family_a_authority = (
-                        family_a_authority_by_hash.get(
-                            incoming_hash
-                        )
+                    # =====================================================
+                    # 1. CURRENT PDF PAGE + CLEAN INDEX
+                    # =====================================================
+                    #
+                    # Family A image_index is the authoritative source identity.
+                    # Incoming clean_index identifies the same extracted asset.
+                    #
+                    # Therefore PAGE + CLEAN_INDEX is the PRIMARY lookup.
+                    # =====================================================
+
+                    incoming_index = asset.get(
+                        "clean_index"
                     )
-                    if family_a_authority is not None:
-                        family_a_lookup_source = "IMAGE_HASH"
+
+                    if (
+                        current_page is not None
+                        and incoming_index is not None
+                    ):
+
+                        try:
+
+                            family_a_authority = (
+                                family_a_authority_by_page_index.get(
+                                    (
+                                        int(current_page),
+                                        int(incoming_index)
+                                    )
+                                )
+                            )
+
+                            if family_a_authority is not None:
+
+                                family_a_lookup_source = (
+                                    "PAGE_CLEAN_INDEX"
+                                )
+
+                            _logger.warning(
+                                "[POOL FAMILY A PRIMARY INDEX LOOKUP] "
+                                "JOB=%s "
+                                "| PAGE=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| FOUND=%s "
+                                "| FAMILY_A_INDEX=%s "
+                                "| FAMILY_A_HASH=%s "
+                                "| CLASSIFICATION=%s "
+                                "| ROLE=%s",
+                                self.id,
+                                current_page,
+                                incoming_index,
+                                bool(family_a_authority),
+                                (
+                                    family_a_authority.get("image_index")
+                                    if family_a_authority
+                                    else None
+                                ),
+                                (
+                                    family_a_authority.get("image_hash")
+                                    if family_a_authority
+                                    else None
+                                ),
+                                (
+                                    family_a_authority.get("classification")
+                                    if family_a_authority
+                                    else None
+                                ),
+                                (
+                                    family_a_authority.get("asset_role")
+                                    if family_a_authority
+                                    else None
+                                ),
+                            )
+
+                        except (
+                            TypeError,
+                            ValueError
+                        ):
+
+                            family_a_authority = None
+
 
                     # =====================================================
-                    # 2. SOURCE HASH FALLBACK
+                    # 2. EXACT IMAGE HASH FALLBACK
+                    # =====================================================
+
+                    if family_a_authority is None:
+
+                        family_a_authority = (
+                            family_a_authority_by_hash.get(
+                                incoming_hash
+                            )
+                        )
+
+                        if family_a_authority is not None:
+
+                            family_a_lookup_source = (
+                                "IMAGE_HASH"
+                            )
+
+                            _logger.warning(
+                                "[POOL FAMILY A HASH FALLBACK] "
+                                "JOB=%s "
+                                "| PAGE=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| IMAGE_HASH=%s "
+                                "| FOUND=True",
+                                self.id,
+                                current_page,
+                                incoming_index,
+                                incoming_hash,
+                            )
+
+
+                    # =====================================================
+                    # 3. SOURCE HASH FALLBACK
                     # =====================================================
 
                     if family_a_authority is None:
@@ -27890,9 +27994,44 @@ class VendorImportJob(models.Model):
                                     source_hash
                                 )
                             )
+
+                            if family_a_authority is not None:
+
+                                family_a_lookup_source = (
+                                    "SOURCE_HASH"
+                                )
+
+                                _logger.warning(
+                                    "[POOL FAMILY A SOURCE HASH FALLBACK] "
+                                    "JOB=%s "
+                                    "| PAGE=%s "
+                                    "| CLEAN_INDEX=%s "
+                                    "| SOURCE_HASH=%s "
+                                    "| FOUND=True",
+                                    self.id,
+                                    current_page,
+                                    incoming_index,
+                                    source_hash,
+                                )
+
+
+                    # =====================================================
+                    # 3. SOURCE HASH — LAST NORMAL FALLBACK
+                    # =====================================================
+
+                    if family_a_authority is None:
+
+                        source_hash = asset.get("source_hash")
+
+                        if source_hash:
+                            family_a_authority = (
+                                family_a_authority_by_hash.get(
+                                    source_hash
+                                )
+                            )
+
                             if family_a_authority is not None:
                                 family_a_lookup_source = "SOURCE_HASH"
-
 
                     # ======================================================
                     # 3. FAMILY A PRECISION-RECOVERY ASSET
