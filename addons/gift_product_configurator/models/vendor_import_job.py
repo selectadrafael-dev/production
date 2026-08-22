@@ -28550,9 +28550,10 @@ class VendorImportJob(models.Model):
                     "family_a_identity_status"
                 )
 
+
                 if (
                     family_a_authority
-                    and classification == "REAL_PRODUCT"
+                    and asset.get("classification") == "REAL_PRODUCT"
                     and identity_status == "VERIFIED"
                 ):
                     asset["family_a_authoritative"] = True
