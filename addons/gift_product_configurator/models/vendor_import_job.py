@@ -28862,6 +28862,42 @@ class VendorImportJob(models.Model):
                 )
 
                 _logger.warning(
+                    "[POOL FINAL CLASSIFICATION SOURCE] "
+                    "JOB=%s | PAGE=%s | CLEAN_INDEX=%s | "
+                    "FAMILY_A_INDEX=%s | "
+                    "IDENTITY_STATUS=%s | "
+                    "AUTHORITATIVE=%s | "
+                    "TRUSTWORTHY=%s | "
+                    "PRESERVE=%s | "
+                    "AUTH_CLASS=%s | "
+                    "AUTH_ROLE=%s | "
+                    "ASSET_CLASS=%s | "
+                    "ASSET_ROLE=%s | "
+                    "ASSET_LIFESTYLE=%s",
+                    self.id,
+                    current_page,
+                    asset.get("clean_index"),
+                    asset.get("family_a_image_index"),
+                    asset.get("family_a_identity_status"),
+                    asset.get("family_a_authoritative"),
+                    asset.get("family_a_trustworthy"),
+                    asset.get("family_a_preserve"),
+                    (
+                        family_a_authority.get("classification")
+                        if family_a_authority
+                        else None
+                    ),
+                    (
+                        family_a_authority.get("asset_role")
+                        if family_a_authority
+                        else None
+                    ),
+                    asset.get("classification"),
+                    asset.get("asset_role"),
+                    asset.get("is_lifestyle"),
+                )
+
+                _logger.warning(
                     "[POOL FINAL IDENTITY DECISION] "
                     "JOB=%s | PAGE=%s | "
                     "CLEAN_INDEX=%s | "
