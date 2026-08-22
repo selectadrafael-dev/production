@@ -28115,7 +28115,7 @@ class VendorImportJob(models.Model):
                             else None
                         ),
                     )
-                    
+
 
                 if (
                     family_a_authority
@@ -28169,6 +28169,8 @@ class VendorImportJob(models.Model):
                         incoming_hash,
                     )
 
+
+
                     if (
                         authority_index is not None
                         and incoming_index is not None
@@ -28185,6 +28187,67 @@ class VendorImportJob(models.Model):
                             authority_index,
                             incoming_index,
                             asset.get("color"),
+                        )
+
+                    # ============================================================
+                    # FAMILY A IDENTITY STATUS
+                    # ============================================================
+
+                    if (
+                        family_a_authority
+                        and index_match
+                        and hash_match
+                    ):
+                        asset["family_a_identity_status"] = "VERIFIED"
+
+                        _logger.warning(
+                            "[POOL FAMILY A IDENTITY VERIFIED] "
+                            "JOB=%s | PAGE=%s | "
+                            "CLEAN_INDEX=%s | "
+                            "FAMILY_A_INDEX=%s | "
+                            "HASH_MATCH=True",
+                            self.id,
+                            current_page,
+                            asset.get("clean_index"),
+                            asset.get("family_a_image_index"),
+                        )
+
+                    elif (
+                        family_a_authority
+                        and index_match
+                        and not hash_match
+                    ):
+                        asset["family_a_identity_status"] = "HASH_MISMATCH"
+
+                        _logger.error(
+                            "[POOL FAMILY A IDENTITY REJECTED] "
+                            "JOB=%s | PAGE=%s | "
+                            "CLEAN_INDEX=%s | "
+                            "FAMILY_A_INDEX=%s | "
+                            "HASH_MATCH=False | "
+                            "STATUS=HASH_MISMATCH",
+                            self.id,
+                            current_page,
+                            asset.get("clean_index"),
+                            asset.get("family_a_image_index"),
+                        )
+
+                    else:
+                        asset["family_a_identity_status"] = "UNRESOLVED"
+
+                        _logger.warning(
+                            "[POOL FAMILY A IDENTITY UNRESOLVED] "
+                            "JOB=%s | PAGE=%s | "
+                            "CLEAN_INDEX=%s | "
+                            "FAMILY_A_INDEX=%s | "
+                            "INDEX_MATCH=%s | "
+                            "HASH_MATCH=%s",
+                            self.id,
+                            current_page,
+                            asset.get("clean_index"),
+                            asset.get("family_a_image_index"),
+                            index_match,
+                            hash_match,
                         )
 
                     if (
@@ -28471,67 +28534,88 @@ class VendorImportJob(models.Model):
                         )
                     ).upper().strip()
 
-                # =========================================================
-                # AUTHORITATIVE FAMILY A REAL PRODUCT
-                # =========================================================
+                
+                # ============================================================
+                # FAMILY A AUTHORITY OVERRIDE
+                # ============================================================
+                #
+                # REAL_PRODUCT classification alone is NOT sufficient to make
+                # the incoming asset Family-A authoritative.
+                #
+                # The incoming image must have passed the Family-A identity
+                # verification first.
+                # ============================================================
+
+                identity_status = asset.get(
+                    "family_a_identity_status"
+                )
 
                 if (
                     family_a_authority
-                    and
-                    family_a_classification == "REAL_PRODUCT"
+                    and classification == "REAL_PRODUCT"
+                    and identity_status == "VERIFIED"
                 ):
+                    asset["family_a_authoritative"] = True
+                    asset["family_a_trustworthy"] = True
+                    asset["family_a_preserve"] = True
 
                     _logger.warning(
-                        "[POOL FAMILY A OVERRIDE] "
-                        "REAL_PRODUCT preserved "
-                        "| image=%s "
-                        "| page=%s "
-                        "| ratio=%.2f "
-                        "| size=%sx%s",
-                        asset.get(
-                            "index"
-                        )
-                            if isinstance(asset, dict)
-                            else None,
-                        asset.get(
-                            "page"
-                        )
-                            if isinstance(asset, dict)
-                            else None,
-                        ratio,
-                        width,
-                        height,
+                        "[POOL FAMILY A OVERRIDE ALLOWED] "
+                        "JOB=%s | PAGE=%s | CLEAN_INDEX=%s | "
+                        "FAMILY_A_INDEX=%s | "
+                        "STATUS=%s | "
+                        "AUTHORITATIVE=True | "
+                        "TRUSTWORTHY=True",
+                        self.id,
+                        current_page,
+                        asset.get("clean_index"),
+                        asset.get("family_a_image_index"),
+                        identity_status,
                     )
 
-                    # Family A is authoritative.
-                    # DO NOT apply the generic portrait/human rejection.
+                elif (
+                    classification == "REAL_PRODUCT"
+                    and identity_status == "HASH_MISMATCH"
+                ):
+                    asset["family_a_authoritative"] = False
+                    asset["family_a_trustworthy"] = False
+                    asset["family_a_preserve"] = True
 
-                else:
+                    _logger.error(
+                        "[POOL FAMILY A OVERRIDE BLOCKED] "
+                        "JOB=%s | PAGE=%s | CLEAN_INDEX=%s | "
+                        "FAMILY_A_INDEX=%s | "
+                        "STATUS=HASH_MISMATCH | "
+                        "AUTHORITATIVE=False | "
+                        "TRUSTWORTHY=False | "
+                        "PRESERVE=True",
+                        self.id,
+                        current_page,
+                        asset.get("clean_index"),
+                        asset.get("family_a_image_index"),
+                    )
 
-                    # =====================================================
-                    # FALLBACK HUMAN / LIFESTYLE HEURISTIC
-                    # =====================================================
+                elif (
+                    classification == "REAL_PRODUCT"
+                    and identity_status == "UNRESOLVED"
+                ):
+                    asset["family_a_authoritative"] = False
+                    asset["family_a_trustworthy"] = False
+                    asset["family_a_preserve"] = True
 
-                    if (
-                        not is_azure_asset
-                        and
-                        not recovered
-                        and
-                        ratio < 0.72
-                        and
-                        height > width * 1.20
-                    ):
-
-                        _logger.warning(
-                            "[ASSET REJECTED HUMAN FALLBACK] "
-                            "No authoritative Family A REAL_PRODUCT "
-                            "decision | ratio=%.2f | size=%sx%s",
-                            ratio,
-                            width,
-                            height,
-                        )
-
-                        continue
+                    _logger.warning(
+                        "[POOL FAMILY A OVERRIDE BLOCKED] "
+                        "JOB=%s | PAGE=%s | CLEAN_INDEX=%s | "
+                        "FAMILY_A_INDEX=%s | "
+                        "STATUS=UNRESOLVED | "
+                        "AUTHORITATIVE=False | "
+                        "TRUSTWORTHY=False | "
+                        "PRESERVE=True",
+                        self.id,
+                        current_page,
+                        asset.get("clean_index"),
+                        asset.get("family_a_image_index"),
+                    )
 
                 if is_azure_asset:
                     _logger.warning(
@@ -28596,6 +28680,35 @@ class VendorImportJob(models.Model):
                         if family_a_authority
                         else asset.get("product_reference"),
                     asset.get("crop_id") if isinstance(asset, dict) else None,
+                )
+
+                _logger.warning(
+                    "[POOL FINAL IDENTITY DECISION] "
+                    "JOB=%s | PAGE=%s | "
+                    "CLEAN_INDEX=%s | "
+                    "FAMILY_A_INDEX=%s | "
+                    "IDENTITY_STATUS=%s | "
+                    "AUTHORITATIVE=%s | "
+                    "TRUSTWORTHY=%s | "
+                    "PRESERVE=%s | "
+                    "CLASS=%s | "
+                    "ROLE=%s | "
+                    "LIFESTYLE=%s | "
+                    "FAMILY_A_COLOR=%s | "
+                    "POOL_COLOR=%s",
+                    self.id,
+                    current_page,
+                    asset.get("clean_index"),
+                    asset.get("family_a_image_index"),
+                    asset.get("family_a_identity_status"),
+                    asset.get("family_a_authoritative"),
+                    asset.get("family_a_trustworthy"),
+                    asset.get("family_a_preserve"),
+                    asset.get("classification"),
+                    asset.get("asset_role"),
+                    asset.get("is_lifestyle"),
+                    asset.get("family_a_color"),
+                    asset.get("dominant_color"),
                 )
 
                 prepared.append({
