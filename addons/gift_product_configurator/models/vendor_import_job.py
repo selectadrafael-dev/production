@@ -7646,6 +7646,14 @@ class VendorImportJob(models.Model):
                 len(page_images)
             )
 
+            _logger.warning(
+                "[CORRECTION INPUT ASSET COLLECTION] "
+                "JOB=%s | LIST_ID=%s | COUNT=%s",
+                job_id,
+                id(page_images),
+                len(page_images),
+            )
+
 
             # ==========================================================
             # NORMALIZE ASSETS
@@ -7732,6 +7740,14 @@ class VendorImportJob(models.Model):
                     crop
                 )
 
+                normalized_assets.append({
+                    "source_position": source_position,
+                    "clean_index": clean_index,
+                    "color": str(color).strip().lower(),
+                    "product": str(product_ref).strip(),
+                    "crop": crop,
+                    "asset": asset,
+                })
 
             if not normalized_assets:
 
@@ -7956,14 +7972,38 @@ class VendorImportJob(models.Model):
                                 candidate_index
                             )
 
+ 
                             _logger.warning(
                                 "[CORRECTION INDEX CLAIM] "
-                                "JOB=%s | COLOR=%s "
-                                "| CLEAN_INDEX=%s "
-                                "| OWNER=AVAILABLE",
+                                "JOB=%s | COLOR=%s | "
+                                "REQUESTED_INDEX=%s | "
+                                "CLAIMED_CLEAN_INDEX=%s | "
+                                "ASSET_COUNT_AT_INDEX=%s | "
+                                "ASSET_IDS=%s | "
+                                "FAMILY_A_INDEXES=%s | "
+                                "CLASSES=%s | "
+                                "LIFESTYLES=%s",
                                 job_id,
                                 variant_color,
-                                candidate_index
+                                old_index,
+                                candidate_index,
+                                len(clean_lookup.get(candidate_index, [])),
+                                [
+                                    x["asset"].get("asset_id")
+                                    for x in clean_lookup.get(candidate_index, [])
+                                ],
+                                [
+                                    x["asset"].get("family_a_image_index")
+                                    for x in clean_lookup.get(candidate_index, [])
+                                ],
+                                [
+                                    x["asset"].get("classification")
+                                    for x in clean_lookup.get(candidate_index, [])
+                                ],
+                                [
+                                    x["asset"].get("is_lifestyle")
+                                    for x in clean_lookup.get(candidate_index, [])
+                                ],
                             )
 
                         else:
@@ -8211,6 +8251,67 @@ class VendorImportJob(models.Model):
                 product.get("name", ""),
                 variants
             )
+
+            for variant_no, variant in enumerate(variants):
+                if not isinstance(variant, dict):
+                    continue
+
+                attrs = variant.get("attributes") or {}
+
+                color = (
+                    attrs.get("Color")
+                    or attrs.get("color")
+                    or ""
+                )
+
+                image_index = variant.get("image_index")
+
+                candidates = clean_lookup.get(
+                    image_index,
+                    []
+                )
+
+                _logger.warning(
+                    "[CORRECTION FINAL IDENTITY AUDIT] "
+                    "JOB=%s | VARIANT_NO=%s | COLOR=%s | "
+                    "IMAGE_INDEX=%s | "
+                    "MATCH_COUNT=%s | "
+                    "ASSET_IDS=%s | "
+                    "SOURCE_POSITIONS=%s | "
+                    "CLASSES=%s | "
+                    "ROLES=%s | "
+                    "LIFESTYLES=%s | "
+                    "FAMILY_A_INDEXES=%s",
+                    job_id,
+                    variant_no,
+                    color,
+                    image_index,
+                    len(candidates),
+                    [
+                        x["asset"].get("asset_id")
+                        for x in candidates
+                    ],
+                    [
+                        x["source_position"]
+                        for x in candidates
+                    ],
+                    [
+                        x["asset"].get("classification")
+                        for x in candidates
+                    ],
+                    [
+                        x["asset"].get("asset_role")
+                        for x in candidates
+                    ],
+                    [
+                        x["asset"].get("is_lifestyle")
+                        for x in candidates
+                    ],
+                    [
+                        x["asset"].get("family_a_image_index")
+                        for x in candidates
+                    ],
+                )
 
 
             return product
@@ -27535,6 +27636,34 @@ class VendorImportJob(models.Model):
                     "image_hash"
                 )
 
+                _logger.warning(
+                    "[FAMILY A SOURCE MAP] "
+                    "JOB=%s "
+                    "| PAGE=%s "
+                    "| IMAGE_INDEX=%s "
+                    "| IMAGE_HASH=%s "
+                    "| CLASSIFICATION=%s "
+                    "| ASSET_ROLE=%s "
+                    "| PRODUCT_REFERENCE=%s "
+                    "| CLEAN_INDEX=%s "
+                    "| PRESERVE=%s "
+                    "| TRUSTWORTHY=%s "
+                    "| CONFIDENCE=%s "
+                    "| CROP_ID=%s",
+                    self.id,
+                    page_number,
+                    authority.get("image_index"),
+                    authority.get("image_hash"),
+                    authority.get("classification"),
+                    authority.get("asset_role"),
+                    authority.get("product_reference"),
+                    authority.get("clean_index"),
+                    authority.get("preserve"),
+                    authority.get("trustworthy"),
+                    authority.get("confidence"),
+                    authority.get("crop_id"),
+                )
+
                 if image_hash:
                     family_a_authority_by_hash[
                         image_hash
@@ -27574,9 +27703,43 @@ class VendorImportJob(models.Model):
                 # =====================================
                 # SUPPORT OLD + NEW FORMAT
                 # =====================================
+
                 _logger.warning(
-                    f"[POOL RAW ASSET] "
-                    f"keys={list(asset.keys()) if isinstance(asset, dict) else 'string'}"
+                    "[POOL RAW ASSET IDENTITY] "
+                    "JOB=%s "
+                    "| PAGE=%s "
+                    "| INPUT_INDEX=%s "
+                    "| CLEAN_INDEX=%s "
+                    "| IMAGE_HASH=%s "
+                    "| SOURCE_HASH=%s "
+                    "| SOURCE_ASSET_ID=%s "
+                    "| ASSET_ID=%s "
+                    "| FAMILY_A_IMAGE_INDEX=%s "
+                    "| PRODUCT_REF=%s "
+                    "| CLASSIFICATION=%s "
+                    "| ROLE=%s "
+                    "| LIFESTYLE=%s "
+                    "| CROP_ID=%s "
+                    "| AZURE_CROP=%s "
+                    "| WIDTH=%s "
+                    "| HEIGHT=%s",
+                    self.id,
+                    current_page,
+                    asset.get("index") if isinstance(asset, dict) else None,
+                    asset.get("clean_index") if isinstance(asset, dict) else None,
+                    asset.get("image_hash") if isinstance(asset, dict) else None,
+                    asset.get("source_hash") if isinstance(asset, dict) else None,
+                    asset.get("source_asset_id") if isinstance(asset, dict) else None,
+                    asset.get("asset_id") if isinstance(asset, dict) else None,
+                    asset.get("family_a_image_index") if isinstance(asset, dict) else None,
+                    asset.get("product_reference") if isinstance(asset, dict) else None,
+                    asset.get("classification") if isinstance(asset, dict) else None,
+                    asset.get("asset_role") if isinstance(asset, dict) else None,
+                    asset.get("is_lifestyle") if isinstance(asset, dict) else None,
+                    asset.get("crop_id") if isinstance(asset, dict) else None,
+                    asset.get("azure_crop") if isinstance(asset, dict) else None,
+                    asset.get("width") if isinstance(asset, dict) else None,
+                    asset.get("height") if isinstance(asset, dict) else None,
                 )
 
                 if isinstance(asset, dict):
@@ -27635,6 +27798,7 @@ class VendorImportJob(models.Model):
                 # =========================================================
 
                 family_a_authority = None
+                family_a_lookup_source = "NONE"
 
                 if isinstance(
                     asset,
@@ -27679,6 +27843,8 @@ class VendorImportJob(models.Model):
                             incoming_hash
                         )
                     )
+                    if family_a_authority is not None:
+                        family_a_lookup_source = "IMAGE_HASH"
 
                     # =====================================================
                     # 2. SOURCE HASH FALLBACK
@@ -27697,6 +27863,8 @@ class VendorImportJob(models.Model):
                                     source_hash
                                 )
                             )
+                            if family_a_authority is not None:
+                                family_a_lookup_source = "SOURCE_HASH"
 
 
                     # ======================================================
@@ -27776,6 +27944,8 @@ class VendorImportJob(models.Model):
                             "family_a_precision_crop": True,
                         }
 
+                        family_a_lookup_source = "PRECISION_RECOVERY"
+
                         _logger.warning(
                             "[POOL FAMILY A RECOVERY AUTHORITY] "
                             "page=%s "
@@ -27837,6 +28007,9 @@ class VendorImportJob(models.Model):
                                         )
                                     )
                                 )
+
+                                if family_a_authority is not None:
+                                    family_a_lookup_source = "PAGE_CLEAN_INDEX"
 
                                 _logger.warning(
                                     "[POOL FAMILY A INDEX LOOKUP] "
@@ -27960,32 +28133,47 @@ class VendorImportJob(models.Model):
 
                 _logger.warning(
                     "[POOL FAMILY A DECISION] "
-                    "hash=%s | found=%s | classification=%s "
-                    "| role=%s | preserve=%s | trustworthy=%s",
-                    incoming_hash
-                        if isinstance(asset, dict)
-                        else None,
+                    "JOB=%s "
+                    "| PAGE=%s "
+                    "| INCOMING_CLEAN_INDEX=%s "
+                    "| INCOMING_HASH=%s "
+                    "| SOURCE_HASH=%s "
+                    "| LOOKUP_SOURCE=%s "
+                    "| FOUND=%s "
+                    "| AUTHORITY_IMAGE_INDEX=%s "
+                    "| AUTHORITY_CLEAN_INDEX=%s "
+                    "| AUTHORITY_HASH=%s "
+                    "| CLASSIFICATION=%s "
+                    "| ROLE=%s "
+                    "| PRODUCT_REF=%s "
+                    "| PRESERVE=%s "
+                    "| TRUSTWORTHY=%s "
+                    "| CONFIDENCE=%s",
+                    self.id,
+                    current_page,
+                    asset.get("clean_index") if isinstance(asset, dict) else None,
+                    incoming_hash,
+                    asset.get("source_hash") if isinstance(asset, dict) else None,
+                    family_a_lookup_source,
                     bool(family_a_authority),
-                    family_a_authority.get(
-                        "classification"
-                    )
-                        if family_a_authority
-                        else "NONE",
-                    family_a_authority.get(
-                        "asset_role"
-                    )
-                        if family_a_authority
-                        else "NONE",
-                    family_a_authority.get(
-                        "preserve"
-                    )
-                        if family_a_authority
-                        else None,
-                    family_a_authority.get(
-                        "trustworthy"
-                    )
-                        if family_a_authority
-                        else None,
+                    family_a_authority.get("image_index")
+                        if family_a_authority else None,
+                    family_a_authority.get("clean_index")
+                        if family_a_authority else None,
+                    family_a_authority.get("image_hash")
+                        if family_a_authority else None,
+                    family_a_authority.get("classification")
+                        if family_a_authority else None,
+                    family_a_authority.get("asset_role")
+                        if family_a_authority else None,
+                    family_a_authority.get("product_reference")
+                        if family_a_authority else None,
+                    family_a_authority.get("preserve")
+                        if family_a_authority else None,
+                    family_a_authority.get("trustworthy")
+                        if family_a_authority else None,
+                    family_a_authority.get("confidence")
+                        if family_a_authority else None,
                 )
 
                 # =====================================
@@ -28283,6 +28471,52 @@ class VendorImportJob(models.Model):
                     []
                 ).append(
                     "POOL_BUILD"
+                )
+
+                _logger.warning(
+                    "[POOL MATERIALIZED IDENTITY] "
+                    "JOB=%s "
+                    "| PAGE=%s "
+                    "| SOURCE_CLEAN_INDEX=%s "
+                    "| SOURCE_HASH=%s "
+                    "| FAMILY_A_IMAGE_INDEX=%s "
+                    "| FAMILY_A_HASH=%s "
+                    "| CLASSIFICATION=%s "
+                    "| ROLE=%s "
+                    "| IS_LIFESTYLE=%s "
+                    "| AUTHORITATIVE=%s "
+                    "| TRUSTWORTHY=%s "
+                    "| PRESERVE=%s "
+                    "| PRODUCT_REF=%s "
+                    "| CROP_ID=%s",
+                    self.id,
+                    current_page,
+                    asset.get("clean_index") if isinstance(asset, dict) else None,
+                    incoming_hash,
+                    family_a_authority.get("image_index")
+                        if family_a_authority else asset.get("family_a_image_index"),
+                    family_a_authority.get("image_hash")
+                        if family_a_authority else None,
+                    family_a_authority.get("classification")
+                        if family_a_authority
+                        else asset.get("classification"),
+                    family_a_authority.get("asset_role")
+                        if family_a_authority
+                        else asset.get("asset_role"),
+                    (
+                        family_a_authority.get("classification") == "LIFESTYLE"
+                        if family_a_authority
+                        else asset.get("is_lifestyle", False)
+                    ),
+                    bool(family_a_authority),
+                    family_a_authority.get("trustworthy")
+                        if family_a_authority else False,
+                    family_a_authority.get("preserve")
+                        if family_a_authority else False,
+                    family_a_authority.get("product_reference")
+                        if family_a_authority
+                        else asset.get("product_reference"),
+                    asset.get("crop_id") if isinstance(asset, dict) else None,
                 )
 
                 prepared.append({
@@ -28618,38 +28852,46 @@ class VendorImportJob(models.Model):
            
             _logger.warning(
                 "[POOL FINAL] "
-                "index=%s "
-                "| color=%s "
-                "| lifestyle=%s "
-                "| classification=%s "
-                "| role=%s "
-                "| family_a_authoritative=%s "
-                "| family_a_trustworthy=%s "
-                "| family_a_preserve=%s "
-                "| x=%s "
-                "| y=%s "
-                "| hero=%s "
-                "| gallery=%s "
-                "| score=%s "
-                "| collage=%s "
-                "| width=%s "
-                "| height=%s",
+                "JOB=%s "
+                "| PAGE=%s "
+                "| POOL_INDEX=%s "
+                "| CLEAN_INDEX=%s "
+                "| FAMILY_A_IMAGE_INDEX=%s "
+                "| IMAGE_HASH=%s "
+                "| COLOR=%s "
+                "| LIFESTYLE=%s "
+                "| CLASSIFICATION=%s "
+                "| ROLE=%s "
+                "| PRODUCT_REF=%s "
+                "| AUTHORITATIVE=%s "
+                "| TRUSTWORTHY=%s "
+                "| PRESERVE=%s "
+                "| CROP_ID=%s "
+                "| WIDTH=%s "
+                "| HEIGHT=%s "
+                "| HERO=%s "
+                "| GALLERY=%s "
+                "| SCORE=%s",
+                self.id,
+                current_page,
+                asset.get("index"),
                 asset.get("clean_index"),
+                asset.get("family_a_image_index"),
+                asset.get("image_hash"),
                 asset.get("dominant_color"),
                 asset.get("is_lifestyle"),
                 asset.get("classification"),
                 asset.get("asset_role"),
+                asset.get("product_reference"),
                 asset.get("family_a_authoritative"),
                 asset.get("family_a_trustworthy"),
                 asset.get("family_a_preserve"),
-                asset.get("x"),
-                asset.get("y"),
+                asset.get("crop_id"),
+                asset.get("width"),
+                asset.get("height"),
                 asset.get("hero_score"),
                 asset.get("gallery_score"),
                 asset.get("score"),
-                asset.get("is_collage"),
-                asset.get("width"),
-                asset.get("height"),
             )
         return prepared
 
@@ -37342,6 +37584,15 @@ class VendorImportJob(models.Model):
                         asset.get("family_a_image_index"),
                     )
 
+
+                _logger.warning(
+                    "[PDF ASSET HANDOFF BEFORE POOL] "
+                    "JOB=%s | PRODUCT=%s | PAGE_IMAGES_ID=%s | COUNT=%s",
+                    self.id,
+                    product_data.get("name", ""),
+                    id(page_images),
+                    len(page_images or []),
+                )
                 # =====================================
                 # BUILD ASSET POOL
                 # =====================================
@@ -37350,6 +37601,29 @@ class VendorImportJob(models.Model):
                     segmented_assets,
                     current_page=page_number
                 )
+
+                for pool_pos, asset in enumerate(asset_pool or []):
+                    _logger.warning(
+                        "[PDF ASSET POOL HANDOFF ITEM] "
+                        "JOB=%s | POOL_POS=%s | "
+                        "ASSET_ID=%s | CLEAN_INDEX=%s | "
+                        "FAMILY_A_INDEX=%s | "
+                        "CLASS=%s | ROLE=%s | "
+                        "LIFESTYLE=%s | TRUSTWORTHY=%s | "
+                        "PRESERVE=%s | PRODUCT_REF=%s | CROP_ID=%s",
+                        self.id,
+                        pool_pos,
+                        asset.get("asset_id"),
+                        asset.get("clean_index"),
+                        asset.get("family_a_image_index"),
+                        asset.get("classification"),
+                        asset.get("asset_role"),
+                        asset.get("is_lifestyle"),
+                        asset.get("family_a_trustworthy"),
+                        asset.get("family_a_preserve"),
+                        asset.get("product_reference"),
+                        asset.get("crop_id"),
+                    )
 
                 _logger.warning(
 
@@ -37517,10 +37791,52 @@ class VendorImportJob(models.Model):
                     # =====================================================
                     # EXISTING VARIANT CORRECTION
                     # =====================================================
+                    
+                    _logger.warning(
+                        "[PDF CORRECTION HANDOFF BEFORE] "
+                        "JOB=%s | PRODUCT=%s | "
+                        "ASSET_LIST_ID=%s | ASSET_COUNT=%s",
+                        self.id,
+                        product_data.get("name", ""),
+                        id(asset_pool),
+                        len(asset_pool or []),
+                    )
+
+
+                    for variant_no, variant in enumerate(
+                        product_data.get("variants") or []
+                    ):
+                        if not isinstance(variant, dict):
+                            continue
+
+                        attrs = variant.get("attributes") or {}
+
+                        _logger.warning(
+                            "[PDF CORRECTION INPUT VARIANT] "
+                            "JOB=%s | VARIANT_NO=%s | "
+                            "COLOR=%s | IMAGE_INDEX=%s | "
+                            "SOURCE_IMAGE_INDEX=%s",
+                            self.id,
+                            variant_no,
+                            attrs.get("Color") or attrs.get("color"),
+                            variant.get("image_index"),
+                            variant.get("source_image_index"),
+                        )
 
                     product_data = self._correct_variant_image_indexes(
                         product_data,
-                        asset_pool
+                        asset_pool,
+                        job_id=self.id,
+                    ) 
+
+                    _logger.warning(
+                        "[PDF CORRECTION HANDOFF AFTER] "
+                        "JOB=%s | PRODUCT=%s | "
+                        "ASSET_POOL_ID=%s | ASSET_COUNT=%s",
+                        self.id,
+                        product_data.get("name", ""),
+                        id(asset_pool),
+                        len(asset_pool or []),
                     )
 
                     _logger.warning(
@@ -37914,6 +38230,34 @@ class VendorImportJob(models.Model):
                                         )
 
                                         matched_asset = family_a_candidates[0]
+                                        _logger.warning(
+                                            "[PASS3 SELECTED ASSET AUDIT] "
+                                            "JOB=%s | VARIANT=%s | "
+                                            "REQUESTED_INDEX=%s | "
+                                            "ASSET_ID=%s | "
+                                            "POOL_INDEX=%s | "
+                                            "CLEAN_INDEX=%s | "
+                                            "FAMILY_A_INDEX=%s | "
+                                            "CLASS=%s | ROLE=%s | "
+                                            "LIFESTYLE=%s | TRUSTWORTHY=%s | "
+                                            "PRESERVE=%s | CROP_ID=%s | "
+                                            "POOL_COLOR=%s | FAMILY_A_COLOR=%s",
+                                            self.id,
+                                            variant.get("attributes", {}).get("Color"),
+                                            ai_image_index,
+                                            matched_asset.get("asset_id"),
+                                            matched_asset.get("index"),
+                                            matched_asset.get("clean_index"),
+                                            matched_asset.get("family_a_image_index"),
+                                            matched_asset.get("classification"),
+                                            matched_asset.get("asset_role"),
+                                            matched_asset.get("is_lifestyle"),
+                                            matched_asset.get("family_a_trustworthy"),
+                                            matched_asset.get("family_a_preserve"),
+                                            matched_asset.get("crop_id"),
+                                            matched_asset.get("dominant_color"),
+                                            matched_asset.get("family_a_color"),
+                                        )
 
                                         _logger.warning(
                                             "[VARIANT FAMILY A EXACT MATCH] "
@@ -38174,6 +38518,71 @@ class VendorImportJob(models.Model):
                                         f"clean={matched_asset.get('clean_index')}"
                                     )
 
+                                    _logger.warning(
+                                        "[FINAL VARIANT IMAGE IDENTITY] "
+                                        "JOB=%s | VARIANT=%s | "
+                                        "REQUESTED_INDEX=%s | "
+                                        "ASSET_ID=%s | "
+                                        "POOL_INDEX=%s | "
+                                        "CLEAN_INDEX=%s | "
+                                        "FAMILY_A_INDEX=%s | "
+                                        "CLASSIFICATION=%s | "
+                                        "ROLE=%s | "
+                                        "LIFESTYLE=%s | "
+                                        "TRUSTWORTHY=%s | "
+                                        "PRESERVE=%s | "
+                                        "FAMILY_A_COLOR=%s | "
+                                        "POOL_COLOR=%s | "
+                                        "CROP_ID=%s",
+                                        self.id,
+                                        variant_name,
+                                        ai_image_index,
+                                        matched_asset.get("asset_id"),
+                                        matched_asset.get("index"),
+                                        matched_asset.get("clean_index"),
+                                        matched_asset.get("family_a_image_index"),
+                                        matched_asset.get("classification"),
+                                        matched_asset.get("asset_role"),
+                                        matched_asset.get("is_lifestyle"),
+                                        matched_asset.get("family_a_trustworthy"),
+                                        matched_asset.get("family_a_preserve"),
+                                        matched_asset.get("family_a_color"),
+                                        matched_asset.get("dominant_color"),
+                                        matched_asset.get("crop_id"),
+                                    )
+
+
+                                    if (
+                                        matched_asset.get("is_lifestyle") is True
+                                        or matched_asset.get("classification") == "LIFESTYLE"
+                                        or matched_asset.get("asset_role") == "MARKETING"
+                                        or matched_asset.get("family_a_trustworthy") is False
+                                    ):
+                                        _logger.error(
+                                            "[FATAL VARIANT LIFESTYLE BLOCK] "
+                                            "JOB=%s | VARIANT=%s | "
+                                            "IMAGE_INDEX=%s | ASSET_ID=%s | "
+                                            "POOL_INDEX=%s | CLEAN_INDEX=%s | "
+                                            "FAMILY_A_INDEX=%s | "
+                                            "CLASS=%s | ROLE=%s | "
+                                            "LIFESTYLE=%s | TRUSTWORTHY=%s | "
+                                            "PRESERVE=%s",
+                                            self.id,
+                                            variant_name,
+                                            ai_image_index,
+                                            matched_asset.get("asset_id"),
+                                            matched_asset.get("index"),
+                                            matched_asset.get("clean_index"),
+                                            matched_asset.get("family_a_image_index"),
+                                            matched_asset.get("classification"),
+                                            matched_asset.get("asset_role"),
+                                            matched_asset.get("is_lifestyle"),
+                                            matched_asset.get("family_a_trustworthy"),
+                                            matched_asset.get("family_a_preserve"),
+                                        )
+
+                                        matched_asset = None
+
                                     variant_record.image_1920 = (
                                         matched_asset.get(
                                             "image"
@@ -38219,7 +38628,7 @@ class VendorImportJob(models.Model):
                                         f"| asset={matched_asset.get('index')} "
 
                                         f"| pool_color={matched_asset.get('dominant_color')} "
-                                        
+
                                         f"| family_a_color={matched_asset.get('family_a_color')} "
 
                                         f"| lifestyle={matched_asset.get('is_lifestyle')} "
@@ -44903,7 +45312,7 @@ class VendorImportJob(models.Model):
 
 
                         if variant_image:
-
+                            
                             variant_record.image_1920 = (
                                 variant_image
                             )
