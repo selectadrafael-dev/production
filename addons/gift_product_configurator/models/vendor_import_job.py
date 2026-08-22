@@ -28250,6 +28250,44 @@ class VendorImportJob(models.Model):
                             hash_match,
                         )
 
+                    # =========================================================
+                    # FAMILY A FINAL IDENTITY TRUST DECISION
+                    # =========================================================
+                    identity_status = asset.get(
+                        "family_a_identity_status"
+                    )
+
+                    if identity_status == "VERIFIED":
+                        asset["family_a_authoritative"] = True
+                        asset["family_a_trustworthy"] = True
+                        asset["family_a_preserve"] = True
+
+                    elif identity_status == "HASH_MISMATCH":
+                        asset["family_a_authoritative"] = False
+                        asset["family_a_trustworthy"] = False
+                        asset["family_a_preserve"] = True
+
+                    else:
+                        asset["family_a_authoritative"] = False
+                        asset["family_a_trustworthy"] = False
+                        asset["family_a_preserve"] = True
+
+                    _logger.warning(
+                        "[POOL FAMILY A FINAL TRUST DECISION] "
+                        "JOB=%s | PAGE=%s | CLEAN_INDEX=%s | "
+                        "IDENTITY_STATUS=%s | "
+                        "AUTHORITATIVE=%s | "
+                        "TRUSTWORTHY=%s | "
+                        "PRESERVE=%s",
+                        self.id,
+                        current_page,
+                        asset.get("clean_index"),
+                        identity_status,
+                        asset.get("family_a_authoritative"),
+                        asset.get("family_a_trustworthy"),
+                        asset.get("family_a_preserve"),
+                    )
+
                     if (
                         authority_hash
                         and incoming_hash
@@ -28298,6 +28336,7 @@ class VendorImportJob(models.Model):
                     asset.get("source_hash") if isinstance(asset, dict) else None,
                     family_a_lookup_source,
                     bool(family_a_authority),
+
                     family_a_authority.get("image_index")
                         if family_a_authority else None,
                     family_a_authority.get("clean_index")
@@ -28310,10 +28349,10 @@ class VendorImportJob(models.Model):
                         if family_a_authority else None,
                     family_a_authority.get("product_reference")
                         if family_a_authority else None,
-                    family_a_authority.get("preserve")
-                        if family_a_authority else None,
-                    family_a_authority.get("trustworthy")
-                        if family_a_authority else None,
+                    asset.get("family_a_preserve")
+                        if isinstance(asset, dict) else None,
+                    asset.get("family_a_trustworthy")
+                        if isinstance(asset, dict) else None,
                     family_a_authority.get("confidence")
                         if family_a_authority else None,
                 )
@@ -28575,7 +28614,7 @@ class VendorImportJob(models.Model):
                     )
 
                 elif (
-                    classification == "REAL_PRODUCT"
+                    asset.get("classification") == "REAL_PRODUCT"
                     and identity_status == "HASH_MISMATCH"
                 ):
                     asset["family_a_authoritative"] = False
@@ -28597,7 +28636,7 @@ class VendorImportJob(models.Model):
                     )
 
                 elif (
-                    classification == "REAL_PRODUCT"
+                    asset.get("classification") == "REAL_PRODUCT"
                     and identity_status == "UNRESOLVED"
                 ):
                     asset["family_a_authoritative"] = False
@@ -28672,11 +28711,11 @@ class VendorImportJob(models.Model):
                         if family_a_authority
                         else asset.get("is_lifestyle", False)
                     ),
-                    bool(family_a_authority),
-                    family_a_authority.get("trustworthy")
-                        if family_a_authority else False,
-                    family_a_authority.get("preserve")
-                        if family_a_authority else False,
+                   
+                    asset.get("family_a_authoritative", False),
+                    asset.get("family_a_trustworthy", False),
+                    asset.get("family_a_preserve", False),
+
                     family_a_authority.get("product_reference")
                         if family_a_authority
                         else asset.get("product_reference"),
@@ -28822,8 +28861,9 @@ class VendorImportJob(models.Model):
                         )
                     ),
 
-                    "family_a_authoritative": bool(
-                        family_a_authority
+                    "family_a_authoritative": asset.get(
+                        "family_a_authoritative",
+                        False
                     ),
 
                     "family_a_confidence": (
@@ -28835,22 +28875,14 @@ class VendorImportJob(models.Model):
                         else 0
                     ),
 
-                    "family_a_trustworthy": (
-                        family_a_authority.get(
-                            "trustworthy",
-                            False
-                        )
-                        if family_a_authority
-                        else False
+                    "family_a_trustworthy": asset.get(
+                        "family_a_trustworthy",
+                        False
                     ),
 
-                    "family_a_preserve": (
-                        family_a_authority.get(
-                            "preserve",
-                            False
-                        )
-                        if family_a_authority
-                        else False
+                    "family_a_preserve": asset.get(
+                        "family_a_preserve",
+                        False
                     ),
 
                     "priority": asset.get("priority", 0),
