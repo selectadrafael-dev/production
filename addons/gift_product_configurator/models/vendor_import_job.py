@@ -37933,6 +37933,46 @@ class VendorImportJob(models.Model):
                                             matched_asset.get("is_lifestyle"),
                                         )
 
+                                        # =====================================================
+                                        # FAMILY A AUTHORITATIVE COLOR
+                                        # =====================================================
+                                        #
+                                        # Once Family A has resolved the physical asset by its
+                                        # authoritative image index, its variant color is also
+                                        # authoritative.
+                                        #
+                                        # dominant_color is only visual-analysis metadata.
+                                        # It must NOT override Family A's variant color.
+                                        # =====================================================
+
+                                        family_a_color = str(
+                                            variant.get("attributes", {}).get("Color") or ""
+                                        ).strip()
+
+                                        if family_a_color:
+
+                                            previous_pool_color = matched_asset.get(
+                                                "dominant_color"
+                                            )
+
+                                            matched_asset["family_a_color"] = (
+                                                family_a_color
+                                            )
+
+                                            _logger.warning(
+                                                "[VARIANT FAMILY A COLOR AUTHORITY] "
+                                                "color=%s "
+                                                "| clean_index=%s "
+                                                "| pool_index=%s "
+                                                "| previous_pool_color=%s "
+                                                "| family_a_color=%s",
+                                                family_a_color,
+                                                matched_asset.get("clean_index"),
+                                                matched_asset.get("index"),
+                                                previous_pool_color,
+                                                matched_asset.get("family_a_color"),
+                                            )
+
 
                                 # =====================================================
                                 # 2. EXACT CLEAN-INDEX LOOKUP
@@ -38130,6 +38170,7 @@ class VendorImportJob(models.Model):
                                         f"color={variant.get('attributes', {}).get('Color')} "
                                         f"asset={matched_asset.get('index')} "
                                         f"pool_color={matched_asset.get('dominant_color')} "
+                                        f"family_a_color={matched_asset.get('family_a_color')} "
                                         f"clean={matched_asset.get('clean_index')}"
                                     )
 
@@ -38159,11 +38200,13 @@ class VendorImportJob(models.Model):
                                             "variant=%s | "
                                             "clean_index=%s | "
                                             "pool_index=%s | "
-                                            "color=%s",
+                                            "pool_color=%s | "
+                                            "family_a_color=%s",
                                             variant_name,
                                             asset_clean_index,
                                             asset_pool_index,
                                             matched_asset.get("dominant_color"),
+                                            matched_asset.get("family_a_color"),
                                         )
 
 
@@ -38175,7 +38218,9 @@ class VendorImportJob(models.Model):
 
                                         f"| asset={matched_asset.get('index')} "
 
-                                        f"| color={matched_asset.get('dominant_color')} "
+                                        f"| pool_color={matched_asset.get('dominant_color')} "
+                                        
+                                        f"| family_a_color={matched_asset.get('family_a_color')} "
 
                                         f"| lifestyle={matched_asset.get('is_lifestyle')} "
 
