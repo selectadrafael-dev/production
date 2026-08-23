@@ -18663,6 +18663,8 @@ class VendorImportJob(models.Model):
 
         review_pages = []
 
+        family_a_source_images = {}
+
         # =====================================================
         # BUILD VISUAL INPUT FROM FAMILY A EXTRACTION
         # =====================================================
@@ -18777,6 +18779,43 @@ class VendorImportJob(models.Model):
                             "image"
                         )
 
+                         # =================================================
+                        # FAMILY A SOURCE IMAGE LOOKUP
+                        # =================================================
+
+                        family_a_source_images[
+                            (
+                                int(page_number),
+                                int(image.get("index"))
+                            )
+                        ] = image
+
+                        _logger.warning(
+                            "[FAMILY A INPUT IDENTITY] "
+                            "JOB=%s "
+                            "| PAGE=%s "
+                            "| POOL_INDEX=%s "
+                            "| CLEAN_INDEX=%s "
+                            "| SOURCE_ASSET_ID=%s "
+                            "| SOURCE_HASH=%s "
+                            "| IMAGE_HASH=%s "
+                            "| LIFESTYLE_HINT=%s "
+                            "| CLASSIFICATION=%s "
+                            "| ROLE=%s",
+                            self.id,
+                            page_number,
+                            image.get("index"),
+                            image.get("clean_index"),
+                            image.get("source_asset_id"),
+                            image.get("source_hash"),
+                            hashlib.md5(
+                                base64.b64decode(image_data)
+                            ).hexdigest(),
+                            image.get("is_lifestyle"),
+                            image.get("classification"),
+                            image.get("asset_role"),
+                        )
+
                         if not image_data:
                             continue
 
@@ -18821,6 +18860,10 @@ class VendorImportJob(models.Model):
                             "image_hash": hashlib.md5(
                                 base64.b64decode(image_data)
                             ).hexdigest(),
+
+                            "clean_index": image.get("clean_index"),
+                            "source_asset_id": image.get("source_asset_id"),
+                            "source_hash": image.get("source_hash"),
 
                             "width":
                                 image.get(
@@ -21151,6 +21194,94 @@ class VendorImportJob(models.Model):
                         ValueError
                     ):
                         continue
+
+                    # =================================================
+                    # VERIFY FAMILY A RETURNED IMAGE IDENTITY
+                    # =================================================
+
+                    source_image = family_a_source_images.get(
+                        (
+                            int(page_number),
+                            int(image_index)
+                        )
+                    )
+
+                    actual_image_hash = ""
+
+                    if source_image:
+
+                        source_image_data = source_image.get(
+                            "image",
+                            ""
+                        )
+
+                        if source_image_data:
+
+                            try:
+
+                                actual_image_hash = hashlib.md5(
+                                    base64.b64decode(
+                                        source_image_data
+                                    )
+                                ).hexdigest()
+
+                            except Exception:
+
+                                _logger.exception(
+                                    "[FAMILY A RETURN IDENTITY CHECK] "
+                                    "HASH CALCULATION FAILED "
+                                    "| JOB=%s "
+                                    "| PAGE=%s "
+                                    "| IMAGE=%s",
+                                    self.id,
+                                    page_number,
+                                    image_index,
+                                )
+
+                    else:
+
+                        _logger.error(
+                            "[FAMILY A RETURN IDENTITY CHECK] "
+                            "SOURCE IMAGE NOT FOUND "
+                            "| JOB=%s "
+                            "| PAGE=%s "
+                            "| RETURNED_INDEX=%s "
+                            "| RETURNED_HASH=%s",
+                            self.id,
+                            page_number,
+                            image_index,
+                            image_hash,
+                        )
+
+                    hash_match = (
+                        bool(image_hash)
+                        and bool(actual_image_hash)
+                        and image_hash == actual_image_hash
+                    )
+
+                    _logger.warning(
+                        "[FAMILY A RETURN IDENTITY CHECK] "
+                        "JOB=%s "
+                        "| PAGE=%s "
+                        "| RETURNED_INDEX=%s "
+                        "| RETURNED_HASH=%s "
+                        "| ACTUAL_HASH=%s "
+                        "| HASH_MATCH=%s "
+                        "| CLEAN_INDEX=%s "
+                        "| SOURCE_ASSET_ID=%s",
+                        self.id,
+                        page_number,
+                        image_index,
+                        image_hash,
+                        actual_image_hash,
+                        hash_match,
+                        source_image.get(
+                            "clean_index"
+                        ) if source_image else None,
+                        source_image.get(
+                            "source_asset_id"
+                        ) if source_image else None,
+                    )
 
                     classification = str(
                         asset.get(
@@ -28327,8 +28458,6 @@ class VendorImportJob(models.Model):
                         authority_hash,
                         incoming_hash,
                     )
-
-
 
                     if (
                         authority_index is not None
