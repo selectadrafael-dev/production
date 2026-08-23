@@ -7244,13 +7244,49 @@ class VendorImportJob(models.Model):
                 )
             ).strip()
 
+            # =========================================================
+            # BUILD POOL INDEX ASSET MAP
+            # =========================================================
+
+            assets_by_pool_index = {}
+
+            for asset in page_images:
+
+                if not isinstance(
+                    asset,
+                    dict
+                ):
+                    continue
+
+                pool_index = asset.get(
+                    "index"
+                )
+
+                if pool_index is None:
+                    continue
+
+                try:
+                    pool_index = int(
+                        pool_index
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    continue
+
+                assets_by_pool_index[
+                    pool_index
+                ] = asset
+
             # =====================================================
             # BUILD EXPLICIT COLOR ASSET MAP
             # =====================================================
 
             color_assets = {}
 
-            for index, asset in assets_by_index.items():
+            for clean_index, asset in assets_by_index.items():
 
                 color = str(
                     asset.get(
@@ -7314,12 +7350,30 @@ class VendorImportJob(models.Model):
                 ):
                     continue
 
+                pool_index = asset.get(
+                    "index"
+                )
+
+                if pool_index is None:
+                    continue
+
+                try:
+                    pool_index = int(
+                        pool_index
+                    )
+
+                except (
+                    TypeError,
+                    ValueError
+                ):
+                    continue
+
                 color_assets.setdefault(
                     color,
                     []
                 ).append(
                     (
-                        index,
+                        pool_index,
                         asset
                     )
                 )
@@ -7380,7 +7434,7 @@ class VendorImportJob(models.Model):
 
                     if current_index is not None:
 
-                        current_asset = assets_by_index.get(
+                        current_asset = assets_by_pool_index.get(
                             int(
                                 current_index
                             )
@@ -15444,7 +15498,7 @@ class VendorImportJob(models.Model):
 
         return found_images
 
-    # =========================================================
+    # =======================_validate_variant_image_assignments==================================
     # AUTHORITATIVE FAMILY A SPECIFICATION
     # =========================================================
     def _get_family_a_authoritative_spec(self):
