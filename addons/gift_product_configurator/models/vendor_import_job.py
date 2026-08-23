@@ -18767,7 +18767,8 @@ class VendorImportJob(models.Model):
                     list
                 ):
 
-                    for image in images:
+
+                    for image_position, image in enumerate(images):
 
                         if not isinstance(
                             image,
@@ -18779,14 +18780,85 @@ class VendorImportJob(models.Model):
                             "image"
                         )
 
-                         # =================================================
+                        # =================================================
+                        # FAMILY A REVIEW IMAGE INDEX
+                        # =================================================
+                        #
+                        # Family A normally supplies "index".
+                        # If the extractor supplied None, use the image's
+                        # position within this page's images list.
+                        #
+                        # This index is used only to maintain a stable
+                        # identity between:
+                        #
+                        #   Family A source image
+                        #           ↓
+                        #   OpenAI visual review
+                        #           ↓
+                        #   returned image_index
+                        #
+                        # Do NOT use clean_index or source_asset_id here.
+                        # =================================================
+
+                        raw_image_index = image.get(
+                            "index"
+                        )
+
+                        if raw_image_index is None:
+
+                            image_index = image_position
+
+                            _logger.warning(
+                                "[FAMILY A INPUT IDENTITY] "
+                                "MISSING SOURCE INDEX — USING POSITION "
+                                "| JOB=%s "
+                                "| PAGE=%s "
+                                "| IMAGE_POSITION=%s "
+                                "| CLEAN_INDEX=%s "
+                                "| SOURCE_ASSET_ID=%s",
+                                self.id,
+                                page_number,
+                                image_position,
+                                image.get("clean_index"),
+                                image.get("source_asset_id"),
+                            )
+
+                        else:
+
+                            try:
+
+                                image_index = int(
+                                    raw_image_index
+                                )
+
+                            except (
+                                TypeError,
+                                ValueError
+                            ):
+
+                                image_index = image_position
+
+                                _logger.warning(
+                                    "[FAMILY A INPUT IDENTITY] "
+                                    "INVALID SOURCE INDEX — USING POSITION "
+                                    "| JOB=%s "
+                                    "| PAGE=%s "
+                                    "| RAW_INDEX=%s "
+                                    "| IMAGE_POSITION=%s",
+                                    self.id,
+                                    page_number,
+                                    raw_image_index,
+                                    image_position,
+                                )
+
+                        # =================================================
                         # FAMILY A SOURCE IMAGE LOOKUP
                         # =================================================
 
                         family_a_source_images[
                             (
                                 int(page_number),
-                                int(image.get("index"))
+                                image_index
                             )
                         ] = image
 
